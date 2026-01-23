@@ -40,7 +40,7 @@ const HeroSection = () => {
       {/* Hidden audio element */}
       <audio 
         ref={audioRef} 
-        src="/audio/sample-song.mp3" 
+        src="/audio/sample-song2.mp3" 
         onEnded={handleAudioEnded}
         onError={(e) => console.error("Audio load error:", e)}
         onCanPlay={() => console.log("Audio ready to play")}
