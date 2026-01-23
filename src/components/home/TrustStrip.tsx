@@ -3,9 +3,9 @@ import asSeenOnImage from "@/assets/as-seen-on.png";
 
 const TrustStrip = () => {
   return (
-    <section className="py-10 md:py-14 border-y border-border bg-card">
+    <section className="py-6 md:py-10 border-y border-border bg-card">
       <div className="container mx-auto px-4">
-        <div className="flex flex-col md:flex-row items-center justify-center gap-8 md:gap-16">
+        <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-16">
           {/* Rating */}
           <div className="flex items-center gap-3">
             <div className="flex text-gold">

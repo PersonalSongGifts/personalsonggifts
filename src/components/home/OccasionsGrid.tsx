@@ -38,10 +38,10 @@ const occasions = [
 
 const OccasionsGrid = () => {
   return (
-    <section id="occasions" className="py-16 md:py-24 bg-secondary/30">
+    <section id="occasions" className="py-10 md:py-16 bg-secondary/30">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-12">
-          <h2 className="font-display text-foreground mb-4">
+        <div className="text-center mb-8 md:mb-12">
+          <h2 className="font-display text-foreground mb-3 md:mb-4">
             Every Occasion Deserves a Song
           </h2>
           <p className="text-body text-muted-foreground max-w-2xl mx-auto">
