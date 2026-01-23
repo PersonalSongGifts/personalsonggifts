@@ -1,8 +1,7 @@
-import { Star, Users, Award } from "lucide-react";
+import { Star, Users } from "lucide-react";
+import asSeenOnImage from "@/assets/as-seen-on.png";
 
 const TrustStrip = () => {
-  const logos = ["ABC", "NBC", "CBS", "FOX"];
-
   return (
     <section className="py-10 md:py-14 border-y border-border bg-card">
       <div className="container mx-auto px-4">
@@ -31,19 +30,13 @@ const TrustStrip = () => {
           {/* Divider */}
           <div className="hidden md:block w-px h-8 bg-border" />
 
-          {/* As seen on */}
-          <div className="flex items-center gap-4">
-            <span className="text-muted-foreground text-sm">As Seen On:</span>
-            <div className="flex items-center gap-3">
-              {logos.map((logo) => (
-                <span 
-                  key={logo}
-                  className="text-muted-foreground/60 font-bold text-sm tracking-wide"
-                >
-                  {logo}
-                </span>
-              ))}
-            </div>
+          {/* As seen on - Image */}
+          <div className="flex items-center">
+            <img 
+              src={asSeenOnImage} 
+              alt="As Seen On ABC, NBC, CBS, FOX" 
+              className="max-w-[180px] md:max-w-[280px] h-auto"
+            />
           </div>
         </div>
       </div>

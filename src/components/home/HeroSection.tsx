@@ -1,24 +1,76 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play } from "lucide-react";
+import { Play, Pause } from "lucide-react";
+import { useState, useRef } from "react";
 
 const HeroSection = () => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const toggleAudio = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleAudioEnded = () => {
+    setIsPlaying(false);
+  };
+
   return (
-    <section className="relative min-h-[85vh] flex items-center justify-center overflow-hidden">
-      {/* Background with soft overlay */}
-      <div 
-        className="absolute inset-0 bg-gradient-to-b from-secondary/50 to-background"
-        style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?q=80&w=1920&auto=format&fit=crop')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div className="absolute inset-0 bg-background/85 backdrop-blur-[2px]" />
-      </div>
+    <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-gradient-to-b from-secondary/30 to-background">
+      {/* Hidden audio element */}
+      <audio 
+        ref={audioRef} 
+        src="/audio/sample-song.mp3" 
+        onEnded={handleAudioEnded}
+        preload="metadata"
+      />
 
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 text-center max-w-4xl">
+      <div className="relative z-10 container mx-auto px-4 text-center max-w-4xl py-12">
+        {/* Video Container */}
+        <div className="relative max-w-2xl mx-auto mb-10 animate-fade-in">
+          <div className="relative rounded-2xl overflow-hidden shadow-elevated">
+            <video 
+              autoPlay 
+              loop 
+              muted 
+              playsInline
+              className="w-full h-auto"
+            >
+              <source src="/videos/hero-video.mp4" type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+            
+            {/* Listen to Example Button Overlay */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+              <Button 
+                onClick={toggleAudio}
+                size="lg"
+                className="text-base px-6 py-5 font-semibold shadow-lg gap-2"
+              >
+                {isPlaying ? (
+                  <>
+                    <Pause className="h-5 w-5" />
+                    Pause Song
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-5 w-5" />
+                    Listen to Example
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+
         <h1 className="font-display text-foreground mb-6 animate-fade-in">
           Turn Your Story Into a Song They'll Never Forget
         </h1>
