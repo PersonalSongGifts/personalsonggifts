@@ -1,105 +1,221 @@
+import { useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
-import { Quote, Play } from "lucide-react";
+import { Play, Pause, Star, CheckCircle } from "lucide-react";
 
-const testimonials = [
+interface VideoTestimonial {
+  id: string;
+  type: "video";
+  videoSrc: string;
+  overlayQuote: string;
+  overlayCaption: string;
+  title: string;
+}
+
+interface TextTestimonial {
+  id: string;
+  type: "text";
+  quote: string;
+  author: string;
+  verified: boolean;
+}
+
+type Testimonial = VideoTestimonial | TextTestimonial;
+
+const testimonials: Testimonial[] = [
+  // Row 1
   {
-    id: 1,
-    quote: "She cried happy tears. This was the most meaningful gift I've ever given in 30 years of marriage.",
-    author: "Robert M.",
-    occasion: "50th Anniversary",
-    hasVideo: false,
+    id: "v1",
+    type: "video",
+    videoSrc: "/videos/reaction-1.mp4",
+    overlayQuote: '"you taught me to love self and to be kind" ❤️',
+    overlayCaption: "Mom thought I forgot her birthday, but secretly I had THIS planned...",
+    title: "Birthday Tribute for Mom",
   },
   {
-    id: 2,
-    quote: "My mother couldn't believe it was made just for her. She plays it every single day.",
-    author: "Jennifer S.",
-    occasion: "80th Birthday",
-    hasVideo: true,
+    id: "t1",
+    type: "text",
+    quote: '"She has no idea this song is about her... The next part will make her cry."',
+    author: "Lilie Beth",
+    verified: true,
   },
   {
-    id: 3,
-    quote: "We'll treasure this forever. It captured our love story perfectly.",
-    author: "Michael & Sarah",
-    occasion: "Wedding",
-    hasVideo: false,
+    id: "v2",
+    type: "video",
+    videoSrc: "/videos/reaction-2.mp4",
+    overlayQuote: '"He is my everything, and loving him will always be the best part of me" 👫🥰',
+    overlayCaption: "Husband thought I forgot our anniversary, but secretly I had THIS planned...",
+    title: "Golden Anniversary Surprise",
   },
   {
-    id: 4,
-    quote: "The song brought back so many beautiful memories of my father. Thank you for this gift.",
-    author: "Lisa T.",
-    occasion: "Memorial",
-    hasVideo: true,
+    id: "t2",
+    type: "text",
+    quote: '"We are still going strong years later... He is my everything."',
+    author: "David & Wife",
+    verified: true,
+  },
+  // Row 2
+  {
+    id: "v3",
+    type: "video",
+    videoSrc: "/videos/reaction-3.mp4",
+    overlayQuote: '"time" 💕',
+    overlayCaption: "After losing their dad, mom gets them a birthday surprise of a lifetime...",
+    title: "Memorial Birthday Surprise",
   },
   {
-    id: 5,
-    quote: "I've never seen my husband so emotional. Worth every penny and more.",
-    author: "Patricia K.",
-    occasion: "Anniversary",
-    hasVideo: false,
+    id: "t3",
+    type: "text",
+    quote: '"They always say how much they miss their Dad... Can\'t believe I pulled this off."',
+    author: "Kenya & Brandon",
+    verified: true,
   },
   {
-    id: 6,
-    quote: "Our daughter's lullaby is now part of our nightly routine. Pure magic.",
-    author: "Amanda & David",
-    occasion: "Baby",
-    hasVideo: false,
+    id: "v4",
+    type: "video",
+    videoSrc: "/videos/reaction-4.mp4",
+    overlayQuote: '"You\'re my hero, Dad" 💪',
+    overlayCaption: "My Husband thought I forgot his birthday, but secretly I had THIS planned...",
+    title: "Stepdad Birthday Appreciation",
   },
 ];
+
+const VideoCard = ({ testimonial }: { testimonial: VideoTestimonial }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleVideoEnd = () => {
+    setIsPlaying(false);
+  };
+
+  return (
+    <div className="flex flex-col">
+      <div 
+        className="relative rounded-xl overflow-hidden cursor-pointer group aspect-[3/4]"
+        onClick={togglePlay}
+      >
+        <video
+          ref={videoRef}
+          src={testimonial.videoSrc}
+          className="w-full h-full object-cover"
+          onEnded={handleVideoEnd}
+          playsInline
+        />
+        
+        {/* Dark gradient overlay */}
+        <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 transition-opacity duration-300 ${isPlaying ? 'opacity-0' : 'opacity-100'}`} />
+        
+        {/* Play button */}
+        <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isPlaying ? 'opacity-0' : 'opacity-100'}`}>
+          <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            {isPlaying ? (
+              <Pause className="h-6 w-6 text-foreground" />
+            ) : (
+              <Play className="h-6 w-6 text-foreground ml-1" />
+            )}
+          </div>
+        </div>
+        
+        {/* Quote overlay at top */}
+        <div className={`absolute top-4 left-4 right-4 transition-opacity duration-300 ${isPlaying ? 'opacity-0' : 'opacity-100'}`}>
+          <p className="text-white text-sm md:text-base font-medium leading-snug drop-shadow-lg">
+            {testimonial.overlayQuote}
+          </p>
+        </div>
+        
+        {/* Caption overlay at bottom */}
+        <div className={`absolute bottom-4 left-4 right-4 transition-opacity duration-300 ${isPlaying ? 'opacity-0' : 'opacity-100'}`}>
+          <p className="text-white/90 text-xs md:text-sm leading-snug drop-shadow-lg">
+            {testimonial.overlayCaption}
+          </p>
+        </div>
+      </div>
+      
+      {/* Title below video */}
+      <p className="text-sm text-muted-foreground mt-3 font-medium">
+        {testimonial.title}
+      </p>
+    </div>
+  );
+};
+
+const TextCard = ({ testimonial }: { testimonial: TextTestimonial }) => {
+  return (
+    <Card className="p-6 bg-card h-fit">
+      {/* Stars */}
+      <div className="flex gap-0.5 mb-3">
+        {[...Array(5)].map((_, i) => (
+          <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
+        ))}
+      </div>
+      
+      {/* Quote */}
+      <p className="text-foreground text-base leading-relaxed mb-4">
+        {testimonial.quote}
+      </p>
+      
+      {/* Author with verified badge */}
+      <div className="flex items-center gap-2">
+        <span className="font-semibold text-foreground text-sm">
+          {testimonial.author}
+        </span>
+        {testimonial.verified && (
+          <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium">
+            <CheckCircle className="h-3.5 w-3.5" />
+            Verified
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+};
 
 const Testimonials = () => {
   return (
     <section id="reviews" className="py-16 md:py-24">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12">
-          <h2 className="font-display text-foreground mb-4">
-            Stories From Our Customers
+          <h2 className="font-display text-foreground mb-4 italic">
+            Real stories from real customers
           </h2>
-          <p className="text-body text-muted-foreground max-w-2xl mx-auto">
-            Real reactions from real people who gave the gift of a custom song
-          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {testimonials.map((testimonial) => (
-            <Card 
-              key={testimonial.id}
-              className="p-6 bg-card hover:shadow-card transition-all duration-300 relative"
-            >
-              {/* Quote icon */}
-              <Quote className="h-8 w-8 text-primary/20 absolute top-4 right-4" />
-              
-              {/* Video indicator */}
-              {testimonial.hasVideo && (
-                <div className="mb-4 bg-secondary rounded-lg aspect-video flex items-center justify-center cursor-pointer hover:bg-secondary/80 transition-colors">
-                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
-                    <Play className="h-5 w-5 text-primary-foreground ml-0.5" />
-                  </div>
-                </div>
-              )}
+        {/* Masonry-style grid layout */}
+        <div className="max-w-6xl mx-auto">
+          {/* Row 1: Video - Text - Video - Text */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <VideoCard testimonial={testimonials[0] as VideoTestimonial} />
+            <div className="flex items-center">
+              <TextCard testimonial={testimonials[1] as TextTestimonial} />
+            </div>
+            <VideoCard testimonial={testimonials[2] as VideoTestimonial} />
+            <div className="flex items-center">
+              <TextCard testimonial={testimonials[3] as TextTestimonial} />
+            </div>
+          </div>
 
-              {/* Quote */}
-              <blockquote className="text-foreground text-lg leading-relaxed mb-4">
-                "{testimonial.quote}"
-              </blockquote>
-
-              {/* Author */}
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <span className="text-primary font-semibold text-sm">
-                    {testimonial.author.charAt(0)}
-                  </span>
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground text-sm">
-                    {testimonial.author}
-                  </p>
-                  <p className="text-muted-foreground text-sm">
-                    {testimonial.occasion}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          ))}
+          {/* Row 2: Video - Text - Video (centered) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="lg:col-start-1">
+              <VideoCard testimonial={testimonials[4] as VideoTestimonial} />
+            </div>
+            <div className="flex items-center">
+              <TextCard testimonial={testimonials[5] as TextTestimonial} />
+            </div>
+            <div className="lg:col-start-3">
+              <VideoCard testimonial={testimonials[6] as VideoTestimonial} />
+            </div>
+          </div>
         </div>
       </div>
     </section>
