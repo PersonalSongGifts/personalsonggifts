@@ -36,7 +36,7 @@ const HeroSection = () => {
   };
 
   return (
-    <section className="relative min-h-[70vh] md:min-h-[85vh] flex items-center justify-center overflow-hidden bg-gradient-to-b from-secondary/30 to-background">
+    <section className="relative flex items-center justify-center overflow-hidden bg-gradient-to-b from-secondary/30 to-background pb-6 md:pb-10">
       {/* Hidden audio element */}
       <audio 
         ref={audioRef} 
@@ -113,13 +113,10 @@ const HeroSection = () => {
         </div>
 
         {/* Trust indicator */}
-        <p className="mt-6 md:mt-10 text-muted-foreground text-xs md:text-sm animate-fade-in">
+        <p className="mt-6 md:mt-8 text-muted-foreground text-xs md:text-sm animate-fade-in">
           ★★★★★ Trusted by 1,000+ families for life's most meaningful moments
         </p>
       </div>
-
-      {/* Decorative bottom fade */}
-      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
     </section>
   );
 };
