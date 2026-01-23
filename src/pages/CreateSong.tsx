@@ -109,13 +109,13 @@ const CreateSong = () => {
       case 1:
         return !!formData.recipientType;
       case 2:
-        return !!formData.recipientName;
+        return !!formData.recipientName && !!formData.namePronunciation && !!formData.relationship;
       case 3:
         return !!formData.occasion;
       case 4:
-        return !!formData.genre;
+        return !!formData.genre && !!formData.singerPreference && !!formData.mood;
       case 5:
-        return !!formData.specialQualities && !!formData.whatYouLove;
+        return !!formData.specialQualities && !!formData.favoriteMemory && !!formData.whatYouLove;
       case 6:
         return true; // Optional step
       case 7:

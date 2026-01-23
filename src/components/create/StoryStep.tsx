@@ -43,7 +43,7 @@ const StoryStep = ({ formData, updateFormData }: StoryStepProps) => {
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-primary" />
           <Label htmlFor="favoriteMemory" className="text-lg font-semibold">
-            A favorite memory you share <span className="text-muted-foreground text-sm font-normal">(optional)</span>
+            A favorite memory you share <span className="text-destructive">*</span>
           </Label>
         </div>
         <Textarea

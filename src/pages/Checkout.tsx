@@ -131,14 +131,14 @@ const Checkout = () => {
               }`}
             >
               <div className="absolute -top-3 right-4 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
-                FASTER
+                FASTEST
               </div>
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-foreground">Priority Song</h3>
                 <p className="text-muted-foreground flex items-center gap-1 mt-1">
                     <Zap className="h-4 w-4" />
-                    Guaranteed priority delivery
+                    3-hour rush production & delivery
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
@@ -161,7 +161,7 @@ const Checkout = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" />
-                  Priority delivery
+                  3-hour rush delivery
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" />
@@ -191,6 +191,20 @@ const Checkout = () => {
                 <span className="text-muted-foreground">Delivery to:</span>
                 <span className="text-foreground">{formData.yourEmail}</span>
               </div>
+              <div className="border-t border-border my-4" />
+              
+              {/* Promo item */}
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Unlimited plays & full usage rights</span>
+                  <span className="bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5 rounded">FREE</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground line-through">$15</span>
+                  <span className="text-primary font-semibold">$0</span>
+                </div>
+              </div>
+              
               <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Total:</span>

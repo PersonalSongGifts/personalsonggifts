@@ -28,7 +28,7 @@ const DetailsStep = ({ formData, updateFormData }: DetailsStepProps) => {
       {/* Name Pronunciation */}
       <div className="space-y-2">
         <Label htmlFor="namePronunciation" className="text-base">
-          How should we say their name? <span className="text-muted-foreground">(optional)</span>
+          How should we say their name? <span className="text-destructive">*</span>
         </Label>
         <Input
           id="namePronunciation"
@@ -45,7 +45,7 @@ const DetailsStep = ({ formData, updateFormData }: DetailsStepProps) => {
       {/* Relationship context */}
       <div className="space-y-2">
         <Label htmlFor="relationship" className="text-base">
-          Tell us a bit about your relationship <span className="text-muted-foreground">(optional)</span>
+          Tell us a bit about your relationship <span className="text-destructive">*</span>
         </Label>
         <Textarea
           id="relationship"
