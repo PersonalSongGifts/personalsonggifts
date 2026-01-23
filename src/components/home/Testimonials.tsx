@@ -79,6 +79,13 @@ const testimonials: Testimonial[] = [
     overlayCaption: "Dad had no idea his daughter wrote him a song... watch his reaction...",
     title: "Father's Day Surprise",
   },
+  {
+    id: "t4",
+    type: "text",
+    quote: '"I wrote this for my dad who has always been there for me. He cried the whole time."',
+    author: "Sarah M.",
+    verified: true,
+  },
 ];
 
 const VideoCard = ({ testimonial }: { testimonial: VideoTestimonial }) => {
@@ -216,6 +223,9 @@ const Testimonials = () => {
             </div>
             <div className="lg:col-start-3">
               <VideoCard testimonial={testimonials[6] as VideoTestimonial} />
+            </div>
+            <div className="flex items-center">
+              <TextCard testimonial={testimonials[7] as TextTestimonial} />
             </div>
           </div>
         </div>
