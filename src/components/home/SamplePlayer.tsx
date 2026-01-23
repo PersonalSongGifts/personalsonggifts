@@ -15,7 +15,7 @@ interface SampleSong {
 const sampleSongs: SampleSong[] = [
   { id: "1", title: "My Favorite Yes", occasion: "Anniversary", genre: "Country", duration: "2:39", audioSrc: "/audio/my-favorite-yes.mp3" },
   { id: "2", title: "All My Love", occasion: "Lullaby", genre: "Soft/Emotional", duration: "2:56", audioSrc: "/audio/all-my-love.mp3" },
-  { id: "3", title: "Through All the Years", occasion: "Wedding", genre: "Acoustic", duration: "3:45", audioSrc: "" },
+  { id: "3", title: "33 Valentines", occasion: "Valentine's Day", genre: "90s Love Ballad", duration: "3:12", audioSrc: "/audio/33-valentines.mp3" },
   { id: "4", title: "Always in My Heart", occasion: "Memorial", genre: "Ballad", duration: "4:12", audioSrc: "" },
   { id: "5", title: "You Make Life Beautiful", occasion: "Valentine's Day", genre: "Soft Rock", duration: "3:18", audioSrc: "" },
 ];
