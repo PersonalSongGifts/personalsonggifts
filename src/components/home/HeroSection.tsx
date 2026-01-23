@@ -2,19 +2,32 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Play, Pause } from "lucide-react";
 import { useState, useRef } from "react";
+import { toast } from "sonner";
 
 const HeroSection = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const toggleAudio = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
+  const toggleAudio = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      try {
+        // Reset to beginning if ended
+        if (audio.ended) {
+          audio.currentTime = 0;
+        }
+        await audio.play();
+        setIsPlaying(true);
+      } catch (error) {
+        console.error("Audio playback failed:", error);
+        toast.error("Unable to play audio. Please try again.");
+        setIsPlaying(false);
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -29,7 +42,9 @@ const HeroSection = () => {
         ref={audioRef} 
         src="/audio/sample-song.mp3" 
         onEnded={handleAudioEnded}
-        preload="metadata"
+        onError={(e) => console.error("Audio load error:", e)}
+        onCanPlay={() => console.log("Audio ready to play")}
+        preload="auto"
       />
 
       {/* Content */}
