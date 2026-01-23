@@ -48,7 +48,7 @@ const Checkout = () => {
       state: { 
         formData, 
         tier: selectedTier,
-        deliveryTime: selectedTier === "priority" ? "24 hours" : "48 hours"
+        deliveryTime: selectedTier === "priority" ? "priority (we'll get to it first)" : "24 hours"
       } 
     });
   };
@@ -87,9 +87,9 @@ const Checkout = () => {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-foreground">Standard Song</h3>
-                  <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                <p className="text-muted-foreground flex items-center gap-1 mt-1">
                     <Clock className="h-4 w-4" />
-                    Delivered within 48 hours
+                    Typically within 24 hours
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
@@ -136,9 +136,9 @@ const Checkout = () => {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-foreground">Priority Song</h3>
-                  <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                <p className="text-muted-foreground flex items-center gap-1 mt-1">
                     <Zap className="h-4 w-4" />
-                    Delivered within 24 hours
+                    Guaranteed priority delivery
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${

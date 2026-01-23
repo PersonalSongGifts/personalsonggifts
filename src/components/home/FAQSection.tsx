@@ -8,7 +8,7 @@ import {
 const faqs = [
   {
     question: "How long does it take to receive my song?",
-    answer: "Standard orders are delivered within 48 hours. Priority orders are delivered within 24 hours. We'll send your completed song directly to your email.",
+    answer: "Standard orders are typically delivered within 24 hours. Priority orders receive guaranteed priority delivery. We'll send your completed song directly to your email.",
   },
   {
     question: "What kind of songs do you create?",
