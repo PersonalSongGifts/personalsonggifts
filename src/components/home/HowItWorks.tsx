@@ -1,4 +1,6 @@
 import { FileText, Music, Heart } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 const steps = [
   {
@@ -58,6 +60,12 @@ const HowItWorks = () => {
               )}
             </div>
           ))}
+        </div>
+
+        <div className="text-center mt-12">
+          <Button asChild size="lg" className="text-lg px-8 py-6">
+            <Link to="/create">Create Your Song</Link>
+          </Button>
         </div>
       </div>
     </section>

@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { Play, Pause, Music, Volume2, VolumeX } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 interface SampleSong {
   id: string;
@@ -215,6 +217,12 @@ const SamplePlayer = () => {
           <Music className="inline h-4 w-4 mr-1" />
           These are samples — your song will be created just for your loved one
         </p>
+
+        <div className="text-center mt-8">
+          <Button asChild size="lg" className="text-lg px-8 py-6">
+            <Link to="/create">Create Your Song</Link>
+          </Button>
+        </div>
       </div>
     </section>
   );

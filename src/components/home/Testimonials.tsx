@@ -1,6 +1,8 @@
 import { useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Play, Pause, Star, CheckCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 interface VideoTestimonial {
   id: string;
@@ -73,9 +75,9 @@ const testimonials: Testimonial[] = [
     id: "v4",
     type: "video",
     videoSrc: "/videos/reaction-4.mp4",
-    overlayQuote: '"You\'re my hero, Dad" 💪',
-    overlayCaption: "My Husband thought I forgot his birthday, but secretly I had THIS planned...",
-    title: "Stepdad Birthday Appreciation",
+    overlayQuote: '"You\'ve always been my rock, Dad" 💪',
+    overlayCaption: "Dad had no idea his daughter wrote him a song... watch his reaction...",
+    title: "Father's Day Surprise",
   },
 ];
 
@@ -216,6 +218,12 @@ const Testimonials = () => {
               <VideoCard testimonial={testimonials[6] as VideoTestimonial} />
             </div>
           </div>
+        </div>
+
+        <div className="text-center mt-10">
+          <Button asChild size="lg" className="text-lg px-8 py-6">
+            <Link to="/create">Create Your Song</Link>
+          </Button>
         </div>
       </div>
     </section>

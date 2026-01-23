@@ -4,6 +4,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 const faqs = [
   {
@@ -79,6 +81,12 @@ const FAQSection = () => {
           </a>
           {" "}— we respond within 24 hours.
         </p>
+
+        <div className="text-center mt-10">
+          <Button asChild size="lg" className="text-lg px-8 py-6">
+            <Link to="/create">Create Your Song</Link>
+          </Button>
+        </div>
       </div>
     </section>
   );
