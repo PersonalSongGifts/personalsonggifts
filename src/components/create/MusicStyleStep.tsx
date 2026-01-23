@@ -15,12 +15,19 @@ const genres = [
   { id: "soft-rock", label: "Soft Rock" },
   { id: "gospel", label: "Gospel" },
   { id: "rnb", label: "R&B" },
+  { id: "soul", label: "Soul" },
+  { id: "folk", label: "Folk" },
+  { id: "jazz", label: "Jazz" },
+  { id: "classical", label: "Classical" },
+  { id: "hip-hop", label: "Hip-Hop" },
+  { id: "reggae", label: "Reggae" },
   { id: "surprise", label: "Surprise Me" },
 ];
 
 const singerOptions = [
   { id: "male", label: "Male Voice" },
   { id: "female", label: "Female Voice" },
+  { id: "duet", label: "Duet" },
   { id: "surprise", label: "Surprise Me" },
 ];
 
@@ -29,6 +36,10 @@ const moodOptions = [
   { id: "emotional", label: "Emotional" },
   { id: "playful", label: "Playful" },
   { id: "romantic", label: "Romantic" },
+  { id: "nostalgic", label: "Nostalgic" },
+  { id: "celebratory", label: "Celebratory" },
+  { id: "heartfelt", label: "Heartfelt" },
+  { id: "inspirational", label: "Inspirational" },
 ];
 
 const MusicStyleStep = ({ formData, updateFormData }: MusicStyleStepProps) => {
@@ -69,7 +80,7 @@ const MusicStyleStep = ({ formData, updateFormData }: MusicStyleStepProps) => {
         <div className="flex items-center gap-2">
           <Mic className="h-5 w-5 text-primary" />
           <Label className="text-lg font-semibold">
-            Singer preference <span className="text-muted-foreground text-sm font-normal">(optional)</span>
+            Singer preference <span className="text-destructive">*</span>
           </Label>
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -99,7 +110,7 @@ const MusicStyleStep = ({ formData, updateFormData }: MusicStyleStepProps) => {
         <div className="flex items-center gap-2">
           <Heart className="h-5 w-5 text-primary" />
           <Label className="text-lg font-semibold">
-            What mood? <span className="text-muted-foreground text-sm font-normal">(optional)</span>
+            What mood? <span className="text-destructive">*</span>
           </Label>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
