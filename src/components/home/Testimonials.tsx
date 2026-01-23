@@ -191,9 +191,9 @@ const TextCard = ({ testimonial }: { testimonial: TextTestimonial }) => {
 
 const Testimonials = () => {
   return (
-    <section id="reviews" className="py-10 md:py-16">
+    <section id="reviews" className="pt-4 pb-10 md:pt-6 md:pb-16">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-8 md:mb-12">
+        <div className="text-center mb-6 md:mb-10">
           <h2 className="font-display text-foreground mb-4 italic">
             Real stories from real customers
           </h2>
