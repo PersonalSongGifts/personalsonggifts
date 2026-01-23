@@ -36,7 +36,7 @@ const HeroSection = () => {
   };
 
   return (
-    <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-gradient-to-b from-secondary/30 to-background">
+    <section className="relative min-h-[70vh] md:min-h-[85vh] flex items-center justify-center overflow-hidden bg-gradient-to-b from-secondary/30 to-background">
       {/* Hidden audio element */}
       <audio 
         ref={audioRef} 
@@ -48,9 +48,9 @@ const HeroSection = () => {
       />
 
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 text-center max-w-4xl py-12">
+      <div className="relative z-10 container mx-auto px-4 text-center max-w-4xl py-8 md:py-12">
         {/* Video Container */}
-        <div className="relative max-w-2xl mx-auto mb-10 animate-fade-in">
+        <div className="relative max-w-2xl mx-auto mb-6 md:mb-10 animate-fade-in">
           <div className="relative rounded-2xl overflow-hidden shadow-elevated">
             <video 
               autoPlay 
@@ -86,23 +86,23 @@ const HeroSection = () => {
           </div>
         </div>
 
-        <h1 className="font-display text-foreground mb-6 animate-fade-in">
+        <h1 className="font-display text-foreground mb-4 md:mb-6 animate-fade-in text-3xl md:text-4xl lg:text-5xl">
           Turn Your Story Into a Song They'll Never Forget
         </h1>
         
-        <p className="text-body-lg text-muted-foreground mb-10 max-w-2xl mx-auto animate-fade-in-up">
+        <p className="text-body-lg text-muted-foreground mb-6 md:mb-10 max-w-2xl mx-auto animate-fade-in-up text-base md:text-lg">
           A one-of-a-kind song created from your words, your memories, and your love.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-up">
-          <Button asChild size="lg" className="text-lg px-8 py-6 font-semibold shadow-elevated">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4 animate-fade-in-up">
+          <Button asChild size="lg" className="text-base md:text-lg px-6 md:px-8 py-5 md:py-6 font-semibold shadow-elevated w-full sm:w-auto">
             <Link to="/create">Create Your Song</Link>
           </Button>
           
           <Button 
             variant="outline" 
             size="lg" 
-            className="text-lg px-8 py-6 font-medium border-2"
+            className="text-base md:text-lg px-6 md:px-8 py-5 md:py-6 font-medium border-2 w-full sm:w-auto"
             asChild
           >
             <a href="#samples" className="flex items-center gap-2">
@@ -113,7 +113,7 @@ const HeroSection = () => {
         </div>
 
         {/* Trust indicator */}
-        <p className="mt-12 text-muted-foreground text-sm animate-fade-in">
+        <p className="mt-6 md:mt-10 text-muted-foreground text-xs md:text-sm animate-fade-in">
           ★★★★★ Trusted by 1,000+ families for life's most meaningful moments
         </p>
       </div>
