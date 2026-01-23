@@ -1,73 +1,38 @@
 import { Link } from "react-router-dom";
-import { Card } from "@/components/ui/card";
-import { 
-  Heart, 
-  Cake, 
-  PartyPopper, 
-  Baby, 
-  Users, 
-  Sparkles,
-  HeartHandshake,
-  Star
-} from "lucide-react";
+
+// Import all occasion images
+import weddingImg from "@/assets/occasions/wedding.jpg";
+import anniversaryImg from "@/assets/occasions/anniversary.jpg";
+import birthdayImg from "@/assets/occasions/birthday.jpg";
+import valentinesImg from "@/assets/occasions/valentines.jpg";
+import memorialImg from "@/assets/occasions/memorial.jpg";
+import babyImg from "@/assets/occasions/baby.jpg";
+import familyImg from "@/assets/occasions/family.jpg";
+import justBecauseImg from "@/assets/occasions/just-because.jpg";
+import petCelebrationImg from "@/assets/occasions/pet-celebration.jpg";
+import petMemorialImg from "@/assets/occasions/pet-memorial.jpg";
+import graduationImg from "@/assets/occasions/graduation.jpg";
+import retirementImg from "@/assets/occasions/retirement.jpg";
+import mothersDayImg from "@/assets/occasions/mothers-day.jpg";
+import fathersDayImg from "@/assets/occasions/fathers-day.jpg";
+import proposalImg from "@/assets/occasions/proposal.jpg";
 
 const occasions = [
-  { 
-    id: "anniversary", 
-    label: "Anniversary", 
-    icon: Heart, 
-    description: "Celebrate your years together",
-    color: "text-rose-500"
-  },
-  { 
-    id: "wedding", 
-    label: "Wedding", 
-    icon: HeartHandshake, 
-    description: "A gift for the happy couple",
-    color: "text-pink-500"
-  },
-  { 
-    id: "birthday", 
-    label: "Birthday", 
-    icon: Cake, 
-    description: "Make their day unforgettable",
-    color: "text-amber-500"
-  },
-  { 
-    id: "valentines", 
-    label: "Valentine's Day", 
-    icon: Sparkles, 
-    description: "Express your love",
-    color: "text-red-500"
-  },
-  { 
-    id: "memorial", 
-    label: "Memorial", 
-    icon: Star, 
-    description: "Honor someone special",
-    color: "text-indigo-500"
-  },
-  { 
-    id: "baby", 
-    label: "Baby / Lullaby", 
-    icon: Baby, 
-    description: "Welcome a new life",
-    color: "text-sky-500"
-  },
-  { 
-    id: "family", 
-    label: "Family", 
-    icon: Users, 
-    description: "Celebrate your bond",
-    color: "text-emerald-500"
-  },
-  { 
-    id: "just-because", 
-    label: "Just Because", 
-    icon: PartyPopper, 
-    description: "No reason needed",
-    color: "text-violet-500"
-  },
+  { id: "wedding", label: "Wedding", image: weddingImg },
+  { id: "anniversary", label: "Anniversary", image: anniversaryImg },
+  { id: "birthday", label: "Birthday", image: birthdayImg },
+  { id: "valentines", label: "Valentine's Day", image: valentinesImg },
+  { id: "memorial", label: "Memorial", image: memorialImg },
+  { id: "baby", label: "Baby / Lullaby", image: babyImg },
+  { id: "family", label: "Family", image: familyImg },
+  { id: "just-because", label: "Just Because", image: justBecauseImg },
+  { id: "pet-celebration", label: "Pet Celebration", image: petCelebrationImg },
+  { id: "pet-memorial", label: "Pet Memorial", image: petMemorialImg },
+  { id: "graduation", label: "Graduation", image: graduationImg },
+  { id: "retirement", label: "Retirement", image: retirementImg },
+  { id: "mothers-day", label: "Mother's Day", image: mothersDayImg },
+  { id: "fathers-day", label: "Father's Day", image: fathersDayImg },
+  { id: "proposal", label: "Proposal", image: proposalImg },
 ];
 
 const OccasionsGrid = () => {
@@ -83,24 +48,32 @@ const OccasionsGrid = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 max-w-5xl mx-auto">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 max-w-6xl mx-auto">
           {occasions.map((occasion) => (
-            <Link 
+            <Link
               key={occasion.id}
               to={`/create?occasion=${occasion.id}`}
-              className="block"
+              className="group block"
             >
-              <Card className="p-6 text-center hover:shadow-card hover:-translate-y-1 transition-all duration-300 h-full bg-card border-border group">
-                <div className={`w-14 h-14 mx-auto mb-4 rounded-full bg-secondary flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
-                  <occasion.icon className={`h-7 w-7 ${occasion.color}`} />
+              <div className="relative aspect-[4/3] rounded-xl overflow-hidden shadow-soft hover:shadow-elevated transition-shadow duration-300">
+                {/* Background Image */}
+                <img
+                  src={occasion.image}
+                  alt={occasion.label}
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  loading="lazy"
+                />
+                
+                {/* Gradient Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                
+                {/* Text Label */}
+                <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4">
+                  <h4 className="text-white font-semibold text-sm md:text-base drop-shadow-md">
+                    {occasion.label}
+                  </h4>
                 </div>
-                <h4 className="font-semibold text-foreground mb-1">
-                  {occasion.label}
-                </h4>
-                <p className="text-sm text-muted-foreground">
-                  {occasion.description}
-                </p>
-              </Card>
+              </div>
             </Link>
           ))}
         </div>
