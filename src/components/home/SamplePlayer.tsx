@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
-import { Play, Pause, Music } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Play, Pause, Music, Volume2, VolumeX } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Slider } from "@/components/ui/slider";
 
 interface SampleSong {
   id: string;
@@ -8,26 +9,101 @@ interface SampleSong {
   occasion: string;
   genre: string;
   duration: string;
+  audioSrc: string;
 }
 
 const sampleSongs: SampleSong[] = [
-  { id: "1", title: "Forever With You", occasion: "Anniversary", genre: "Country", duration: "3:24" },
-  { id: "2", title: "My Little Star", occasion: "Birthday", genre: "Pop", duration: "2:58" },
-  { id: "3", title: "Through All the Years", occasion: "Wedding", genre: "Acoustic", duration: "3:45" },
-  { id: "4", title: "Always in My Heart", occasion: "Memorial", genre: "Ballad", duration: "4:12" },
-  { id: "5", title: "You Make Life Beautiful", occasion: "Valentine's Day", genre: "Soft Rock", duration: "3:18" },
+  { id: "1", title: "My Favorite Yes", occasion: "Anniversary", genre: "Country", duration: "2:39", audioSrc: "/audio/my-favorite-yes.mp3" },
+  { id: "2", title: "All My Love", occasion: "Lullaby", genre: "Soft/Emotional", duration: "2:56", audioSrc: "/audio/all-my-love.mp3" },
+  { id: "3", title: "Through All the Years", occasion: "Wedding", genre: "Acoustic", duration: "3:45", audioSrc: "" },
+  { id: "4", title: "Always in My Heart", occasion: "Memorial", genre: "Ballad", duration: "4:12", audioSrc: "" },
+  { id: "5", title: "You Make Life Beautiful", occasion: "Valentine's Day", genre: "Soft Rock", duration: "3:18", audioSrc: "" },
 ];
 
 const SamplePlayer = () => {
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(0.7);
+  const [isMuted, setIsMuted] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const togglePlay = (id: string) => {
-    if (playingId === id) {
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
+
+  const togglePlay = (song: SampleSong) => {
+    if (!song.audioSrc) return; // No audio available for this song
+
+    if (playingId === song.id) {
+      // Pause current song
+      audioRef.current?.pause();
       setPlayingId(null);
     } else {
-      setPlayingId(id);
+      // Stop any currently playing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      
+      // Create new audio and play
+      const audio = new Audio(song.audioSrc);
+      audio.volume = isMuted ? 0 : volume;
+      audioRef.current = audio;
+      
+      audio.addEventListener('timeupdate', () => {
+        setCurrentTime(audio.currentTime);
+      });
+      
+      audio.addEventListener('loadedmetadata', () => {
+        setDuration(audio.duration);
+      });
+      
+      audio.addEventListener('ended', () => {
+        setPlayingId(null);
+        setCurrentTime(0);
+      });
+      
+      audio.play();
+      setPlayingId(song.id);
     }
   };
+
+  const handleProgressChange = (value: number[]) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = value[0];
+      setCurrentTime(value[0]);
+    }
+  };
+
+  const handleVolumeChange = (value: number[]) => {
+    const newVolume = value[0];
+    setVolume(newVolume);
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume;
+    }
+    if (newVolume > 0) {
+      setIsMuted(false);
+    }
+  };
+
+  const toggleMute = () => {
+    setIsMuted(!isMuted);
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? volume : 0;
+    }
+  };
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const currentSong = sampleSongs.find(s => s.id === playingId);
 
   return (
     <section id="samples" className="py-16 md:py-24 bg-secondary/30">
@@ -46,8 +122,10 @@ const SamplePlayer = () => {
           {sampleSongs.map((song) => (
             <Card 
               key={song.id}
-              className="flex-shrink-0 w-64 md:w-auto p-6 bg-card hover:shadow-card transition-all duration-300 snap-start cursor-pointer group"
-              onClick={() => togglePlay(song.id)}
+              className={`flex-shrink-0 w-64 md:w-auto p-6 bg-card hover:shadow-card transition-all duration-300 snap-start cursor-pointer group ${
+                !song.audioSrc ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              onClick={() => togglePlay(song)}
             >
               {/* Play button */}
               <div className="relative w-16 h-16 mx-auto mb-4">
@@ -84,6 +162,54 @@ const SamplePlayer = () => {
             </Card>
           ))}
         </div>
+
+        {/* Audio Controls - visible when playing */}
+        {playingId && currentSong && (
+          <div className="mt-8 max-w-xl mx-auto bg-card rounded-xl p-4 shadow-card">
+            <div className="flex items-center gap-4 mb-3">
+              <button
+                onClick={() => togglePlay(currentSong)}
+                className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+              >
+                {playingId ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+              </button>
+              <div className="flex-1">
+                <p className="font-semibold text-foreground text-sm">{currentSong.title}</p>
+                <p className="text-xs text-muted-foreground">{currentSong.occasion} • {currentSong.genre}</p>
+              </div>
+            </div>
+            
+            {/* Progress bar */}
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-xs text-muted-foreground w-10 text-right">{formatTime(currentTime)}</span>
+              <Slider
+                value={[currentTime]}
+                max={duration || 100}
+                step={0.1}
+                onValueChange={handleProgressChange}
+                className="flex-1"
+              />
+              <span className="text-xs text-muted-foreground w-10">{formatTime(duration)}</span>
+            </div>
+
+            {/* Volume control */}
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={toggleMute}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {isMuted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+              <Slider
+                value={[isMuted ? 0 : volume]}
+                max={1}
+                step={0.01}
+                onValueChange={handleVolumeChange}
+                className="w-24"
+              />
+            </div>
+          </div>
+        )}
 
         <p className="text-center text-sm text-muted-foreground mt-8">
           <Music className="inline h-4 w-4 mr-1" />
