@@ -1,21 +1,41 @@
 
-# Retry Adding Secrets
 
-## What I'll Do
+# Fix Admin Password Authentication
 
-When you approve this plan, I'll be switched to default mode and will immediately:
+## Problem
+You're getting "Invalid password" when trying to log into the admin dashboard at `/admin`. The `ADMIN_PASSWORD` secret exists but may have been set with a typo, extra spaces, or case difference.
 
-1. **Add BREVO_API_KEY secret** - A prompt will appear for you to paste your Brevo API key
-2. **Add ADMIN_PASSWORD secret** - A prompt will appear for you to enter your chosen admin dashboard password
+## Solution
 
-## After Secrets Are Added
+### Step 1: Re-add the ADMIN_PASSWORD Secret
+I'll prompt you to enter your admin password again. This will overwrite the existing value to ensure it matches exactly what you type.
 
-Once both secrets are successfully saved, I'll proceed to build:
-- Order confirmation email function
-- Song delivery email function  
-- Admin dashboard at `/admin`
-- Admin orders management function
+**Tips when entering:**
+- Don't include spaces before or after
+- Remember it's case-sensitive
+- Keep it simple but secure (e.g., "MySongAdmin2024")
 
-## Action Required
+### Step 2: Test the Login
+After saving the new password:
+1. Navigate to `/admin` in the preview
+2. Enter the exact same password you just set
+3. You should see the Analytics dashboard
 
-Click **"Approve"** below to switch me to default mode so I can retry adding the secrets.
+## What You'll See After Login
+
+The admin dashboard has two main tabs:
+
+**Analytics Tab:**
+- Stats cards (Total Revenue, Orders, Priority Rate, Pending)
+- Revenue chart showing 30-day trends
+- Occasions chart showing which events are most popular
+- Status distribution pie chart
+- Genre popularity bar chart
+
+**Orders Tab:**
+- List of all orders with status badges
+- Filter by status (Paid, In Progress, Completed, Delivered)
+- Click "View Details" to see full order info
+- Update order status and add song URL
+- "Deliver & Send Email" button to send the finished song
+
