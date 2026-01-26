@@ -1,0 +1,93 @@
+import { Card, CardContent } from "@/components/ui/card";
+import { DollarSign, ShoppingCart, TrendingUp, Clock } from "lucide-react";
+
+interface Order {
+  id: string;
+  price: number;
+  status: string;
+  pricing_tier: string;
+  created_at: string;
+}
+
+interface StatsCardsProps {
+  orders: Order[];
+}
+
+export function StatsCards({ orders }: StatsCardsProps) {
+  const totalRevenue = orders.reduce((sum, order) => {
+    if (order.status !== "cancelled") {
+      return sum + order.price;
+    }
+    return sum;
+  }, 0);
+
+  const totalOrders = orders.length;
+  const priorityOrders = orders.filter((o) => o.pricing_tier === "priority").length;
+  const pendingOrders = orders.filter((o) => 
+    ["paid", "in_progress"].includes(o.status)
+  ).length;
+
+  const priorityRate = totalOrders > 0 
+    ? Math.round((priorityOrders / totalOrders) * 100) 
+    : 0;
+
+  const stats = [
+    {
+      title: "Total Revenue",
+      value: `$${totalRevenue.toLocaleString()}`,
+      description: "All time earnings",
+      icon: DollarSign,
+      color: "text-green-600",
+      bgColor: "bg-green-100",
+    },
+    {
+      title: "Total Orders",
+      value: totalOrders.toString(),
+      description: "Songs created",
+      icon: ShoppingCart,
+      color: "text-blue-600",
+      bgColor: "bg-blue-100",
+    },
+    {
+      title: "Priority Rate",
+      value: `${priorityRate}%`,
+      description: `${priorityOrders} priority orders`,
+      icon: TrendingUp,
+      color: "text-purple-600",
+      bgColor: "bg-purple-100",
+    },
+    {
+      title: "Pending",
+      value: pendingOrders.toString(),
+      description: "Awaiting completion",
+      icon: Clock,
+      color: "text-amber-600",
+      bgColor: "bg-amber-100",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      {stats.map((stat) => (
+        <Card key={stat.title}>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {stat.title}
+                </p>
+                <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stat.description}
+                </p>
+              </div>
+              <div className={`p-2 rounded-lg ${stat.bgColor}`}>
+                <stat.icon className={`h-5 w-5 ${stat.color}`} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
