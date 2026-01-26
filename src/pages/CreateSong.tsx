@@ -65,6 +65,7 @@ const stepTitles = [
 ];
 
 const CreateSong = () => {
+  // Song creation multi-step form
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
