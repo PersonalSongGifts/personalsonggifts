@@ -14,7 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      orders: {
+        Row: {
+          created_at: string
+          customer_email: string
+          customer_name: string
+          customer_phone: string | null
+          delivered_at: string | null
+          device_type: string | null
+          expected_delivery: string | null
+          favorite_memory: string
+          genre: string
+          id: string
+          notes: string | null
+          occasion: string
+          price: number
+          pricing_tier: string
+          recipient_name: string
+          recipient_type: string
+          relationship: string
+          singer_preference: string
+          song_url: string | null
+          special_message: string | null
+          special_qualities: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          customer_email: string
+          customer_name: string
+          customer_phone?: string | null
+          delivered_at?: string | null
+          device_type?: string | null
+          expected_delivery?: string | null
+          favorite_memory: string
+          genre: string
+          id?: string
+          notes?: string | null
+          occasion: string
+          price: number
+          pricing_tier: string
+          recipient_name: string
+          recipient_type: string
+          relationship: string
+          singer_preference: string
+          song_url?: string | null
+          special_message?: string | null
+          special_qualities: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          customer_email?: string
+          customer_name?: string
+          customer_phone?: string | null
+          delivered_at?: string | null
+          device_type?: string | null
+          expected_delivery?: string | null
+          favorite_memory?: string
+          genre?: string
+          id?: string
+          notes?: string | null
+          occasion?: string
+          price?: number
+          pricing_tier?: string
+          recipient_name?: string
+          recipient_type?: string
+          relationship?: string
+          singer_preference?: string
+          song_url?: string | null
+          special_message?: string | null
+          special_qualities?: string
+          status?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
