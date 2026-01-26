@@ -7,10 +7,11 @@ import { FormData } from "@/pages/CreateSong";
 
 const Confirmation = () => {
   const location = useLocation();
-  const { formData, tier, deliveryTime } = location.state as {
+  const { formData, tier, deliveryTime, orderId } = location.state as {
     formData: FormData;
     tier: string;
     deliveryTime: string;
+    orderId?: string;
   } || {};
 
   if (!formData) {
@@ -40,6 +41,13 @@ const Confirmation = () => {
           <h1 className="text-3xl md:text-4xl font-display text-foreground mb-4">
             Your Song Is Being Crafted
           </h1>
+
+          {orderId && (
+            <div className="bg-secondary/50 rounded-lg px-4 py-2 inline-block mb-4">
+              <span className="text-sm text-muted-foreground">Order ID: </span>
+              <span className="font-mono font-semibold text-foreground">{orderId.slice(0, 8).toUpperCase()}</span>
+            </div>
+          )}
           
           <p className="text-body-lg text-muted-foreground mb-8">
             Thank you, {formData.yourName}! We're honored to help you create something special for {formData.recipientName}.

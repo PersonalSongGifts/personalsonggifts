@@ -10,17 +10,22 @@ import {
   Shield, 
   Mail, 
   CreditCard,
-  ArrowLeft 
+  ArrowLeft,
+  Loader2
 } from "lucide-react";
 import { FormData } from "@/pages/CreateSong";
+import { createOrder } from "@/lib/orderService";
+import { useToast } from "@/hooks/use-toast";
 
 type PricingTier = "standard" | "priority";
 
 const Checkout = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const formData = location.state?.formData as FormData | undefined;
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Redirect if no form data
   if (!formData) {
@@ -41,16 +46,40 @@ const Checkout = () => {
     );
   }
 
-  const handleCheckout = () => {
-    // For now, navigate to confirmation
-    // TODO: Integrate Stripe payment
-    navigate("/confirmation", { 
-      state: { 
-        formData, 
-        tier: selectedTier,
-        deliveryTime: selectedTier === "priority" ? "priority (we'll get to it first)" : "24 hours"
-      } 
-    });
+  const handleCheckout = async () => {
+    if (isSubmitting || !formData) return;
+    
+    setIsSubmitting(true);
+    
+    try {
+      // TODO: Add your Zapier webhook URL here
+      const zapierWebhookUrl = undefined; // Replace with your Zapier webhook URL
+      
+      const { orderId, expectedDelivery } = await createOrder(
+        formData,
+        selectedTier,
+        zapierWebhookUrl
+      );
+      
+      navigate("/confirmation", { 
+        state: { 
+          formData, 
+          tier: selectedTier,
+          deliveryTime: selectedTier === "priority" ? "3 hours" : "24 hours",
+          orderId,
+          expectedDelivery: expectedDelivery.toISOString()
+        } 
+      });
+    } catch (error) {
+      console.error("Checkout error:", error);
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -234,9 +263,14 @@ const Checkout = () => {
             onClick={handleCheckout}
             size="lg" 
             className="w-full text-lg py-6 font-semibold gap-2"
+            disabled={isSubmitting}
           >
-            <CreditCard className="h-5 w-5" />
-            Complete Payment — ${selectedTier === "priority" ? "79" : "49"}
+            {isSubmitting ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <CreditCard className="h-5 w-5" />
+            )}
+            {isSubmitting ? "Processing..." : `Complete Payment — $${selectedTier === "priority" ? "79" : "49"}`}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
