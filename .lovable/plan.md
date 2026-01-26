@@ -1,160 +1,96 @@
 
-# Orders Database + Zapier Integration
+
+# Stripe Payment Integration Plan
 
 ## Overview
-Set up Supabase (via Lovable Cloud) as your source of truth for all song orders, with automatic webhook triggers to push order data to Google Sheets via Zapier for manual fulfillment.
+This plan integrates Stripe Checkout into your existing checkout flow, allowing customers to pay for their custom songs securely. When a customer clicks "Complete Payment", they'll be redirected to Stripe's hosted checkout page, and after successful payment, they'll return to a confirmation page.
 
-## What You'll Get
+## Current Flow
+1. Customer fills out song details on `/create`
+2. Customer selects pricing tier on `/checkout` 
+3. Currently: Order is created immediately (no actual payment)
+4. Customer sees confirmation on `/confirmation`
 
-**Supabase Database (Source of Truth)**
-- All orders stored securely with unique order IDs
-- Order status tracking (pending, in_progress, completed, delivered)
-- Timestamps for submissions and expected delivery
-- Song URL storage for completed songs
-- Ready for future admin dashboard
+## New Flow
+1. Customer fills out song details on `/create`
+2. Customer selects pricing tier on `/checkout`
+3. Customer clicks "Complete Payment" → redirected to Stripe Checkout
+4. After payment → redirected to `/payment-success`
+5. Payment success page creates the order and shows confirmation
 
-**Zapier Integration (Fulfillment View)**
-- Automatic push to Google Sheets when orders are placed
-- No manual data entry required
-- Sheet stays in sync with every new order
-
----
-
-## Data Flow
-
-```text
-Customer completes checkout
-         |
-         v
-+------------------+
-|  Save to         |
-|  Supabase        |  <-- Source of truth
-|  (orders table)  |
-+------------------+
-         |
-         v
-+------------------+
-|  Send to         |
-|  Zapier Webhook  |  <-- Triggers Google Sheets row
-+------------------+
-         |
-         v
-+------------------+
-|  Google Sheets   |
-|  (fulfillment)   |  <-- Manual work happens here
-+------------------+
-```
-
----
+## Stripe Products Created
+- **Standard Song**: $49 (price_1Sty7MGax2m9otRw5WBP7Wto)
+- **Priority Song**: $79 (price_1Sty7hGax2m9otRwGKt6AAbP)
 
 ## Implementation Steps
 
-### Step 1: Enable Lovable Cloud
-Spin up Supabase backend for your project (no external account needed)
+### 1. Create Stripe Checkout Edge Function
+Create `supabase/functions/create-checkout/index.ts` that:
+- Receives the selected tier and form data from the frontend
+- Creates a Stripe Checkout Session with the correct price
+- Stores the form data in session metadata so we can retrieve it after payment
+- Returns the checkout URL for redirect
 
-### Step 2: Create Orders Table
-Database table with all order fields:
+### 2. Update Checkout Page
+Modify `src/pages/Checkout.tsx` to:
+- Call the new `create-checkout` function instead of creating the order directly
+- Redirect to Stripe Checkout URL on button click
+- Remove direct order creation (this happens after payment succeeds)
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| id | UUID | Unique order identifier |
-| created_at | Timestamp | When order was placed |
-| status | Text | pending, in_progress, completed, delivered |
-| pricing_tier | Text | standard or priority |
-| price | Integer | 49 or 79 |
-| expected_delivery | Timestamp | Based on tier selection |
-| customer_name | Text | Buyer's name |
-| customer_email | Text | Buyer's email |
-| customer_phone | Text | Phone for SMS updates (optional) |
-| recipient_type | Text | Who song is for (husband, wife, etc.) |
-| recipient_name | Text | Recipient's name |
-| occasion | Text | Birthday, wedding, etc. |
-| genre | Text | Music genre |
-| singer_preference | Text | Male or Female |
-| relationship | Text | Relationship description |
-| special_qualities | Text | What makes them special |
-| favorite_memory | Text | Shared memory |
-| special_message | Text | Message from the heart |
-| song_url | Text | Completed song link (filled later) |
-| delivered_at | Timestamp | When song was delivered |
-| notes | Text | Internal notes |
-| device_type | Text | Desktop/Mobile |
+### 3. Create Payment Success Page
+Create `src/pages/PaymentSuccess.tsx` that:
+- Retrieves the Stripe session ID from URL parameters
+- Calls the existing `create-order` edge function to save the order
+- Shows the confirmation to the customer
+- Handles the case where the session ID is missing or invalid
 
-### Step 3: Create Order Service
-New file with functions to:
-- Generate unique order IDs
-- Insert orders into database
-- Send data to Zapier webhook
+### 4. Add Route for Payment Success
+Update `src/App.tsx` to add the `/payment-success` route
 
-### Step 4: Update Checkout Page
-Modify the "Complete Payment" button to:
-1. Save order to Supabase
-2. Trigger Zapier webhook
-3. Navigate to confirmation with order ID
-4. Show loading state during submission
-5. Handle errors gracefully
-
-### Step 5: Update Confirmation Page
-- Display the unique order ID
-- Pull order details from location state (already passed)
-
----
-
-## Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| Supabase migration | Create | Set up orders table schema |
-| `src/lib/orderService.ts` | Create | Order creation + Zapier webhook logic |
-| `src/pages/Checkout.tsx` | Modify | Add order submission on checkout |
-| `src/pages/Confirmation.tsx` | Modify | Display order ID |
+### 5. Modify Order Service
+Update `src/lib/orderService.ts` to support being called from the payment success page with data retrieved from Stripe
 
 ---
 
 ## Technical Details
 
-### Order Service Implementation
-```text
-createOrder(formData, tier, webhookUrl?)
-  |
-  +-- Generate order ID
-  +-- Calculate expected delivery time
-  +-- Insert into Supabase
-  +-- If webhook URL provided, POST to Zapier
-  +-- Return order ID
+### Edge Function: create-checkout
+```
+Location: supabase/functions/create-checkout/index.ts
+
+Input: { pricingTier, formData }
+Output: { url: string }
+
+The function will:
+1. Map tier to price ID (standard → price_1Sty7MGax2m9otRw5WBP7Wto, priority → price_1Sty7hGax2m9otRwGKt6AAbP)
+2. Create Stripe Checkout Session with:
+   - mode: "payment"
+   - line_items with the correct price
+   - success_url: /payment-success?session_id={CHECKOUT_SESSION_ID}
+   - cancel_url: /checkout
+   - metadata containing all the form data (for order creation after payment)
+3. Return the session URL
 ```
 
-### Zapier Webhook Payload
-All form fields plus:
-- Order ID (for matching records)
-- Submitted timestamp
-- Expected delivery timestamp
-- Pricing tier and price
-- Device type
+### Payment Success Page
+```
+Location: src/pages/PaymentSuccess.tsx
 
-### Error Handling
-- If Supabase insert fails: Show error, don't proceed
-- If Zapier webhook fails: Log error but still proceed (order is safe in Supabase)
-- Loading state prevents double-submissions
+Behavior:
+1. On mount, get session_id from URL params
+2. Call create-order edge function with the session data
+3. Display confirmation (reuses current Confirmation page design)
+4. Handle errors gracefully
+```
 
----
+### Updated Checkout Flow
+```
+1. User clicks "Complete Payment"
+2. Frontend calls create-checkout edge function
+3. Frontend redirects to returned Stripe URL
+4. User completes payment on Stripe
+5. Stripe redirects to /payment-success?session_id=...
+6. PaymentSuccess page calls create-order to save the order
+7. User sees confirmation
+```
 
-## Action Required From You
-
-**Before implementation:**
-1. Approve this plan so I can enable Lovable Cloud
-
-**After implementation:**
-1. Create your Zapier "Catch Hook" trigger
-2. Provide the webhook URL so I can add it to the code
-3. Connect the Zap to your Google Sheet with column mapping
-
----
-
-## Future Enhancements (After This)
-
-Once this is working, you can build:
-- **Admin Dashboard**: View all orders, update status, add song URLs
-- **Customer Order Lookup**: Let customers check their order status
-- **Stripe Integration**: Real payments before order submission
-- **Email Notifications**: Automated order confirmations
