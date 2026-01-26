@@ -17,23 +17,19 @@ import YourDetailsStep from "@/components/create/YourDetailsStep";
 export interface FormData {
   // Step 1: Recipient
   recipientType: string;
-  // Step 2: Details
+  // Step 2: Details (simplified)
   recipientName: string;
-  namePronunciation: string;
-  relationship: string;
   // Step 3: Occasion
   occasion: string;
-  // Step 4: Music Style
+  // Step 4: Music Style (no mood)
   genre: string;
   singerPreference: string;
-  mood: string;
-  // Step 5: Story
+  // Step 5: Story (includes relationship)
   specialQualities: string;
   favoriteMemory: string;
-  whatYouLove: string;
-  // Step 6: Final touches
-  phrasesToInclude: string;
-  thingsToAvoid: string;
+  relationship: string;
+  // Step 6: Final touches (simplified)
+  specialMessage: string;
   // Step 7: Your details
   yourName: string;
   yourEmail: string;
@@ -42,17 +38,13 @@ export interface FormData {
 const initialFormData: FormData = {
   recipientType: "",
   recipientName: "",
-  namePronunciation: "",
-  relationship: "",
   occasion: "",
   genre: "",
   singerPreference: "",
-  mood: "",
   specialQualities: "",
   favoriteMemory: "",
-  whatYouLove: "",
-  phrasesToInclude: "",
-  thingsToAvoid: "",
+  relationship: "",
+  specialMessage: "",
   yourName: "",
   yourEmail: "",
 };
@@ -61,11 +53,11 @@ const TOTAL_STEPS = 7;
 
 const stepTitles = [
   "Who Is This Song For?",
-  "Tell Us About Them",
+  "Tell Us Their Name",
   "What's the Occasion?",
-  "Choose Your Music Style",
+  "Choose a Genre",
   "Share Your Story",
-  "Final Touches",
+  "A Message From Your Heart",
   "Your Details",
 ];
 
@@ -109,15 +101,15 @@ const CreateSong = () => {
       case 1:
         return !!formData.recipientType;
       case 2:
-        return !!formData.recipientName && !!formData.namePronunciation && !!formData.relationship;
+        return !!formData.recipientName;
       case 3:
         return !!formData.occasion;
       case 4:
-        return !!formData.genre && !!formData.singerPreference && !!formData.mood;
+        return !!formData.genre && !!formData.singerPreference;
       case 5:
-        return !!formData.specialQualities && !!formData.favoriteMemory && !!formData.whatYouLove;
+        return !!formData.specialQualities && !!formData.favoriteMemory && !!formData.relationship;
       case 6:
-        return true; // Optional step
+        return true; // Optional message
       case 7:
         return !!formData.yourName && !!formData.yourEmail;
       default:

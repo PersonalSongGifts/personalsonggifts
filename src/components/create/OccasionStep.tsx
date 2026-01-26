@@ -1,56 +1,92 @@
 import { FormData } from "@/pages/CreateSong";
 import { Card } from "@/components/ui/card";
-import { 
-  Heart, 
-  Cake, 
-  PartyPopper, 
-  Baby, 
-  Users, 
-  Sparkles,
-  HeartHandshake,
-  Star
-} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface OccasionStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
 }
 
+// ========================================
+// CONFIGURABLE FEATURED OCCASION
+// Change this for seasonal promotions
+// ========================================
+const featuredOccasion = {
+  id: "valentines",
+  label: "Valentine's Day",
+  emoji: "❤️",
+};
+
 const occasions = [
-  { id: "anniversary", label: "Anniversary", icon: Heart },
-  { id: "wedding", label: "Wedding", icon: HeartHandshake },
-  { id: "birthday", label: "Birthday", icon: Cake },
-  { id: "valentines", label: "Valentine's Day", icon: Sparkles },
-  { id: "memorial", label: "Memorial", icon: Star },
-  { id: "baby", label: "Baby / Lullaby", icon: Baby },
-  { id: "family", label: "Family", icon: Users },
-  { id: "just-because", label: "Just Because", icon: PartyPopper },
+  { id: "wedding", label: "Wedding" },
+  { id: "anniversary", label: "Anniversary" },
+  { id: "baby", label: "Baby Lullaby" },
+  { id: "memorial", label: "Memorial Tribute" },
+  { id: "pet-celebration", label: "Pet Celebration" },
+  { id: "pet-memorial", label: "Pet Memorial" },
+  { id: "milestone", label: "Milestone" },
+  { id: "birthday", label: "Birthday" },
+  { id: "graduation", label: "Graduation" },
+  { id: "retirement", label: "Retirement" },
+  { id: "mothers-day", label: "Mother's Day" },
+  { id: "fathers-day", label: "Father's Day" },
+  { id: "proposal", label: "Proposal" },
+  { id: "friendship", label: "Friendship" },
+  { id: "thank-you", label: "Thank You" },
+  { id: "custom", label: "Custom" },
 ];
 
 const OccasionStep = ({ formData, updateFormData }: OccasionStepProps) => {
+  const isFeaturedSelected = formData.occasion === featuredOccasion.id;
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {occasions.map((occasion) => {
-        const isSelected = formData.occasion === occasion.id;
-        return (
-          <Card
-            key={occasion.id}
-            onClick={() => updateFormData({ occasion: occasion.id })}
-            className={`p-6 text-center cursor-pointer transition-all duration-200 hover:shadow-card ${
-              isSelected 
-                ? "ring-2 ring-primary bg-primary/5 border-primary" 
-                : "hover:border-primary/50"
-            }`}
-          >
-            <div className={`w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center ${
-              isSelected ? "bg-primary text-primary-foreground" : "bg-secondary"
-            }`}>
-              <occasion.icon className="h-6 w-6" />
-            </div>
-            <span className="font-medium text-foreground text-sm">{occasion.label}</span>
-          </Card>
-        );
-      })}
+    <div className="space-y-8">
+      {/* Featured Occasion Button */}
+      <div className="flex justify-center">
+        <Button
+          variant={isFeaturedSelected ? "default" : "outline"}
+          size="lg"
+          onClick={() => updateFormData({ occasion: featuredOccasion.id })}
+          className={`px-12 py-8 text-xl font-semibold transition-all duration-200 ${
+            isFeaturedSelected 
+              ? "ring-2 ring-primary ring-offset-2 bg-primary text-primary-foreground" 
+              : "hover:border-primary hover:bg-primary/5"
+          }`}
+        >
+          <span className="mr-2">{featuredOccasion.emoji}</span>
+          {featuredOccasion.label}
+          <span className="ml-2">{featuredOccasion.emoji}</span>
+        </Button>
+      </div>
+
+      {/* Divider */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-muted-foreground text-sm">or choose another occasion</span>
+        <div className="flex-1 h-px bg-border" />
+      </div>
+
+      {/* Other Occasions Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {occasions.map((occasion) => {
+          const isSelected = formData.occasion === occasion.id;
+          return (
+            <Card
+              key={occasion.id}
+              onClick={() => updateFormData({ occasion: occasion.id })}
+              className={`p-4 text-center cursor-pointer transition-all duration-200 ${
+                isSelected 
+                  ? "ring-2 ring-primary bg-primary/5 border-primary" 
+                  : "hover:border-primary/50"
+              }`}
+            >
+              <span className={`font-medium text-sm ${isSelected ? "text-primary" : "text-foreground"}`}>
+                {occasion.label}
+              </span>
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 };
