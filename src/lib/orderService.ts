@@ -1,4 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
 import { FormData } from "@/pages/CreateSong";
 
 export interface OrderData {
@@ -23,16 +22,6 @@ export interface OrderData {
   device_type: string | null;
 }
 
-function calculateExpectedDelivery(tier: "standard" | "priority"): Date {
-  const now = new Date();
-  if (tier === "priority") {
-    // 3 hours from now
-    return new Date(now.getTime() + 3 * 60 * 60 * 1000);
-  }
-  // 24 hours from now for standard
-  return new Date(now.getTime() + 24 * 60 * 60 * 1000);
-}
-
 function getDeviceType(): string {
   const userAgent = navigator.userAgent.toLowerCase();
   if (/mobile|android|iphone|ipad|tablet/.test(userAgent)) {
@@ -46,40 +35,44 @@ export async function createOrder(
   tier: "standard" | "priority",
   webhookUrl?: string
 ): Promise<{ orderId: string; expectedDelivery: Date }> {
-  const expectedDelivery = calculateExpectedDelivery(tier);
-  const price = tier === "priority" ? 79 : 49;
   const deviceType = getDeviceType();
 
-  // Insert into Supabase
-  const { data, error } = await supabase
-    .from("orders")
-    .insert({
-      pricing_tier: tier,
-      price,
-      expected_delivery: expectedDelivery.toISOString(),
-      customer_name: formData.yourName,
-      customer_email: formData.yourEmail,
-      customer_phone: formData.phoneNumber || null,
-      recipient_type: formData.recipientType,
-      recipient_name: formData.recipientName,
-      occasion: formData.occasion,
-      genre: formData.genre,
-      singer_preference: formData.singerPreference,
-      relationship: formData.relationship,
-      special_qualities: formData.specialQualities,
-      favorite_memory: formData.favoriteMemory,
-      special_message: formData.specialMessage || null,
-      device_type: deviceType,
-    })
-    .select("id")
-    .single();
+  // Call secure edge function instead of direct database insert
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-order`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({
+        pricingTier: tier,
+        customerName: formData.yourName,
+        customerEmail: formData.yourEmail,
+        customerPhone: formData.phoneNumber || undefined,
+        recipientType: formData.recipientType,
+        recipientName: formData.recipientName,
+        occasion: formData.occasion,
+        genre: formData.genre,
+        singerPreference: formData.singerPreference,
+        relationship: formData.relationship,
+        specialQualities: formData.specialQualities,
+        favoriteMemory: formData.favoriteMemory,
+        specialMessage: formData.specialMessage || undefined,
+        deviceType,
+      }),
+    }
+  );
 
-  if (error) {
-    console.error("Error creating order:", error);
-    throw new Error("Failed to create order. Please try again.");
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to create order. Please try again.");
   }
 
-  const orderId = data.id;
+  const data = await response.json();
+  const orderId = data.orderId;
+  const expectedDelivery = new Date(data.expectedDelivery);
 
   // Send to Zapier webhook if provided
   if (webhookUrl) {
@@ -89,7 +82,7 @@ export async function createOrder(
         createdAt: new Date().toISOString(),
         expectedDelivery: expectedDelivery.toISOString(),
         pricingTier: tier,
-        price,
+        price: tier === "priority" ? 79 : 49,
         customerName: formData.yourName,
         customerEmail: formData.yourEmail,
         customerPhone: formData.phoneNumber || "",
