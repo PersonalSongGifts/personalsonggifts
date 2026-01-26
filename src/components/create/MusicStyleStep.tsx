@@ -1,4 +1,4 @@
-import { FormData } from "@/pages/CreateSong";
+import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Music, Mic } from "lucide-react";
@@ -6,6 +6,7 @@ import { Music, Mic } from "lucide-react";
 interface MusicStyleStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
+  errors: FormErrors;
 }
 
 const genres = [
@@ -27,7 +28,7 @@ const singerOptions = [
   { id: "female", label: "Female" },
 ];
 
-const MusicStyleStep = ({ formData, updateFormData }: MusicStyleStepProps) => {
+const MusicStyleStep = ({ formData, updateFormData, errors }: MusicStyleStepProps) => {
   return (
     <div className="space-y-10">
       {/* Genre */}
@@ -38,6 +39,9 @@ const MusicStyleStep = ({ formData, updateFormData }: MusicStyleStepProps) => {
             What style of music? <span className="text-destructive">*</span>
           </Label>
         </div>
+        {errors.genre && (
+          <p className="text-destructive text-sm">{errors.genre}</p>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {genres.map((genre) => {
             const isSelected = formData.genre === genre.id;
@@ -68,6 +72,9 @@ const MusicStyleStep = ({ formData, updateFormData }: MusicStyleStepProps) => {
             Singer preference <span className="text-destructive">*</span>
           </Label>
         </div>
+        {errors.singerPreference && (
+          <p className="text-destructive text-sm">{errors.singerPreference}</p>
+        )}
         <div className="grid grid-cols-2 gap-3 max-w-md">
           {singerOptions.map((option) => {
             const isSelected = formData.singerPreference === option.id;

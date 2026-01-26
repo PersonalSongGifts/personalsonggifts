@@ -1,4 +1,4 @@
-import { FormData } from "@/pages/CreateSong";
+import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, Star, Users } from "lucide-react";
@@ -6,9 +6,10 @@ import { Sparkles, Star, Users } from "lucide-react";
 interface StoryStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
+  errors: FormErrors;
 }
 
-const StoryStep = ({ formData, updateFormData }: StoryStepProps) => {
+const StoryStep = ({ formData, updateFormData, errors }: StoryStepProps) => {
   return (
     <div className="space-y-8">
       <div className="bg-secondary/50 rounded-lg p-4 text-center">
@@ -30,9 +31,12 @@ const StoryStep = ({ formData, updateFormData }: StoryStepProps) => {
           value={formData.relationship}
           onChange={(e) => updateFormData({ relationship: e.target.value })}
           placeholder="e.g., 'We've been married for 25 years' or 'She's my best friend since college'"
-          className="text-lg min-h-[100px] resize-none"
+          className={`text-lg min-h-[100px] resize-none ${errors.relationship ? "border-destructive" : ""}`}
           maxLength={500}
         />
+        {errors.relationship && (
+          <p className="text-destructive text-sm">{errors.relationship}</p>
+        )}
         <p className="text-sm text-muted-foreground text-right">
           {formData.relationship.length}/500 characters
         </p>
@@ -51,9 +55,12 @@ const StoryStep = ({ formData, updateFormData }: StoryStepProps) => {
           value={formData.specialQualities}
           onChange={(e) => updateFormData({ specialQualities: e.target.value })}
           placeholder="e.g., 'She has the kindest heart, always puts others first, and has the most beautiful laugh...'"
-          className="text-lg min-h-[120px] resize-none"
+          className={`text-lg min-h-[120px] resize-none ${errors.specialQualities ? "border-destructive" : ""}`}
           maxLength={500}
         />
+        {errors.specialQualities && (
+          <p className="text-destructive text-sm">{errors.specialQualities}</p>
+        )}
         <p className="text-sm text-muted-foreground text-right">
           {formData.specialQualities.length}/500 characters
         </p>
@@ -72,9 +79,12 @@ const StoryStep = ({ formData, updateFormData }: StoryStepProps) => {
           value={formData.favoriteMemory}
           onChange={(e) => updateFormData({ favoriteMemory: e.target.value })}
           placeholder="e.g., 'The night we danced in the rain on our first vacation together...'"
-          className="text-lg min-h-[120px] resize-none"
+          className={`text-lg min-h-[120px] resize-none ${errors.favoriteMemory ? "border-destructive" : ""}`}
           maxLength={500}
         />
+        {errors.favoriteMemory && (
+          <p className="text-destructive text-sm">{errors.favoriteMemory}</p>
+        )}
         <p className="text-sm text-muted-foreground text-right">
           {formData.favoriteMemory.length}/500 characters
         </p>

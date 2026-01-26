@@ -1,10 +1,11 @@
-import { FormData } from "@/pages/CreateSong";
+import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 interface OccasionStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
+  errors: FormErrors;
 }
 
 // ========================================
@@ -36,11 +37,14 @@ const occasions = [
   { id: "custom", label: "Custom" },
 ];
 
-const OccasionStep = ({ formData, updateFormData }: OccasionStepProps) => {
+const OccasionStep = ({ formData, updateFormData, errors }: OccasionStepProps) => {
   const isFeaturedSelected = formData.occasion === featuredOccasion.id;
 
   return (
     <div className="space-y-8">
+      {errors.occasion && (
+        <p className="text-destructive text-sm text-center">{errors.occasion}</p>
+      )}
       {/* Featured Occasion Button */}
       <div className="flex justify-center">
         <Button
