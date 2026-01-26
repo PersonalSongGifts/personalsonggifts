@@ -15,6 +15,7 @@ import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
 import { StatusChart } from "@/components/admin/StatusChart";
+import { GenreChart } from "@/components/admin/GenreChart";
 
 interface Order {
   id: string;
@@ -260,8 +261,9 @@ export default function Admin() {
               <OrdersChart orders={allOrders} />
             </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <StatusChart orders={allOrders} />
+              <GenreChart orders={allOrders} />
             </div>
           </TabsContent>
 
