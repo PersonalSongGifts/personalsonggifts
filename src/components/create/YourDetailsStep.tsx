@@ -1,7 +1,7 @@
 import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Mail, Shield } from "lucide-react";
+import { User, Mail, Shield, Phone } from "lucide-react";
 
 interface YourDetailsStepProps {
   formData: FormData;
@@ -56,6 +56,27 @@ const YourDetailsStep = ({ formData, updateFormData, errors }: YourDetailsStepPr
         )}
         <p className="text-sm text-muted-foreground">
           We'll deliver your completed song here. We never share your email.
+        </p>
+      </div>
+
+      {/* Phone number (optional) */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Phone className="h-5 w-5 text-primary" />
+          <Label htmlFor="phoneNumber" className="text-lg font-semibold">
+            Phone number <span className="text-muted-foreground font-normal">(optional)</span>
+          </Label>
+        </div>
+        <Input
+          id="phoneNumber"
+          type="tel"
+          value={formData.phoneNumber}
+          onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
+          placeholder="(555) 123-4567"
+          className="text-lg py-6"
+        />
+        <p className="text-sm text-muted-foreground">
+          Get SMS updates when your song is ready. Standard message rates may apply.
         </p>
       </div>
 

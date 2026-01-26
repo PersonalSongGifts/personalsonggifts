@@ -34,6 +34,7 @@ export interface FormData {
   // Step 7: Your details
   yourName: string;
   yourEmail: string;
+  phoneNumber: string;
 }
 
 export type FormErrors = Partial<Record<keyof FormData, string>>;
@@ -50,6 +51,7 @@ const initialFormData: FormData = {
   specialMessage: "",
   yourName: "",
   yourEmail: "",
+  phoneNumber: "",
 };
 
 const TOTAL_STEPS = 7;
