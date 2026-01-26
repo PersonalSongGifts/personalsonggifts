@@ -131,6 +131,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Send order confirmation email
+    try {
+      await fetch(`${supabaseUrl}/functions/v1/send-order-confirmation`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          orderId: newOrder.id,
+          customerEmail: newOrder.customer_email,
+          customerName: metadata.customerName || "",
+          recipientName: newOrder.recipient_name,
+          occasion: newOrder.occasion,
+          genre: newOrder.genre,
+          pricingTier: newOrder.pricing_tier,
+          expectedDelivery: newOrder.expected_delivery,
+        }),
+      });
+    } catch (emailError) {
+      console.error("Failed to send confirmation email:", emailError);
+      // Don't fail the order if email fails
+    }
+
     return new Response(
       JSON.stringify({
         orderId: newOrder.id,
