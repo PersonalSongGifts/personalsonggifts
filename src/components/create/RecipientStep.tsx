@@ -6,7 +6,8 @@ import {
   Users, 
   Baby, 
   UserCheck, 
-  Sparkles 
+  Sparkles,
+  PawPrint
 } from "lucide-react";
 
 interface RecipientStepProps {
@@ -21,13 +22,14 @@ const recipientOptions = [
   { id: "parent", label: "Parent", icon: Users },
   { id: "child", label: "Child", icon: Baby },
   { id: "friend", label: "Friend", icon: UserCheck },
+  { id: "pet", label: "Pet", icon: PawPrint },
   { id: "myself", label: "Myself", icon: User },
   { id: "other", label: "Other", icon: Sparkles },
 ];
 
 const RecipientStep = ({ formData, updateFormData }: RecipientStepProps) => {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
       {recipientOptions.map((option) => {
         const isSelected = formData.recipientType === option.id;
         return (

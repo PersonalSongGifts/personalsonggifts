@@ -1,7 +1,7 @@
 import { FormData } from "@/pages/CreateSong";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Heart, Sparkles, Star } from "lucide-react";
+import { Sparkles, Star, Users } from "lucide-react";
 
 interface StoryStepProps {
   formData: FormData;
@@ -14,6 +14,27 @@ const StoryStep = ({ formData, updateFormData }: StoryStepProps) => {
       <div className="bg-secondary/50 rounded-lg p-4 text-center">
         <p className="text-muted-foreground">
           ✨ Your words guide the song. Write from the heart — there's no wrong answer.
+        </p>
+      </div>
+
+      {/* Relationship context - moved from Step 2 */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Users className="h-5 w-5 text-primary" />
+          <Label htmlFor="relationship" className="text-lg font-semibold">
+            Tell us about your relationship <span className="text-destructive">*</span>
+          </Label>
+        </div>
+        <Textarea
+          id="relationship"
+          value={formData.relationship}
+          onChange={(e) => updateFormData({ relationship: e.target.value })}
+          placeholder="e.g., 'We've been married for 25 years' or 'She's my best friend since college'"
+          className="text-lg min-h-[100px] resize-none"
+          maxLength={500}
+        />
+        <p className="text-sm text-muted-foreground text-right">
+          {formData.relationship.length}/500 characters
         </p>
       </div>
 
@@ -56,27 +77,6 @@ const StoryStep = ({ formData, updateFormData }: StoryStepProps) => {
         />
         <p className="text-sm text-muted-foreground text-right">
           {formData.favoriteMemory.length}/500 characters
-        </p>
-      </div>
-
-      {/* What you love most */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Heart className="h-5 w-5 text-primary" />
-          <Label htmlFor="whatYouLove" className="text-lg font-semibold">
-            What do you love most about them? <span className="text-destructive">*</span>
-          </Label>
-        </div>
-        <Textarea
-          id="whatYouLove"
-          value={formData.whatYouLove}
-          onChange={(e) => updateFormData({ whatYouLove: e.target.value })}
-          placeholder="e.g., 'The way she looks at me, her dedication to our family, how she makes every day brighter...'"
-          className="text-lg min-h-[120px] resize-none"
-          maxLength={500}
-        />
-        <p className="text-sm text-muted-foreground text-right">
-          {formData.whatYouLove.length}/500 characters
         </p>
       </div>
     </div>
