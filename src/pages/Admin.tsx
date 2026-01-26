@@ -8,8 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List } from "lucide-react";
+import { StatsCards } from "@/components/admin/StatsCards";
+import { RevenueChart } from "@/components/admin/RevenueChart";
+import { OrdersChart } from "@/components/admin/OrdersChart";
+import { StatusChart } from "@/components/admin/StatusChart";
 
 interface Order {
   id: string;
@@ -57,11 +62,13 @@ export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [songUrl, setSongUrl] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [activeTab, setActiveTab] = useState("analytics");
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -78,6 +85,7 @@ export default function Admin() {
       
       setIsAuthenticated(true);
       setOrders(data.orders || []);
+      setAllOrders(data.orders || []);
       sessionStorage.setItem("adminPassword", password);
     } catch {
       toast({
@@ -105,6 +113,9 @@ export default function Admin() {
 
       if (error) throw error;
       setOrders(data.orders || []);
+      if (statusFilter === "all") {
+        setAllOrders(data.orders || []);
+      }
     } catch {
       toast({
         title: "Error",
@@ -229,87 +240,115 @@ export default function Admin() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="mb-6 flex items-center gap-4">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Orders</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-          <span className="text-sm text-muted-foreground">
-            {orders.length} order{orders.length !== 1 ? "s" : ""}
-          </span>
-        </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="analytics" className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger value="orders" className="gap-2">
+              <List className="h-4 w-4" />
+              Orders
+            </TabsTrigger>
+          </TabsList>
 
-        {orders.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No orders found</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {orders.map((order) => (
-              <Card key={order.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                    <div className="space-y-2 flex-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="font-semibold text-lg">
-                          Song for {order.recipient_name}
-                        </h3>
-                        <Badge className={statusColors[order.status] || "bg-gray-100 text-gray-800"}>
-                          <span className="mr-1">{statusIcons[order.status]}</span>
-                          {order.status}
-                        </Badge>
-                        <Badge variant="outline">
-                          {order.pricing_tier === "priority" ? "Priority" : "Standard"}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        <strong>From:</strong> {order.customer_name} ({order.customer_email})
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        <strong>Occasion:</strong> {order.occasion} • <strong>Genre:</strong> {order.genre}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        <strong>Created:</strong>{" "}
-                        {new Date(order.created_at).toLocaleString()}
-                      </p>
-                      {order.expected_delivery && (
-                        <p className="text-sm text-muted-foreground">
-                          <strong>Expected:</strong>{" "}
-                          {new Date(order.expected_delivery).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          setSongUrl(order.song_url || "");
-                        }}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        View Details
-                      </Button>
-                    </div>
-                  </div>
+          <TabsContent value="analytics" className="space-y-6">
+            <StatsCards orders={allOrders} />
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <RevenueChart orders={allOrders} />
+              <OrdersChart orders={allOrders} />
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <StatusChart orders={allOrders} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="orders" className="space-y-6">
+            <div className="flex items-center gap-4">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Orders</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-sm text-muted-foreground">
+                {orders.length} order{orders.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {orders.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No orders found</p>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        )}
+            ) : (
+              <div className="space-y-4">
+                {orders.map((order) => (
+                  <Card key={order.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <h3 className="font-semibold text-lg">
+                              Song for {order.recipient_name}
+                            </h3>
+                            <Badge className={statusColors[order.status] || "bg-gray-100 text-gray-800"}>
+                              <span className="mr-1">{statusIcons[order.status]}</span>
+                              {order.status}
+                            </Badge>
+                            <Badge variant="outline">
+                              {order.pricing_tier === "priority" ? "Priority" : "Standard"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            <strong>From:</strong> {order.customer_name} ({order.customer_email})
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            <strong>Occasion:</strong> {order.occasion} • <strong>Genre:</strong> {order.genre}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            <strong>Created:</strong>{" "}
+                            {new Date(order.created_at).toLocaleString()}
+                          </p>
+                          {order.expected_delivery && (
+                            <p className="text-sm text-muted-foreground">
+                              <strong>Expected:</strong>{" "}
+                              {new Date(order.expected_delivery).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedOrder(order);
+                              setSongUrl(order.song_url || "");
+                            }}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </main>
 
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
