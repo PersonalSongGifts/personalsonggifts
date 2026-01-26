@@ -14,7 +14,6 @@ import {
   Loader2
 } from "lucide-react";
 import { FormData } from "@/pages/CreateSong";
-import { createOrder } from "@/lib/orderService";
 import { useToast } from "@/hooks/use-toast";
 
 type PricingTier = "standard" | "priority";
@@ -52,24 +51,35 @@ const Checkout = () => {
     setIsSubmitting(true);
     
     try {
-      // TODO: Add your Zapier webhook URL here
-      const zapierWebhookUrl = undefined; // Replace with your Zapier webhook URL
-      
-      const { orderId, expectedDelivery } = await createOrder(
-        formData,
-        selectedTier,
-        zapierWebhookUrl
+      // Call the create-checkout edge function
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            pricingTier: selectedTier,
+            formData,
+          }),
+        }
       );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create checkout session");
+      }
+
+      const { url } = await response.json();
       
-      navigate("/confirmation", { 
-        state: { 
-          formData, 
-          tier: selectedTier,
-          deliveryTime: selectedTier === "priority" ? "3 hours" : "24 hours",
-          orderId,
-          expectedDelivery: expectedDelivery.toISOString()
-        } 
-      });
+      // Redirect to Stripe Checkout
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error("No checkout URL received");
+      }
     } catch (error) {
       console.error("Checkout error:", error);
       toast({
@@ -77,7 +87,6 @@ const Checkout = () => {
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
-    } finally {
       setIsSubmitting(false);
     }
   };
