@@ -1,4 +1,4 @@
-import { FormData } from "@/pages/CreateSong";
+import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Heart } from "lucide-react";
@@ -6,9 +6,10 @@ import { Heart } from "lucide-react";
 interface FinalTouchesStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
+  errors: FormErrors;
 }
 
-const FinalTouchesStep = ({ formData, updateFormData }: FinalTouchesStepProps) => {
+const FinalTouchesStep = ({ formData, updateFormData, errors }: FinalTouchesStepProps) => {
   return (
     <div className="space-y-6">
       <div className="bg-secondary/50 rounded-lg p-4 text-center">

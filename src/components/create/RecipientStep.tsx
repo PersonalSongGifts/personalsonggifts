@@ -1,4 +1,3 @@
-import { FormData } from "@/pages/CreateSong";
 import { Card } from "@/components/ui/card";
 import { 
   Heart, 
@@ -10,9 +9,12 @@ import {
   PawPrint
 } from "lucide-react";
 
+import { FormData, FormErrors } from "@/pages/CreateSong";
+
 interface RecipientStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
+  errors: FormErrors;
 }
 
 const recipientOptions = [
@@ -27,9 +29,13 @@ const recipientOptions = [
   { id: "other", label: "Other", icon: Sparkles },
 ];
 
-const RecipientStep = ({ formData, updateFormData }: RecipientStepProps) => {
+const RecipientStep = ({ formData, updateFormData, errors }: RecipientStepProps) => {
   return (
-    <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
+    <div className="space-y-4">
+      {errors.recipientType && (
+        <p className="text-destructive text-sm text-center">{errors.recipientType}</p>
+      )}
+      <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
       {recipientOptions.map((option) => {
         const isSelected = formData.recipientType === option.id;
         return (
@@ -51,6 +57,7 @@ const RecipientStep = ({ formData, updateFormData }: RecipientStepProps) => {
           </Card>
         );
       })}
+      </div>
     </div>
   );
 };

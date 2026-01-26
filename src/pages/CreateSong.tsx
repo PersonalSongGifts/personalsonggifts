@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, ArrowRight } from "lucide-react";
+import { validateStep } from "@/lib/songFormValidation";
 
 // Form step components
 import RecipientStep from "@/components/create/RecipientStep";
@@ -34,6 +35,8 @@ export interface FormData {
   yourName: string;
   yourEmail: string;
 }
+
+export type FormErrors = Partial<Record<keyof FormData, string>>;
 
 const initialFormData: FormData = {
   recipientType: "",
@@ -72,14 +75,38 @@ const CreateSong = () => {
       occasion: occasion || "",
     };
   });
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [hasAttemptedContinue, setHasAttemptedContinue] = useState(false);
 
   const progress = (currentStep / TOTAL_STEPS) * 100;
 
   const updateFormData = (updates: Partial<FormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));
+    // Clear errors for updated fields
+    if (hasAttemptedContinue) {
+      const updatedFields = Object.keys(updates) as (keyof FormData)[];
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        updatedFields.forEach((field) => {
+          delete newErrors[field];
+        });
+        return newErrors;
+      });
+    }
   };
 
   const nextStep = () => {
+    setHasAttemptedContinue(true);
+    const stepErrors = validateStep(currentStep, formData);
+    
+    if (Object.keys(stepErrors).length > 0) {
+      setErrors(stepErrors as FormErrors);
+      return;
+    }
+    
+    setErrors({});
+    setHasAttemptedContinue(false);
+    
     if (currentStep < TOTAL_STEPS) {
       setCurrentStep((prev) => prev + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -91,48 +118,29 @@ const CreateSong = () => {
 
   const prevStep = () => {
     if (currentStep > 1) {
+      setErrors({});
+      setHasAttemptedContinue(false);
       setCurrentStep((prev) => prev - 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  };
-
-  const canProceed = (): boolean => {
-    switch (currentStep) {
-      case 1:
-        return !!formData.recipientType;
-      case 2:
-        return !!formData.recipientName;
-      case 3:
-        return !!formData.occasion;
-      case 4:
-        return !!formData.genre && !!formData.singerPreference;
-      case 5:
-        return !!formData.specialQualities && !!formData.favoriteMemory && !!formData.relationship;
-      case 6:
-        return true; // Optional message
-      case 7:
-        return !!formData.yourName && !!formData.yourEmail;
-      default:
-        return false;
     }
   };
 
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <RecipientStep formData={formData} updateFormData={updateFormData} />;
+        return <RecipientStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 2:
-        return <DetailsStep formData={formData} updateFormData={updateFormData} />;
+        return <DetailsStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 3:
-        return <OccasionStep formData={formData} updateFormData={updateFormData} />;
+        return <OccasionStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 4:
-        return <MusicStyleStep formData={formData} updateFormData={updateFormData} />;
+        return <MusicStyleStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 5:
-        return <StoryStep formData={formData} updateFormData={updateFormData} />;
+        return <StoryStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 6:
-        return <FinalTouchesStep formData={formData} updateFormData={updateFormData} />;
+        return <FinalTouchesStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 7:
-        return <YourDetailsStep formData={formData} updateFormData={updateFormData} />;
+        return <YourDetailsStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       default:
         return null;
     }
@@ -178,7 +186,6 @@ const CreateSong = () => {
 
             <Button
               onClick={nextStep}
-              disabled={!canProceed()}
               className="gap-2 px-8"
             >
               {currentStep === TOTAL_STEPS ? "Continue to Checkout" : "Continue"}
