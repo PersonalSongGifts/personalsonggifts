@@ -1,96 +1,191 @@
 
 
-# Stripe Payment Integration Plan
+# Email System + Admin Dashboard Plan
 
 ## Overview
-This plan integrates Stripe Checkout into your existing checkout flow, allowing customers to pay for their custom songs securely. When a customer clicks "Complete Payment", they'll be redirected to Stripe's hosted checkout page, and after successful payment, they'll return to a confirmation page.
+This plan implements two connected features:
+1. **Order Confirmation Email** - Automatic email sent immediately after payment
+2. **Admin Dashboard** - Protected page where you manage orders and send song delivery emails
 
-## Current Flow
-1. Customer fills out song details on `/create`
-2. Customer selects pricing tier on `/checkout` 
-3. Currently: Order is created immediately (no actual payment)
-4. Customer sees confirmation on `/confirmation`
+## How It Will Work
 
-## New Flow
-1. Customer fills out song details on `/create`
-2. Customer selects pricing tier on `/checkout`
-3. Customer clicks "Complete Payment" → redirected to Stripe Checkout
-4. After payment → redirected to `/payment-success`
-5. Payment success page creates the order and shows confirmation
+### Order Confirmation Flow (Automatic)
+```text
+Customer pays → Payment success → Order created → Confirmation email sent automatically
+```
 
-## Stripe Products Created
-- **Standard Song**: $49 (price_1Sty7MGax2m9otRw5WBP7Wto)
-- **Priority Song**: $79 (price_1Sty7hGax2m9otRwGKt6AAbP)
+The email will include:
+- Order ID
+- What they ordered (recipient, occasion, genre)
+- Expected delivery time (3h for Priority, 24h for Standard)
+- Your contact email for questions
 
-## Implementation Steps
+### Song Delivery Flow (Manual via Admin Dashboard)
+```text
+You finish song → Go to /admin → Find the order → Paste Google Drive link → Click "Send Song" → Customer receives email with link
+```
 
-### 1. Create Stripe Checkout Edge Function
-Create `supabase/functions/create-checkout/index.ts` that:
-- Receives the selected tier and form data from the frontend
-- Creates a Stripe Checkout Session with the correct price
-- Stores the form data in session metadata so we can retrieve it after payment
-- Returns the checkout URL for redirect
-
-### 2. Update Checkout Page
-Modify `src/pages/Checkout.tsx` to:
-- Call the new `create-checkout` function instead of creating the order directly
-- Redirect to Stripe Checkout URL on button click
-- Remove direct order creation (this happens after payment succeeds)
-
-### 3. Create Payment Success Page
-Create `src/pages/PaymentSuccess.tsx` that:
-- Retrieves the Stripe session ID from URL parameters
-- Calls the existing `create-order` edge function to save the order
-- Shows the confirmation to the customer
-- Handles the case where the session ID is missing or invalid
-
-### 4. Add Route for Payment Success
-Update `src/App.tsx` to add the `/payment-success` route
-
-### 5. Modify Order Service
-Update `src/lib/orderService.ts` to support being called from the payment success page with data retrieved from Stripe
+The admin dashboard will show:
+- All orders in a table view
+- Status indicators (Pending, Delivered)
+- Form to paste the Google Drive link
+- "Send Song" button that emails the customer
 
 ---
 
-## Technical Details
+## What You'll See
 
-### Edge Function: create-checkout
-```
-Location: supabase/functions/create-checkout/index.ts
+### Admin Dashboard (/admin)
+A clean table showing all orders with:
 
-Input: { pricingTier, formData }
-Output: { url: string }
+| Order ID | Customer | Recipient | Occasion | Status | Expected | Actions |
+|----------|----------|-----------|----------|--------|----------|---------|
+| AB12CD34 | john@... | Mom | Mother's Day | Pending | Jan 27, 3pm | [Deliver Song] |
+| EF56GH78 | jane@... | Dad | Birthday | ✓ Delivered | Jan 26, 1pm | [View] |
 
-The function will:
-1. Map tier to price ID (standard → price_1Sty7MGax2m9otRw5WBP7Wto, priority → price_1Sty7hGax2m9otRwGKt6AAbP)
-2. Create Stripe Checkout Session with:
-   - mode: "payment"
-   - line_items with the correct price
-   - success_url: /payment-success?session_id={CHECKOUT_SESSION_ID}
-   - cancel_url: /checkout
-   - metadata containing all the form data (for order creation after payment)
-3. Return the session URL
+When you click "Deliver Song":
+1. A form appears to paste the Google Drive link
+2. You click "Send"
+3. The customer gets an email with the song link
+4. The order status updates to "Delivered"
+
+---
+
+## Implementation Steps
+
+### 1. Set Up Email Service (Resend)
+You'll need to:
+- Create an account at resend.com (free tier: 100 emails/day)
+- Verify your domain (personalsonggifts.com)
+- Get an API key
+- I'll add the API key as a secret
+
+### 2. Create Order Confirmation Email Function
+**File:** `supabase/functions/send-order-confirmation/index.ts`
+
+Sends email immediately after order is created with:
+- Order details
+- Expected delivery time
+- "Your song is being crafted" message
+
+### 3. Update Payment Processing
+**File:** `supabase/functions/process-payment/index.ts`
+
+After creating the order, call the email function to send confirmation.
+
+### 4. Create Song Delivery Email Function
+**File:** `supabase/functions/send-song-delivery/index.ts`
+
+Sends the "Your song is ready!" email with:
+- The Google Drive link you provide
+- Recipient name
+- A heartfelt message
+
+### 5. Create Admin Dashboard Page
+**File:** `src/pages/Admin.tsx`
+
+Features:
+- List of all orders (most recent first)
+- Status filter (All / Pending / Delivered)
+- "Deliver Song" button that opens a form
+- Form to paste Google Drive link and send
+
+### 6. Create Admin Edge Function
+**File:** `supabase/functions/admin-orders/index.ts`
+
+Handles:
+- Fetching all orders (for the dashboard)
+- Updating order status and song URL
+- Triggering delivery email
+
+### 7. Add Admin Route
+**File:** `src/App.tsx`
+
+Add `/admin` route pointing to the new Admin page.
+
+---
+
+## Security Notes
+
+The admin dashboard will be accessible at `/admin`. Since you don't have user authentication set up yet, I'll implement a simple password protection:
+- When you visit `/admin`, you'll be asked for a password
+- The password will be stored as a secret (not in code)
+- This keeps it simple while preventing public access
+
+If you want proper admin accounts later, we can add full authentication.
+
+---
+
+## Email Templates
+
+### Order Confirmation Email
+```
+Subject: Your Personal Song is Being Crafted! 🎵
+
+Hi [Customer Name],
+
+Thank you for your order! We're thrilled to create a special song for [Recipient Name].
+
+ORDER DETAILS
+-------------
+Order ID: [ID]
+Song for: [Recipient Name]
+Occasion: [Occasion]
+Style: [Genre]
+Package: [Standard/Priority]
+
+Expected Delivery: Within [3/24] hours
+(By [Date/Time])
+
+Our songwriters are already working on something beautiful. 
+You'll receive another email when your song is ready!
+
+Questions? Reply to this email or contact hello@personalsonggifts.com
+
+With love,
+The Personal Song Gifts Team
 ```
 
-### Payment Success Page
+### Song Delivery Email
 ```
-Location: src/pages/PaymentSuccess.tsx
+Subject: 🎵 Your Song for [Recipient] is Ready!
 
-Behavior:
-1. On mount, get session_id from URL params
-2. Call create-order edge function with the session data
-3. Display confirmation (reuses current Confirmation page design)
-4. Handle errors gracefully
+Hi [Customer Name],
+
+Great news! Your personalized song for [Recipient Name] is complete and ready to share!
+
+🎧 LISTEN TO YOUR SONG:
+[Google Drive Link Button]
+
+We hope this song brings joy to [Recipient Name] and creates a beautiful memory.
+
+Tips for sharing:
+• Play it during a special moment
+• Send the link with a heartfelt message
+• Download it to keep forever
+
+Thank you for trusting us with your special story.
+
+With love,
+The Personal Song Gifts Team
 ```
 
-### Updated Checkout Flow
-```
-1. User clicks "Complete Payment"
-2. Frontend calls create-checkout edge function
-3. Frontend redirects to returned Stripe URL
-4. User completes payment on Stripe
-5. Stripe redirects to /payment-success?session_id=...
-6. PaymentSuccess page calls create-order to save the order
-7. User sees confirmation
-```
+---
+
+## What You'll Need to Provide
+
+1. **Resend API Key** - I'll prompt you to add this
+2. **Verified domain** - personalsonggifts.com needs to be verified in Resend
+3. **Admin password** - A simple password for accessing /admin
+
+---
+
+## Summary
+
+| Feature | What It Does |
+|---------|--------------|
+| Order Confirmation Email | Automatic email after payment with order details |
+| Admin Dashboard | View all orders, manage delivery |
+| Song Delivery Email | You paste Google Drive link, customer gets email |
+| Password Protection | Simple security for /admin page |
 
