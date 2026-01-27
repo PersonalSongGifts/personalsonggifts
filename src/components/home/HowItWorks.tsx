@@ -41,7 +41,7 @@ const HowItWorks = () => {
                 <div className="w-20 h-20 mx-auto rounded-full bg-secondary flex items-center justify-center group-hover:bg-primary/10 transition-colors duration-300">
                   <step.icon className="h-8 w-8 text-primary" />
                 </div>
-                <span className="absolute -top-2 -right-2 md:right-auto md:-left-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">
+                <span className="absolute -top-2 -left-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">
                   {index + 1}
                 </span>
               </div>
