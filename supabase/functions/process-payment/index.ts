@@ -154,35 +154,36 @@ Deno.serve(async (req) => {
       // Don't fail the order if email fails
     }
 
-    // Sync order to Google Sheets (non-blocking)
-    try {
-      await fetch(`${supabaseUrl}/functions/v1/append-to-sheet`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({
-          orderId: newOrder.id,
-          createdAt: new Date().toISOString(),
-          status: "paid",
-          pricingTier: newOrder.pricing_tier,
-          price: price,
-          customerName: metadata.customerName || "",
-          customerEmail: newOrder.customer_email,
-          customerPhone: metadata.customerPhone || "",
-          recipientName: newOrder.recipient_name,
-          occasion: newOrder.occasion,
-          genre: newOrder.genre,
-          singerPreference: metadata.singerPreference || "",
-          specialQualities: metadata.specialQualities || "",
-          favoriteMemory: metadata.favoriteMemory || "",
-          specialMessage: metadata.specialMessage || "",
-        }),
-      });
-    } catch (sheetError) {
-      console.error("Failed to sync to Google Sheets:", sheetError);
-      // Don't fail the order if sheet sync fails
+    // Sync order to Zapier → Google Sheets (non-blocking)
+    const zapierWebhookUrl = Deno.env.get("ZAPIER_WEBHOOK_URL");
+    if (zapierWebhookUrl) {
+      try {
+        await fetch(zapierWebhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: newOrder.id,
+            createdAt: new Date().toISOString(),
+            status: "paid",
+            pricingTier: newOrder.pricing_tier,
+            price: price,
+            customerName: metadata.customerName || "",
+            customerEmail: newOrder.customer_email,
+            customerPhone: metadata.customerPhone || "",
+            recipientName: newOrder.recipient_name,
+            occasion: newOrder.occasion,
+            genre: newOrder.genre,
+            singerPreference: metadata.singerPreference || "",
+            specialQualities: metadata.specialQualities || "",
+            favoriteMemory: metadata.favoriteMemory || "",
+            specialMessage: metadata.specialMessage || "",
+          }),
+        });
+        console.log(`Order ${newOrder.id} synced to Zapier`);
+      } catch (zapierError) {
+        console.error("Failed to sync to Zapier:", zapierError);
+        // Don't fail the order if Zapier sync fails
+      }
     }
 
     return new Response(
