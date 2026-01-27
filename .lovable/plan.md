@@ -1,86 +1,107 @@
 
-# Fix Scroll-to-Top Issues
 
-## Problem Analysis
+# Fix Step Numbers Position & Comprehensive Scroll-to-Top
 
-I identified two distinct scroll issues:
+## Issues Identified
 
-### Issue 1: Page Navigation Doesn't Scroll to Top
-When clicking "Create Your Song" from the homepage (or navigating between any routes), the browser maintains the previous scroll position. This happens because:
-- **No global scroll restoration** - The `App.tsx` routing configuration lacks a `ScrollToTop` component
-- React Router doesn't automatically scroll to top on navigation
+### Issue 1: Step Numbers on Right Side (Mobile)
+The step number badges (1, 2, 3) in the "How It Works" section are positioned on the right on mobile due to conflicting responsive classes.
 
-### Issue 2: Step Transitions Sometimes Don't Scroll to Top
-During the multi-step form in `/create`, the scroll sometimes fails because:
-- **CSS conflict** - Global `scroll-behavior: smooth` in `src/index.css` can race with JavaScript scroll commands
-- **Timing issues** - The smooth scroll animation can be interrupted by React re-renders
+**Root Cause (Line 44 of HowItWorks.tsx):**
+```tsx
+className="absolute -top-2 -right-2 md:right-auto md:-left-2 ..."
+```
+- On mobile: `-right-2` places badge on the right
+- On desktop: `md:right-auto md:-left-2` overrides to left
+
+### Issue 2: Inconsistent Scroll-to-Top on CTAs
+The current `ScrollToTop` component only triggers on route changes (pathname). It doesn't cover:
+- Anchor links (e.g., `#samples`, `#how-it-works`)
+- Query parameter changes (e.g., `/create?occasion=wedding`)
 
 ---
 
 ## Solution
 
-### Step 1: Create a ScrollToTop Component
-Create a new component that listens for route changes and scrolls to top instantly.
+### Fix 1: Step Numbers Position
+Update the badge positioning to always be on the left of the icon circle on all screen sizes.
+
+**File: `src/components/home/HowItWorks.tsx` (Line 44)**
+
+Change from:
+```tsx
+<span className="absolute -top-2 -right-2 md:right-auto md:-left-2 w-8 h-8 ...">
+```
+
+To:
+```tsx
+<span className="absolute -top-2 -left-2 w-8 h-8 ...">
+```
+
+This simple change ensures the badge is always positioned to the upper-left of the parent container on all devices.
+
+### Fix 2: Enhanced ScrollToTop Component
+Update the `ScrollToTop` component to also respond to search query changes (for occasion selections in OccasionsGrid) and ensure all route changes scroll to top.
 
 **File: `src/components/ScrollToTop.tsx`**
-```typescript
+
+```tsx
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
 export const ScrollToTop = () => {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  }, [pathname]);
+  }, [pathname, search]);
 
   return null;
 };
 ```
 
-### Step 2: Add ScrollToTop to App.tsx
-Place the component inside `BrowserRouter` so it can access routing context.
-
-```typescript
-// Add import
-import { ScrollToTop } from "./components/ScrollToTop";
-
-// Add inside BrowserRouter, before Routes
-<BrowserRouter>
-  <ScrollToTop />
-  <Routes>
-    ...
-  </Routes>
-</BrowserRouter>
-```
-
-### Step 3: Fix Step Transitions in CreateSong.tsx
-Change `behavior: "smooth"` to `behavior: "instant"` for reliable scrolling during form step changes.
-
-```typescript
-// In nextStep function (line 115)
-window.scrollTo({ top: 0, behavior: "instant" });
-
-// In prevStep function (line 127)
-window.scrollTo({ top: 0, behavior: "instant" });
-```
+This ensures that clicking occasion cards (which navigate to `/create?occasion=X`) also triggers scroll-to-top.
 
 ---
 
-## Why This Works
+## Technical Details
 
-| Fix | Problem Solved |
-|-----|----------------|
-| `ScrollToTop` component | Ensures every route change scrolls to top |
-| `behavior: "instant"` | Eliminates race conditions with CSS smooth scrolling |
-| Global placement in App.tsx | Covers all navigation throughout the app |
+### All CTA Buttons Already Covered
+The `ScrollToTop` component in `App.tsx` already handles all route-based navigation. Here's what's covered:
+
+| Component | CTA Type | Scroll Coverage |
+|-----------|----------|-----------------|
+| Header | `Link to="/create"` | ✅ Covered by pathname change |
+| PromoBanner | `Link to="/create"` | ✅ Covered by pathname change |
+| HeroSection | `Link to="/create"` | ✅ Covered by pathname change |
+| HeroSection | `a href="#samples"` | ⚠️ Same-page anchor (smooth scroll) |
+| OccasionsGrid cards | `Link to="/create?occasion=X"` | ⚠️ Needs search param support |
+| OccasionsGrid CTA | `Link to="/create"` | ✅ Covered by pathname change |
+| Testimonials | `Link to="/create"` | ✅ Covered by pathname change |
+| SamplePlayer | `Link to="/create"` | ✅ Covered by pathname change |
+| HowItWorks | `Link to="/create"` | ✅ Covered by pathname change |
+| FAQSection | `Link to="/create"` | ✅ Covered by pathname change |
+| FinalCTA | `Link to="/create"` | ✅ Covered by pathname change |
+
+### Form Step Transitions Already Fixed
+The `CreateSong.tsx` already has `behavior: "instant"` for:
+- `nextStep()` - Line 115
+- `prevStep()` - Line 127
 
 ---
 
 ## Files Changed
 
-1. **Create** `src/components/ScrollToTop.tsx` - New component (6 lines)
-2. **Edit** `src/App.tsx` - Add import and component (2 lines changed)
-3. **Edit** `src/pages/CreateSong.tsx` - Change scroll behavior (2 lines changed)
+| File | Change |
+|------|--------|
+| `src/components/home/HowItWorks.tsx` | Fix badge position: `-left-2` instead of `-right-2` (1 line) |
+| `src/components/ScrollToTop.tsx` | Add `search` to dependency array for query param changes (2 lines) |
 
-This is a minimal, proven solution that follows React Router best practices and matches the pattern recommended in the useful context.
+---
+
+## Expected Result
+- Step numbers (1, 2, 3) will appear on the left of each icon on both mobile and desktop
+- All CTA buttons that navigate to new routes will scroll to top
+- Occasion card selections (`/create?occasion=X`) will scroll to top
+- Form step transitions will continue to scroll to top instantly
+
