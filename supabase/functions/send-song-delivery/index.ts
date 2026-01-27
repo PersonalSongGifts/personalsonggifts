@@ -19,6 +19,9 @@ Deno.serve(async (req) => {
 
   try {
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+    const senderEmail = Deno.env.get("BREVO_SENDER_EMAIL") || "noreply@personalsonggifts.com";
+    const senderName = Deno.env.get("BREVO_SENDER_NAME") || "Personal Song Gifts";
+    
     if (!brevoApiKey) {
       throw new Error("BREVO_API_KEY not configured");
     }
@@ -113,8 +116,8 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         sender: {
-          name: "Personal Song Gifts",
-          email: "delivery@personalsonggifts.com",
+          name: senderName,
+          email: senderEmail,
         },
         to: [{ email: customerEmail, name: customerName || customerEmail }],
         subject: `🎉 Your song for ${recipientName} is ready!`,
