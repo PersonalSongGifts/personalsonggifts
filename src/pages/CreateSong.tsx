@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { validateStep } from "@/lib/songFormValidation";
+import { useMetaPixel } from "@/hooks/useMetaPixel";
 
 // Form step components
 import RecipientStep from "@/components/create/RecipientStep";
@@ -68,6 +69,8 @@ const CreateSong = () => {
   // Song creation multi-step form
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { trackEvent } = useMetaPixel();
+  const hasTrackedViewContent = useRef(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(() => {
     const occasion = searchParams.get("occasion");
@@ -78,6 +81,16 @@ const CreateSong = () => {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [hasAttemptedContinue, setHasAttemptedContinue] = useState(false);
+
+  // Track ViewContent once when user starts song creation
+  useEffect(() => {
+    if (!hasTrackedViewContent.current) {
+      trackEvent('ViewContent', {
+        content_category: 'Custom Song',
+      });
+      hasTrackedViewContent.current = true;
+    }
+  }, [trackEvent]);
 
   const progress = (currentStep / TOTAL_STEPS) * 100;
 
@@ -112,6 +125,16 @@ const CreateSong = () => {
       setCurrentStep((prev) => prev + 1);
       window.scrollTo({ top: 0, behavior: "instant" });
     } else {
+      // Fire AddToCart event with user data for Advanced Matching
+      trackEvent('AddToCart', {
+        content_name: formData.recipientName,
+        content_category: formData.occasion,
+        value: 49, // Base price
+        currency: 'USD',
+        em: formData.yourEmail, // Meta will hash this
+        ph: formData.phoneNumber || undefined, // Meta will hash this
+      });
+      
       // Submit form - go to checkout
       navigate("/checkout", { state: { formData } });
     }

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Check, Clock, Mail, Music, Loader2, AlertCircle } from "lucide-react";
+import { useMetaPixel } from "@/hooks/useMetaPixel";
 
 interface OrderDetails {
   orderId: string;
@@ -18,6 +19,8 @@ interface OrderDetails {
 const PaymentSuccess = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("session_id");
+  const { trackEvent } = useMetaPixel();
+  const hasTrackedPurchase = useRef(false);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +54,17 @@ const PaymentSuccess = () => {
 
         const data = await response.json();
         setOrderDetails(data);
+        
+        // Fire Purchase event after successful order processing
+        if (!hasTrackedPurchase.current && data) {
+          const purchaseValue = data.pricingTier === "priority" ? 79 : 49;
+          trackEvent('Purchase', {
+            value: purchaseValue,
+            currency: 'USD',
+            transaction_id: data.orderId,
+          });
+          hasTrackedPurchase.current = true;
+        }
       } catch (err) {
         console.error("Payment processing error:", err);
         setError(err instanceof Error ? err.message : "Something went wrong");
