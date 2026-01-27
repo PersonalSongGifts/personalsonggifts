@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { FormData } from "@/pages/CreateSong";
 import { useToast } from "@/hooks/use-toast";
+import { useMetaPixel } from "@/hooks/useMetaPixel";
 
 type PricingTier = "standard" | "priority";
 
@@ -22,6 +23,7 @@ const Checkout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { trackEvent } = useMetaPixel();
   const formData = location.state?.formData as FormData | undefined;
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,6 +51,13 @@ const Checkout = () => {
     if (isSubmitting || !formData) return;
     
     setIsSubmitting(true);
+    
+    // Fire InitiateCheckout event
+    const checkoutValue = selectedTier === "priority" ? 79 : 49;
+    trackEvent('InitiateCheckout', {
+      value: checkoutValue,
+      currency: 'USD',
+    });
     
     try {
       // Call the create-checkout edge function
