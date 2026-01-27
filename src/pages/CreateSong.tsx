@@ -112,7 +112,7 @@ const CreateSong = () => {
     
     if (currentStep < TOTAL_STEPS) {
       setCurrentStep((prev) => prev + 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "instant" });
     } else {
       // Submit form - go to checkout
       navigate("/checkout", { state: { formData } });
@@ -124,7 +124,7 @@ const CreateSong = () => {
       setErrors({});
       setHasAttemptedContinue(false);
       setCurrentStep((prev) => prev - 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "instant" });
     }
   };
 
