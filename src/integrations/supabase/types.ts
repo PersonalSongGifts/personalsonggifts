@@ -32,7 +32,6 @@ export type Database = {
           pricing_tier: string
           recipient_name: string
           recipient_type: string
-          relationship: string
           singer_preference: string
           song_url: string | null
           special_message: string | null
@@ -56,7 +55,6 @@ export type Database = {
           pricing_tier: string
           recipient_name: string
           recipient_type: string
-          relationship: string
           singer_preference: string
           song_url?: string | null
           special_message?: string | null
@@ -80,7 +78,6 @@ export type Database = {
           pricing_tier?: string
           recipient_name?: string
           recipient_type?: string
-          relationship?: string
           singer_preference?: string
           song_url?: string | null
           special_message?: string | null
