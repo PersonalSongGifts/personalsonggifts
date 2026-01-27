@@ -16,8 +16,9 @@ function textToBase64Url(text: string): string {
 
 // Import PEM private key for RS256 signing
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
-  // Remove headers and newlines
-  const pemContents = pem
+  // Handle escaped newlines from environment variables and remove headers
+  const normalizedPem = pem.replace(/\\n/g, "\n");
+  const pemContents = normalizedPem
     .replace(/-----BEGIN PRIVATE KEY-----/g, "")
     .replace(/-----END PRIVATE KEY-----/g, "")
     .replace(/\s/g, "");
