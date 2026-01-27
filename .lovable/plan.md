@@ -1,74 +1,67 @@
 
+# Fix Google Sheets Integration
 
-# Pricing & Delivery Time Update Plan
+## The Problem
+The `GOOGLE_PRIVATE_KEY` secret contains the full Google credentials JSON file, but the code expects only the `private_key` value (the PEM string).
 
-## Overview
-Update the delivery times across the entire system from the current structure to the new one, while keeping prices unchanged.
+## Solution Options
 
-## Pricing Changes
+### Option A: Update the Secret (Simpler)
+You would re-save the `GOOGLE_PRIVATE_KEY` secret with **only** the private key portion:
+1. Open your Google credentials JSON file
+2. Find the `private_key` field
+3. Copy just that value (starts with `-----BEGIN PRIVATE KEY-----` and ends with `-----END PRIVATE KEY-----\n`)
+4. Update the secret with this value
 
-| Tier | Current | New |
-|------|---------|-----|
-| **Standard** | $49 / 24-hour delivery | $49 / **48-hour** delivery |
-| **Priority** | $79 / 3-hour rush | $79 / **24-hour** rush |
-
-**Note:** The prices ($49 and $79) stay the same - only the delivery windows are changing.
+### Option B: Update the Code (What I Recommend)
+Modify the `append-to-sheet` edge function to handle both formats - if it detects a JSON object, it will extract the `private_key` field automatically. This is more robust and won't require changing the secret.
 
 ---
 
-## What Will Be Updated
+## Implementation (Option B)
 
-### 1. Checkout Page
-Update the delivery time labels customers see when selecting their package.
+### File: supabase/functions/append-to-sheet/index.ts
 
-### 2. Payment Success Page  
-Update the delivery time shown after purchase confirmation.
+Add logic at the start of the function to parse the private key from JSON if needed:
 
-### 3. Order Processing Backend
-Update the calculation that determines when an order should be delivered.
+```text
+Before getting the private key:
+  const privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY");
 
-### 4. Confirmation Emails
-Update the email templates to show the correct delivery tier labels.
+After (smarter parsing):
+  let privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY") || "";
+  
+  // Handle case where full JSON was pasted instead of just the key
+  if (privateKey.startsWith("{")) {
+    try {
+      const credentials = JSON.parse(privateKey);
+      privateKey = credentials.private_key || "";
+    } catch {
+      // Not valid JSON, use as-is
+    }
+  }
+```
 
-### 5. FAQ Section
-Update the FAQ answer about delivery times to reflect the 48-hour standard.
-
-### 6. Stripe Product Descriptions
-Update the product descriptions in Stripe to show accurate delivery windows.
+This change means:
+- If you paste just the private key → works
+- If you paste the full JSON → works (extracts the key automatically)
 
 ---
 
 ## Technical Details
 
-### Files to Modify
+**Changes to `supabase/functions/append-to-sheet/index.ts`:**
+1. After getting `GOOGLE_PRIVATE_KEY` from environment, check if it starts with `{`
+2. If so, parse it as JSON and extract the `private_key` field
+3. Continue with the existing logic
 
-| File | Changes |
-|------|---------|
-| `src/pages/Checkout.tsx` | Change "24 hours" → "48 hours" for Standard, "3-hour" → "24-hour" for Priority |
-| `src/pages/PaymentSuccess.tsx` | Change "3 hours" → "24 hours" for Priority, "24 hours" → "48 hours" for Standard |
-| `supabase/functions/process-payment/index.ts` | Update delivery calculation: Priority = 24h, Standard = 48h |
-| `supabase/functions/create-order/index.ts` | Update delivery calculation to match |
-| `supabase/functions/send-order-confirmation/index.ts` | Change tier labels in email template |
-| `src/components/home/FAQSection.tsx` | Update FAQ answer to say "48 hours" |
-
-### Stripe Product Updates
-The existing Stripe products need their descriptions updated:
-- **Standard Song**: "Custom personalized song with 24-hour delivery" → "48-hour delivery"
-- **Priority Song**: "Custom personalized song with 3-hour rush delivery" → "24-hour rush delivery"
-
-*Note: The prices themselves ($49 and $79) remain unchanged in Stripe.*
+**Testing:**
+After deployment, I'll call the function directly to verify it works with your existing secret.
 
 ---
 
-## Summary of Text Changes
-
-| Location | Current Text | New Text |
-|----------|-------------|----------|
-| Checkout (Standard) | "Typically within 24 hours" | "Typically within 48 hours" |
-| Checkout (Priority) | "3-hour rush production & delivery" | "24-hour rush delivery" |
-| Checkout (Priority bullet) | "3-hour rush delivery" | "24-hour rush delivery" |
-| PaymentSuccess | "3 hours" / "24 hours" | "24 hours" / "48 hours" |
-| Email Template | "Priority (3-hour)" / "Standard (24-hour)" | "Priority (24-hour)" / "Standard (48-hour)" |
-| FAQ | "within 24 hours" | "within 48 hours" |
-| Backend calculation | 3h / 24h | 24h / 48h |
-
+## Summary
+- One file to update: `supabase/functions/append-to-sheet/index.ts`
+- Add ~10 lines of JSON parsing logic
+- No need to change your existing secret
+- Future-proof for either format
