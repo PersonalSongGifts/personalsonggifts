@@ -1,92 +1,40 @@
 
-# Meta Pixel Implementation Plan
+
+# Pricing & Delivery Time Update Plan
 
 ## Overview
-Install Facebook/Meta Pixel tracking on PersonalSongGifts.com to track the complete customer journey from browsing to purchase completion.
+Update the delivery times across the entire system from the current structure to the new one, while keeping prices unchanged.
 
-## Events to Track
+## Pricing Changes
 
-| Event | Trigger Location | Details |
-|-------|-----------------|---------|
-| **PageView** | All pages | Standard tracking on every page load |
-| **ViewContent** | `/create` page | When user starts/progresses through song creation |
-| **AddToCart** | Step 7 of `/create` | When "Continue to Checkout" is clicked |
-| **InitiateCheckout** | `/checkout` page | When "Complete Payment" is clicked |
-| **Purchase** | `/payment-success` page | After successful payment confirmation |
+| Tier | Current | New |
+|------|---------|-----|
+| **Standard** | $49 / 24-hour delivery | $49 / **48-hour** delivery |
+| **Priority** | $79 / 3-hour rush | $79 / **24-hour** rush |
 
-## Implementation Steps
+**Note:** The prices ($49 and $79) stay the same - only the delivery windows are changing.
 
-### Step 1: Add Meta Pixel Base Script
-Add the Meta Pixel initialization code to `index.html` in the `<head>` section. This will automatically track PageView on every page load.
+---
 
-```html
-<!-- Meta Pixel Code -->
-<script>
-!function(f,b,e,v,n,t,s)
-{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-n.queue=[];t=b.createElement(e);t.async=!0;
-t.src=v;s=b.getElementsByTagName(e)[0];
-s.parentNode.insertBefore(t,s)}(window, document,'script',
-'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '1231290262288040');
-fbq('track', 'PageView');
-</script>
-<noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=1231290262288040&ev=PageView&noscript=1"
-/></noscript>
-<!-- End Meta Pixel Code -->
-```
+## What Will Be Updated
 
-### Step 2: Create Meta Pixel Utility Hook
-Create a reusable hook `src/hooks/useMetaPixel.ts` to safely call Facebook Pixel events:
+### 1. Checkout Page
+Update the delivery time labels customers see when selecting their package.
 
-```typescript
-declare global {
-  interface Window {
-    fbq: (...args: unknown[]) => void;
-  }
-}
+### 2. Payment Success Page  
+Update the delivery time shown after purchase confirmation.
 
-export const useMetaPixel = () => {
-  const trackEvent = (eventName: string, params?: Record<string, unknown>) => {
-    if (typeof window !== 'undefined' && window.fbq) {
-      window.fbq('track', eventName, params);
-    }
-  };
+### 3. Order Processing Backend
+Update the calculation that determines when an order should be delivered.
 
-  return { trackEvent };
-};
-```
+### 4. Confirmation Emails
+Update the email templates to show the correct delivery tier labels.
 
-### Step 3: Add ViewContent Event on Song Creation
-Update `CreateSong.tsx` to track ViewContent when the user enters the song creation flow:
+### 5. FAQ Section
+Update the FAQ answer about delivery times to reflect the 48-hour standard.
 
-- Fire ViewContent once when the component mounts (user starts the process)
-- Include content category "Custom Song"
-
-### Step 4: Add AddToCart Event on "Continue to Checkout"
-Update `CreateSong.tsx` to fire AddToCart when clicking "Continue to Checkout" (Step 7):
-
-- Trigger when `currentStep === TOTAL_STEPS` and form is valid
-- Pass form data (non-PII where possible):
-  - `content_name`: recipient name
-  - `content_category`: occasion
-  - Note: Email/phone should be hashed for Advanced Matching (Meta handles this when passed correctly)
-
-### Step 5: Add InitiateCheckout Event on "Complete Payment"
-Update `Checkout.tsx` to fire InitiateCheckout when clicking "Complete Payment":
-
-- Include `value` (49 or 79 based on selected tier)
-- Include `currency: 'USD'`
-
-### Step 6: Add Purchase Event After Payment Success
-Update `PaymentSuccess.tsx` to fire Purchase after successful order processing:
-
-- Include `value` from order details
-- Include `currency: 'USD'`
-- Include `transaction_id` (order ID)
+### 6. Stripe Product Descriptions
+Update the product descriptions in Stripe to show accurate delivery windows.
 
 ---
 
@@ -94,31 +42,33 @@ Update `PaymentSuccess.tsx` to fire Purchase after successful order processing:
 
 ### Files to Modify
 
-1. **`index.html`** - Add Meta Pixel base script in `<head>`
+| File | Changes |
+|------|---------|
+| `src/pages/Checkout.tsx` | Change "24 hours" → "48 hours" for Standard, "3-hour" → "24-hour" for Priority |
+| `src/pages/PaymentSuccess.tsx` | Change "3 hours" → "24 hours" for Priority, "24 hours" → "48 hours" for Standard |
+| `supabase/functions/process-payment/index.ts` | Update delivery calculation: Priority = 24h, Standard = 48h |
+| `supabase/functions/create-order/index.ts` | Update delivery calculation to match |
+| `supabase/functions/send-order-confirmation/index.ts` | Change tier labels in email template |
+| `src/components/home/FAQSection.tsx` | Update FAQ answer to say "48 hours" |
 
-2. **`src/hooks/useMetaPixel.ts`** (new file) - Reusable pixel tracking hook
+### Stripe Product Updates
+The existing Stripe products need their descriptions updated:
+- **Standard Song**: "Custom personalized song with 24-hour delivery" → "48-hour delivery"
+- **Priority Song**: "Custom personalized song with 3-hour rush delivery" → "24-hour rush delivery"
 
-3. **`src/pages/CreateSong.tsx`** - Add:
-   - ViewContent on component mount
-   - AddToCart when submitting Step 7
+*Note: The prices themselves ($49 and $79) remain unchanged in Stripe.*
 
-4. **`src/pages/Checkout.tsx`** - Add:
-   - InitiateCheckout when clicking "Complete Payment"
+---
 
-5. **`src/pages/PaymentSuccess.tsx`** - Add:
-   - Purchase after successful order confirmation
+## Summary of Text Changes
 
-### Privacy & Security Considerations
+| Location | Current Text | New Text |
+|----------|-------------|----------|
+| Checkout (Standard) | "Typically within 24 hours" | "Typically within 48 hours" |
+| Checkout (Priority) | "3-hour rush production & delivery" | "24-hour rush delivery" |
+| Checkout (Priority bullet) | "3-hour rush delivery" | "24-hour rush delivery" |
+| PaymentSuccess | "3 hours" / "24 hours" | "24 hours" / "48 hours" |
+| Email Template | "Priority (3-hour)" / "Standard (24-hour)" | "Priority (24-hour)" / "Standard (48-hour)" |
+| FAQ | "within 24 hours" | "within 48 hours" |
+| Backend calculation | 3h / 24h | 24h / 48h |
 
-- **No plain-text PII logging**: Email and phone numbers will be passed through Meta's standard event parameters which handle hashing automatically
-- **Meta Advanced Matching**: When passing `em` (email) and `ph` (phone) parameters, Meta automatically hashes these values
-- **Form data**: Only non-sensitive data like occasion, genre, and recipient name will be passed in event parameters
-
-### Event Parameters Summary
-
-| Event | Parameters |
-|-------|------------|
-| ViewContent | `content_category: "Custom Song"` |
-| AddToCart | `content_name`, `content_category`, `value`, `currency` |
-| InitiateCheckout | `value`, `currency` |
-| Purchase | `value`, `currency`, `transaction_id` |
