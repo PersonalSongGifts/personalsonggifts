@@ -107,7 +107,7 @@ async function appendToSheet(
   spreadsheetId: string,
   values: string[]
 ): Promise<void> {
-  const range = "Sheet1!A:P"; // Columns A through P
+  const range = "Sheet1!A:O"; // Columns A through O (15 columns)
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
   const response = await fetch(url, {
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
     const jwt = await createGoogleJWT(serviceAccountEmail, privateKey);
     const accessToken = await getAccessToken(jwt);
 
-    // Build row data (16 columns as per plan)
+    // Build row data (15 columns - removed relationship)
     const rowValues = [
       orderData.orderId || "",
       orderData.createdAt || new Date().toISOString(),
@@ -173,7 +173,6 @@ Deno.serve(async (req) => {
       orderData.occasion || "",
       orderData.genre || "",
       orderData.singerPreference || "",
-      orderData.relationship || "",
       orderData.specialQualities || "",
       orderData.favoriteMemory || "",
       orderData.specialMessage || "",

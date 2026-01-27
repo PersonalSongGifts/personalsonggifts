@@ -19,13 +19,12 @@ export const step4Schema = z.object({
 });
 
 export const step5Schema = z.object({
-  relationship: z.string().trim().min(1, "Please tell us about your relationship").max(500, "Must be less than 500 characters"),
-  specialQualities: z.string().trim().min(1, "Please tell us what makes them special").max(500, "Must be less than 500 characters"),
-  favoriteMemory: z.string().trim().min(1, "Please share a favorite memory").max(500, "Must be less than 500 characters"),
+  specialQualities: z.string().trim().min(1, "Please tell us what makes them special").max(250, "Must be less than 250 characters"),
+  favoriteMemory: z.string().trim().min(1, "Please share a favorite memory").max(250, "Must be less than 250 characters"),
 });
 
 export const step6Schema = z.object({
-  specialMessage: z.string().max(500, "Must be less than 500 characters").optional(),
+  specialMessage: z.string().max(250, "Must be less than 250 characters").optional(),
 });
 
 export const step7Schema = z.object({

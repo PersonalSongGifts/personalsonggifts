@@ -25,10 +25,9 @@ export interface FormData {
   // Step 4: Music Style (no mood)
   genre: string;
   singerPreference: string;
-  // Step 5: Story (includes relationship)
+  // Step 5: Story
   specialQualities: string;
   favoriteMemory: string;
-  relationship: string;
   // Step 6: Final touches (simplified)
   specialMessage: string;
   // Step 7: Your details
@@ -47,7 +46,6 @@ const initialFormData: FormData = {
   singerPreference: "",
   specialQualities: "",
   favoriteMemory: "",
-  relationship: "",
   specialMessage: "",
   yourName: "",
   yourEmail: "",
