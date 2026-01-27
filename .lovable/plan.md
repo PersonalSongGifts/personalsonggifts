@@ -1,107 +1,124 @@
 
+# Meta Pixel Implementation Plan
 
-# Fix Step Numbers Position & Comprehensive Scroll-to-Top
+## Overview
+Install Facebook/Meta Pixel tracking on PersonalSongGifts.com to track the complete customer journey from browsing to purchase completion.
 
-## Issues Identified
+## Events to Track
 
-### Issue 1: Step Numbers on Right Side (Mobile)
-The step number badges (1, 2, 3) in the "How It Works" section are positioned on the right on mobile due to conflicting responsive classes.
+| Event | Trigger Location | Details |
+|-------|-----------------|---------|
+| **PageView** | All pages | Standard tracking on every page load |
+| **ViewContent** | `/create` page | When user starts/progresses through song creation |
+| **AddToCart** | Step 7 of `/create` | When "Continue to Checkout" is clicked |
+| **InitiateCheckout** | `/checkout` page | When "Complete Payment" is clicked |
+| **Purchase** | `/payment-success` page | After successful payment confirmation |
 
-**Root Cause (Line 44 of HowItWorks.tsx):**
-```tsx
-className="absolute -top-2 -right-2 md:right-auto md:-left-2 ..."
+## Implementation Steps
+
+### Step 1: Add Meta Pixel Base Script
+Add the Meta Pixel initialization code to `index.html` in the `<head>` section. This will automatically track PageView on every page load.
+
+```html
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1231290262288040');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1231290262288040&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
 ```
-- On mobile: `-right-2` places badge on the right
-- On desktop: `md:right-auto md:-left-2` overrides to left
 
-### Issue 2: Inconsistent Scroll-to-Top on CTAs
-The current `ScrollToTop` component only triggers on route changes (pathname). It doesn't cover:
-- Anchor links (e.g., `#samples`, `#how-it-works`)
-- Query parameter changes (e.g., `/create?occasion=wedding`)
+### Step 2: Create Meta Pixel Utility Hook
+Create a reusable hook `src/hooks/useMetaPixel.ts` to safely call Facebook Pixel events:
 
----
+```typescript
+declare global {
+  interface Window {
+    fbq: (...args: unknown[]) => void;
+  }
+}
 
-## Solution
+export const useMetaPixel = () => {
+  const trackEvent = (eventName: string, params?: Record<string, unknown>) => {
+    if (typeof window !== 'undefined' && window.fbq) {
+      window.fbq('track', eventName, params);
+    }
+  };
 
-### Fix 1: Step Numbers Position
-Update the badge positioning to always be on the left of the icon circle on all screen sizes.
-
-**File: `src/components/home/HowItWorks.tsx` (Line 44)**
-
-Change from:
-```tsx
-<span className="absolute -top-2 -right-2 md:right-auto md:-left-2 w-8 h-8 ...">
-```
-
-To:
-```tsx
-<span className="absolute -top-2 -left-2 w-8 h-8 ...">
-```
-
-This simple change ensures the badge is always positioned to the upper-left of the parent container on all devices.
-
-### Fix 2: Enhanced ScrollToTop Component
-Update the `ScrollToTop` component to also respond to search query changes (for occasion selections in OccasionsGrid) and ensure all route changes scroll to top.
-
-**File: `src/components/ScrollToTop.tsx`**
-
-```tsx
-import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
-
-export const ScrollToTop = () => {
-  const { pathname, search } = useLocation();
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  }, [pathname, search]);
-
-  return null;
+  return { trackEvent };
 };
 ```
 
-This ensures that clicking occasion cards (which navigate to `/create?occasion=X`) also triggers scroll-to-top.
+### Step 3: Add ViewContent Event on Song Creation
+Update `CreateSong.tsx` to track ViewContent when the user enters the song creation flow:
+
+- Fire ViewContent once when the component mounts (user starts the process)
+- Include content category "Custom Song"
+
+### Step 4: Add AddToCart Event on "Continue to Checkout"
+Update `CreateSong.tsx` to fire AddToCart when clicking "Continue to Checkout" (Step 7):
+
+- Trigger when `currentStep === TOTAL_STEPS` and form is valid
+- Pass form data (non-PII where possible):
+  - `content_name`: recipient name
+  - `content_category`: occasion
+  - Note: Email/phone should be hashed for Advanced Matching (Meta handles this when passed correctly)
+
+### Step 5: Add InitiateCheckout Event on "Complete Payment"
+Update `Checkout.tsx` to fire InitiateCheckout when clicking "Complete Payment":
+
+- Include `value` (49 or 79 based on selected tier)
+- Include `currency: 'USD'`
+
+### Step 6: Add Purchase Event After Payment Success
+Update `PaymentSuccess.tsx` to fire Purchase after successful order processing:
+
+- Include `value` from order details
+- Include `currency: 'USD'`
+- Include `transaction_id` (order ID)
 
 ---
 
 ## Technical Details
 
-### All CTA Buttons Already Covered
-The `ScrollToTop` component in `App.tsx` already handles all route-based navigation. Here's what's covered:
+### Files to Modify
 
-| Component | CTA Type | Scroll Coverage |
-|-----------|----------|-----------------|
-| Header | `Link to="/create"` | ✅ Covered by pathname change |
-| PromoBanner | `Link to="/create"` | ✅ Covered by pathname change |
-| HeroSection | `Link to="/create"` | ✅ Covered by pathname change |
-| HeroSection | `a href="#samples"` | ⚠️ Same-page anchor (smooth scroll) |
-| OccasionsGrid cards | `Link to="/create?occasion=X"` | ⚠️ Needs search param support |
-| OccasionsGrid CTA | `Link to="/create"` | ✅ Covered by pathname change |
-| Testimonials | `Link to="/create"` | ✅ Covered by pathname change |
-| SamplePlayer | `Link to="/create"` | ✅ Covered by pathname change |
-| HowItWorks | `Link to="/create"` | ✅ Covered by pathname change |
-| FAQSection | `Link to="/create"` | ✅ Covered by pathname change |
-| FinalCTA | `Link to="/create"` | ✅ Covered by pathname change |
+1. **`index.html`** - Add Meta Pixel base script in `<head>`
 
-### Form Step Transitions Already Fixed
-The `CreateSong.tsx` already has `behavior: "instant"` for:
-- `nextStep()` - Line 115
-- `prevStep()` - Line 127
+2. **`src/hooks/useMetaPixel.ts`** (new file) - Reusable pixel tracking hook
 
----
+3. **`src/pages/CreateSong.tsx`** - Add:
+   - ViewContent on component mount
+   - AddToCart when submitting Step 7
 
-## Files Changed
+4. **`src/pages/Checkout.tsx`** - Add:
+   - InitiateCheckout when clicking "Complete Payment"
 
-| File | Change |
-|------|--------|
-| `src/components/home/HowItWorks.tsx` | Fix badge position: `-left-2` instead of `-right-2` (1 line) |
-| `src/components/ScrollToTop.tsx` | Add `search` to dependency array for query param changes (2 lines) |
+5. **`src/pages/PaymentSuccess.tsx`** - Add:
+   - Purchase after successful order confirmation
 
----
+### Privacy & Security Considerations
 
-## Expected Result
-- Step numbers (1, 2, 3) will appear on the left of each icon on both mobile and desktop
-- All CTA buttons that navigate to new routes will scroll to top
-- Occasion card selections (`/create?occasion=X`) will scroll to top
-- Form step transitions will continue to scroll to top instantly
+- **No plain-text PII logging**: Email and phone numbers will be passed through Meta's standard event parameters which handle hashing automatically
+- **Meta Advanced Matching**: When passing `em` (email) and `ph` (phone) parameters, Meta automatically hashes these values
+- **Form data**: Only non-sensitive data like occasion, genre, and recipient name will be passed in event parameters
 
+### Event Parameters Summary
+
+| Event | Parameters |
+|-------|------------|
+| ViewContent | `content_category: "Custom Song"` |
+| AddToCart | `content_name`, `content_category`, `value`, `currency` |
+| InitiateCheckout | `value`, `currency` |
+| Purchase | `value`, `currency`, `transaction_id` |
