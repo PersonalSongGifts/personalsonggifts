@@ -15,7 +15,6 @@ interface OrderInput {
   occasion: string;
   genre: string;
   singerPreference: string;
-  relationship: string;
   specialQualities: string;
   favoriteMemory: string;
   specialMessage?: string;
@@ -70,20 +69,16 @@ function validateOrderInput(input: OrderInput): { valid: boolean; error?: string
     return { valid: false, error: "Singer preference is required" };
   }
   
-  if (!validateString(input.relationship, 200)) {
-    return { valid: false, error: "Relationship description is required" };
+  if (!validateString(input.specialQualities, 250)) {
+    return { valid: false, error: "Special qualities is required and must be less than 250 characters" };
   }
   
-  if (!validateString(input.specialQualities, 2000)) {
-    return { valid: false, error: "Special qualities is required and must be less than 2000 characters" };
+  if (!validateString(input.favoriteMemory, 250)) {
+    return { valid: false, error: "Favorite memory is required and must be less than 250 characters" };
   }
   
-  if (!validateString(input.favoriteMemory, 2000)) {
-    return { valid: false, error: "Favorite memory is required and must be less than 2000 characters" };
-  }
-  
-  if (!validateOptionalString(input.specialMessage, 2000)) {
-    return { valid: false, error: "Special message must be less than 2000 characters" };
+  if (!validateOptionalString(input.specialMessage, 250)) {
+    return { valid: false, error: "Special message must be less than 250 characters" };
   }
   
   if (!["standard", "priority"].includes(input.pricingTier)) {
@@ -152,7 +147,6 @@ Deno.serve(async (req) => {
         occasion: input.occasion,
         genre: input.genre,
         singer_preference: input.singerPreference,
-        relationship: input.relationship.trim(),
         special_qualities: input.specialQualities.trim(),
         favorite_memory: input.favoriteMemory.trim(),
         special_message: input.specialMessage?.trim() || null,

@@ -15,7 +15,6 @@ export interface OrderData {
   occasion: string;
   genre: string;
   singer_preference: string;
-  relationship: string;
   special_qualities: string;
   favorite_memory: string;
   special_message: string | null;
@@ -56,7 +55,6 @@ export async function createOrder(
         occasion: formData.occasion,
         genre: formData.genre,
         singerPreference: formData.singerPreference,
-        relationship: formData.relationship,
         specialQualities: formData.specialQualities,
         favoriteMemory: formData.favoriteMemory,
         specialMessage: formData.specialMessage || undefined,
@@ -91,7 +89,6 @@ export async function createOrder(
         occasion: formData.occasion,
         genre: formData.genre,
         singerPreference: formData.singerPreference,
-        relationship: formData.relationship,
         specialQualities: formData.specialQualities,
         favoriteMemory: formData.favoriteMemory,
         specialMessage: formData.specialMessage || "",

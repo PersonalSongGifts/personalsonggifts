@@ -26,16 +26,16 @@ const FinalTouchesStep = ({ formData, updateFormData, errors }: FinalTouchesStep
             Special message
           </Label>
         </div>
-        <Textarea
+      <Textarea
           id="specialMessage"
           value={formData.specialMessage}
           onChange={(e) => updateFormData({ specialMessage: e.target.value })}
           placeholder="e.g., 'Please mention our wedding dance' or 'Include a line about her love for sunflowers'..."
           className="text-lg min-h-[150px] resize-none"
-          maxLength={500}
+          maxLength={250}
         />
         <p className="text-sm text-muted-foreground text-right">
-          {formData.specialMessage.length}/500 characters
+          {formData.specialMessage.length}/250 characters
         </p>
       </div>
     </div>
