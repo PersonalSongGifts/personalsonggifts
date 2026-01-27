@@ -136,7 +136,7 @@ const Checkout = () => {
                   <h3 className="text-xl font-semibold text-foreground">Standard Song</h3>
                 <p className="text-muted-foreground flex items-center gap-1 mt-1">
                     <Clock className="h-4 w-4" />
-                    Typically within 24 hours
+                    Typically within 48 hours
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
@@ -185,7 +185,7 @@ const Checkout = () => {
                   <h3 className="text-xl font-semibold text-foreground">Priority Song</h3>
                 <p className="text-muted-foreground flex items-center gap-1 mt-1">
                     <Zap className="h-4 w-4" />
-                    3-hour rush production & delivery
+                    24-hour rush delivery
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
@@ -208,7 +208,7 @@ const Checkout = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" />
-                  3-hour rush delivery
+                  24-hour rush delivery
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" />

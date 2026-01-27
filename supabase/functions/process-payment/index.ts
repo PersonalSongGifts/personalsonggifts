@@ -9,11 +9,11 @@ const corsHeaders = {
 function calculateExpectedDelivery(tier: string): string {
   const now = new Date();
   if (tier === "priority") {
-    // 3 hours from now
-    return new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();
+    // 24 hours from now
+    return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
-  // 24 hours from now for standard
-  return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  // 48 hours from now for standard
+  return new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
 }
 
 Deno.serve(async (req) => {
