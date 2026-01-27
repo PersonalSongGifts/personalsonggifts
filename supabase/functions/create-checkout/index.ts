@@ -13,7 +13,6 @@ interface CheckoutInput {
     occasion: string;
     genre: string;
     singerPreference: string;
-    relationship: string;
     specialQualities: string;
     favoriteMemory: string;
     specialMessage?: string;
@@ -78,7 +77,6 @@ Deno.serve(async (req) => {
       occasion: formData.occasion,
       genre: formData.genre,
       singerPreference: formData.singerPreference,
-      relationship: formData.relationship.substring(0, 500),
       specialQualities: formData.specialQualities.substring(0, 500),
       favoriteMemory: formData.favoriteMemory.substring(0, 500),
       customerName: formData.yourName.substring(0, 500),
