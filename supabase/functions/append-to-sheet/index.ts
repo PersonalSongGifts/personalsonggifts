@@ -144,11 +144,31 @@ Deno.serve(async (req) => {
 
     // Get secrets
     const serviceAccountEmail = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
-    const privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY");
+    let privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY") || "";
     const spreadsheetId = Deno.env.get("GOOGLE_SPREADSHEET_ID");
 
+    console.log("Private key starts with:", privateKey.substring(0, 50));
+    console.log("Private key length:", privateKey.length);
+
+    // Handle case where full JSON credentials file was pasted instead of just the private key
+    if (privateKey.trim().startsWith("{")) {
+      try {
+        const credentials = JSON.parse(privateKey);
+        privateKey = credentials.private_key || "";
+        console.log("Extracted private_key from JSON credentials, length:", privateKey.length);
+      } catch (e) {
+        console.error("Failed to parse GOOGLE_PRIVATE_KEY as JSON:", e);
+      }
+    }
+
+    // Normalize escaped newlines to actual newlines (important for PEM parsing)
+    privateKey = privateKey.replace(/\\n/g, "\n");
+    
+    console.log("After normalization, key starts with:", privateKey.substring(0, 30));
+    console.log("Key contains BEGIN marker:", privateKey.includes("-----BEGIN PRIVATE KEY-----"));
+
     if (!serviceAccountEmail || !privateKey || !spreadsheetId) {
-      console.error("Missing Google Sheets credentials");
+      console.error("Missing Google Sheets credentials - email:", !!serviceAccountEmail, "key:", !!privateKey, "spreadsheet:", !!spreadsheetId);
       return new Response(
         JSON.stringify({ error: "Google Sheets not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
