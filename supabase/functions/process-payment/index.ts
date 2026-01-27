@@ -171,6 +171,7 @@ Deno.serve(async (req) => {
             customerName: metadata.customerName || "",
             customerEmail: newOrder.customer_email,
             customerPhone: metadata.customerPhone || "",
+            recipientType: metadata.recipientType || "",
             recipientName: newOrder.recipient_name,
             occasion: newOrder.occasion,
             genre: newOrder.genre,
@@ -178,6 +179,7 @@ Deno.serve(async (req) => {
             specialQualities: metadata.specialQualities || "",
             favoriteMemory: metadata.favoriteMemory || "",
             specialMessage: metadata.specialMessage || "",
+            deviceType: "Web",
           }),
         });
         console.log(`Order ${newOrder.id} synced to Zapier`);
