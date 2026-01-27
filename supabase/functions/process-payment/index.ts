@@ -167,6 +167,7 @@ Deno.serve(async (req) => {
             status: "paid",
             pricingTier: newOrder.pricing_tier,
             price: price,
+            expectedDelivery: newOrder.expected_delivery,
             customerName: metadata.customerName || "",
             customerEmail: newOrder.customer_email,
             customerPhone: metadata.customerPhone || "",
