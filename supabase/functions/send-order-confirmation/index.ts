@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const tierLabel = pricingTier === "priority" ? "Priority (3-hour)" : "Standard (24-hour)";
+    const tierLabel = pricingTier === "priority" ? "Priority (24-hour)" : "Standard (48-hour)";
     const deliveryDate = new Date(expectedDelivery).toLocaleString("en-US", {
       weekday: "long",
       year: "numeric",

@@ -119,7 +119,7 @@ const PaymentSuccess = () => {
     return null;
   }
 
-  const deliveryTime = orderDetails.pricingTier === "priority" ? "3 hours" : "24 hours";
+  const deliveryTime = orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
   const expectedDate = new Date(orderDetails.expectedDelivery);
 
   return (
