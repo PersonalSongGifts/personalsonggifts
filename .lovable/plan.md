@@ -1,67 +1,82 @@
 
-# Fix Google Sheets Integration
+# Switch to Zapier for Google Sheets Sync
 
-## The Problem
-The `GOOGLE_PRIVATE_KEY` secret contains the full Google credentials JSON file, but the code expects only the `private_key` value (the PEM string).
+## Overview
+Replace the Google Sheets API integration with a simple Zapier webhook. Zapier handles all Google authentication for you - no more private key issues!
 
-## Solution Options
-
-### Option A: Update the Secret (Simpler)
-You would re-save the `GOOGLE_PRIVATE_KEY` secret with **only** the private key portion:
-1. Open your Google credentials JSON file
-2. Find the `private_key` field
-3. Copy just that value (starts with `-----BEGIN PRIVATE KEY-----` and ends with `-----END PRIVATE KEY-----\n`)
-4. Update the secret with this value
-
-### Option B: Update the Code (What I Recommend)
-Modify the `append-to-sheet` edge function to handle both formats - if it detects a JSON object, it will extract the `private_key` field automatically. This is more robust and won't require changing the secret.
-
----
-
-## Implementation (Option B)
-
-### File: supabase/functions/append-to-sheet/index.ts
-
-Add logic at the start of the function to parse the private key from JSON if needed:
+## How It Works
 
 ```text
-Before getting the private key:
-  const privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY");
-
-After (smarter parsing):
-  let privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY") || "";
-  
-  // Handle case where full JSON was pasted instead of just the key
-  if (privateKey.startsWith("{")) {
-    try {
-      const credentials = JSON.parse(privateKey);
-      privateKey = credentials.private_key || "";
-    } catch {
-      // Not valid JSON, use as-is
-    }
-  }
+Payment Completed → Zapier Webhook → Google Sheet Row Created
 ```
-
-This change means:
-- If you paste just the private key → works
-- If you paste the full JSON → works (extracts the key automatically)
 
 ---
 
-## Technical Details
+## Step 1: Create Your Zap (You Do This)
 
-**Changes to `supabase/functions/append-to-sheet/index.ts`:**
-1. After getting `GOOGLE_PRIVATE_KEY` from environment, check if it starts with `{`
-2. If so, parse it as JSON and extract the `private_key` field
-3. Continue with the existing logic
+1. Go to **zapier.com** and create a new Zap
+2. **Trigger**: Search for "Webhooks by Zapier" → Select "Catch Hook"
+3. Click Continue → **Copy the webhook URL** (starts with `https://hooks.zapier.com/hooks/catch/...`)
+4. **Action**: Search for "Google Sheets" → Select "Create Spreadsheet Row"
+5. Connect your Google account when prompted
+6. Select your spreadsheet and worksheet
+7. Map the fields (I'll list them below)
 
-**Testing:**
-After deployment, I'll call the function directly to verify it works with your existing secret.
+---
+
+## Step 2: Add the Webhook Secret (I'll Prompt You)
+
+I'll ask you to add a new secret called `ZAPIER_WEBHOOK_URL` with the URL from step 1.
+
+---
+
+## Step 3: Update the Payment Function (I'll Do This)
+
+Modify `supabase/functions/process-payment/index.ts` to:
+- Remove the call to `append-to-sheet`
+- Add a direct call to your Zapier webhook
+- Send all order data in the request
+
+---
+
+## Fields Zapier Will Receive
+
+When mapping in Zapier, you'll see these fields:
+
+| Field | Description |
+|-------|-------------|
+| `orderId` | Unique order ID |
+| `createdAt` | Order timestamp |
+| `status` | Always "paid" |
+| `pricingTier` | "standard" or "priority" |
+| `price` | 49 or 79 |
+| `customerName` | Buyer's name |
+| `customerEmail` | Buyer's email |
+| `customerPhone` | Buyer's phone (optional) |
+| `recipientName` | Who the song is for |
+| `occasion` | Birthday, Wedding, etc. |
+| `genre` | Pop, Country, etc. |
+| `singerPreference` | Male, Female, etc. |
+| `specialQualities` | What makes them special |
+| `favoriteMemory` | Their favorite memory |
+| `specialMessage` | Optional message to include |
+
+---
+
+## Why This Is Better
+
+| Before (Google API) | After (Zapier) |
+|---------------------|----------------|
+| Complex service account setup | Just paste a URL |
+| Private key formatting issues | No authentication needed |
+| Hard to debug | See every request in Zapier |
+| Only Google Sheets | Can add Slack, email, etc. |
 
 ---
 
 ## Summary
-- One file to update: `supabase/functions/append-to-sheet/index.ts`
-- Add ~10 lines of JSON parsing logic
-- No need to change your existing secret
-- Future-proof for either format
+
+1. **You create** a Zap with webhook trigger → Google Sheets action
+2. **You add** the `ZAPIER_WEBHOOK_URL` secret
+3. **I update** the `process-payment` function to call Zapier
+4. **Test** with a real order and watch it appear in your sheet!
