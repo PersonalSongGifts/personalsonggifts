@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Check, Clock, Mail, Music, Loader2, AlertCircle } from "lucide-react";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
+import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 
 interface OrderDetails {
   orderId: string;
@@ -19,7 +20,8 @@ interface OrderDetails {
 const PaymentSuccess = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("session_id");
-  const { trackEvent } = useMetaPixel();
+  const { trackEvent: trackMetaEvent } = useMetaPixel();
+  const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const hasTrackedPurchase = useRef(false);
   
   const [loading, setLoading] = useState(true);
@@ -55,14 +57,30 @@ const PaymentSuccess = () => {
         const data = await response.json();
         setOrderDetails(data);
         
-        // Fire Purchase event after successful order processing
+        // Fire Purchase events after successful order processing
         if (!hasTrackedPurchase.current && data) {
           const purchaseValue = data.pricingTier === "priority" ? 79 : 49;
-          trackEvent('Purchase', {
+          
+          // Meta Pixel Purchase
+          trackMetaEvent('Purchase', {
             value: purchaseValue,
             currency: 'USD',
             transaction_id: data.orderId,
           });
+          
+          // Google Analytics Purchase
+          trackGAEvent('purchase', {
+            transaction_id: data.orderId,
+            value: purchaseValue,
+            currency: 'USD',
+            items: [{
+              item_name: `${data.pricingTier === "priority" ? "Priority" : "Standard"} Song for ${data.recipientName}`,
+              item_category: data.occasion,
+              price: purchaseValue,
+              quantity: 1,
+            }],
+          });
+          
           hasTrackedPurchase.current = true;
         }
       } catch (err) {

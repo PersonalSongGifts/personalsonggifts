@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { validateStep } from "@/lib/songFormValidation";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
+import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 
 // Form step components
 import RecipientStep from "@/components/create/RecipientStep";
@@ -69,7 +70,8 @@ const CreateSong = () => {
   // Song creation multi-step form
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { trackEvent } = useMetaPixel();
+  const { trackEvent: trackMetaEvent } = useMetaPixel();
+  const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const hasTrackedViewContent = useRef(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(() => {
@@ -85,12 +87,17 @@ const CreateSong = () => {
   // Track ViewContent once when user starts song creation
   useEffect(() => {
     if (!hasTrackedViewContent.current) {
-      trackEvent('ViewContent', {
+      // Meta Pixel
+      trackMetaEvent('ViewContent', {
+        content_category: 'Custom Song',
+      });
+      // Google Analytics
+      trackGAEvent('song_creation_start', {
         content_category: 'Custom Song',
       });
       hasTrackedViewContent.current = true;
     }
-  }, [trackEvent]);
+  }, [trackMetaEvent, trackGAEvent]);
 
   const progress = (currentStep / TOTAL_STEPS) * 100;
 
@@ -125,14 +132,26 @@ const CreateSong = () => {
       setCurrentStep((prev) => prev + 1);
       window.scrollTo({ top: 0, behavior: "instant" });
     } else {
-      // Fire AddToCart event with user data for Advanced Matching
-      trackEvent('AddToCart', {
+      // Fire AddToCart event with user data for Advanced Matching (Meta Pixel)
+      trackMetaEvent('AddToCart', {
         content_name: formData.recipientName,
         content_category: formData.occasion,
         value: 49, // Base price
         currency: 'USD',
         em: formData.yourEmail, // Meta will hash this
         ph: formData.phoneNumber || undefined, // Meta will hash this
+      });
+      
+      // Fire add_to_cart event (Google Analytics)
+      trackGAEvent('add_to_cart', {
+        currency: 'USD',
+        value: 49,
+        items: [{
+          item_name: `Custom Song for ${formData.recipientName}`,
+          item_category: formData.occasion,
+          price: 49,
+          quantity: 1,
+        }],
       });
       
       // Submit form - go to checkout
