@@ -1,125 +1,38 @@
 
+# Fix: Admin Dashboard Access - CORS Header Issue
 
-# Order Confirmation Email Update
+## Problem Identified
+The admin dashboard cannot access the `admin-orders` edge function because the custom `x-admin-password` header is **not included in the CORS allowed headers**.
 
-## Overview
-Update the order confirmation email to match brand colors (navy & cream) and simplify the delivery display to show just the date without specific time.
+When your browser sends a request with a custom header like `x-admin-password`, it first sends a "preflight" OPTIONS request to check if that header is allowed. The edge function responds saying only these headers are permitted:
+- `authorization`
+- `x-client-info`
+- `apikey`
+- `content-type`
 
-## Changes
+Since `x-admin-password` isn't in that list, the browser blocks the request entirely.
 
-### 1. Simplified Delivery Date Display
-Instead of showing a precise time like "Wednesday, January 29, 2026 at 6:25 PM UTC", display:
+## Solution
+Add `x-admin-password` to the CORS allowed headers in the edge function.
 
-**Standard orders**: "by Wednesday, January 29, 2026"
-**Priority orders**: "by Tuesday, January 28, 2026"
+## Changes Required
 
-This is cleaner and avoids timezone confusion entirely.
+**File:** `supabase/functions/admin-orders/index.ts`
 
-### 2. Brand Color Updates
-
-| Element | Current | Updated |
-|---------|---------|---------|
-| Header background | Brown `#8B4513` | Navy gradient `#1E3A5F` to `#2C4A6E` |
-| Header text | Beige `#F5F5DC` | Cream `#FDF8F3` |
-| Body background | `#FFFEF9` | Cream `#FFFBF5` |
-| Order details border | Gold `#C9A86C` | Navy `#1E3A5F` |
-| Section header text | Brown `#8B4513` | Navy `#1E3A5F` |
-| Delivery box background | Green `#E8F5E8` | Soft blue `#EEF3F8` |
-| Delivery box text | Green `#2E7D32` | Navy `#1E3A5F` |
-| Footer signature | Brown `#8B4513` | Navy `#1E3A5F` |
-
-### 3. Updated Email Preview
-
-The email will look like:
-
-```text
-┌─────────────────────────────────────────────┐
-│     🎵 Order Confirmed!                     │  ← Navy header
-│     (navy gradient background)              │
-├─────────────────────────────────────────────┤
-│                                             │
-│  Dear Sarah,                                │
-│                                             │
-│  Thank you for your order! We're thrilled   │
-│  to create a personalized song for John...  │
-│                                             │
-│  ┌─────────────────────────────────────┐   │
-│  │ Order Details              (navy)   │   │
-│  │ Order ID: A1B2C3D4                  │   │
-│  │ For: John                           │   │
-│  │ Occasion: Anniversary               │   │
-│  │ Genre: Country                      │   │
-│  │ Delivery: Standard (48-hour)        │   │
-│  └─────────────────────────────────────┘   │
-│                                             │
-│  ┌─────────────────────────────────────┐   │
-│  │      Expected Delivery:             │   │  ← Soft blue box
-│  │      by Wednesday, January 29, 2026 │   │
-│  └─────────────────────────────────────┘   │
-│                                             │
-│  We'll email you as soon as your song      │
-│  is ready...                               │
-│                                             │
-│  With love,                                │
-│  The Personal Song Gifts Team 🎶           │  ← Navy text
-│                                             │
-└─────────────────────────────────────────────┘
-```
-
----
-
-## Technical Details
-
-**File**: `supabase/functions/send-order-confirmation/index.ts`
-
-### Date Formatting Change
-Replace the current date formatter (lines 50-58):
-
+Update line 5 from:
 ```typescript
-// Current - shows full time
-const deliveryDate = new Date(expectedDelivery).toLocaleString("en-US", {
-  weekday: "long",
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  timeZoneName: "short",
-});
-
-// New - date only, cleaner format
-const deliveryDate = new Date(expectedDelivery).toLocaleDateString("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-  timeZone: "America/New_York",  // Ensures consistent date regardless of server timezone
-});
+"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 ```
 
-### HTML Color Updates
-Update all color values in the email template:
-- Header gradient: `linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%)`
-- Header text: `#FDF8F3`
-- Body background: `#FFFBF5`
-- Order details border: `#1E3A5F`
-- Order details header: `#1E3A5F`
-- Delivery box background: `#EEF3F8`
-- Delivery box text: `#1E3A5F`
-- Signature: `#1E3A5F`
-
-### Updated Delivery Display
-Change the delivery box text format to say "by [date]":
-```html
-<strong>Expected Delivery:</strong><br>
-<span style="font-size: 16px;">by ${deliveryDate}</span>
+To:
+```typescript
+"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password",
 ```
-
----
 
 ## Result
-After this update, the confirmation email will:
-- Match your navy/cream brand aesthetic
-- Show a clean, simple delivery date without confusing timezone information
-- Look professional and consistent with the website design
+After this one-line fix, the admin dashboard will be able to authenticate and access orders properly.
 
+## Verification Steps
+1. Navigate to `/admin` on the published site
+2. Enter the admin password
+3. Confirm orders load successfully
