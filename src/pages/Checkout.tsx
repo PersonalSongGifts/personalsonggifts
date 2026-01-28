@@ -16,6 +16,7 @@ import {
 import { FormData } from "@/pages/CreateSong";
 import { useToast } from "@/hooks/use-toast";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
+import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 
 type PricingTier = "standard" | "priority";
 
@@ -23,7 +24,8 @@ const Checkout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { trackEvent } = useMetaPixel();
+  const { trackEvent: trackMetaEvent } = useMetaPixel();
+  const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const formData = location.state?.formData as FormData | undefined;
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,11 +54,23 @@ const Checkout = () => {
     
     setIsSubmitting(true);
     
-    // Fire InitiateCheckout event
+    // Fire InitiateCheckout event (Meta Pixel)
     const checkoutValue = selectedTier === "priority" ? 79 : 49;
-    trackEvent('InitiateCheckout', {
+    trackMetaEvent('InitiateCheckout', {
       value: checkoutValue,
       currency: 'USD',
+    });
+    
+    // Fire begin_checkout event (Google Analytics)
+    trackGAEvent('begin_checkout', {
+      currency: 'USD',
+      value: checkoutValue,
+      items: [{
+        item_name: `${selectedTier === "priority" ? "Priority" : "Standard"} Song`,
+        item_category: formData?.occasion,
+        price: checkoutValue,
+        quantity: 1,
+      }],
     });
     
     try {
