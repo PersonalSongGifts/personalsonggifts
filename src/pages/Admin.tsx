@@ -10,13 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail } from "lucide-react";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
 import { StatusChart } from "@/components/admin/StatusChart";
 import { GenreChart } from "@/components/admin/GenreChart";
 import { LeadsTable, Lead } from "@/components/admin/LeadsTable";
+import { EmailTemplates } from "@/components/admin/EmailTemplates";
 
 interface Order {
   id: string;
@@ -264,7 +265,7 @@ export default function Admin() {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-lg grid-cols-4">
             <TabsTrigger value="analytics" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Analytics
@@ -276,6 +277,10 @@ export default function Admin() {
             <TabsTrigger value="leads" className="gap-2">
               <Users className="h-4 w-4" />
               Leads
+            </TabsTrigger>
+            <TabsTrigger value="emails" className="gap-2">
+              <Mail className="h-4 w-4" />
+              Emails
             </TabsTrigger>
           </TabsList>
 
@@ -392,6 +397,10 @@ export default function Admin() {
 
           <TabsContent value="leads" className="space-y-6">
             <LeadsTable leads={leads} loading={loading} sort={leadSort} onSortChange={setLeadSort} />
+          </TabsContent>
+
+          <TabsContent value="emails" className="space-y-6">
+            <EmailTemplates />
           </TabsContent>
         </Tabs>
       </main>
