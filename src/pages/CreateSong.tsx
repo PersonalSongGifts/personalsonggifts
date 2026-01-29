@@ -118,6 +118,15 @@ const CreateSong = () => {
 
   const captureLeadAsync = async (data: FormData) => {
     try {
+      // Detect device type
+      const width = window.innerWidth;
+      let deviceType = "desktop";
+      if (width < 768) {
+        deviceType = "mobile";
+      } else if (width < 1024) {
+        deviceType = "tablet";
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-lead`,
         {
@@ -138,6 +147,7 @@ const CreateSong = () => {
             specialQualities: data.specialQualities,
             favoriteMemory: data.favoriteMemory,
             specialMessage: data.specialMessage || undefined,
+            deviceType,
           }),
         }
       );
