@@ -105,10 +105,10 @@ Deno.serve(async (req) => {
         const { data: orders, error } = await query;
         if (error) throw error;
 
-        // Also fetch leads for stats
+        // Also fetch full leads data
         const { data: leads, error: leadsError } = await supabase
           .from("leads")
-          .select("id, status, captured_at")
+          .select("*")
           .order("captured_at", { ascending: false });
 
         if (leadsError) {
