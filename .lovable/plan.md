@@ -1,143 +1,60 @@
 
-
-# Lead Capture System - Keeping Leads & Orders Separate
+# Email Template Preview Page
 
 ## Overview
-We'll create a **completely separate system** for leads that has no overlap with orders. This makes it crystal clear:
-- **Leads table** = People who filled in step 7 (potential customers)
-- **Orders table** = People who paid (actual customers)
+Add a new "Emails" tab to the Admin Dashboard that displays visual previews of both email templates using sample data. This will let you see exactly what customers receive without needing to edit HTML code.
 
-## How They Stay Separate
+## What You Will See
 
-```text
-┌────────────────────────────────┐     ┌─────────────────────────────────┐
-│          LEADS TABLE           │     │          ORDERS TABLE           │
-│  (Marketing / Retargeting)     │     │   (Fulfillment / Delivery)      │
-├────────────────────────────────┤     ├─────────────────────────────────┤
-│  • email                       │     │  • customer_email               │
-│  • phone                       │     │  • customer_phone               │
-│  • name                        │     │  • customer_name                │
-│  • song preferences            │     │  • song preferences             │
-│  • status: lead | converted    │     │  • status: paid | in_progress   │
-│  • captured_at                 │     │  • pricing_tier                 │
-│  • converted_at (if paid)      │     │  • price                        │
-│                                │     │  • song_url                     │
-│                                │     │  • delivered_at                 │
-└────────────────────────────────┘     └─────────────────────────────────┘
-         ↑                                       ↑
-         │                                       │
-   Step 7 completion                      Payment success
-```
+### New Tab in Admin Dashboard
+A fourth tab called "Emails" will appear alongside Analytics, Orders, and Leads.
 
-## Key Difference: Status Field
+### Two Email Previews
+1. **Order Confirmation Email** - What customers see after payment
+   - Navy gradient header with "Order Confirmed!" message
+   - Order details table (Order ID, recipient, occasion, genre, delivery tier)
+   - Expected delivery date
+   - Cream/warm background styling
 
-**In the Leads table:**
-- `lead` = Captured their info, haven't paid yet
-- `converted` = They went on to pay (you can cross-reference with orders)
+2. **Song Delivery Email** - What customers see when their song is ready
+   - Green gradient header with "Your Song is Ready!" message
+   - "Listen to Your Song" button
+   - Tips for sharing section
+   - Order ID reference
 
-**In the Orders table (existing):**
-- `paid`, `in_progress`, `completed`, `delivered`, `cancelled`
+### Sample Data Display
+Each preview will be populated with realistic sample data:
+- Customer: "Sarah Johnson"
+- Recipient: "Mom"
+- Occasion: "Mother's Day"
+- Genre: "Acoustic Pop"
+- Order ID: "ABC12345"
+- Song URL: (sample link for delivery email)
 
-These are completely separate workflows. The leads table is purely for marketing purposes.
+### Layout
+- Side-by-side previews on desktop (two cards)
+- Stacked on mobile
+- Each email renders in an iframe to show exact email appearance
+- Labels above each preview identifying the email type
 
 ---
 
-## Admin Dashboard: Separate Tabs
+## Technical Details
 
-The admin dashboard will have **three tabs**:
-1. **Analytics** - Charts and stats (existing)
-2. **Orders** - Paid orders for fulfillment (existing)
-3. **Leads** - New tab for marketing leads
+### New Component
+Create `src/components/admin/EmailTemplates.tsx` containing:
+- The exact HTML templates from the Edge Functions
+- Sample data injection
+- Responsive card layout with iframe previews
 
-The Leads tab will show:
-- All captured leads with their status
-- Filter by `lead` (unconverted) vs `converted` 
-- Export to CSV for email marketing
-- Stats like "Conversion Rate" (leads → orders)
+### Admin Page Updates
+Modify `src/pages/Admin.tsx` to:
+- Import the new EmailTemplates component
+- Add a fourth tab trigger ("Emails" with Mail icon)
+- Add TabsContent for the email templates view
 
----
-
-## Technical Implementation
-
-### 1. New Database Table: `leads`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | uuid | Unique ID |
-| `email` | text | Their email (required) |
-| `phone` | text | Phone number (optional) |
-| `customer_name` | text | Their name |
-| `recipient_name` | text | Who the song is for |
-| `recipient_type` | text | Relationship type |
-| `occasion` | text | Birthday, anniversary, etc. |
-| `genre` | text | Music style |
-| `singer_preference` | text | Male/female vocalist |
-| `special_qualities` | text | What makes recipient special |
-| `favorite_memory` | text | Memory they shared |
-| `special_message` | text | Optional message |
-| `status` | text | `lead` or `converted` |
-| `captured_at` | timestamp | When step 7 was completed |
-| `converted_at` | timestamp | When they paid (null if not) |
-| `order_id` | uuid | Reference to order (null if not converted) |
-
-### 2. New Edge Function: `capture-lead`
-
-When the user completes step 7 and clicks "Continue to Checkout":
-- Capture all their form data
-- Save to leads table with status = "lead"
-- This happens instantly (fire-and-forget, doesn't slow them down)
-
-### 3. Update `process-payment` Edge Function
-
-After successful payment:
-- Find the lead by email
-- Update status from `lead` → `converted`
-- Set `converted_at` timestamp
-- Link to the order via `order_id`
-
-### 4. Update Admin Dashboard
-
-Add a new "Leads" tab with:
-- List of all leads
-- Filter: All / Unconverted / Converted
-- Conversion stats
-- Export button for email marketing
-
-### 5. Create `admin-leads` Edge Function
-
-Similar to `admin-orders`, but for leads:
-- Password protected
-- GET: Fetch leads with filters
-- Supports CSV export
-
----
-
-## Files to Create
-
-| File | Purpose |
-|------|---------|
-| Database migration | Create `leads` table with RLS |
-| `supabase/functions/capture-lead/index.ts` | Save lead when step 7 completes |
-| `supabase/functions/admin-leads/index.ts` | Admin access to leads |
-
-## Files to Modify
-
-| File | Change |
+### Files to Create/Modify
+| File | Action |
 |------|--------|
-| `src/pages/CreateSong.tsx` | Call capture-lead after step 7 validation |
-| `supabase/functions/process-payment/index.ts` | Update lead status to converted |
-| `src/pages/Admin.tsx` | Add Leads tab |
-
----
-
-## Accessing Leads
-
-After implementation, you can view all leads at:
-- **Admin Dashboard** → "Leads" tab → Filter by status
-- **Export** → Download CSV for importing into your email marketing tool
-
-You'll easily see:
-- **Total leads captured**
-- **Conversion rate** (leads who became orders)
-- **Unconverted leads** (people to retarget)
-
+| `src/components/admin/EmailTemplates.tsx` | Create new component |
+| `src/pages/Admin.tsx` | Add Emails tab |
