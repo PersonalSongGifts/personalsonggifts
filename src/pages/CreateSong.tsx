@@ -116,6 +116,42 @@ const CreateSong = () => {
     }
   };
 
+  const captureLeadAsync = async (data: FormData) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-lead`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            email: data.yourEmail,
+            phone: data.phoneNumber || undefined,
+            customerName: data.yourName,
+            recipientName: data.recipientName,
+            recipientType: data.recipientType,
+            occasion: data.occasion,
+            genre: data.genre,
+            singerPreference: data.singerPreference,
+            specialQualities: data.specialQualities,
+            favoriteMemory: data.favoriteMemory,
+            specialMessage: data.specialMessage || undefined,
+          }),
+        }
+      );
+      if (!response.ok) {
+        console.error("Lead capture failed:", await response.text());
+      } else {
+        console.log("Lead captured successfully");
+      }
+    } catch (err) {
+      // Fire-and-forget - don't block checkout
+      console.error("Lead capture error:", err);
+    }
+  };
+
   const nextStep = () => {
     setHasAttemptedContinue(true);
     const stepErrors = validateStep(currentStep, formData);
@@ -132,6 +168,9 @@ const CreateSong = () => {
       setCurrentStep((prev) => prev + 1);
       window.scrollTo({ top: 0, behavior: "instant" });
     } else {
+      // Capture lead (fire-and-forget, doesn't block checkout)
+      captureLeadAsync(formData);
+
       // Fire AddToCart event with user data for Advanced Matching (Meta Pixel)
       trackMetaEvent('AddToCart', {
         content_name: formData.recipientName,

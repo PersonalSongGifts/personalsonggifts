@@ -59,11 +59,18 @@ const statusIcons: Record<string, React.ReactNode> = {
   cancelled: <AlertCircle className="h-3 w-3" />,
 };
 
+interface Lead {
+  id: string;
+  status: string;
+  captured_at: string;
+}
+
 export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [allOrders, setAllOrders] = useState<Order[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -96,6 +103,7 @@ export default function Admin() {
       setIsAuthenticated(true);
       setOrders(data.orders || []);
       setAllOrders(data.orders || []);
+      setLeads(data.leads || []);
     } catch (err: unknown) {
       // Surface actual error type to help debugging (no secrets included)
       // eslint-disable-next-line no-console
@@ -132,6 +140,7 @@ export default function Admin() {
       setOrders(data.orders || []);
       if (statusFilter === "all") {
         setAllOrders(data.orders || []);
+        setLeads(data.leads || []);
       }
     } catch {
       toast({
@@ -268,7 +277,7 @@ export default function Admin() {
           </TabsList>
 
           <TabsContent value="analytics" className="space-y-6">
-            <StatsCards orders={allOrders} />
+            <StatsCards orders={allOrders} leads={leads} />
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <RevenueChart orders={allOrders} />
