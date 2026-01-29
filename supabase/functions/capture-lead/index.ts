@@ -5,6 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const LEAD_ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25040439/ult7k26/";
+
 interface LeadInput {
   email: string;
   phone?: string;
@@ -17,6 +19,7 @@ interface LeadInput {
   specialQualities: string;
   favoriteMemory: string;
   specialMessage?: string;
+  deviceType?: string;
 }
 
 function validateEmail(email: string): boolean {
@@ -66,6 +69,42 @@ function validateLeadInput(input: LeadInput): { valid: boolean; error?: string }
   }
   
   return { valid: true };
+}
+
+async function triggerLeadZapierWebhook(input: LeadInput): Promise<void> {
+  try {
+    const payload = {
+      lead_name: input.customerName.trim(),
+      lead_email: input.email.trim().toLowerCase(),
+      lead_phone: input.phone?.trim() || "",
+      recipient_type: input.recipientType,
+      recipient_name: input.recipientName.trim(),
+      occasion: input.occasion,
+      genre: input.genre,
+      singer_preference: input.singerPreference,
+      relationship: input.recipientType, // Same as recipient_type
+      special_qualities: input.specialQualities.trim(),
+      favorite_memory: input.favoriteMemory.trim(),
+      special_message: input.specialMessage?.trim() || "",
+      device_type: input.deviceType || "unknown",
+      captured_at: new Date().toISOString(),
+    };
+
+    const response = await fetch(LEAD_ZAPIER_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.error("Zapier webhook failed:", response.status, await response.text());
+    } else {
+      console.log("Zapier lead webhook triggered successfully");
+    }
+  } catch (error) {
+    // Fire-and-forget - don't fail lead capture if webhook fails
+    console.error("Zapier webhook error:", error);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -142,6 +181,9 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Trigger Zapier webhook for updated lead
+      triggerLeadZapierWebhook(input);
+
       console.log("Lead updated:", normalizedEmail);
       return new Response(
         JSON.stringify({ success: true, leadId: existingLead.id }),
@@ -176,6 +218,9 @@ Deno.serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Trigger Zapier webhook for new lead
+    triggerLeadZapierWebhook(input);
 
     console.log("Lead captured:", normalizedEmail);
     return new Response(
