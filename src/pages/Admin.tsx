@@ -327,7 +327,7 @@ export default function Admin() {
                         <div className="space-y-2 flex-1">
                           <div className="flex items-center gap-3 flex-wrap">
                             <h3 className="font-semibold text-lg">
-                              Song for {order.recipient_name}
+                              {order.customer_name}
                             </h3>
                             <Badge className={statusColors[order.status] || "bg-gray-100 text-gray-800"}>
                               <span className="mr-1">{statusIcons[order.status]}</span>
@@ -338,18 +338,18 @@ export default function Admin() {
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            <strong>From:</strong> {order.customer_name} ({order.customer_email})
+                            <strong>Song for:</strong> {order.recipient_name} ({order.recipient_type})
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            <strong>Occasion:</strong> {order.occasion} • <strong>Genre:</strong> {order.genre}
+                            <strong>Order ID:</strong> {order.id.slice(0, 8).toUpperCase()}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            <strong>Created:</strong>{" "}
+                            <strong>Order Date/Time:</strong>{" "}
                             {new Date(order.created_at).toLocaleString()}
                           </p>
                           {order.expected_delivery && (
                             <p className="text-sm text-muted-foreground">
-                              <strong>Expected:</strong>{" "}
+                              <strong>Expected Delivery:</strong>{" "}
                               {new Date(order.expected_delivery).toLocaleString()}
                             </p>
                           )}

@@ -29,6 +29,15 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
   }, 0);
 
   const totalOrders = orders.length;
+  
+  // Orders today
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const ordersToday = orders.filter((o) => {
+    const orderDate = new Date(o.created_at);
+    return orderDate >= today;
+  }).length;
+
   const priorityOrders = orders.filter((o) => o.pricing_tier === "priority").length;
   const pendingOrders = orders.filter((o) => 
     ["paid", "in_progress"].includes(o.status)
@@ -51,12 +60,20 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
       bgColor: "bg-green-100",
     },
     {
-      title: "Total Orders",
-      value: totalOrders.toString(),
-      description: "Songs created",
+      title: "Orders Today",
+      value: ordersToday.toString(),
+      description: "New orders today",
       icon: ShoppingCart,
       color: "text-blue-600",
       bgColor: "bg-blue-100",
+    },
+    {
+      title: "Total Orders",
+      value: totalOrders.toString(),
+      description: "All time",
+      icon: ShoppingCart,
+      color: "text-slate-600",
+      bgColor: "bg-slate-100",
     },
     {
       title: "Leads",
@@ -65,14 +82,6 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
       icon: Users,
       color: "text-indigo-600",
       bgColor: "bg-indigo-100",
-    },
-    {
-      title: "Priority Rate",
-      value: `${priorityRate}%`,
-      description: `${priorityOrders} priority orders`,
-      icon: TrendingUp,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
     },
     {
       title: "Pending",
