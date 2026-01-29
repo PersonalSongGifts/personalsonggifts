@@ -40,11 +40,24 @@ Deno.serve(async (req) => {
     const providedPassword = providedPasswordRaw?.trim() ?? null;
 
     if (!providedPassword || providedPassword !== normalizedAdminPassword) {
+      console.log(
+        "Admin auth failed",
+        JSON.stringify({
+          hasHeader: !!req.headers.get("x-admin-password"),
+          hasBody: typeof body?.adminPassword === "string",
+          providedLen: providedPasswordRaw ? String(providedPasswordRaw).length : null,
+          providedTrimLen: providedPassword ? providedPassword.length : null,
+          expectedLen: adminPassword.length,
+          expectedTrimLen: normalizedAdminPassword.length,
+        })
+      );
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("Admin auth ok");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
