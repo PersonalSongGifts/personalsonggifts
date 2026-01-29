@@ -96,10 +96,21 @@ export default function Admin() {
       setIsAuthenticated(true);
       setOrders(data.orders || []);
       setAllOrders(data.orders || []);
-    } catch {
+    } catch (err: unknown) {
+      // Surface actual error type to help debugging (no secrets included)
+      // eslint-disable-next-line no-console
+      console.error("Admin login error:", err);
+
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "Request failed";
+
       toast({
         title: "Authentication Failed",
-        description: "Invalid password. Please try again.",
+        description: `${message} (check password + try hard refresh)`,
         variant: "destructive",
       });
     } finally {
