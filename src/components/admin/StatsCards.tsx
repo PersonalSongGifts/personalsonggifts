@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, TrendingUp, Clock } from "lucide-react";
+import { DollarSign, ShoppingCart, TrendingUp, Clock, Users } from "lucide-react";
 
 interface Order {
   id: string;
@@ -9,11 +9,18 @@ interface Order {
   created_at: string;
 }
 
-interface StatsCardsProps {
-  orders: Order[];
+interface Lead {
+  id: string;
+  status: string;
+  captured_at: string;
 }
 
-export function StatsCards({ orders }: StatsCardsProps) {
+interface StatsCardsProps {
+  orders: Order[];
+  leads?: Lead[];
+}
+
+export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
   const totalRevenue = orders.reduce((sum, order) => {
     if (order.status !== "cancelled") {
       return sum + order.price;
@@ -26,6 +33,9 @@ export function StatsCards({ orders }: StatsCardsProps) {
   const pendingOrders = orders.filter((o) => 
     ["paid", "in_progress"].includes(o.status)
   ).length;
+
+  const totalLeads = leads.length;
+  const unconvertedLeads = leads.filter((l) => l.status === "lead").length;
 
   const priorityRate = totalOrders > 0 
     ? Math.round((priorityOrders / totalOrders) * 100) 
@@ -49,6 +59,14 @@ export function StatsCards({ orders }: StatsCardsProps) {
       bgColor: "bg-blue-100",
     },
     {
+      title: "Leads",
+      value: totalLeads.toString(),
+      description: `${unconvertedLeads} unconverted`,
+      icon: Users,
+      color: "text-indigo-600",
+      bgColor: "bg-indigo-100",
+    },
+    {
       title: "Priority Rate",
       value: `${priorityRate}%`,
       description: `${priorityOrders} priority orders`,
@@ -67,7 +85,7 @@ export function StatsCards({ orders }: StatsCardsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
       {stats.map((stat) => (
         <Card key={stat.title}>
           <CardContent className="p-6">

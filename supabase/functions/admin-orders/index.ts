@@ -105,8 +105,18 @@ Deno.serve(async (req) => {
         const { data: orders, error } = await query;
         if (error) throw error;
 
+        // Also fetch leads for stats
+        const { data: leads, error: leadsError } = await supabase
+          .from("leads")
+          .select("id, status, captured_at")
+          .order("captured_at", { ascending: false });
+
+        if (leadsError) {
+          console.error("Failed to fetch leads:", leadsError);
+        }
+
         return new Response(
-          JSON.stringify({ orders }),
+          JSON.stringify({ orders, leads: leads || [] }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

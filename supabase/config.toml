@@ -2,3 +2,6 @@ project_id = "kjyhxodusvodkknmgmra"
 
 [functions.append-to-sheet]
 verify_jwt = false
+
+[functions.capture-lead]
+verify_jwt = false
