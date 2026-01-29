@@ -74,6 +74,8 @@ export default function Admin() {
   const [songUrl, setSongUrl] = useState("");
   const [updating, setUpdating] = useState(false);
   const [activeTab, setActiveTab] = useState("analytics");
+  const [orderSort, setOrderSort] = useState<"latest" | "oldest">("latest");
+  const [leadSort, setLeadSort] = useState<"latest" | "oldest">("latest");
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -292,7 +294,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="orders" className="space-y-6">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-48">
                   <SelectValue placeholder="Filter by status" />
@@ -304,6 +306,15 @@ export default function Admin() {
                   <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="delivered">Delivered</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={orderSort} onValueChange={(v) => setOrderSort(v as "latest" | "oldest")}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="latest">Latest First</SelectItem>
+                  <SelectItem value="oldest">Oldest First</SelectItem>
                 </SelectContent>
               </Select>
               <span className="text-sm text-muted-foreground">
@@ -320,7 +331,11 @@ export default function Admin() {
               </Card>
             ) : (
               <div className="space-y-4">
-                {orders.map((order) => (
+                {[...orders].sort((a, b) => {
+                  const dateA = new Date(a.created_at).getTime();
+                  const dateB = new Date(b.created_at).getTime();
+                  return orderSort === "latest" ? dateB - dateA : dateA - dateB;
+                }).map((order) => (
                   <Card key={order.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-6">
                       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
@@ -376,7 +391,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="leads" className="space-y-6">
-            <LeadsTable leads={leads} loading={loading} />
+            <LeadsTable leads={leads} loading={loading} sort={leadSort} onSortChange={setLeadSort} />
           </TabsContent>
         </Tabs>
       </main>
