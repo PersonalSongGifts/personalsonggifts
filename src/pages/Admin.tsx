@@ -73,21 +73,29 @@ export default function Admin() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const listOrders = async (status: string) => {
+    return supabase.functions.invoke("admin-orders", {
+      method: "POST",
+      body: {
+        action: "list",
+        adminPassword: password,
+        status,
+      },
+    });
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke("admin-orders", {
-        headers: { "x-admin-password": password },
-      });
+      const { data, error } = await listOrders("all");
 
       if (error) throw error;
       
       setIsAuthenticated(true);
       setOrders(data.orders || []);
       setAllOrders(data.orders || []);
-      sessionStorage.setItem("adminPassword", password);
     } catch {
       toast({
         title: "Authentication Failed",
@@ -100,17 +108,14 @@ export default function Admin() {
   };
 
   const fetchOrders = async () => {
-    const storedPassword = sessionStorage.getItem("adminPassword");
-    if (!storedPassword) return;
+    if (!password) {
+      setIsAuthenticated(false);
+      return;
+    }
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke(
-        `admin-orders?status=${statusFilter}`,
-        {
-          headers: { "x-admin-password": storedPassword },
-        }
-      );
+      const { data, error } = await listOrders(statusFilter);
 
       if (error) throw error;
       setOrders(data.orders || []);
@@ -129,15 +134,16 @@ export default function Admin() {
   };
 
   const updateOrder = async (orderId: string, updates: Record<string, unknown>) => {
-    const storedPassword = sessionStorage.getItem("adminPassword");
-    if (!storedPassword) return;
+    if (!password) {
+      setIsAuthenticated(false);
+      return;
+    }
 
     setUpdating(true);
     try {
       const { data, error } = await supabase.functions.invoke("admin-orders", {
         method: "POST",
-        headers: { "x-admin-password": storedPassword },
-        body: { orderId, ...updates },
+        body: { adminPassword: password, orderId, ...updates },
       });
 
       if (error) throw error;
@@ -164,11 +170,8 @@ export default function Admin() {
   };
 
   useEffect(() => {
-    const storedPassword = sessionStorage.getItem("adminPassword");
-    if (storedPassword) {
-      setPassword(storedPassword);
-      setIsAuthenticated(true);
-    }
+    // Intentionally do not auto-authenticate via browser storage.
+    // Admin access must always be validated server-side.
   }, []);
 
   useEffect(() => {
@@ -229,8 +232,8 @@ export default function Admin() {
               variant="ghost"
               size="sm"
               onClick={() => {
-                sessionStorage.removeItem("adminPassword");
                 setIsAuthenticated(false);
+                setPassword("");
                 navigate("/");
               }}
             >
