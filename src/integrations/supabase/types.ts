@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      leads: {
+        Row: {
+          captured_at: string
+          converted_at: string | null
+          customer_name: string
+          email: string
+          favorite_memory: string
+          genre: string
+          id: string
+          occasion: string
+          order_id: string | null
+          phone: string | null
+          recipient_name: string
+          recipient_type: string
+          singer_preference: string
+          special_message: string | null
+          special_qualities: string
+          status: string
+        }
+        Insert: {
+          captured_at?: string
+          converted_at?: string | null
+          customer_name: string
+          email: string
+          favorite_memory: string
+          genre: string
+          id?: string
+          occasion: string
+          order_id?: string | null
+          phone?: string | null
+          recipient_name: string
+          recipient_type: string
+          singer_preference: string
+          special_message?: string | null
+          special_qualities: string
+          status?: string
+        }
+        Update: {
+          captured_at?: string
+          converted_at?: string | null
+          customer_name?: string
+          email?: string
+          favorite_memory?: string
+          genre?: string
+          id?: string
+          occasion?: string
+          order_id?: string | null
+          phone?: string | null
+          recipient_name?: string
+          recipient_type?: string
+          singer_preference?: string
+          special_message?: string | null
+          special_qualities?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           created_at: string
