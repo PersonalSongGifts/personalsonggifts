@@ -54,9 +54,9 @@ export function LeadsTable({ leads, loading, sort, onSortChange }: LeadsTablePro
     if (filteredLeads.length === 0) return;
 
     const headers = [
-      "Email",
-      "Phone",
-      "Customer Name",
+      "Lead Name",
+      "Lead Email",
+      "Lead Phone",
       "Recipient Name",
       "Recipient Type",
       "Occasion",
@@ -67,9 +67,9 @@ export function LeadsTable({ leads, loading, sort, onSortChange }: LeadsTablePro
     ];
 
     const rows = filteredLeads.map((lead) => [
+      lead.customer_name,
       lead.email,
       lead.phone || "",
-      lead.customer_name,
       lead.recipient_name,
       lead.recipient_type,
       lead.occasion,
@@ -153,8 +153,8 @@ export function LeadsTable({ leads, loading, sort, onSortChange }: LeadsTablePro
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      <strong>Email:</strong> {lead.email}
-                      {lead.phone && <> • <strong>Phone:</strong> {lead.phone}</>}
+                      <strong>Lead Email:</strong> {lead.email}
+                      {lead.phone && <> • <strong>Lead Phone:</strong> {lead.phone}</>}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       <strong>Song for:</strong> {lead.recipient_name} ({lead.recipient_type}) •{" "}
@@ -193,11 +193,11 @@ export function LeadsTable({ leads, loading, sort, onSortChange }: LeadsTablePro
               <div className="space-y-6 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Customer</h4>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Lead Name</h4>
                     <p>{selectedLead.customer_name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedLead.email}</p>
+                    <p className="text-sm text-muted-foreground"><strong>Email:</strong> {selectedLead.email}</p>
                     {selectedLead.phone && (
-                      <p className="text-sm text-muted-foreground">{selectedLead.phone}</p>
+                      <p className="text-sm text-muted-foreground"><strong>Phone:</strong> {selectedLead.phone}</p>
                     )}
                   </div>
                   <div>
