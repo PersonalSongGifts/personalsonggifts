@@ -28,6 +28,8 @@ export interface Lead {
 interface LeadsTableProps {
   leads: Lead[];
   loading: boolean;
+  sort: "latest" | "oldest";
+  onSortChange: (sort: "latest" | "oldest") => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -35,13 +37,18 @@ const statusColors: Record<string, string> = {
   converted: "bg-green-100 text-green-800",
 };
 
-export function LeadsTable({ leads, loading }: LeadsTableProps) {
+export function LeadsTable({ leads, loading, sort, onSortChange }: LeadsTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
-  const filteredLeads = statusFilter === "all" 
+  const filteredLeads = (statusFilter === "all" 
     ? leads 
-    : leads.filter((lead) => lead.status === statusFilter);
+    : leads.filter((lead) => lead.status === statusFilter)
+  ).sort((a, b) => {
+    const dateA = new Date(a.captured_at).getTime();
+    const dateB = new Date(b.captured_at).getTime();
+    return sort === "latest" ? dateB - dateA : dateA - dateB;
+  });
 
   const exportToCSV = () => {
     if (filteredLeads.length === 0) return;
@@ -89,7 +96,7 @@ export function LeadsTable({ leads, loading }: LeadsTableProps) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Filter by status" />
@@ -98,6 +105,15 @@ export function LeadsTable({ leads, loading }: LeadsTableProps) {
               <SelectItem value="all">All Leads</SelectItem>
               <SelectItem value="lead">Unconverted</SelectItem>
               <SelectItem value="converted">Converted</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sort} onValueChange={(v) => onSortChange(v as "latest" | "oldest")}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="latest">Latest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
             </SelectContent>
           </Select>
           <span className="text-sm text-muted-foreground">
