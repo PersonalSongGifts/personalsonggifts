@@ -10,12 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users } from "lucide-react";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
 import { StatusChart } from "@/components/admin/StatusChart";
 import { GenreChart } from "@/components/admin/GenreChart";
+import { LeadsTable, Lead } from "@/components/admin/LeadsTable";
 
 interface Order {
   id: string;
@@ -59,11 +60,7 @@ const statusIcons: Record<string, React.ReactNode> = {
   cancelled: <AlertCircle className="h-3 w-3" />,
 };
 
-interface Lead {
-  id: string;
-  status: string;
-  captured_at: string;
-}
+// Lead interface is imported from LeadsTable
 
 export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -274,6 +271,10 @@ export default function Admin() {
               <List className="h-4 w-4" />
               Orders
             </TabsTrigger>
+            <TabsTrigger value="leads" className="gap-2">
+              <Users className="h-4 w-4" />
+              Leads
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="analytics" className="space-y-6">
@@ -372,6 +373,10 @@ export default function Admin() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="leads" className="space-y-6">
+            <LeadsTable leads={leads} loading={loading} />
           </TabsContent>
         </Tabs>
       </main>
