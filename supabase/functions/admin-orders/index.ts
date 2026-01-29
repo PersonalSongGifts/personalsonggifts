@@ -16,6 +16,9 @@ Deno.serve(async (req) => {
       throw new Error("ADMIN_PASSWORD not configured");
     }
 
+    // Normalize to avoid invisible whitespace/newline issues from secret editors
+    const normalizedAdminPassword = adminPassword.trim();
+
     const url = new URL(req.url);
 
     // Safely parse JSON body for POST requests (also allows passing adminPassword in body)
@@ -30,11 +33,13 @@ Deno.serve(async (req) => {
     }
 
     // Verify admin password (header for backward compatibility, body for special-char safety)
-    const providedPassword =
+    const providedPasswordRaw =
       req.headers.get("x-admin-password") ??
       (typeof body?.adminPassword === "string" ? (body.adminPassword as string) : null);
 
-    if (providedPassword !== adminPassword) {
+    const providedPassword = providedPasswordRaw?.trim() ?? null;
+
+    if (!providedPassword || providedPassword !== normalizedAdminPassword) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
