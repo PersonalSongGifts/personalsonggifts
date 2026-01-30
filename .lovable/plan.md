@@ -1,60 +1,54 @@
 
-# Email Template Preview Page
+# Song Delivery Email Branding Update
 
 ## Overview
-Add a new "Emails" tab to the Admin Dashboard that displays visual previews of both email templates using sample data. This will let you see exactly what customers receive without needing to edit HTML code.
+Restyle the Song Delivery email to match your brand's navy and cream palette while keeping the green header as a celebration accent.
 
-## What You Will See
+## Visual Changes
 
-### New Tab in Admin Dashboard
-A fourth tab called "Emails" will appear alongside Analytics, Orders, and Leads.
+### Current vs Updated Design
 
-### Two Email Previews
-1. **Order Confirmation Email** - What customers see after payment
-   - Navy gradient header with "Order Confirmed!" message
-   - Order details table (Order ID, recipient, occasion, genre, delivery tier)
-   - Expected delivery date
-   - Cream/warm background styling
+| Element | Current | Updated |
+|---------|---------|---------|
+| Background | Off-white #f8f4f0 | Cream #FDF8F3 (matches Order Confirmation) |
+| Content area | #FFFEF9 | #FFFBF5 (matches Order Confirmation) |
+| "Listen" button | Brown #8B4513 | Navy #1E3A5F (brand primary) |
+| Tips box | Yellow-tinted #FFF8E7 | Light blue #F5F8FB (matches Order Confirmation style) |
+| Tips heading color | Brown #8B4513 | Navy #1E3A5F |
+| Order ID box | Green tinted #E8F5E8 | Light blue #EEF3F8 |
+| Footer link | Brown #8B4513 | Navy #1E3A5F |
+| Signature color | Brown #8B4513 | Navy #1E3A5F |
 
-2. **Song Delivery Email** - What customers see when their song is ready
-   - Green gradient header with "Your Song is Ready!" message
-   - "Listen to Your Song" button
-   - Tips for sharing section
-   - Order ID reference
+### What Stays the Same
+- Green header gradient (the celebration "Your Song is Ready!" moment)
+- Overall layout and spacing
+- Tips for Sharing content
+- Emoji usage
 
-### Sample Data Display
-Each preview will be populated with realistic sample data:
-- Customer: "Sarah Johnson"
-- Recipient: "Mom"
-- Occasion: "Mother's Day"
-- Genre: "Acoustic Pop"
-- Order ID: "ABC12345"
-- Song URL: (sample link for delivery email)
+## Files to Update
 
-### Layout
-- Side-by-side previews on desktop (two cards)
-- Stacked on mobile
-- Each email renders in an iframe to show exact email appearance
-- Labels above each preview identifying the email type
-
----
+| File | Changes |
+|------|---------|
+| `supabase/functions/send-song-delivery/index.ts` | Update HTML template colors |
+| `src/components/admin/EmailTemplates.tsx` | Update preview template to match |
 
 ## Technical Details
 
-### New Component
-Create `src/components/admin/EmailTemplates.tsx` containing:
-- The exact HTML templates from the Edge Functions
-- Sample data injection
-- Responsive card layout with iframe previews
+### Color Mapping
+```text
+Brown #8B4513 → Navy #1E3A5F
+Yellow-tint #FFF8E7 → Light blue #F5F8FB
+Green-tint #E8F5E8 → Light blue #EEF3F8
+Off-white #f8f4f0 → Cream #FDF8F3
+Off-white #FFFEF9 → Cream #FFFBF5
+```
 
-### Admin Page Updates
-Modify `src/pages/Admin.tsx` to:
-- Import the new EmailTemplates component
-- Add a fourth tab trigger ("Emails" with Mail icon)
-- Add TabsContent for the email templates view
+### Button Styling
+The "Listen to Your Song" button will change from brown gradient to navy gradient:
+```
+Before: background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%)
+After:  background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%)
+```
 
-### Files to Create/Modify
-| File | Action |
-|------|--------|
-| `src/components/admin/EmailTemplates.tsx` | Create new component |
-| `src/pages/Admin.tsx` | Add Emails tab |
+## Result
+The Song Delivery email will feel cohesive with your Order Confirmation email while the green header provides a distinct "celebration" moment that signals good news to customers.
