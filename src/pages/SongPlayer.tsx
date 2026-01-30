@@ -144,34 +144,34 @@ const SongPlayer = () => {
     window.open(`https://www.facebook.com/sharer/sharer.php?u=${shareUrl}`, "_blank");
   };
 
-  const shareOnInstagram = () => {
-    // Instagram doesn't have a direct share URL, copy link instead
-    copyLink();
-    toast.info("Link copied! Paste it in your Instagram story or bio.");
+  const shareOnInstagram = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    window.open("https://www.instagram.com/", "_blank");
+    toast.success("Link copied! Paste it in your Instagram post or story.");
   };
 
-  const shareOnTikTok = () => {
-    // TikTok doesn't have a direct share URL, copy link instead
-    copyLink();
-    toast.info("Link copied! Paste it in your TikTok bio or video description.");
+  const shareOnTikTok = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    window.open("https://www.tiktok.com/upload", "_blank");
+    toast.success("Link copied! Paste it in your TikTok description.");
   };
 
   const shareViaEmail = () => {
-    window.open(`mailto:?subject=${encodeURIComponent("Check out this personalized song!")}&body=${shareText}%20${shareUrl}`, "_blank");
+    window.location.href = `mailto:?subject=${encodeURIComponent("Check out this personalized song!")}&body=${shareText}%20${shareUrl}`;
   };
 
   const shareViaSMS = () => {
-    window.open(`sms:?body=${shareText}%20${decodeURIComponent(shareUrl)}`, "_blank");
+    window.location.href = `sms:?body=${shareText}%20${decodeURIComponent(shareUrl)}`;
   };
 
   const shareViaWhatsApp = () => {
     window.open(`https://wa.me/?text=${shareText}%20${shareUrl}`, "_blank");
   };
 
-  const shareOnYouTube = () => {
-    // YouTube doesn't have a share URL, copy link instead
-    copyLink();
-    toast.info("Link copied! Share it in your YouTube video or comments.");
+  const shareOnYouTube = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    window.open("https://www.youtube.com/", "_blank");
+    toast.success("Link copied! Paste it in your YouTube video description.");
   };
 
   const copyLink = async () => {

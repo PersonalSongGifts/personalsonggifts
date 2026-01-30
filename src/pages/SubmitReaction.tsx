@@ -273,7 +273,7 @@ const SubmitReaction = () => {
               <h2 className="text-2xl font-bold mb-2">Thank You!</h2>
               <p className="text-muted-foreground mb-6">
                 Your reaction video has been submitted successfully. We'll review it and
-                send your $50 gift card within 48 hours!
+                reach out if you're selected for the gift card!
               </p>
               <Link to="/">
                 <Button variant="outline" className="gap-2">
