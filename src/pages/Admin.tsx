@@ -699,8 +699,9 @@ export default function Admin() {
                   </div>
                 </div>
 
+                {/* Scheduled Delivery Picker - shown when song is uploaded and not yet delivered */}
                 {(songUrl || selectedOrder.song_url) && selectedOrder.status !== "delivered" && (
-                  <div className="border-t pt-4">
+                  <div className="border-t pt-4 bg-muted/30 rounded-lg p-4 -mx-2">
                     <ScheduledDeliveryPicker
                       expectedDelivery={selectedOrder.expected_delivery}
                       value={scheduledDeliveryTime}
