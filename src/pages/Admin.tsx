@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
@@ -20,6 +20,7 @@ import { StatusChart } from "@/components/admin/StatusChart";
 import { GenreChart } from "@/components/admin/GenreChart";
 import { LeadsTable, Lead } from "@/components/admin/LeadsTable";
 import { EmailTemplates } from "@/components/admin/EmailTemplates";
+import { ReactionsTable } from "@/components/admin/ReactionsTable";
 
 interface Order {
   id: string;
@@ -45,6 +46,8 @@ interface Order {
   delivered_at: string | null;
   created_at: string;
   notes: string | null;
+  reaction_video_url: string | null;
+  reaction_submitted_at: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -81,6 +84,7 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("analytics");
   const [orderSort, setOrderSort] = useState<"latest" | "oldest">("latest");
   const [leadSort, setLeadSort] = useState<"latest" | "oldest">("latest");
+  const [reactionSort, setReactionSort] = useState<"latest" | "oldest">("latest");
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -353,7 +357,7 @@ export default function Admin() {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-lg grid-cols-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-5">
             <TabsTrigger value="analytics" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Analytics
@@ -361,6 +365,10 @@ export default function Admin() {
             <TabsTrigger value="orders" className="gap-2">
               <List className="h-4 w-4" />
               Orders
+            </TabsTrigger>
+            <TabsTrigger value="reactions" className="gap-2">
+              <Video className="h-4 w-4" />
+              Reactions
             </TabsTrigger>
             <TabsTrigger value="leads" className="gap-2">
               <Users className="h-4 w-4" />
@@ -481,6 +489,27 @@ export default function Admin() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="reactions" className="space-y-6">
+            <ReactionsTable
+              orders={allOrders
+                .filter((o) => o.reaction_video_url && o.reaction_submitted_at)
+                .map((o) => ({
+                  id: o.id,
+                  customer_name: o.customer_name,
+                  customer_email: o.customer_email,
+                  customer_phone: o.customer_phone,
+                  recipient_name: o.recipient_name,
+                  occasion: o.occasion,
+                  song_title: o.song_title,
+                  reaction_video_url: o.reaction_video_url!,
+                  reaction_submitted_at: o.reaction_submitted_at!,
+                }))}
+              loading={loading}
+              sort={reactionSort}
+              onSortChange={setReactionSort}
+            />
           </TabsContent>
 
           <TabsContent value="leads" className="space-y-6">
