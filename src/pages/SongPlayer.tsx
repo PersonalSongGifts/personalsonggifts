@@ -1,10 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Play, Pause, Volume2, VolumeX, Share2, Facebook, Copy, Gift, Music } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Occasion-based fallback images
 const occasionImages: Record<string, string> = {
@@ -131,9 +137,41 @@ const SongPlayer = () => {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  const shareUrl = encodeURIComponent(window.location.href);
+  const shareText = encodeURIComponent(`Listen to this amazing personalized song!`);
+
   const shareOnFacebook = () => {
-    const url = encodeURIComponent(window.location.href);
-    window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, "_blank");
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${shareUrl}`, "_blank");
+  };
+
+  const shareOnInstagram = () => {
+    // Instagram doesn't have a direct share URL, copy link instead
+    copyLink();
+    toast.info("Link copied! Paste it in your Instagram story or bio.");
+  };
+
+  const shareOnTikTok = () => {
+    // TikTok doesn't have a direct share URL, copy link instead
+    copyLink();
+    toast.info("Link copied! Paste it in your TikTok bio or video description.");
+  };
+
+  const shareViaEmail = () => {
+    window.open(`mailto:?subject=${encodeURIComponent("Check out this personalized song!")}&body=${shareText}%20${shareUrl}`, "_blank");
+  };
+
+  const shareViaSMS = () => {
+    window.open(`sms:?body=${shareText}%20${decodeURIComponent(shareUrl)}`, "_blank");
+  };
+
+  const shareViaWhatsApp = () => {
+    window.open(`https://wa.me/?text=${shareText}%20${shareUrl}`, "_blank");
+  };
+
+  const shareOnYouTube = () => {
+    // YouTube doesn't have a share URL, copy link instead
+    copyLink();
+    toast.info("Link copied! Share it in your YouTube video or comments.");
   };
 
   const copyLink = async () => {
@@ -142,6 +180,26 @@ const SongPlayer = () => {
       toast.success("Link copied to clipboard!");
     } catch {
       toast.error("Failed to copy link");
+    }
+  };
+
+  const downloadSong = async () => {
+    if (!songData?.song_url) return;
+    
+    try {
+      const response = await fetch(songData.song_url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${songTitle}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success("Download started!");
+    } catch {
+      toast.error("Failed to download song");
     }
   };
 
@@ -264,12 +322,52 @@ const SongPlayer = () => {
           </CardContent>
         </Card>
 
-        {/* Share Buttons */}
-        <div className="flex justify-center gap-4 mb-8">
-          <Button variant="outline" onClick={shareOnFacebook} className="gap-2">
-            <Facebook className="h-4 w-4" />
-            Share
+        {/* Action Buttons */}
+        <div className="flex justify-center gap-3 mb-8 flex-wrap">
+          <Button variant="outline" onClick={downloadSong} className="gap-2">
+            <Download className="h-4 w-4" />
+            Download
           </Button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Share2 className="h-4 w-4" />
+                Share
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-48">
+              <DropdownMenuItem onClick={shareOnFacebook} className="gap-2 cursor-pointer">
+                <Facebook className="h-4 w-4" />
+                Facebook
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={shareOnInstagram} className="gap-2 cursor-pointer">
+                <Instagram className="h-4 w-4" />
+                Instagram
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={shareOnTikTok} className="gap-2 cursor-pointer">
+                <Music className="h-4 w-4" />
+                TikTok
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={shareOnYouTube} className="gap-2 cursor-pointer">
+                <Youtube className="h-4 w-4" />
+                YouTube
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={shareViaWhatsApp} className="gap-2 cursor-pointer">
+                <MessageCircle className="h-4 w-4" />
+                WhatsApp
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={shareViaSMS} className="gap-2 cursor-pointer">
+                <MessageCircle className="h-4 w-4" />
+                Text (SMS)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={shareViaEmail} className="gap-2 cursor-pointer">
+                <Mail className="h-4 w-4" />
+                Email
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
           <Button variant="outline" onClick={copyLink} className="gap-2">
             <Copy className="h-4 w-4" />
             Copy Link
@@ -281,11 +379,11 @@ const SongPlayer = () => {
           <CardContent className="pt-6 text-center">
             <Gift className="w-12 h-12 text-primary mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">
-              Share Your Reaction & Get $50!
+              Share the Moment & Earn $50!
             </h2>
             <p className="text-muted-foreground mb-4">
-              Record yourself listening to this song for the first time and submit your
-              reaction video. We'll send you a $50 gift card as a thank you!
+              Record the moment your loved one hears their song for the first time. 
+              If selected, you'll receive a $50 Amazon gift card.
             </p>
             <Link to="/submit-reaction">
               <Button size="lg" className="gap-2">
