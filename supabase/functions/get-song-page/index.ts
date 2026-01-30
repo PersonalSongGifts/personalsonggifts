@@ -36,19 +36,37 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Query by short ID (first 8 chars) or full UUID
-    let query = supabase
-      .from("orders")
-      .select("id, song_url, song_title, cover_image_url, occasion, recipient_name, status, delivered_at");
+    let orders;
+    let error;
 
     if (isShortId) {
-      // Use ILIKE for case-insensitive prefix match
-      query = query.ilike("id", `${orderId}%`);
+      // For short IDs, we need to query delivered orders and filter by prefix
+      // Use textSearch or fetch and filter since UUID can't use ILIKE directly
+      const result = await supabase
+        .from("orders")
+        .select("id, song_url, song_title, cover_image_url, occasion, recipient_name, status, delivered_at")
+        .eq("status", "delivered")
+        .not("song_url", "is", null);
+      
+      if (result.error) {
+        error = result.error;
+      } else {
+        // Filter by prefix match on UUID
+        orders = result.data?.filter(o => 
+          o.id.toLowerCase().startsWith(orderId.toLowerCase())
+        ).slice(0, 1);
+      }
     } else {
-      query = query.eq("id", orderId);
+      // Full UUID - direct query
+      const result = await supabase
+        .from("orders")
+        .select("id, song_url, song_title, cover_image_url, occasion, recipient_name, status, delivered_at")
+        .eq("id", orderId)
+        .limit(1);
+      
+      orders = result.data;
+      error = result.error;
     }
-
-    const { data: orders, error } = await query.limit(1);
 
     if (error) {
       console.error("Database error:", error);
