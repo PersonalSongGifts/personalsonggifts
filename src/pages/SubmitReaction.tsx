@@ -252,6 +252,10 @@ const SubmitReaction = () => {
                   </div>
                 )}
 
+                <p className="text-xs text-muted-foreground text-center">
+                  By submitting this video, you give permission to Personal Song Gifts to use this video.
+                </p>
+
                 <Button
                   onClick={handleUpload}
                   disabled={!selectedFile || isUploading}
