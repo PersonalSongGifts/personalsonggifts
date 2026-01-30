@@ -461,12 +461,12 @@ export default function Admin() {
                           </p>
                           <p className="text-sm text-muted-foreground">
                             <strong>Order Date/Time:</strong>{" "}
-                            {new Date(order.created_at).toLocaleString()}
+                            {new Date(order.created_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
                           </p>
                           {order.expected_delivery && (
                             <p className="text-sm text-muted-foreground">
                               <strong>Expected Delivery:</strong>{" "}
-                              {new Date(order.expected_delivery).toLocaleString()}
+                              {new Date(order.expected_delivery).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
                             </p>
                           )}
                         </div>
