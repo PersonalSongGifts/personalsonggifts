@@ -8,3 +8,12 @@ verify_jwt = false
 
 [functions.upload-song]
 verify_jwt = false
+
+[functions.get-song-page]
+verify_jwt = false
+
+[functions.upload-reaction]
+verify_jwt = false
+
+[functions.send-song-delivery]
+verify_jwt = false

@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Image } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
@@ -38,6 +39,8 @@ interface Order {
   price: number;
   status: string;
   song_url: string | null;
+  song_title: string | null;
+  cover_image_url: string | null;
   expected_delivery: string | null;
   delivered_at: string | null;
   created_at: string;
@@ -81,7 +84,11 @@ export default function Admin() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedCoverFile, setSelectedCoverFile] = useState<File | null>(null);
+  const [songTitle, setSongTitle] = useState("");
+  const [uploadingCover, setUploadingCover] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -162,6 +169,81 @@ export default function Admin() {
     } finally {
       setUploadingFile(false);
       setUploadProgress(0);
+    }
+  };
+
+  const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        toast({
+          title: "Invalid File",
+          description: "Please select an image file (JPG, PNG, etc.)",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSelectedCoverFile(file);
+    }
+  };
+
+  const handleUploadCover = async () => {
+    if (!selectedCoverFile || !selectedOrder || !password) return;
+
+    setUploadingCover(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedCoverFile);
+      formData.append("orderId", selectedOrder.id);
+      formData.append("adminPassword", password);
+      formData.append("fileType", "cover");
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-song`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      const data = await response.json();
+
+      setSelectedCoverFile(null);
+      if (coverInputRef.current) {
+        coverInputRef.current.value = "";
+      }
+
+      toast({
+        title: "Cover Uploaded",
+        description: "Album artwork uploaded successfully!",
+      });
+
+      fetchOrders();
+    } catch (error) {
+      console.error("Cover upload error:", error);
+      toast({
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "Failed to upload cover",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  const handleSaveSongTitle = async () => {
+    if (!selectedOrder || !password) return;
+
+    try {
+      await updateOrder(selectedOrder.id, { song_title: songTitle });
+    } catch (error) {
+      console.error("Save title error:", error);
     }
   };
 
@@ -466,6 +548,7 @@ export default function Admin() {
                             onClick={() => {
                               setSelectedOrder(order);
                               setSongUrl(order.song_url || "");
+                              setSongTitle(order.song_title || "");
                             }}
                           >
                             <Eye className="h-4 w-4 mr-2" />
@@ -605,6 +688,90 @@ export default function Admin() {
                 </div>
 
                 <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3">Song Details</h4>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="song-title">Song Title</Label>
+                      <div className="flex gap-2 mt-1">
+                        <Input
+                          id="song-title"
+                          placeholder={`A Song for ${selectedOrder.recipient_name}`}
+                          value={songTitle}
+                          onChange={(e) => setSongTitle(e.target.value)}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSaveSongTitle}
+                          disabled={updating || !songTitle}
+                        >
+                          Save
+                        </Button>
+                      </div>
+                      {selectedOrder.song_title && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Current: {selectedOrder.song_title}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label>Album Artwork</Label>
+                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 mt-1">
+                        <div className="flex flex-col items-center gap-3">
+                          {selectedOrder.cover_image_url ? (
+                            <img 
+                              src={selectedOrder.cover_image_url} 
+                              alt="Cover" 
+                              className="h-20 w-20 object-cover rounded"
+                            />
+                          ) : (
+                            <Image className="h-8 w-8 text-muted-foreground" />
+                          )}
+                          <div className="text-center">
+                            <p className="text-sm font-medium">
+                              {selectedCoverFile ? selectedCoverFile.name : "Select cover image"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              JPG, PNG, WEBP (square recommended)
+                            </p>
+                          </div>
+                          <input
+                            ref={coverInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleCoverSelect}
+                            className="hidden"
+                            id="cover-upload"
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => coverInputRef.current?.click()}
+                              disabled={uploadingCover}
+                            >
+                              Choose Image
+                            </Button>
+                            {selectedCoverFile && (
+                              <Button
+                                size="sm"
+                                onClick={handleUploadCover}
+                                disabled={uploadingCover}
+                              >
+                                <Upload className="h-4 w-4 mr-2" />
+                                {uploadingCover ? "Uploading..." : "Upload"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
                   <h4 className="font-medium mb-3">Order Settings</h4>
                   
                   <div className="space-y-4">
@@ -646,8 +813,13 @@ export default function Admin() {
                   onClick={() => {
                     setSelectedOrder(null);
                     setSelectedFile(null);
+                    setSelectedCoverFile(null);
+                    setSongTitle("");
                     if (fileInputRef.current) {
                       fileInputRef.current.value = "";
+                    }
+                    if (coverInputRef.current) {
+                      coverInputRef.current.value = "";
                     }
                   }}
                 >
