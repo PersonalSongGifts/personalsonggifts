@@ -1,63 +1,50 @@
 
 
-# Fix Persistent Video Cache Issue
+# Fix: Allow Scheduling for Current Day
 
-## Problem Diagnosis
+## Problem
+The calendar date picker is blocking selection of the current day because it compares calendar dates (which represent midnight) against `new Date()` (which includes the current time). This makes "today" appear to be in the past.
 
-I verified from the server that your new compressed 1.9MB video **is correctly deployed**:
-- The server shows the video was last modified at 21:28:20 on Jan 30
-- File size: 1,779,061 bytes (~1.77 MB) - matches your compressed file
-- CDN shows "MISS" meaning it fetched fresh content
-
-The issue is **browser-level caching** - your browser stored the old video locally and is not requesting the new version despite having the same filename.
+## Solution
+Change the disabled check to compare against the **start of today** (midnight) instead of the current moment, so today remains selectable.
 
 ---
 
-## Solution: Cache-Busting with Version Query Parameter
+## Changes
 
-I'll add a version parameter to the video URL that forces the browser to treat it as a completely new file:
+### 1. Update Calendar disabled logic
+**File:** `src/components/admin/ScheduledDeliveryPicker.tsx`
 
-**Before:**
-```tsx
-<source src="/videos/hero-video.mp4" type="video/mp4" />
+Change line 208 from:
+```typescript
+disabled={(date) => date < new Date()}
 ```
 
-**After:**
-```tsx
-<source src="/videos/hero-video.mp4?v=2" type="video/mp4" />
+To:
+```typescript
+disabled={(date) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date < today;
+}}
 ```
 
-This approach:
-- Forces all browsers to fetch the new video immediately
-- Works even if the user has aggressive caching
-- Simple to update in the future (just change `v=2` to `v=3`, etc.)
+This sets `today` to midnight, so the current day will always be selectable.
 
 ---
 
-## Implementation
+## Why This Works
+- `new Date()` = e.g., "Jan 30, 2026 3:35 PM"
+- Calendar date = e.g., "Jan 30, 2026 12:00 AM" (midnight)
+- Old logic: `midnight < 3:35 PM` → **true** → disabled ❌
+- New logic: `midnight < midnight` → **false** → enabled ✓
 
-| Step | Action |
-|------|--------|
-| 1 | Update `src/components/home/HeroSection.tsx` line 62 to add `?v=2` cache-busting parameter |
-
----
-
-## After Implementation
-
-Once I make this change:
-1. The preview should immediately show your new compressed video
-2. When you publish, the live site will also show the new video
-3. Future video updates would just require incrementing the version number
+The existing time validation in the `useEffect` (lines 114-118) already prevents selecting a past **time** on the current day — it only calls `onChange(pstDate)` if `pstDate > new Date()`. So users can pick today, and the validation will catch if they pick a time that's already passed.
 
 ---
 
-## Technical Details
-
-**File to modify:** `src/components/home/HeroSection.tsx`
-
-**Change:** Line 62:
-```diff
-- <source src="/videos/hero-video.mp4" type="video/mp4" />
-+ <source src="/videos/hero-video.mp4?v=2" type="video/mp4" />
-```
+## After This Fix
+- You'll be able to select **today** in the calendar
+- If you pick a time earlier than "right now," you'll see the amber warning: "⚠ Selected time is in the past"
+- Only future times will successfully schedule
 
