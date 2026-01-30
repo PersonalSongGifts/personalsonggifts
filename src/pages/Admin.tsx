@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio } from "lucide-react";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
@@ -77,8 +78,92 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("analytics");
   const [orderSort, setOrderSort] = useState<"latest" | "oldest">("latest");
   const [leadSort, setLeadSort] = useState<"latest" | "oldest">("latest");
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const allowedTypes = ["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg", "audio/flac"];
+      const allowedExtensions = [".mp3", ".wav", ".m4a", ".ogg", ".flac"];
+      const fileName = file.name.toLowerCase();
+      const fileExtension = fileName.substring(fileName.lastIndexOf("."));
+      
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+        toast({
+          title: "Invalid File",
+          description: "Please select an audio file (MP3, WAV, M4A, OGG, or FLAC)",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUploadSong = async () => {
+    if (!selectedFile || !selectedOrder || !password) return;
+
+    setUploadingFile(true);
+    setUploadProgress(10);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("orderId", selectedOrder.id);
+      formData.append("adminPassword", password);
+
+      setUploadProgress(30);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-song`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      setUploadProgress(80);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      const data = await response.json();
+      setUploadProgress(100);
+
+      // Update local state with new URL
+      setSongUrl(data.url);
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      toast({
+        title: "Upload Successful",
+        description: "Song uploaded and order updated!",
+      });
+
+      // Refresh orders to get updated data
+      fetchOrders();
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast({
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "Failed to upload song",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingFile(false);
+      setUploadProgress(0);
+    }
+  };
 
   const listOrders = async (status: string) => {
     return supabase.functions.invoke("admin-orders", {
@@ -464,7 +549,63 @@ export default function Admin() {
                 )}
 
                 <div className="border-t pt-4">
-                  <h4 className="font-medium mb-3">Update Order</h4>
+                  <h4 className="font-medium mb-3">Upload Song</h4>
+                  
+                  <div className="space-y-4">
+                    <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4">
+                      <div className="flex flex-col items-center gap-3">
+                        <FileAudio className="h-8 w-8 text-muted-foreground" />
+                        <div className="text-center">
+                          <p className="text-sm font-medium">
+                            {selectedFile ? selectedFile.name : "Select an audio file"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            MP3, WAV, M4A, OGG, or FLAC
+                          </p>
+                        </div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".mp3,.wav,.m4a,.ogg,.flac,audio/*"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                          id="song-upload"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingFile}
+                          >
+                            Choose File
+                          </Button>
+                          {selectedFile && (
+                            <Button
+                              size="sm"
+                              onClick={handleUploadSong}
+                              disabled={uploadingFile}
+                            >
+                              <Upload className="h-4 w-4 mr-2" />
+                              {uploadingFile ? "Uploading..." : "Upload"}
+                            </Button>
+                          )}
+                        </div>
+                        {uploadingFile && (
+                          <div className="w-full">
+                            <Progress value={uploadProgress} className="h-2" />
+                            <p className="text-xs text-center text-muted-foreground mt-1">
+                              Uploading... {uploadProgress}%
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3">Order Settings</h4>
                   
                   <div className="space-y-4">
                     <div>
@@ -489,11 +630,16 @@ export default function Admin() {
 
                     <div>
                       <label className="text-sm font-medium">Song URL</label>
+                      {songUrl && (
+                        <p className="text-xs text-muted-foreground mt-1 mb-2 break-all">
+                          Current: <a href={songUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{songUrl}</a>
+                        </p>
+                      )}
                       <div className="flex gap-2 mt-1">
                         <Textarea
                           value={songUrl}
                           onChange={(e) => setSongUrl(e.target.value)}
-                          placeholder="https://..."
+                          placeholder="https://... (auto-filled after upload)"
                           className="flex-1"
                         />
                         <Button
@@ -512,11 +658,17 @@ export default function Admin() {
               <DialogFooter>
                 <Button
                   variant="outline"
-                  onClick={() => setSelectedOrder(null)}
+                  onClick={() => {
+                    setSelectedOrder(null);
+                    setSelectedFile(null);
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = "";
+                    }
+                  }}
                 >
                   Close
                 </Button>
-                {selectedOrder.song_url && selectedOrder.status !== "delivered" && (
+                {(songUrl || selectedOrder.song_url) && selectedOrder.status !== "delivered" && (
                   <Button
                     onClick={() => updateOrder(selectedOrder.id, { deliver: true })}
                     disabled={updating}

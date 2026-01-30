@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.capture-lead]
 verify_jwt = false
+
+[functions.upload-song]
+verify_jwt = false
