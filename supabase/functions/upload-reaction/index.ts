@@ -39,21 +39,20 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Find a delivered order for this email that hasn't submitted a reaction yet
+        // Find a delivered order for this email (allow re-submissions)
         // Using ilike for case-insensitive matching
         const { data: order, error } = await supabase
           .from("orders")
           .select("id, recipient_name, occasion, reaction_submitted_at")
           .ilike("customer_email", email.trim())
           .eq("status", "delivered")
-          .is("reaction_submitted_at", null)
           .order("delivered_at", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (error || !order) {
           return new Response(
-            JSON.stringify({ error: "No eligible order found for this email. Make sure your song has been delivered and you haven't already submitted a reaction." }),
+            JSON.stringify({ error: "No eligible order found for this email. Make sure your song has been delivered." }),
             { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -139,11 +138,9 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Allow re-submissions - new video will overwrite the old one
       if (order.reaction_submitted_at) {
-        return new Response(
-          JSON.stringify({ error: "A reaction video has already been submitted for this order" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        console.log(`Re-submitting reaction for order ${orderId} (previous: ${order.reaction_submitted_at})`);
       }
 
       // Use validated extension for filename
