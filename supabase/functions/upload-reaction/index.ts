@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
         const { data: order, error } = await supabase
           .from("orders")
           .select("id, recipient_name, occasion, reaction_submitted_at")
-          .eq("customer_email", email.toLowerCase().trim())
+          .ilike("customer_email", email.trim())
           .eq("status", "delivered")
           .is("reaction_submitted_at", null)
           .order("delivered_at", { ascending: false })
@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      if (order.customer_email.toLowerCase() !== email.toLowerCase().trim()) {
+      if (order.customer_email.toLowerCase() !== email.trim().toLowerCase()) {
         return new Response(
           JSON.stringify({ error: "Email does not match order" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
