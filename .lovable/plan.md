@@ -1,105 +1,77 @@
 
 
-# Branded Song Delivery System - Implementation Plan
+# Implementation Plan: Cover Art & Reaction Flow Fixes
 
-## Step 1: Database Migration & Storage Setup
-
-### Schema Changes
-Add four new columns to the `orders` table:
-- `song_title` (text) - Custom title for the song display
-- `cover_image_url` (text) - Album artwork storage URL
-- `reaction_video_url` (text) - Customer reaction video URL
-- `reaction_submitted_at` (timestamptz) - Timestamp of reaction submission
-
-### Storage Bucket
-Create `reactions` bucket with:
-- Public read access for displaying videos
-- Insert policy allowing public uploads (customers can submit without authentication)
+## Summary
+This plan addresses two issues: (1) removing the redundant cover art upload from Admin since MP3 files already contain embedded artwork, and (2) fixing the case-sensitive email lookup that's preventing customers from finding their orders on the reaction submission page.
 
 ---
 
-## Step 2: Song Player Page (`/song/:orderId`)
+## Issue 1: Remove Cover Art Upload
 
-New file: `src/pages/SongPlayer.tsx`
+### Problem
+The Admin panel currently has a separate section to upload album artwork, but the MP3 files you upload already contain embedded cover art in their ID3 metadata. This is redundant work.
 
-Features:
-- Fetches order data via `get-song-page` edge function
-- Album artwork display with fallback to occasion-based default images
-- Custom audio player (play/pause, progress bar, time display, volume)
-- Song title and occasion display
-- Share buttons (Facebook + Copy Link)
-- Reaction video CTA card with $50 gift card incentive
-- Brand footer
+### Solution
+Remove the cover art upload functionality from the Admin panel entirely. The system already has occasion-based fallback images that display automatically when no custom cover is set.
 
----
+### Changes Required
 
-## Step 3: Reaction Upload Page (`/submit-reaction`)
+**File: `src/pages/Admin.tsx`**
+- Remove the `selectedCoverFile` state and `coverInputRef`
+- Remove the `handleCoverSelect` and `handleUploadCover` functions  
+- Remove the `uploadingCover` state
+- Remove the entire "Album Artwork" section from the Order Details dialog (lines 719-770)
+- Remove the `Image` icon import
 
-New file: `src/pages/SubmitReaction.tsx`
-
-Features:
-- Email lookup form to find customer's order
-- Order verification before showing upload form
-- Video file upload with progress indicator
-- Tips for great reaction videos
-- Success confirmation screen
-- Link back to home page
+**File: `supabase/functions/upload-song/index.ts`**
+- Remove the cover upload handling (`fileType === "cover"` logic)
+- Simplify to only handle audio file uploads
 
 ---
 
-## Step 4: Edge Functions
+## Issue 2: Fix Email Lookup for Reaction Submission
 
-### `get-song-page` (new)
-- Public endpoint (no auth required)
-- Accepts short order ID from URL
-- Returns only safe fields: song_url, song_title, cover_image_url, occasion, recipient_name
-- Only returns delivered orders with uploaded songs
+### Problem
+When customers go to `/submit-reaction` and enter their email address, the lookup fails because of case-sensitivity. The database stores emails like `Ryan@hyperdrivelab.com`, but when a user types `ryan@hyperdrivelab.com`, the Supabase `.eq()` comparison fails.
 
-### `upload-reaction` (new)
-- Accepts: email, order ID, video file
-- Validates email matches order record
-- Uploads video to `reactions` bucket
-- Updates order with reaction_video_url and reaction_submitted_at
+### Root Cause
+```typescript
+// Current code (CASE-SENSITIVE)
+.eq("customer_email", email.toLowerCase().trim())
+```
 
----
+This lowercases the user input but compares against the original mixed-case email in the database.
 
-## Step 5: Route Updates
+### Solution
+Use PostgreSQL's case-insensitive comparison with `.ilike()`:
 
-Update `src/App.tsx`:
-- Add `/song/:orderId` route for SongPlayer
-- Add `/submit-reaction` route for SubmitReaction
+```typescript
+// Fixed code (CASE-INSENSITIVE)
+.ilike("customer_email", email.trim())
+```
 
----
+### Changes Required
 
-## Step 6: Admin Panel Updates
-
-Update `src/pages/Admin.tsx`:
-- Add song title input field in Order Details dialog
-- Add cover image upload capability
-- Save to orders table when updated
+**File: `supabase/functions/upload-reaction/index.ts`**
+- Line 36: Change `.eq("customer_email", email.toLowerCase().trim())` to `.ilike("customer_email", email.trim())`
+- Line 97: Change the email comparison in the upload verification to also be case-insensitive
 
 ---
 
-## Step 7: Delivery Email Update
+## Technical Details
 
-Update `supabase/functions/send-song-delivery/index.ts`:
-- Change CTA link from raw storage URL to branded page
-- New format: `https://personalsonggifts.lovable.app/song/{SHORT_ORDER_ID}`
+### Files Modified
+1. `src/pages/Admin.tsx` - Remove cover art upload UI and related state/handlers
+2. `supabase/functions/upload-song/index.ts` - Remove cover upload logic
+3. `supabase/functions/upload-reaction/index.ts` - Fix case-insensitive email lookup
 
----
+### Database
+No database changes required. The `cover_image_url` column can remain (unused columns don't cause issues).
 
-## Files Summary
-
-| File | Action |
-|------|--------|
-| Database migration | Create columns + reactions bucket |
-| `src/pages/SongPlayer.tsx` | Create |
-| `src/pages/SubmitReaction.tsx` | Create |
-| `src/App.tsx` | Add 2 routes |
-| `supabase/functions/get-song-page/index.ts` | Create |
-| `supabase/functions/upload-reaction/index.ts` | Create |
-| `supabase/functions/send-song-delivery/index.ts` | Update |
-| `supabase/config.toml` | Register new functions |
-| `src/pages/Admin.tsx` | Add song title + cover image fields |
-| `src/integrations/supabase/types.ts` | Auto-updates after migration |
+### Testing After Implementation
+1. Go to `/admin` → Open an order → Verify cover art upload section is gone
+2. Go to `/submit-reaction` → Enter email in any case → Should find the order
+3. Upload a song and deliver → Customer receives email with branded player page
+4. Player page shows occasion-based fallback image when no cover set
 
