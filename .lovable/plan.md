@@ -1,145 +1,212 @@
 
-# Song Upload & Delivery System
+# Branded Song Delivery Page System
 
-## Overview
-Build a complete system that lets you upload songs directly (either through chat or the Admin panel), stores them securely in your project's file storage, and automatically delivers them to customers with clean, professional URLs.
+## What You're Getting
 
-## What You Get
+A complete song delivery experience on your own website, matching the competitor's approach but with your Personal Song Gifts branding.
 
-### Upload Methods
-1. **Chat Upload** - Give me a song file + order number, I handle everything
-2. **Admin Panel Upload** - Upload directly from the Order Details dialog with a file picker
+### Two New Pages
 
-### Professional Delivery
-- Clean URLs like `https://[project].supabase.co/storage/v1/object/public/songs/C015D00C.mp3`
-- No Google branding or personal email visible
-- Direct download/streaming for customers
+**1. Song Player Page** (`/song/:orderId`)
+Clean URL like `personalsonggifts.lovable.app/song/C015D00C` featuring:
+- Album artwork displayed as cover image (extracted from MP3 or uploaded separately)
+- Full audio player with progress bar, time display, and volume control
+- Song title (generated from occasion + recipient)
+- Social sharing buttons (Facebook, Copy Link)
+- Reaction video upload CTA with $50 gift card incentive
+- Your brand footer
+
+**2. Reaction Video Upload Page** (`/submit-reaction`)
+- Email lookup to find the customer's order
+- Video upload form after verification
+- Tips for great reaction videos
+- Confirmation after upload
 
 ---
 
-## Components to Build
+## Technical Components
 
-### 1. Storage Bucket
-Create a `songs` bucket to store audio files securely.
+### Database Changes
 
-| Setting | Value |
-|---------|-------|
-| Bucket Name | songs |
-| Public Access | Yes (so customers can download) |
-| Allowed File Types | MP3, WAV, M4A, OGG, FLAC |
+Add new columns to `orders` table:
 
-### 2. Upload Edge Function
-`supabase/functions/upload-song/index.ts`
+| Column | Type | Purpose |
+|--------|------|---------|
+| `song_title` | text | Custom song title for display |
+| `cover_image_url` | text | Album artwork URL (uploaded to storage) |
+| `reaction_video_url` | text | Customer's reaction video URL |
+| `reaction_submitted_at` | timestamptz | When reaction was submitted |
 
-Handles file uploads from the Admin panel:
-- Accepts audio file + order ID + admin password
-- Validates admin authorization
-- Uploads to the `songs` bucket with a clean filename
-- Updates the order's `song_url` automatically
-- Returns the public URL
+Create a new `reactions` storage bucket for customer video uploads.
 
-### 3. Admin Panel Updates
-Add upload capability to the Order Details dialog:
+### New Pages
+
+**`src/pages/SongPlayer.tsx`**
+- Fetches order data by short ID from URL
+- Displays cover image (falls back to occasion-based default)
+- Custom audio player matching your existing SamplePlayer component
+- Share buttons using Web Share API + Facebook SDK
+- Link to reaction upload page
+
+**`src/pages/SubmitReaction.tsx`**
+- Email lookup form
+- Finds order by customer email
+- Video upload form (appears after email verified)
+- Tips for great reaction videos card
+- Uploads to `reactions` bucket and updates order
+
+### Edge Functions
+
+**`get-song-page` (new)**
+- Public endpoint: fetches order data by short ID
+- Returns only necessary fields (no sensitive data)
+- No authentication required (public page)
+
+**`upload-reaction` (new)**
+- Accepts video file + order ID + customer email
+- Validates email matches order
+- Uploads to `reactions` storage bucket
+- Updates order with video URL
+
+**`send-song-delivery` (update)**
+- Change email CTA from raw storage URL to new branded page URL
+- Example: `https://personalsonggifts.lovable.app/song/C015D00C`
+
+### Admin Panel Updates
+
+Add fields to Order Details dialog for:
+- Song title (editable)
+- Cover image upload (uses songs bucket with image support)
+
+---
+
+## Page Mockups
+
+### Song Player Page Layout
 
 ```text
 +------------------------------------------+
-|  Order Details                           |
-|  ----------------------------------------|
-|  Customer: Jimmy                         |
-|  Recipient: Veronica                     |
-|  Occasion: Valentine's                   |
-|  ----------------------------------------|
-|  UPLOAD SONG                             |
-|  [Choose File] [Upload]                  |
+|         Personal Song Gifts              |
++------------------------------------------+
 |                                          |
-|  Song URL: (auto-filled after upload)    |
-|  https://...songs/C015D00C.mp3           |
+|     +---------------------------+        |
+|     |                           |        |
+|     |    [Album Artwork]        |        |
+|     |       (square)            |        |
+|     |                           |        |
+|     |    [Play Button Overlay]  |        |
+|     +---------------------------+        |
+|     |  0:00 ===|======= 3:47    |        |
+|     +---------------------------+        |
+|      PersonalSongGifts.com       [Vol]   |
 |                                          |
-|  [Close]  [Deliver & Send Email]         |
+|     "A Song for Veronica"                |
+|     Created for Valentine's Day          |
+|                                          |
+|  [Share on Facebook]  [Copy Link]        |
+|                                          |
+|  +------------------------------------+  |
+|  | Limited time                       |  |
+|  | Submit your reaction video         |  |
+|  | Record the moment Veronica hears   |  |
+|  | the song. Get a $50 gift card!     |  |
+|  |                                    |  |
+|  | [Upload your video]                |  |
+|  +------------------------------------+  |
+|                                          |
+|  Made with love by Personal Song Gifts   |
 +------------------------------------------+
 ```
 
-### 4. Workflow Integration
-When I process your chat uploads:
-1. Receive the audio file you send
-2. Upload it to the songs bucket
-3. Update the order record with the new URL
-4. Trigger the delivery email
-5. Confirm completion
+### Reaction Upload Page Layout
 
----
-
-## Technical Details
-
-### Database Migration (SQL)
-```sql
--- Create songs storage bucket
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('songs', 'songs', true);
-
--- Allow anyone to download songs (public read)
-CREATE POLICY "Anyone can download songs"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'songs');
-
--- Only service role can upload (admin via edge function)
-CREATE POLICY "Service role can upload songs"
-ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'songs');
-
-CREATE POLICY "Service role can update songs"
-ON storage.objects FOR UPDATE
-USING (bucket_id = 'songs');
-
-CREATE POLICY "Service role can delete songs"
-ON storage.objects FOR DELETE
-USING (bucket_id = 'songs');
+```text
++------------------------------------------+
+|     [Video Camera Icon]                  |
+|     Limited time                         |
+|                                          |
+|     Submit Your Reaction Video           |
+|     Upload the special moment when       |
+|     your loved one heard their song!     |
+|     Get a $50 Amazon gift card.          |
+|                                          |
+|  +------------------------------------+  |
+|  | Enter your email address           |  |
+|  | Use the email from your order      |  |
+|  |                                    |  |
+|  | [your@email.com]                   |  |
+|  |                                    |  |
+|  | [Find My Order]                    |  |
+|  +------------------------------------+  |
+|                                          |
+|  +------------------------------------+  |
+|  | Tips for a Great Reaction Video    |  |
+|  |                                    |  |
+|  | - Capture the full journey         |  |
+|  | - Good lighting, steady camera     |  |
+|  | - Make sure we can hear everything |  |
+|  | - Keep it natural                  |  |
+|  +------------------------------------+  |
+|                                          |
+|           Back to Home                   |
++------------------------------------------+
 ```
 
-### New Edge Function
-`supabase/functions/upload-song/index.ts`
-- Authenticates via admin password (same as admin-orders)
-- Accepts multipart form data with audio file
-- Extracts order ID from form or filename
-- Uploads to storage using service role
-- Updates order's `song_url` with public URL
-- Returns success/error response
+---
 
-### Admin Page Changes
-`src/pages/Admin.tsx`
-- Add file input state and upload handler
-- New "Upload Song" button in Order Details dialog
-- Progress indicator during upload
-- Auto-populate song URL field on success
-- Keep existing "Deliver & Send Email" button
+## Cover Image Handling
 
-### Files Changed
+### Option A: Upload Separately in Admin (Recommended)
+- Add image upload field to Admin Order Details
+- You upload the album artwork when uploading the song
+- Works for any image format
 
-| File | Change |
+### Option B: Extract from MP3 Metadata
+- More complex, requires parsing ID3 tags
+- Not all MP3s have embedded artwork
+- Adds backend complexity
+
+Going with Option A is simpler and gives you full control over the cover image.
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
 |------|--------|
-| New migration | Create `songs` storage bucket + policies |
-| `supabase/functions/upload-song/index.ts` | New edge function |
-| `src/pages/Admin.tsx` | Add upload UI to Order Details |
+| `src/pages/SongPlayer.tsx` | Create |
+| `src/pages/SubmitReaction.tsx` | Create |
+| `src/App.tsx` | Add routes |
+| `supabase/functions/get-song-page/index.ts` | Create |
+| `supabase/functions/upload-reaction/index.ts` | Create |
+| `supabase/functions/send-song-delivery/index.ts` | Update email URL |
+| `src/pages/Admin.tsx` | Add song title + cover image fields |
+| `supabase/config.toml` | Register new functions |
+| Migration | Add columns + reactions bucket |
 
 ---
 
-## Workflow After Implementation
+## Delivery Email Change
 
-### From Admin Panel
-1. Open Order Details for an order
-2. Click "Choose File" and select the MP3
-3. Click "Upload" - file uploads and URL auto-populates
-4. Click "Deliver & Send Email" - customer gets the song
+Current email links to raw storage URL:
+```
+https://kjyh...supabase.co/storage/v1/object/public/songs/C015D00C.mp3
+```
 
-### From Chat (with me)
-1. You: "Here's the song for order C015D00C" + attach file
-2. I upload the file, update the database, send the email
-3. I confirm: "Done! Delivery email sent to jimmy@..."
+New email links to branded page:
+```
+https://personalsonggifts.lovable.app/song/C015D00C
+```
 
 ---
 
-## Cost Summary
-- Storage: ~5MB per song = 200 songs per 1GB free tier
-- Beyond free tier: $0.021/GB/month (~$0.0001 per song)
-- Bandwidth: First 2GB free, then $0.09/GB
-- Effectively free for your volume
+## Summary
+
+This gives you:
+- Professional branded URLs for song delivery
+- Beautiful player page matching your site design
+- Social sharing to drive word-of-mouth marketing
+- Reaction video collection for testimonials
+- Built-in incentive program ($50 gift card offer)
+- Everything hosted on your own domain
+
