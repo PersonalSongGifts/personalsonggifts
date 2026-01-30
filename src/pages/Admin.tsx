@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
@@ -21,6 +21,7 @@ import { GenreChart } from "@/components/admin/GenreChart";
 import { LeadsTable, Lead } from "@/components/admin/LeadsTable";
 import { EmailTemplates } from "@/components/admin/EmailTemplates";
 import { ReactionsTable } from "@/components/admin/ReactionsTable";
+import { ScheduledDeliveryPicker } from "@/components/admin/ScheduledDeliveryPicker";
 
 interface Order {
   id: string;
@@ -48,12 +49,14 @@ interface Order {
   notes: string | null;
   reaction_video_url: string | null;
   reaction_submitted_at: string | null;
+  scheduled_delivery_at: string | null;
 }
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   paid: "bg-blue-100 text-blue-800",
   in_progress: "bg-purple-100 text-purple-800",
+  ready: "bg-amber-100 text-amber-800",
   completed: "bg-green-100 text-green-800",
   delivered: "bg-emerald-100 text-emerald-800",
   cancelled: "bg-red-100 text-red-800",
@@ -63,6 +66,7 @@ const statusIcons: Record<string, React.ReactNode> = {
   pending: <Clock className="h-3 w-3" />,
   paid: <Package className="h-3 w-3" />,
   in_progress: <RefreshCw className="h-3 w-3" />,
+  ready: <CalendarClock className="h-3 w-3" />,
   completed: <CheckCircle className="h-3 w-3" />,
   delivered: <Send className="h-3 w-3" />,
   cancelled: <AlertCircle className="h-3 w-3" />,
@@ -88,6 +92,7 @@ export default function Admin() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [scheduledDeliveryTime, setScheduledDeliveryTime] = useState<Date | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -260,15 +265,22 @@ export default function Admin() {
 
       if (error) throw error;
 
+      // Determine success message based on action
+      let description = "Order updated successfully.";
+      if (updates.deliver) {
+        description = "Song delivered and email sent!";
+      } else if (updates.scheduleDelivery && data?.message) {
+        description = data.message;
+      }
+
       toast({
         title: "Success",
-        description: updates.deliver 
-          ? "Song delivered and email sent!" 
-          : "Order updated successfully.",
+        description,
       });
 
       setSelectedOrder(null);
       setSongUrl("");
+      setScheduledDeliveryTime(null);
       fetchOrders();
     } catch {
       toast({
@@ -404,8 +416,10 @@ export default function Admin() {
                   <SelectItem value="all">All Orders</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="ready">Ready (Scheduled)</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
@@ -467,6 +481,12 @@ export default function Admin() {
                             <p className="text-sm text-muted-foreground">
                               <strong>Expected Delivery:</strong>{" "}
                               {new Date(order.expected_delivery).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                            </p>
+                          )}
+                          {order.scheduled_delivery_at && order.status === "ready" && (
+                            <p className="text-sm text-amber-600">
+                              <strong>📅 Scheduled Send:</strong>{" "}
+                              {new Date(order.scheduled_delivery_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
                             </p>
                           )}
                         </div>
@@ -660,6 +680,7 @@ export default function Admin() {
                         <SelectContent>
                           <SelectItem value="paid">Paid</SelectItem>
                           <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="ready">Ready (Scheduled)</SelectItem>
                           <SelectItem value="completed">Completed</SelectItem>
                           <SelectItem value="delivered">Delivered</SelectItem>
                           <SelectItem value="cancelled">Cancelled</SelectItem>
@@ -677,14 +698,25 @@ export default function Admin() {
                     )}
                   </div>
                 </div>
+
+                {(songUrl || selectedOrder.song_url) && selectedOrder.status !== "delivered" && (
+                  <div className="border-t pt-4">
+                    <ScheduledDeliveryPicker
+                      expectedDelivery={selectedOrder.expected_delivery}
+                      value={scheduledDeliveryTime}
+                      onChange={setScheduledDeliveryTime}
+                    />
+                  </div>
+                )}
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
                 <Button
                   variant="outline"
-                onClick={() => {
+                  onClick={() => {
                     setSelectedOrder(null);
                     setSelectedFile(null);
+                    setScheduledDeliveryTime(null);
                     if (fileInputRef.current) {
                       fileInputRef.current.value = "";
                     }
@@ -693,13 +725,29 @@ export default function Admin() {
                   Close
                 </Button>
                 {(songUrl || selectedOrder.song_url) && selectedOrder.status !== "delivered" && (
-                  <Button
-                    onClick={() => updateOrder(selectedOrder.id, { deliver: true })}
-                    disabled={updating}
-                  >
-                    <Send className="h-4 w-4 mr-2" />
-                    {updating ? "Delivering..." : "Deliver & Send Email"}
-                  </Button>
+                  <>
+                    {scheduledDeliveryTime ? (
+                      <Button
+                        onClick={() => updateOrder(selectedOrder.id, { 
+                          scheduleDelivery: true,
+                          scheduledDeliveryAt: scheduledDeliveryTime.toISOString(),
+                        })}
+                        disabled={updating}
+                        className="gap-2"
+                      >
+                        <CalendarClock className="h-4 w-4" />
+                        {updating ? "Scheduling..." : "Schedule Delivery"}
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => updateOrder(selectedOrder.id, { deliver: true })}
+                        disabled={updating}
+                      >
+                        <Send className="h-4 w-4 mr-2" />
+                        {updating ? "Delivering..." : "Deliver & Send Email Now"}
+                      </Button>
+                    )}
+                  </>
                 )}
               </DialogFooter>
             </>
