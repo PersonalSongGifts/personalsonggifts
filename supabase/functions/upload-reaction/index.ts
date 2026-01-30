@@ -5,6 +5,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Security limits
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
+const ALLOWED_VIDEO_TYPES = [
+  "video/mp4",
+  "video/quicktime", // .mov
+  "video/webm",
+  "video/x-msvideo", // .avi
+];
+const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".avi"];
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,6 +40,7 @@ Deno.serve(async (req) => {
         }
 
         // Find a delivered order for this email that hasn't submitted a reaction yet
+        // Using ilike for case-insensitive matching
         const { data: order, error } = await supabase
           .from("orders")
           .select("id, recipient_name, occasion, reaction_submitted_at")
@@ -80,6 +91,32 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Security: Validate file size (100MB max)
+      if (video.size > MAX_VIDEO_SIZE) {
+        return new Response(
+          JSON.stringify({ error: "Video must be under 100MB" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Security: Validate MIME type
+      if (!ALLOWED_VIDEO_TYPES.includes(video.type)) {
+        return new Response(
+          JSON.stringify({ error: "Only MP4, MOV, WebM, and AVI videos are allowed" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Security: Validate file extension
+      const extensionMatch = video.name.toLowerCase().match(/\.[^.]+$/);
+      const extension = extensionMatch ? extensionMatch[0] : "";
+      if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid video file extension" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Verify the order belongs to this email and hasn't already submitted
       const { data: order, error: orderError } = await supabase
         .from("orders")
@@ -94,6 +131,7 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Case-insensitive email comparison
       if (order.customer_email.toLowerCase() !== email.trim().toLowerCase()) {
         return new Response(
           JSON.stringify({ error: "Email does not match order" }),
@@ -108,9 +146,8 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Get file extension
-      const extension = video.name.split(".").pop() || "mp4";
-      const fileName = `${orderId}-reaction.${extension}`;
+      // Use validated extension for filename
+      const fileName = `${orderId}-reaction${extension}`;
 
       // Upload to reactions bucket
       const arrayBuffer = await video.arrayBuffer();
