@@ -1,86 +1,105 @@
 
 
-# Branded Song Delivery System - Complete Implementation
+# Branded Song Delivery System - Implementation Plan
 
-## Overview
+## Step 1: Database Migration & Storage Setup
 
-This builds a professional song delivery experience on your own website, matching competitors like ForeverSongs but with your Personal Song Gifts branding.
+### Schema Changes
+Add four new columns to the `orders` table:
+- `song_title` (text) - Custom title for the song display
+- `cover_image_url` (text) - Album artwork storage URL
+- `reaction_video_url` (text) - Customer reaction video URL
+- `reaction_submitted_at` (timestamptz) - Timestamp of reaction submission
 
-## What's Being Built
+### Storage Bucket
+Create `reactions` bucket with:
+- Public read access for displaying videos
+- Insert policy allowing public uploads (customers can submit without authentication)
 
-### 1. Song Player Page (`/song/:orderId`)
-- Beautiful branded URL like `personalsonggifts.com/song/C015D00C`
-- Album artwork with play button overlay
-- Full audio player with progress bar and volume control
+---
+
+## Step 2: Song Player Page (`/song/:orderId`)
+
+New file: `src/pages/SongPlayer.tsx`
+
+Features:
+- Fetches order data via `get-song-page` edge function
+- Album artwork display with fallback to occasion-based default images
+- Custom audio player (play/pause, progress bar, time display, volume)
 - Song title and occasion display
 - Share buttons (Facebook + Copy Link)
-- Reaction video upload CTA with $50 gift card incentive
+- Reaction video CTA card with $50 gift card incentive
+- Brand footer
 
-### 2. Reaction Upload Page (`/submit-reaction`)
-- Email verification to find customer's order
-- Video upload form with progress indicator
+---
+
+## Step 3: Reaction Upload Page (`/submit-reaction`)
+
+New file: `src/pages/SubmitReaction.tsx`
+
+Features:
+- Email lookup form to find customer's order
+- Order verification before showing upload form
+- Video file upload with progress indicator
 - Tips for great reaction videos
 - Success confirmation screen
+- Link back to home page
 
-### 3. Database Updates
-New columns on `orders` table:
-- `song_title` - Custom title for the song
-- `cover_image_url` - Album artwork URL
-- `reaction_video_url` - Customer's reaction video
-- `reaction_submitted_at` - When reaction was submitted
+---
 
-New storage bucket:
-- `reactions` - For customer video uploads
+## Step 4: Edge Functions
 
-### 4. Edge Functions
-- `get-song-page` - Public endpoint to fetch song data safely
-- `upload-reaction` - Handles email lookup and video upload
+### `get-song-page` (new)
+- Public endpoint (no auth required)
+- Accepts short order ID from URL
+- Returns only safe fields: song_url, song_title, cover_image_url, occasion, recipient_name
+- Only returns delivered orders with uploaded songs
 
-### 5. Admin Panel Updates
-- Song title input field
-- Cover image upload capability
-- Updated delivery email to link to branded page
+### `upload-reaction` (new)
+- Accepts: email, order ID, video file
+- Validates email matches order record
+- Uploads video to `reactions` bucket
+- Updates order with reaction_video_url and reaction_submitted_at
 
-## Implementation Steps
+---
 
-**Step 1: Database Migration**
-Add new columns to orders table and create reactions storage bucket
+## Step 5: Route Updates
 
-**Step 2: Create Song Player Page**
-New page at `src/pages/SongPlayer.tsx` with audio player and sharing
+Update `src/App.tsx`:
+- Add `/song/:orderId` route for SongPlayer
+- Add `/submit-reaction` route for SubmitReaction
 
-**Step 3: Create Reaction Upload Page**
-New page at `src/pages/SubmitReaction.tsx` with email lookup and video upload
+---
 
-**Step 4: Create Edge Functions**
-- `get-song-page` for fetching song data publicly
-- `upload-reaction` for email lookup and video uploads
+## Step 6: Admin Panel Updates
 
-**Step 5: Update App Routes**
-Add routes for `/song/:orderId` and `/submit-reaction`
+Update `src/pages/Admin.tsx`:
+- Add song title input field in Order Details dialog
+- Add cover image upload capability
+- Save to orders table when updated
 
-**Step 6: Update Admin Panel**
-Add song title and cover image fields to Order Details dialog
+---
 
-**Step 7: Update Delivery Email**
-Change email CTA to link to branded page instead of raw storage URL
+## Step 7: Delivery Email Update
 
-## URL Structure Change
+Update `supabase/functions/send-song-delivery/index.ts`:
+- Change CTA link from raw storage URL to branded page
+- New format: `https://personalsonggifts.lovable.app/song/{SHORT_ORDER_ID}`
 
-**Before:**
-```
-https://kjyh...supabase.co/storage/v1/object/public/songs/C015D00C.mp3
-```
+---
 
-**After:**
-```
-https://personalsonggifts.com/song/C015D00C
-```
+## Files Summary
 
-## Security Considerations
-
-- Song page only shows delivered orders with uploaded songs
-- No customer PII exposed (only recipient name and occasion)
-- Reaction upload validates email matches order
-- All edge functions use service role with proper CORS
+| File | Action |
+|------|--------|
+| Database migration | Create columns + reactions bucket |
+| `src/pages/SongPlayer.tsx` | Create |
+| `src/pages/SubmitReaction.tsx` | Create |
+| `src/App.tsx` | Add 2 routes |
+| `supabase/functions/get-song-page/index.ts` | Create |
+| `supabase/functions/upload-reaction/index.ts` | Create |
+| `supabase/functions/send-song-delivery/index.ts` | Update |
+| `supabase/config.toml` | Register new functions |
+| `src/pages/Admin.tsx` | Add song title + cover image fields |
+| `src/integrations/supabase/types.ts` | Auto-updates after migration |
 
