@@ -100,6 +100,7 @@ export type Database = {
           reaction_video_url: string | null
           recipient_name: string
           recipient_type: string
+          scheduled_delivery_at: string | null
           singer_preference: string
           song_title: string | null
           song_url: string | null
@@ -127,6 +128,7 @@ export type Database = {
           reaction_video_url?: string | null
           recipient_name: string
           recipient_type: string
+          scheduled_delivery_at?: string | null
           singer_preference: string
           song_title?: string | null
           song_url?: string | null
@@ -154,6 +156,7 @@ export type Database = {
           reaction_video_url?: string | null
           recipient_name?: string
           recipient_type?: string
+          scheduled_delivery_at?: string | null
           singer_preference?: string
           song_title?: string | null
           song_url?: string | null

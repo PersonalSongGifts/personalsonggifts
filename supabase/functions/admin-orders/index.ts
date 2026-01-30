@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      const { orderId, status, songUrl, song_title, deliver } = (body ?? {}) as Record<string, unknown>;
+      const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = (body ?? {}) as Record<string, unknown>;
 
       if (!orderId) {
         return new Response(
@@ -136,9 +136,27 @@ Deno.serve(async (req) => {
       if (songUrl) updateData.song_url = songUrl;
       if (song_title) updateData.song_title = song_title;
 
+      // Handle scheduled delivery
+      if (scheduleDelivery && scheduledDeliveryAt) {
+        const scheduledTime = new Date(scheduledDeliveryAt as string);
+        
+        // Validate scheduled time is in the future
+        if (scheduledTime <= new Date()) {
+          return new Response(
+            JSON.stringify({ error: "Scheduled time must be in the future" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        updateData.scheduled_delivery_at = scheduledDeliveryAt;
+        updateData.status = "ready"; // Mark as ready for scheduled delivery
+      }
+
       if (deliver) {
         updateData.status = "delivered";
         updateData.delivered_at = new Date().toISOString();
+        // Clear any scheduled delivery since we're delivering now
+        updateData.scheduled_delivery_at = null;
       }
 
       const { data: order, error: updateError } = await supabase
@@ -152,7 +170,28 @@ Deno.serve(async (req) => {
         throw updateError;
       }
 
-      // If delivering, also send the delivery email
+      // If scheduling delivery, return success without sending email
+      if (scheduleDelivery) {
+        const scheduledPST = new Date(scheduledDeliveryAt as string).toLocaleString("en-US", {
+          timeZone: "America/Los_Angeles",
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }) + " PST";
+
+        return new Response(
+          JSON.stringify({ 
+            order, 
+            message: `Delivery scheduled for ${scheduledPST}` 
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // If delivering now, send the delivery email
       if (deliver && order.song_url) {
         try {
           const emailResponse = await fetch(
