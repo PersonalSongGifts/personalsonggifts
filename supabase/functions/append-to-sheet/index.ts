@@ -179,10 +179,28 @@ Deno.serve(async (req) => {
     const jwt = await createGoogleJWT(serviceAccountEmail, privateKey);
     const accessToken = await getAccessToken(jwt);
 
+    // Helper to format date in PST
+    const formatPST = (isoString: string | undefined): string => {
+      if (!isoString) {
+        isoString = new Date().toISOString();
+      }
+      const date = new Date(isoString);
+      return date.toLocaleString("en-US", { 
+        timeZone: "America/Los_Angeles",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      }) + " PST";
+    };
+
     // Build row data (15 columns - removed relationship)
     const rowValues = [
       orderData.orderId || "",
-      orderData.createdAt || new Date().toISOString(),
+      formatPST(orderData.createdAt),
       orderData.status || "paid",
       orderData.pricingTier || "",
       orderData.price?.toString() || "",
