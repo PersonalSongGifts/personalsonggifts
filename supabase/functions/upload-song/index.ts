@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import MP3Tag from "https://esm.sh/mp3tag.js@3.11.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,7 +88,69 @@ Deno.serve(async (req) => {
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
 
-    // Upload to storage (upsert to allow replacing existing files)
+    // Extract song title from original filename (remove extension and clean up)
+    const originalFileName = file.name;
+    const songTitle = originalFileName
+      .replace(/\.[^/.]+$/, "")  // Remove extension
+      .replace(/[-_]/g, " ")     // Replace dashes/underscores with spaces
+      .replace(/\s+/g, " ")      // Normalize multiple spaces
+      .trim();
+
+    // Try to extract cover art from MP3 ID3 tags
+    let coverImageUrl: string | null = null;
+    
+    if (extension === ".mp3") {
+      try {
+        console.log("Attempting to parse ID3 tags for cover art...");
+        const mp3tag = new MP3Tag(arrayBuffer);
+        mp3tag.read();
+        
+        if (!mp3tag.error && mp3tag.tags?.v2?.APIC) {
+          // APIC can be an array or single object
+          const pictures = Array.isArray(mp3tag.tags.v2.APIC) 
+            ? mp3tag.tags.v2.APIC 
+            : [mp3tag.tags.v2.APIC];
+          
+          const picture = pictures[0];
+          if (picture && picture.data) {
+            console.log("Found embedded cover art, extracting...");
+            
+            // picture.data is already a Uint8Array or array of bytes
+            const coverBytes = picture.data instanceof Uint8Array 
+              ? picture.data 
+              : new Uint8Array(picture.data);
+            
+            const format = picture.format || "image/jpeg";
+            const ext = format.includes("png") ? "png" : "jpg";
+            const coverPath = `${shortOrderId}-cover.${ext}`;
+            
+            // Upload cover to songs bucket
+            const { error: coverUploadError } = await supabase.storage
+              .from("songs")
+              .upload(coverPath, coverBytes, {
+                contentType: format,
+                upsert: true,
+              });
+            
+            if (coverUploadError) {
+              console.error("Cover upload error:", coverUploadError);
+            } else {
+              const { data: coverUrlData } = supabase.storage
+                .from("songs")
+                .getPublicUrl(coverPath);
+              coverImageUrl = coverUrlData.publicUrl;
+              console.log("Cover art uploaded:", coverImageUrl);
+            }
+          }
+        } else {
+          console.log("No APIC frame found or parse error:", mp3tag.error);
+        }
+      } catch (e) {
+        console.log("ID3 parsing skipped:", e);
+      }
+    }
+
+    // Upload audio to storage (upsert to allow replacing existing files)
     const { error: uploadError } = await supabase.storage
       .from("songs")
       .upload(storagePath, uint8Array, {
@@ -100,17 +163,27 @@ Deno.serve(async (req) => {
       throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
-    // Get public URL
+    // Get public URL for the song
     const { data: urlData } = supabase.storage
       .from("songs")
       .getPublicUrl(storagePath);
 
     const publicUrl = urlData.publicUrl;
 
-    // Update the order with the song URL
+    // Update the order with song URL, title, and cover (if extracted)
+    const updateData: Record<string, string | null> = {
+      song_url: publicUrl,
+      song_title: songTitle,
+    };
+    
+    // Only update cover_image_url if we extracted one
+    if (coverImageUrl) {
+      updateData.cover_image_url = coverImageUrl;
+    }
+
     const { error: updateError } = await supabase
       .from("orders")
-      .update({ song_url: publicUrl })
+      .update(updateData)
       .eq("id", orderId);
 
     if (updateError) {
@@ -119,6 +192,10 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Song uploaded for order ${shortOrderId}: ${publicUrl}`);
+    console.log(`Title set to: "${songTitle}"`);
+    if (coverImageUrl) {
+      console.log(`Cover art extracted: ${coverImageUrl}`);
+    }
 
     return new Response(
       JSON.stringify({ 
@@ -126,6 +203,8 @@ Deno.serve(async (req) => {
         url: publicUrl,
         orderId: orderId,
         fileName: storagePath,
+        songTitle: songTitle,
+        coverImageUrl: coverImageUrl,
         type: "song"
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

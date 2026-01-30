@@ -84,7 +84,6 @@ export default function Admin() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [songTitle, setSongTitle] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -166,16 +165,6 @@ export default function Admin() {
     } finally {
       setUploadingFile(false);
       setUploadProgress(0);
-    }
-  };
-
-  const handleSaveSongTitle = async () => {
-    if (!selectedOrder || !password) return;
-
-    try {
-      await updateOrder(selectedOrder.id, { song_title: songTitle });
-    } catch (error) {
-      console.error("Save title error:", error);
     }
   };
 
@@ -477,10 +466,9 @@ export default function Admin() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {
+                          onClick={() => {
                               setSelectedOrder(order);
                               setSongUrl(order.song_url || "");
-                              setSongTitle(order.song_title || "");
                             }}
                           >
                             <Eye className="h-4 w-4 mr-2" />
@@ -619,37 +607,12 @@ export default function Admin() {
                   </div>
                 </div>
 
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-3">Song Details</h4>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="song-title">Song Title</Label>
-                      <div className="flex gap-2 mt-1">
-                        <Input
-                          id="song-title"
-                          placeholder={`A Song for ${selectedOrder.recipient_name}`}
-                          value={songTitle}
-                          onChange={(e) => setSongTitle(e.target.value)}
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleSaveSongTitle}
-                          disabled={updating || !songTitle}
-                        >
-                          Save
-                        </Button>
-                      </div>
-                      {selectedOrder.song_title && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Current: {selectedOrder.song_title}
-                        </p>
-                      )}
-                    </div>
-
+                {selectedOrder.song_title && (
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-2">Song Title</h4>
+                    <p className="text-sm text-muted-foreground">{selectedOrder.song_title}</p>
                   </div>
-                </div>
+                )}
 
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-3">Order Settings</h4>
@@ -693,7 +656,6 @@ export default function Admin() {
                 onClick={() => {
                     setSelectedOrder(null);
                     setSelectedFile(null);
-                    setSongTitle("");
                     if (fileInputRef.current) {
                       fileInputRef.current.value = "";
                     }

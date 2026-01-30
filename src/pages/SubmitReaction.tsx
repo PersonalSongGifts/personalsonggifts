@@ -72,9 +72,9 @@ const SubmitReaction = () => {
       return;
     }
 
-    // Validate file size (max 500MB)
-    if (file.size > 500 * 1024 * 1024) {
-      toast.error("Video must be under 500MB");
+    // Validate file size (max 100MB - matches server limit)
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error("Video must be under 100MB");
       return;
     }
 
