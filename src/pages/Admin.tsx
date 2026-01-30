@@ -628,29 +628,14 @@ export default function Admin() {
                       </Select>
                     </div>
 
-                    <div>
-                      <label className="text-sm font-medium">Song URL</label>
-                      {songUrl && (
-                        <p className="text-xs text-muted-foreground mt-1 mb-2 break-all">
-                          Current: <a href={songUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{songUrl}</a>
+                    {songUrl && (
+                      <div>
+                        <label className="text-sm font-medium">Uploaded Song</label>
+                        <p className="text-xs text-muted-foreground mt-1 break-all">
+                          <a href={songUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{songUrl}</a>
                         </p>
-                      )}
-                      <div className="flex gap-2 mt-1">
-                        <Textarea
-                          value={songUrl}
-                          onChange={(e) => setSongUrl(e.target.value)}
-                          placeholder="https://... (auto-filled after upload)"
-                          className="flex-1"
-                        />
-                        <Button
-                          variant="outline"
-                          onClick={() => updateOrder(selectedOrder.id, { songUrl })}
-                          disabled={updating || !songUrl}
-                        >
-                          Save
-                        </Button>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
