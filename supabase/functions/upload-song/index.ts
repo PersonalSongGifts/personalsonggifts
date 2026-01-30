@@ -44,6 +44,7 @@ Deno.serve(async (req) => {
     // Get the file and order ID
     const file = formData.get("file");
     const orderId = formData.get("orderId");
+    const fileType = formData.get("fileType"); // 'song' or 'cover'
 
     if (!file || !(file instanceof File)) {
       return new Response(
@@ -59,24 +60,39 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate file type
-    const allowedTypes = ["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg", "audio/flac"];
-    const allowedExtensions = [".mp3", ".wav", ".m4a", ".ogg", ".flac"];
-    
+    const isCoverUpload = fileType === "cover";
     const fileName = file.name.toLowerCase();
     const fileExtension = fileName.substring(fileName.lastIndexOf("."));
-    
-    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
-      return new Response(
-        JSON.stringify({ error: "Invalid file type. Allowed: MP3, WAV, M4A, OGG, FLAC" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+
+    // Validate file type based on upload type
+    if (isCoverUpload) {
+      const allowedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      const allowedImageExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+      
+      if (!allowedImageTypes.includes(file.type) && !allowedImageExtensions.includes(fileExtension)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid file type. Allowed: JPG, PNG, WEBP, GIF" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      const allowedTypes = ["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg", "audio/flac"];
+      const allowedExtensions = [".mp3", ".wav", ".m4a", ".ogg", ".flac"];
+      
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid file type. Allowed: MP3, WAV, M4A, OGG, FLAC" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Create clean filename using order ID
     const shortOrderId = orderId.slice(0, 8).toUpperCase();
-    const extension = fileExtension || ".mp3";
-    const storagePath = `${shortOrderId}${extension}`;
+    const extension = fileExtension || (isCoverUpload ? ".jpg" : ".mp3");
+    const storagePath = isCoverUpload 
+      ? `covers/${shortOrderId}${extension}`
+      : `${shortOrderId}${extension}`;
 
     // Initialize Supabase client with service role
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -91,7 +107,7 @@ Deno.serve(async (req) => {
     const { error: uploadError } = await supabase.storage
       .from("songs")
       .upload(storagePath, uint8Array, {
-        contentType: file.type || "audio/mpeg",
+        contentType: file.type || (isCoverUpload ? "image/jpeg" : "audio/mpeg"),
         upsert: true,
       });
 
@@ -107,10 +123,11 @@ Deno.serve(async (req) => {
 
     const publicUrl = urlData.publicUrl;
 
-    // Update the order with the new song URL
+    // Update the order with the new URL
+    const updateField = isCoverUpload ? "cover_image_url" : "song_url";
     const { error: updateError } = await supabase
       .from("orders")
-      .update({ song_url: publicUrl })
+      .update({ [updateField]: publicUrl })
       .eq("id", orderId);
 
     if (updateError) {
@@ -118,14 +135,15 @@ Deno.serve(async (req) => {
       // Don't fail - the file is uploaded, just couldn't update order
     }
 
-    console.log(`Song uploaded for order ${shortOrderId}: ${publicUrl}`);
+    console.log(`${isCoverUpload ? 'Cover' : 'Song'} uploaded for order ${shortOrderId}: ${publicUrl}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         url: publicUrl,
         orderId: orderId,
-        fileName: storagePath
+        fileName: storagePath,
+        type: isCoverUpload ? "cover" : "song"
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
       </p>
       
       <div style="text-align: center; margin: 40px 0;">
-        <a href="${songUrl}" style="display: inline-block; background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); color: #FDF8F3; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(30, 58, 95, 0.3);">
+        <a href="https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}" style="display: inline-block; background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); color: #FDF8F3; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(30, 58, 95, 0.3);">
           🎵 Listen to Your Song
         </a>
       </div>

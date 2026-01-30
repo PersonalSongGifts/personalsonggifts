@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      const { orderId, status, songUrl, deliver } = (body ?? {}) as Record<string, unknown>;
+      const { orderId, status, songUrl, song_title, deliver } = (body ?? {}) as Record<string, unknown>;
 
       if (!orderId) {
         return new Response(
@@ -134,6 +134,7 @@ Deno.serve(async (req) => {
       const updateData: Record<string, unknown> = {};
       if (status) updateData.status = status;
       if (songUrl) updateData.song_url = songUrl;
+      if (song_title) updateData.song_title = song_title;
 
       if (deliver) {
         updateData.status = "delivered";

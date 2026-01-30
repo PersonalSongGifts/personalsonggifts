@@ -81,6 +81,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          cover_image_url: string | null
           created_at: string
           customer_email: string
           customer_name: string
@@ -95,15 +96,19 @@ export type Database = {
           occasion: string
           price: number
           pricing_tier: string
+          reaction_submitted_at: string | null
+          reaction_video_url: string | null
           recipient_name: string
           recipient_type: string
           singer_preference: string
+          song_title: string | null
           song_url: string | null
           special_message: string | null
           special_qualities: string
           status: string
         }
         Insert: {
+          cover_image_url?: string | null
           created_at?: string
           customer_email: string
           customer_name: string
@@ -118,15 +123,19 @@ export type Database = {
           occasion: string
           price: number
           pricing_tier: string
+          reaction_submitted_at?: string | null
+          reaction_video_url?: string | null
           recipient_name: string
           recipient_type: string
           singer_preference: string
+          song_title?: string | null
           song_url?: string | null
           special_message?: string | null
           special_qualities: string
           status?: string
         }
         Update: {
+          cover_image_url?: string | null
           created_at?: string
           customer_email?: string
           customer_name?: string
@@ -141,9 +150,12 @@ export type Database = {
           occasion?: string
           price?: number
           pricing_tier?: string
+          reaction_submitted_at?: string | null
+          reaction_video_url?: string | null
           recipient_name?: string
           recipient_type?: string
           singer_preference?: string
+          song_title?: string | null
           song_url?: string | null
           special_message?: string | null
           special_qualities?: string
