@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check } from "lucide-react";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface Lead {
   id: string;
@@ -35,6 +36,7 @@ export interface Lead {
   preview_sent_at?: string | null;
   preview_opened_at?: string | null;
   follow_up_sent_at?: string | null;
+  preview_scheduled_at?: string | null;
 }
 
 interface LeadsTableProps {
@@ -83,6 +85,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sendingPreview, setSendingPreview] = useState(false);
   const [sendingFollowup, setSendingFollowup] = useState(false);
+  const [cancellingAutoSend, setCancellingAutoSend] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,10 +170,10 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
 
       toast({
         title: "Upload Successful",
-        description: `Song uploaded! Preview token: ${data.previewToken}`,
+        description: `Song uploaded! Email will auto-send in 24 hours. Click "Send Now" to send immediately.`,
       });
 
-      // Refresh leads list
+      // Refresh leads list and update selected lead
       onRefresh?.();
     } catch (error) {
       console.error("Upload error:", error);
@@ -263,6 +266,58 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     } finally {
       setSendingFollowup(false);
     }
+  };
+
+  const handleCancelAutoSend = async (lead: Lead) => {
+    if (!adminPassword) return;
+
+    setCancellingAutoSend(true);
+    try {
+      // Update lead to clear the scheduled send time
+      const { error } = await supabase
+        .from("leads")
+        .update({ preview_scheduled_at: null })
+        .eq("id", lead.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Auto-Send Cancelled",
+        description: "The preview email will not be sent automatically",
+      });
+
+      onRefresh?.();
+    } catch (error) {
+      console.error("Cancel auto-send error:", error);
+      toast({
+        title: "Failed to Cancel",
+        description: error instanceof Error ? error.message : "Failed to cancel auto-send",
+        variant: "destructive",
+      });
+    } finally {
+      setCancellingAutoSend(false);
+    }
+  };
+
+  // Check if lead has pending auto-send
+  const hasScheduledAutoSend = (lead: Lead) => {
+    return lead.preview_scheduled_at && 
+           !lead.preview_sent_at && 
+           lead.status === "song_ready" &&
+           new Date(lead.preview_scheduled_at) > new Date();
+  };
+
+  // Get time until auto-send
+  const getAutoSendTimeRemaining = (lead: Lead) => {
+    if (!lead.preview_scheduled_at) return null;
+    const scheduledTime = new Date(lead.preview_scheduled_at);
+    const now = new Date();
+    const diffMs = scheduledTime.getTime() - now.getTime();
+    if (diffMs <= 0) return "any moment";
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
   };
 
   const toggleAudioPlayback = (url: string) => {
@@ -450,6 +505,12 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         <strong>Preview sent:</strong> {new Date(lead.preview_sent_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
                       </p>
                     )}
+                    {hasScheduledAutoSend(lead) && (
+                      <p className="text-sm text-blue-600">
+                        <Timer className="h-3 w-3 inline mr-1" />
+                        <strong>Auto-send in:</strong> {getAutoSendTimeRemaining(lead)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     {/* Upload Song button - show for unconverted leads without a song */}
@@ -480,14 +541,27 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     )}
                     {/* Send preview button - show when song ready but not sent */}
                     {lead.status === "song_ready" && lead.preview_song_url && !lead.preview_sent_at && (
-                      <Button
-                        size="sm"
-                        onClick={() => handleSendPreview(lead)}
-                        disabled={sendingPreview}
-                      >
-                        <Send className="h-4 w-4 mr-2" />
-                        {sendingPreview ? "Sending..." : "Send Preview"}
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => handleSendPreview(lead)}
+                          disabled={sendingPreview}
+                        >
+                          <Send className="h-4 w-4 mr-2" />
+                          {sendingPreview ? "Sending..." : "Send Now"}
+                        </Button>
+                        {hasScheduledAutoSend(lead) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleCancelAutoSend(lead)}
+                            disabled={cancellingAutoSend}
+                          >
+                            <X className="h-4 w-4 mr-2" />
+                            {cancellingAutoSend ? "Cancelling..." : "Cancel Auto"}
+                          </Button>
+                        )}
+                      </>
                     )}
                     {/* Send follow-up button */}
                     {isEligibleForFollowup(lead) && (
@@ -653,6 +727,38 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           </a>
                         </p>
                       )}
+                      
+                      {/* Auto-send status */}
+                      {hasScheduledAutoSend(selectedLead) && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
+                          <div className="flex items-center gap-2 text-blue-700">
+                            <Timer className="h-4 w-4" />
+                            <span className="font-medium">Auto-send scheduled</span>
+                          </div>
+                          <p className="text-sm text-blue-600 mt-1">
+                            Preview email will be sent automatically in {getAutoSendTimeRemaining(selectedLead)}
+                            {selectedLead.preview_scheduled_at && (
+                              <span className="block text-xs mt-1">
+                                ({new Date(selectedLead.preview_scheduled_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST)
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Already sent indicator */}
+                      {selectedLead.preview_sent_at && (
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
+                          <div className="flex items-center gap-2 text-green-700">
+                            <Check className="h-4 w-4" />
+                            <span className="font-medium">Preview email sent</span>
+                          </div>
+                          <p className="text-sm text-green-600 mt-1">
+                            Sent on {new Date(selectedLead.preview_sent_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                          </p>
+                        </div>
+                      )}
+
                       <div className="flex gap-2 mt-3">
                         <Button
                           variant="outline"
@@ -751,13 +857,25 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                 </Button>
                 {/* Send Preview button in dialog */}
                 {selectedLead.status === "song_ready" && selectedLead.preview_song_url && !selectedLead.preview_sent_at && (
-                  <Button
-                    onClick={() => handleSendPreview(selectedLead)}
-                    disabled={sendingPreview}
-                  >
-                    <Send className="h-4 w-4 mr-2" />
-                    {sendingPreview ? "Sending..." : "Send Preview Email"}
-                  </Button>
+                  <>
+                    <Button
+                      onClick={() => handleSendPreview(selectedLead)}
+                      disabled={sendingPreview}
+                    >
+                      <Send className="h-4 w-4 mr-2" />
+                      {sendingPreview ? "Sending..." : "Send Now"}
+                    </Button>
+                    {hasScheduledAutoSend(selectedLead) && (
+                      <Button
+                        variant="destructive"
+                        onClick={() => handleCancelAutoSend(selectedLead)}
+                        disabled={cancellingAutoSend}
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        {cancellingAutoSend ? "Cancelling..." : "Cancel Auto-Send"}
+                      </Button>
+                    )}
+                  </>
                 )}
                 {/* Send Follow-up button in dialog */}
                 {isEligibleForFollowup(selectedLead) && (

@@ -294,13 +294,17 @@ Deno.serve(async (req) => {
     // Generate preview token for secure URL
     const previewToken = generatePreviewToken();
 
-    // Update the lead with song URLs, title, cover, and token
+    // Calculate auto-send time (24 hours from now)
+    const autoSendTime = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    // Update the lead with song URLs, title, cover, token, and schedule auto-send
     const leadUpdateData: Record<string, string | null> = {
       full_song_url: fullSongUrl,
       preview_song_url: previewSongUrl,
       song_title: songTitle,
       preview_token: previewToken,
       status: "song_ready",
+      preview_scheduled_at: autoSendTime,
     };
     
     if (coverImageUrl) {
