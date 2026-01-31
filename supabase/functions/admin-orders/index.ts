@@ -121,6 +121,97 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Update lead preview schedule (used by Leads UI). This must be server-side because leads are not client-updatable.
+      if (body?.action === "update_lead_preview_schedule") {
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+        const previewScheduledAtRaw =
+          body.previewScheduledAt === null
+            ? null
+            : typeof body.previewScheduledAt === "string"
+              ? body.previewScheduledAt
+              : null;
+
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "Lead ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Validate scheduled time (if provided)
+        if (previewScheduledAtRaw) {
+          const dt = new Date(previewScheduledAtRaw);
+          if (Number.isNaN(dt.getTime())) {
+            return new Response(
+              JSON.stringify({ error: "Invalid previewScheduledAt" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          if (dt <= new Date()) {
+            return new Response(
+              JSON.stringify({ error: "Scheduled time must be in the future" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
+        // Ensure lead exists and is eligible
+        const { data: lead, error: leadError } = await supabase
+          .from("leads")
+          .select("id, status, preview_sent_at, preview_song_url, preview_token")
+          .eq("id", leadId)
+          .single();
+
+        if (leadError || !lead) {
+          return new Response(
+            JSON.stringify({ error: "Lead not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (lead.status === "converted") {
+          return new Response(
+            JSON.stringify({ error: "Lead already converted" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (lead.preview_sent_at) {
+          return new Response(
+            JSON.stringify({ error: "Preview already sent" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (!lead.preview_song_url || !lead.preview_token) {
+          return new Response(
+            JSON.stringify({ error: "Preview not ready - upload song first" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: updatedLead, error: updateError } = await supabase
+          .from("leads")
+          .update({
+            preview_scheduled_at: previewScheduledAtRaw,
+            // ensure status stays consistent
+            status: lead.status === "lead" ? "song_ready" : lead.status,
+          })
+          .eq("id", leadId)
+          .select("*")
+          .single();
+
+        if (updateError) {
+          console.error("Failed to update lead schedule:", updateError);
+          throw updateError;
+        }
+
+        return new Response(
+          JSON.stringify({ lead: updatedLead }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = (body ?? {}) as Record<string, unknown>;
 
       if (!orderId) {
