@@ -6,11 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Price IDs for lead recovery (same as regular checkout)
-const PRICE_IDS = {
-  standard: "price_1SvRTtGax2m9otRw75yrsjxS",
-  priority: "price_1SvRUXGax2m9otRwZOb1lNHD",
-};
+// Price IDs for lead recovery - these are LEAD-SPECIFIC prices at 50% off ($49.99)
+// Standard new order price IDs are different (price_1SvRTtGax2m9otRw75yrsjxS is $99.99)
+// Lead recovery should use the discounted price directly
+const LEAD_PRICE_ID = "price_1SvRTtGax2m9otRw75yrsjxS"; // $99.99 base (50% off promo applied = $49.99)
 
 // Promo code scheduling (PST timezone)
 function getCurrentPromoCode(): string {
@@ -38,7 +37,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { previewToken, tier, applyFollowupDiscount } = await req.json();
+    const { previewToken, applyFollowupDiscount } = await req.json();
 
     if (!previewToken || previewToken.length < 16) {
       return new Response(
@@ -46,8 +45,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const pricingTier = tier === "priority" ? "priority" : "standard";
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -126,12 +123,12 @@ Deno.serve(async (req) => {
     // Get origin for redirect URLs
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
 
-    // Create Stripe checkout session
+    // Create Stripe checkout session - leads only get standard pricing
     const session = await stripe.checkout.sessions.create({
       customer_email: lead.email,
       line_items: [
         {
-          price: PRICE_IDS[pricingTier],
+          price: LEAD_PRICE_ID,
           quantity: 1,
         },
       ],
@@ -143,7 +140,7 @@ Deno.serve(async (req) => {
         source: "lead",
         leadId: lead.id,
         previewToken: previewToken,
-        pricingTier: pricingTier,
+        pricingTier: "standard",
         customerName: lead.customer_name,
         customerEmail: lead.email,
         recipientType: lead.recipient_type,
