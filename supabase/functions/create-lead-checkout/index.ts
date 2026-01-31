@@ -6,29 +6,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Price IDs for lead recovery - these are LEAD-SPECIFIC prices at 50% off ($49.99)
-// Standard new order price IDs are different (price_1SvRTtGax2m9otRw75yrsjxS is $99.99)
-// Lead recovery should use the discounted price directly
-const LEAD_PRICE_ID = "price_1SvRTtGax2m9otRw75yrsjxS"; // $99.99 base (50% off promo applied = $49.99)
+// Lead recovery uses the standard $99.99 price, with the same site-wide promo code
+// auto-applied to bring it down to the discounted offer.
+const LEAD_PRICE_ID = "price_1SvRTtGax2m9otRw75yrsjxS"; // $99.99 base
 
-// Promo code scheduling (PST timezone)
-function getCurrentPromoCode(): string {
+// Promotion code IDs (must match the main checkout function)
+const PROMO_CODES = {
+  VALENTINES50: "promo_1SvRZGGax2m9otRwQPjgECBP",
+  WELCOME50: "promo_1SvRaCGax2m9otRwexL5yqE7",
+} as const;
+
+// Get the active promo code based on PST time (must match the main checkout function)
+function getActivePromoCodeId(): string {
+  // Feb 15, 2026 at 1:00 AM PST (UTC-8)
+  const switchDate = new Date("2026-02-15T09:00:00.000Z"); // 1 AM PST = 9 AM UTC
   const now = new Date();
-  const pstFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Los_Angeles",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const pstDateParts = pstFormatter.formatToParts(now);
-  const month = parseInt(pstDateParts.find(p => p.type === "month")?.value || "0");
-  const day = parseInt(pstDateParts.find(p => p.type === "day")?.value || "0");
-  
-  // Valentine's promo runs until Feb 14, then switches to WELCOME50
-  if (month === 2 && day <= 14) {
-    return "VALENTINES50";
-  }
-  return "WELCOME50";
+  return now < switchDate ? PROMO_CODES.VALENTINES50 : PROMO_CODES.WELCOME50;
 }
 
 Deno.serve(async (req) => {
@@ -84,25 +77,10 @@ Deno.serve(async (req) => {
       apiVersion: "2025-08-27.basil",
     });
 
-    // Get current promo code
-    const currentPromo = getCurrentPromoCode();
-    
-    // Build discount array - always apply current promo
-    const discounts: { coupon?: string; promotion_code?: string }[] = [];
-    
-    // Look up promotion code ID for current promo
-    try {
-      const promoCodes = await stripe.promotionCodes.list({
-        code: currentPromo,
-        active: true,
-        limit: 1,
-      });
-      if (promoCodes.data.length > 0) {
-        discounts.push({ promotion_code: promoCodes.data[0].id });
-      }
-    } catch (e) {
-      console.log("Could not find promo code:", currentPromo, e);
-    }
+    // Always apply the same site-wide promo code used by the main checkout
+    const discounts: { coupon?: string; promotion_code?: string }[] = [
+      { promotion_code: getActivePromoCodeId() },
+    ];
 
     // If follow-up discount applies, add FULLSONG coupon ($5 off)
     if (applyFollowupDiscount) {
