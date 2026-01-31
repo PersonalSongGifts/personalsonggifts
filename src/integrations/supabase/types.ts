@@ -30,6 +30,7 @@ export type Database = {
           order_id: string | null
           phone: string | null
           preview_opened_at: string | null
+          preview_scheduled_at: string | null
           preview_sent_at: string | null
           preview_song_url: string | null
           preview_token: string | null
@@ -57,6 +58,7 @@ export type Database = {
           order_id?: string | null
           phone?: string | null
           preview_opened_at?: string | null
+          preview_scheduled_at?: string | null
           preview_sent_at?: string | null
           preview_song_url?: string | null
           preview_token?: string | null
@@ -84,6 +86,7 @@ export type Database = {
           order_id?: string | null
           phone?: string | null
           preview_opened_at?: string | null
+          preview_scheduled_at?: string | null
           preview_sent_at?: string | null
           preview_song_url?: string | null
           preview_token?: string | null
