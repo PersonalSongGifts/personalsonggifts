@@ -22,40 +22,13 @@ interface CheckoutInput {
   };
 }
 
-const PRICE_IDS = {
-  standard: "price_1SvRTtGax2m9otRw75yrsjxS",  // $99.99
-  priority: "price_1SvRUXGax2m9otRwZOb1lNHD",  // $159.99
+// IMPORTANT:
+// We intentionally set the discounted amount server-side so Stripe ALWAYS shows the offer price,
+// even if discount/promo-code configuration changes in Stripe.
+const DISCOUNTED_TOTAL_CENTS: Record<CheckoutInput["pricingTier"], number> = {
+  standard: 4999,
+  priority: 7999,
 };
-
-// Promo code *names* (Stripe Promotion Code "code" field)
-// We look up the corresponding promo_ id at runtime to avoid hard-coding IDs that can change.
-const PROMO_CODE_NAMES = {
-  VALENTINES50: "VALENTINES50",
-  WELCOME50: "WELCOME50",
-} as const;
-
-// Get the active promo code name based on PST time
-function getActivePromoCodeName(): string {
-  // Feb 15, 2026 at 1:00 AM PST (UTC-8)
-  const switchDate = new Date("2026-02-15T09:00:00.000Z"); // 1 AM PST = 9 AM UTC
-  const now = new Date();
-  
-  return now < switchDate ? PROMO_CODE_NAMES.VALENTINES50 : PROMO_CODE_NAMES.WELCOME50;
-}
-
-async function findPromotionCodeIdByCode(stripe: Stripe, code: string): Promise<string | null> {
-  try {
-    const promoCodes = await stripe.promotionCodes.list({
-      code,
-      active: true,
-      limit: 1,
-    });
-    return promoCodes.data?.[0]?.id ?? null;
-  } catch (e) {
-    console.error("Failed to lookup promotion code:", code, e);
-    return null;
-  }
-}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -135,25 +108,25 @@ Deno.serve(async (req) => {
       metadata.customerPhone = formData.phoneNumber;
     }
 
-    // Get the active promo code based on current date
-    const activePromoCodeName = getActivePromoCodeName();
-    const activePromoCodeId = await findPromotionCodeIdByCode(stripe, activePromoCodeName);
+    const unitAmount = DISCOUNTED_TOTAL_CENTS[pricingTier];
+    const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
 
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer_email: formData.yourEmail,
       line_items: [
         {
-          price: PRICE_IDS[pricingTier],
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: productName,
+            },
+            unit_amount: unitAmount,
+          },
           quantity: 1,
         },
       ],
       mode: "payment",
-      // If promo lookup fails, proceed without discount rather than blocking all orders.
-      // (We'll log to help you catch misconfiguration quickly.)
-      discounts: activePromoCodeId
-        ? [{ promotion_code: activePromoCodeId }]
-        : undefined,
       success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/checkout`,
       metadata,
@@ -161,12 +134,6 @@ Deno.serve(async (req) => {
         metadata,
       },
     });
-
-    if (!activePromoCodeId) {
-      console.warn(
-        `Promo code lookup failed for '${activePromoCodeName}'. Checkout created WITHOUT discount. session=${session.id}`,
-      );
-    }
 
     return new Response(
       JSON.stringify({ url: session.url }),
