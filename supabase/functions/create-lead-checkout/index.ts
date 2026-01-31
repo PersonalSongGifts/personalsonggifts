@@ -10,18 +10,33 @@ const corsHeaders = {
 // auto-applied to bring it down to the discounted offer.
 const LEAD_PRICE_ID = "price_1SvRTtGax2m9otRw75yrsjxS"; // $99.99 base
 
-// Promotion code IDs (must match the main checkout function)
-const PROMO_CODES = {
-  VALENTINES50: "promo_1SvRZGGax2m9otRwQPjgECBP",
-  WELCOME50: "promo_1SvRaCGax2m9otRwexL5yqE7",
+// Promo code *names* (Stripe Promotion Code "code" field)
+// We look up the corresponding promo_ id at runtime to avoid hard-coding IDs that can change.
+const PROMO_CODE_NAMES = {
+  VALENTINES50: "VALENTINES50",
+  WELCOME50: "WELCOME50",
 } as const;
 
-// Get the active promo code based on PST time (must match the main checkout function)
-function getActivePromoCodeId(): string {
+// Get the active promo code name based on PST time (must match the main checkout function)
+function getActivePromoCodeName(): string {
   // Feb 15, 2026 at 1:00 AM PST (UTC-8)
   const switchDate = new Date("2026-02-15T09:00:00.000Z"); // 1 AM PST = 9 AM UTC
   const now = new Date();
-  return now < switchDate ? PROMO_CODES.VALENTINES50 : PROMO_CODES.WELCOME50;
+  return now < switchDate ? PROMO_CODE_NAMES.VALENTINES50 : PROMO_CODE_NAMES.WELCOME50;
+}
+
+async function findPromotionCodeIdByCode(stripe: Stripe, code: string): Promise<string | null> {
+  try {
+    const promoCodes = await stripe.promotionCodes.list({
+      code,
+      active: true,
+      limit: 1,
+    });
+    return promoCodes.data?.[0]?.id ?? null;
+  } catch (e) {
+    console.error("Failed to lookup promotion code:", code, e);
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -73,14 +88,35 @@ Deno.serve(async (req) => {
     }
 
     // Initialize Stripe
-    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") || "";
+    if (!stripeKey) {
+      return new Response(
+        JSON.stringify({ error: "STRIPE_SECRET_KEY not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (stripeKey.startsWith("pk_")) {
+      return new Response(
+        JSON.stringify({ error: "Invalid STRIPE_SECRET_KEY (publishable key provided)" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const stripe = new Stripe(stripeKey, {
       apiVersion: "2025-08-27.basil",
     });
 
     // Always apply the same site-wide promo code used by the main checkout
-    const discounts: { coupon?: string; promotion_code?: string }[] = [
-      { promotion_code: getActivePromoCodeId() },
-    ];
+    const activePromoCodeName = getActivePromoCodeName();
+    const activePromoCodeId = await findPromotionCodeIdByCode(stripe, activePromoCodeName);
+    const discounts: { coupon?: string; promotion_code?: string }[] = [];
+    if (activePromoCodeId) {
+      discounts.push({ promotion_code: activePromoCodeId });
+    } else {
+      console.warn(
+        `Promo code lookup failed for '${activePromoCodeName}'. Checkout will proceed WITHOUT site-wide discount.`,
+      );
+    }
 
     // If follow-up discount applies, add FULLSONG coupon ($5 off)
     if (applyFollowupDiscount) {
