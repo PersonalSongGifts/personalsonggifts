@@ -6,38 +6,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Lead recovery uses the standard $99.99 price, with the same site-wide promo code
-// auto-applied to bring it down to the discounted offer.
-const LEAD_PRICE_ID = "price_1SvRTtGax2m9otRw75yrsjxS"; // $99.99 base
-
-// Promo code *names* (Stripe Promotion Code "code" field)
-// We look up the corresponding promo_ id at runtime to avoid hard-coding IDs that can change.
-const PROMO_CODE_NAMES = {
-  VALENTINES50: "VALENTINES50",
-  WELCOME50: "WELCOME50",
-} as const;
-
-// Get the active promo code name based on PST time (must match the main checkout function)
-function getActivePromoCodeName(): string {
-  // Feb 15, 2026 at 1:00 AM PST (UTC-8)
-  const switchDate = new Date("2026-02-15T09:00:00.000Z"); // 1 AM PST = 9 AM UTC
-  const now = new Date();
-  return now < switchDate ? PROMO_CODE_NAMES.VALENTINES50 : PROMO_CODE_NAMES.WELCOME50;
-}
-
-async function findPromotionCodeIdByCode(stripe: Stripe, code: string): Promise<string | null> {
-  try {
-    const promoCodes = await stripe.promotionCodes.list({
-      code,
-      active: true,
-      limit: 1,
-    });
-    return promoCodes.data?.[0]?.id ?? null;
-  } catch (e) {
-    console.error("Failed to lookup promotion code:", code, e);
-    return null;
-  }
-}
+// IMPORTANT:
+// We set the offer amount server-side so Stripe ALWAYS shows the discounted lead offer,
+// even if promo-code configuration changes in Stripe.
+const LEAD_STANDARD_TOTAL_CENTS = 4999;
+const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = 4499; // $5 off follow-up
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -106,33 +79,9 @@ Deno.serve(async (req) => {
       apiVersion: "2025-08-27.basil",
     });
 
-    // Always apply the same site-wide promo code used by the main checkout
-    const activePromoCodeName = getActivePromoCodeName();
-    const activePromoCodeId = await findPromotionCodeIdByCode(stripe, activePromoCodeName);
-    const discounts: { coupon?: string; promotion_code?: string }[] = [];
-    if (activePromoCodeId) {
-      discounts.push({ promotion_code: activePromoCodeId });
-    } else {
-      console.warn(
-        `Promo code lookup failed for '${activePromoCodeName}'. Checkout will proceed WITHOUT site-wide discount.`,
-      );
-    }
-
-    // If follow-up discount applies, add FULLSONG coupon ($5 off)
-    if (applyFollowupDiscount) {
-      try {
-        const promoCodes = await stripe.promotionCodes.list({
-          code: "FULLSONG",
-          active: true,
-          limit: 1,
-        });
-        if (promoCodes.data.length > 0) {
-          discounts.push({ promotion_code: promoCodes.data[0].id });
-        }
-      } catch (e) {
-        console.log("Could not find FULLSONG promo:", e);
-      }
-    }
+    const unitAmount = applyFollowupDiscount
+      ? LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS
+      : LEAD_STANDARD_TOTAL_CENTS;
 
     // Get origin for redirect URLs
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
@@ -142,12 +91,17 @@ Deno.serve(async (req) => {
       customer_email: lead.email,
       line_items: [
         {
-          price: LEAD_PRICE_ID,
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: "Full Song (Lead Offer)",
+            },
+            unit_amount: unitAmount,
+          },
           quantity: 1,
         },
       ],
       mode: "payment",
-      discounts: discounts.length > 0 ? discounts : undefined,
       success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}&source=lead`,
       cancel_url: `${origin}/preview/${previewToken}`,
       metadata: {
@@ -155,6 +109,7 @@ Deno.serve(async (req) => {
         leadId: lead.id,
         previewToken: previewToken,
         pricingTier: "standard",
+        offerPriceCents: String(unitAmount),
         customerName: lead.customer_name,
         customerEmail: lead.email,
         recipientType: lead.recipient_type,
