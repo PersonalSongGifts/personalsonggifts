@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Progress } from "@/components/ui/progress";
 import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
 
 export interface Lead {
   id: string;
@@ -86,6 +86,9 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [sendingPreview, setSendingPreview] = useState(false);
   const [sendingFollowup, setSendingFollowup] = useState(false);
   const [cancellingAutoSend, setCancellingAutoSend] = useState(false);
+  const [savingPreviewTiming, setSavingPreviewTiming] = useState(false);
+  const [previewTimingMode, setPreviewTimingMode] = useState<LeadPreviewTimingMode>("auto_24h");
+  const [previewScheduledAt, setPreviewScheduledAt] = useState<Date | null>(null);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -282,24 +285,38 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     }
   };
 
-  const handleCancelAutoSend = async (lead: Lead) => {
+  const updateLeadPreviewSchedule = async (leadId: string, scheduledAt: Date | null) => {
     if (!adminPassword) return;
 
+    // Using backend function because leads table is not client-updatable (RLS).
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "update_lead_preview_schedule",
+        leadId,
+        previewScheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
+        adminPassword,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Failed to update schedule");
+    }
+
+    return await response.json();
+  };
+
+  const handleCancelAutoSend = async (lead: Lead) => {
+    if (!adminPassword) return;
     setCancellingAutoSend(true);
     try {
-      // Update lead to clear the scheduled send time
-      const { error } = await supabase
-        .from("leads")
-        .update({ preview_scheduled_at: null })
-        .eq("id", lead.id);
-
-      if (error) throw error;
-
+      await updateLeadPreviewSchedule(lead.id, null);
       toast({
         title: "Auto-Send Cancelled",
         description: "The preview email will not be sent automatically",
       });
-
       onRefresh?.();
     } catch (error) {
       console.error("Cancel auto-send error:", error);
@@ -520,7 +537,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       </p>
                     )}
                     {hasScheduledAutoSend(lead) && (
-                      <p className="text-sm text-blue-600">
+                      <p className="text-sm text-muted-foreground">
                         <Timer className="h-3 w-3 inline mr-1" />
                         <strong>Auto-send in:</strong> {getAutoSendTimeRemaining(lead)}
                       </p>
@@ -744,12 +761,12 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       
                       {/* Auto-send status */}
                       {hasScheduledAutoSend(selectedLead) && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
-                          <div className="flex items-center gap-2 text-blue-700">
+                        <div className="bg-muted/40 border border-border rounded-lg p-3 mt-3">
+                          <div className="flex items-center gap-2 text-foreground">
                             <Timer className="h-4 w-4" />
                             <span className="font-medium">Auto-send scheduled</span>
                           </div>
-                          <p className="text-sm text-blue-600 mt-1">
+                          <p className="text-sm text-muted-foreground mt-1">
                             Preview email will be sent automatically in {getAutoSendTimeRemaining(selectedLead)}
                             {selectedLead.preview_scheduled_at && (
                               <span className="block text-xs mt-1">
@@ -762,14 +779,108 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
 
                       {/* Already sent indicator */}
                       {selectedLead.preview_sent_at && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
-                          <div className="flex items-center gap-2 text-green-700">
+                        <div className="bg-muted/40 border border-border rounded-lg p-3 mt-3">
+                          <div className="flex items-center gap-2 text-foreground">
                             <Check className="h-4 w-4" />
                             <span className="font-medium">Preview email sent</span>
                           </div>
-                          <p className="text-sm text-green-600 mt-1">
+                          <p className="text-sm text-muted-foreground mt-1">
                             Sent on {new Date(selectedLead.preview_sent_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
                           </p>
+                        </div>
+                      )}
+
+                      {/* Order-like timing controls */}
+                      {!selectedLead.preview_sent_at && selectedLead.status === "song_ready" && (
+                        <div className="mt-4">
+                          <LeadPreviewTimingPicker
+                            mode={previewTimingMode}
+                            scheduledAt={previewScheduledAt}
+                            onModeChange={(mode) => {
+                              setPreviewTimingMode(mode);
+
+                              // Keep scheduledAt consistent with mode
+                              if (mode === "paused" || mode === "send_now") {
+                                setPreviewScheduledAt(null);
+                                return;
+                              }
+
+                              if (mode === "auto_24h" && !previewScheduledAt) {
+                                setPreviewScheduledAt(new Date(Date.now() + 24 * 60 * 60 * 1000));
+                              }
+
+                              if (mode === "custom" && !previewScheduledAt) {
+                                setPreviewScheduledAt(new Date(Date.now() + 24 * 60 * 60 * 1000));
+                              }
+                            }}
+                            onScheduledAtChange={setPreviewScheduledAt}
+                          />
+
+                          <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                            <Button
+                              onClick={async () => {
+                                if (!selectedLead) return;
+                                if (previewTimingMode === "send_now") {
+                                  await handleSendPreview(selectedLead);
+                                  return;
+                                }
+
+                                setSavingPreviewTiming(true);
+                                try {
+                                  const next =
+                                    previewTimingMode === "auto_24h"
+                                      ? (previewScheduledAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000))
+                                      : previewTimingMode === "custom"
+                                        ? previewScheduledAt
+                                        : null;
+
+                                  await updateLeadPreviewSchedule(selectedLead.id, next ?? null);
+
+                                  toast({
+                                    title: "Preview timing saved",
+                                    description:
+                                      next
+                                        ? `Scheduled for ${next.toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST`
+                                        : "Auto-send cancelled (paused)",
+                                  });
+
+                                  // Keep local selectedLead in sync
+                                  setSelectedLead({
+                                    ...selectedLead,
+                                    preview_scheduled_at: next ? next.toISOString() : null,
+                                  });
+
+                                  onRefresh?.();
+                                } catch (e) {
+                                  const msg = e instanceof Error ? e.message : "Failed to save";
+                                  toast({ title: "Save failed", description: msg, variant: "destructive" });
+                                } finally {
+                                  setSavingPreviewTiming(false);
+                                }
+                              }}
+                              disabled={
+                                savingPreviewTiming ||
+                                (previewTimingMode === "custom" && !previewScheduledAt) ||
+                                sendingPreview
+                              }
+                            >
+                              {previewTimingMode === "send_now"
+                                ? "Send Preview Email Now"
+                                : savingPreviewTiming
+                                  ? "Saving..."
+                                  : "Save Timing"}
+                            </Button>
+
+                            {selectedLead.preview_scheduled_at && !selectedLead.preview_sent_at && (
+                              <Button
+                                variant="outline"
+                                onClick={() => handleCancelAutoSend(selectedLead)}
+                                disabled={cancellingAutoSend}
+                              >
+                                {cancellingAutoSend ? "Cancelling..." : "Cancel Scheduled Send"}
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -910,3 +1021,4 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     </div>
   );
 }
+
