@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Play, Pause, Music, Lock, Check, Heart } from "lucide-react";
+import { Play, Pause, Music, Lock, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface PreviewData {
@@ -257,7 +257,7 @@ export default function SongPreview() {
           </div>
         </Card>
 
-        {/* Pricing Cards */}
+        {/* Pricing Card - Single option at $49.99 */}
         <div className="space-y-4">
           <h3 className="text-xl font-semibold text-center">
             Unlock Your Full Song
@@ -274,82 +274,40 @@ export default function SongPreview() {
             </div>
           )}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {/* Standard Option */}
-            <Card
-              className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary"
-              onClick={() => handlePurchase("standard")}
-            >
-              <CardContent className="p-6 text-center space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground line-through">$99.99</p>
-                  <p className="text-3xl font-bold text-primary">
-                    {isFollowup ? "$44.99" : "$49.99"}
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold">Standard</h4>
-                  <p className="text-sm text-muted-foreground">Instant access</p>
-                </div>
-                <ul className="text-sm space-y-2 text-left">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-600" />
-                    Full song access
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-600" />
-                    Download & keep forever
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-600" />
-                    Share with anyone
-                  </li>
-                </ul>
-                <Button className="w-full" disabled={purchasing}>
-                  {purchasing ? "Loading..." : "Get Full Song"}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Priority Option */}
-            <Card
-              className="cursor-pointer hover:shadow-lg transition-shadow border-2 border-secondary relative overflow-hidden"
-              onClick={() => handlePurchase("priority")}
-            >
-              <div className="absolute top-0 right-0 bg-secondary text-secondary-foreground text-xs px-3 py-1 rounded-bl-lg">
-                Popular
+          <Card
+            className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary max-w-md mx-auto"
+            onClick={() => handlePurchase("standard")}
+          >
+            <CardContent className="p-6 text-center space-y-4">
+              <div>
+                <p className="text-sm text-muted-foreground line-through">$99.99</p>
+                <p className="text-3xl font-bold text-primary">
+                  {isFollowup ? "$44.99" : "$49.99"}
+                </p>
               </div>
-              <CardContent className="p-6 text-center space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground line-through">$159.99</p>
-                  <p className="text-3xl font-bold text-secondary">
-                    {isFollowup ? "$74.99" : "$79.99"}
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold">Priority</h4>
-                  <p className="text-sm text-muted-foreground">Instant access + extras</p>
-                </div>
-                <ul className="text-sm space-y-2 text-left">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-600" />
-                    Everything in Standard
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-600" />
-                    Priority support
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Heart className="h-4 w-4 text-red-500" />
-                    Support our artists
-                  </li>
-                </ul>
-                <Button variant="secondary" className="w-full" disabled={purchasing}>
-                  {purchasing ? "Loading..." : "Get Priority"}
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              <div>
+                <h4 className="font-semibold">Full Song</h4>
+                <p className="text-sm text-muted-foreground">Instant access</p>
+              </div>
+              <ul className="text-sm space-y-2 text-left">
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-600" />
+                  Full song access
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-600" />
+                  Download & keep forever
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-600" />
+                  Share with anyone
+                </li>
+              </ul>
+              <Button className="w-full" size="lg" disabled={purchasing}>
+                {purchasing ? "Loading..." : "Get Full Song"}
+              </Button>
+            </CardContent>
+          </Card>
 
           {/* Promo Badge */}
           <div className="text-center">

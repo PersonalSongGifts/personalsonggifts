@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We're so excited for you to hear it! Listen to a preview below:
+        This is a short preview to give you a taste of what's coming. Once you complete your purchase, you'll receive the full-length song.
       </p>
       
       <div style="text-align: center; margin: 40px 0;">
