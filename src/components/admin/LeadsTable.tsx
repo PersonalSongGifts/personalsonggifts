@@ -452,6 +452,17 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     )}
                   </div>
                   <div className="flex gap-2 flex-wrap">
+                    {/* Upload Song button - show for unconverted leads without a song */}
+                    {lead.status === "lead" && !lead.full_song_url && (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => setSelectedLead(lead)}
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Song
+                      </Button>
+                    )}
                     {/* Preview audio button */}
                     {lead.preview_song_url && (
                       <Button
