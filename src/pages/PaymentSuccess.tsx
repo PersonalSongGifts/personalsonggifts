@@ -14,12 +14,14 @@ interface OrderDetails {
   genre: string;
   pricingTier: string;
   customerEmail: string;
-  expectedDelivery: string;
+  expectedDelivery?: string;
+  songUrl?: string;
 }
 
 const PaymentSuccess = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("session_id");
+  const source = searchParams.get("source"); // "lead" if from lead conversion
   const { trackEvent: trackMetaEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const hasTrackedPurchase = useRef(false);
@@ -27,6 +29,7 @@ const PaymentSuccess = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
+  const [isLeadConversion, setIsLeadConversion] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
@@ -37,8 +40,13 @@ const PaymentSuccess = () => {
 
     const processPayment = async () => {
       try {
+        // Determine which endpoint to call based on source
+        const endpoint = source === "lead" 
+          ? "process-lead-payment" 
+          : "process-payment";
+
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-payment`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${endpoint}`,
           {
             method: "POST",
             headers: {
@@ -56,6 +64,7 @@ const PaymentSuccess = () => {
 
         const data = await response.json();
         setOrderDetails(data);
+        setIsLeadConversion(source === "lead");
         
         // Fire Purchase events after successful order processing
         if (!hasTrackedPurchase.current && data) {
@@ -92,7 +101,7 @@ const PaymentSuccess = () => {
     };
 
     processPayment();
-  }, [sessionId]);
+  }, [sessionId, source]);
 
   if (loading) {
     return (
@@ -137,8 +146,12 @@ const PaymentSuccess = () => {
     return null;
   }
 
-  const deliveryTime = orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
-  const expectedDate = new Date(orderDetails.expectedDelivery);
+  const deliveryTime = isLeadConversion 
+    ? "Instant" 
+    : orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
+  const expectedDate = orderDetails.expectedDelivery 
+    ? new Date(orderDetails.expectedDelivery) 
+    : new Date();
 
   return (
     <Layout showPromoBanner={false}>
@@ -150,12 +163,18 @@ const PaymentSuccess = () => {
           </div>
 
           <h1 className="text-3xl md:text-4xl font-display text-foreground mb-4">
-            Thank You! Your Song Is On Its Way 🎵
+            {isLeadConversion 
+              ? "🎉 Your Full Song is Ready!" 
+              : "Thank You! Your Song Is On Its Way 🎵"}
           </h1>
           
           <p className="text-lg text-muted-foreground mb-8">
-            We've received your order and our songwriters are getting started on your 
-            personalized song for <span className="text-foreground font-medium">{orderDetails.recipientName}</span>.
+            {isLeadConversion ? (
+              <>Your personalized song for <span className="text-foreground font-medium">{orderDetails.recipientName}</span> is now unlocked and ready to share!</>
+            ) : (
+              <>We've received your order and our songwriters are getting started on your 
+              personalized song for <span className="text-foreground font-medium">{orderDetails.recipientName}</span>.</>
+            )}
           </p>
 
           {/* Order details card */}
@@ -188,33 +207,42 @@ const PaymentSuccess = () => {
             </div>
           </Card>
 
-          {/* Delivery info */}
-          <Card className="p-6 mb-8 bg-primary/5 border-primary/20">
-            <div className="flex items-center justify-center gap-3 mb-3">
-              <Clock className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Expected Delivery</h3>
-            </div>
-            <p className="text-2xl font-bold text-primary mb-2">
-              Within {deliveryTime}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              By {expectedDate.toLocaleDateString("en-US", { 
-                weekday: "long",
-                month: "long", 
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit"
-              })}
-            </p>
-          </Card>
-
-          {/* Email confirmation */}
-          <div className="flex items-center justify-center gap-2 text-muted-foreground mb-8">
-            <Mail className="h-5 w-5" />
-            <p>
-              Confirmation sent to <span className="text-foreground">{orderDetails.customerEmail}</span>
-            </p>
-          </div>
+          {/* Delivery info or direct link */}
+          {isLeadConversion && orderDetails.songUrl ? (
+            <Card className="p-6 mb-8 bg-primary/5 border-primary/20">
+              <div className="flex items-center justify-center gap-3 mb-3">
+                <Music className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-foreground">Your Song is Ready!</h3>
+              </div>
+              <p className="text-muted-foreground mb-4">
+                We've also sent the full song to your email.
+              </p>
+              <Button asChild size="lg" className="w-full">
+                <Link to={`/song/${orderDetails.orderId.slice(0, 8)}`}>
+                  🎵 Listen to Your Full Song
+                </Link>
+              </Button>
+            </Card>
+          ) : (
+            <Card className="p-6 mb-8 bg-primary/5 border-primary/20">
+              <div className="flex items-center justify-center gap-3 mb-3">
+                <Clock className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-foreground">Expected Delivery</h3>
+              </div>
+              <p className="text-2xl font-bold text-primary mb-2">
+                Within {deliveryTime}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                By {expectedDate.toLocaleDateString("en-US", { 
+                  weekday: "long",
+                  month: "long", 
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit"
+                })}
+              </p>
+            </Card>
+          )}
 
           {/* CTA */}
           <Button asChild size="lg">

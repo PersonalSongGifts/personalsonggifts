@@ -130,6 +130,31 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Mark matching lead as converted (non-blocking)
+    try {
+      const { data: matchingLead } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("email", (metadata.customerEmail || session.customer_email || "").toLowerCase())
+        .eq("status", "lead")
+        .single();
+
+      if (matchingLead) {
+        await supabase
+          .from("leads")
+          .update({
+            status: "converted",
+            converted_at: new Date().toISOString(),
+            order_id: newOrder.id,
+          })
+          .eq("id", matchingLead.id);
+        console.log(`Lead ${matchingLead.id} marked as converted`);
+      }
+    } catch (leadError) {
+      console.error("Failed to update lead status:", leadError);
+      // Don't fail the order if lead update fails
+    }
+
     // Send order confirmation email (non-blocking)
     try {
       await fetch(`${supabaseUrl}/functions/v1/send-order-confirmation`, {

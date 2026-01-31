@@ -17,3 +17,18 @@ verify_jwt = false
 
 [functions.send-song-delivery]
 verify_jwt = false
+
+[functions.get-lead-preview]
+verify_jwt = false
+
+[functions.create-lead-checkout]
+verify_jwt = false
+
+[functions.process-lead-payment]
+verify_jwt = false
+
+[functions.send-lead-preview]
+verify_jwt = false
+
+[functions.send-lead-followup]
+verify_jwt = false

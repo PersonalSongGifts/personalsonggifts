@@ -533,7 +533,14 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="leads" className="space-y-6">
-            <LeadsTable leads={leads} loading={loading} sort={leadSort} onSortChange={setLeadSort} />
+            <LeadsTable 
+              leads={leads} 
+              loading={loading} 
+              sort={leadSort} 
+              onSortChange={setLeadSort}
+              adminPassword={password}
+              onRefresh={fetchOrders}
+            />
           </TabsContent>
 
           <TabsContent value="emails" className="space-y-6">

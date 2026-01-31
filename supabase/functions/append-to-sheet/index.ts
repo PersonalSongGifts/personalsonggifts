@@ -107,7 +107,7 @@ async function appendToSheet(
   spreadsheetId: string,
   values: string[]
 ): Promise<void> {
-  const range = "Sheet1!A:O"; // Columns A through O (15 columns)
+  const range = "Sheet1!A:Q"; // Columns A through Q (17 columns for unified Order/Lead)
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
   const response = await fetch(url, {
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const orderData = await req.json();
+    const data = await req.json();
 
     // Get secrets
     const serviceAccountEmail = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
@@ -197,28 +197,51 @@ Deno.serve(async (req) => {
       }) + " PST";
     };
 
-    // Build row data (15 columns - removed relationship)
+    // Determine if this is an Order or a Lead based on presence of orderId
+    const entryType = data.orderId ? "Order" : "Lead";
+    const entryId = data.orderId || data.leadId || "";
+
+    // Build row data (17 columns for unified Order/Lead sheet)
+    // Column A: Type (Order/Lead)
+    // Column B: ID (Order UUID or Lead UUID)
+    // Column C: Created At
+    // Column D: Status
+    // Column E: Tier (empty for leads)
+    // Column F: Price (empty for leads)
+    // Column G: Customer Name
+    // Column H: Customer Email
+    // Column I: Customer Phone
+    // Column J: Recipient Name
+    // Column K: Occasion
+    // Column L: Genre
+    // Column M: Singer Preference
+    // Column N: Special Qualities
+    // Column O: Favorite Memory
+    // Column P: Special Message
+    // Column Q: Device Type (for tracking)
     const rowValues = [
-      orderData.orderId || "",
-      formatPST(orderData.createdAt),
-      orderData.status || "paid",
-      orderData.pricingTier || "",
-      orderData.price?.toString() || "",
-      orderData.customerName || "",
-      orderData.customerEmail || "",
-      orderData.customerPhone || "",
-      orderData.recipientName || "",
-      orderData.occasion || "",
-      orderData.genre || "",
-      orderData.singerPreference || "",
-      orderData.specialQualities || "",
-      orderData.favoriteMemory || "",
-      orderData.specialMessage || "",
+      entryType,
+      entryId,
+      formatPST(data.createdAt || data.capturedAt),
+      data.status || (entryType === "Order" ? "paid" : "lead"),
+      data.pricingTier || "",
+      data.price?.toString() || "",
+      data.customerName || "",
+      data.customerEmail || "",
+      data.customerPhone || "",
+      data.recipientName || "",
+      data.occasion || "",
+      data.genre || "",
+      data.singerPreference || "",
+      data.specialQualities || "",
+      data.favoriteMemory || "",
+      data.specialMessage || "",
+      data.deviceType || "",
     ];
 
     await appendToSheet(accessToken, spreadsheetId, rowValues);
 
-    console.log(`Order ${orderData.orderId} synced to Google Sheets`);
+    console.log(`${entryType} ${entryId} synced to Google Sheets`);
 
     return new Response(
       JSON.stringify({ success: true }),
