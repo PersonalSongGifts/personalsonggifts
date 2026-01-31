@@ -23,9 +23,24 @@ interface CheckoutInput {
 }
 
 const PRICE_IDS = {
-  standard: "price_1Sty7MGax2m9otRw5WBP7Wto",
-  priority: "price_1Sty7hGax2m9otRwGKt6AAbP",
+  standard: "price_1SvRTtGax2m9otRw75yrsjxS",  // $99.99
+  priority: "price_1SvRUXGax2m9otRwZOb1lNHD",  // $159.99
 };
+
+// Promo code IDs from Stripe
+const PROMO_CODES = {
+  VALENTINES50: "promo_1SvRZGGax2m9otRwQPjgECBP",
+  WELCOME50: "promo_1SvRaCGax2m9otRwexL5yqE7",
+};
+
+// Get the active promo code based on PST time
+function getActivePromoCode(): string {
+  // Feb 15, 2026 at 1:00 AM PST (UTC-8)
+  const switchDate = new Date("2026-02-15T09:00:00.000Z"); // 1 AM PST = 9 AM UTC
+  const now = new Date();
+  
+  return now < switchDate ? PROMO_CODES.VALENTINES50 : PROMO_CODES.WELCOME50;
+}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -91,6 +106,9 @@ Deno.serve(async (req) => {
       metadata.customerPhone = formData.phoneNumber;
     }
 
+    // Get the active promo code based on current date
+    const activePromoCode = getActivePromoCode();
+
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer_email: formData.yourEmail,
@@ -101,7 +119,11 @@ Deno.serve(async (req) => {
         },
       ],
       mode: "payment",
-      allow_promotion_codes: true,
+      discounts: [
+        {
+          promotion_code: activePromoCode,
+        },
+      ],
       success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/checkout`,
       metadata,
