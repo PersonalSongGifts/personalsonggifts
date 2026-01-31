@@ -87,7 +87,7 @@ export default function Admin() {
   const [updating, setUpdating] = useState(false);
   const [activeTab, setActiveTab] = useState("analytics");
   const [orderSort, setOrderSort] = useState<"latest" | "oldest">("latest");
-  const [leadSort, setLeadSort] = useState<"latest" | "oldest">("latest");
+  const [leadSort, setLeadSort] = useState<"latest" | "oldest" | "quality">("latest");
   const [reactionSort, setReactionSort] = useState<"latest" | "oldest">("latest");
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);

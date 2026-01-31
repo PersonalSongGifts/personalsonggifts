@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift } from "lucide-react";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export interface Lead {
@@ -25,7 +25,8 @@ export interface Lead {
   captured_at: string;
   converted_at: string | null;
   order_id: string | null;
-  // New lead recovery fields
+  quality_score?: number | null;
+  // Lead recovery fields
   preview_song_url?: string | null;
   full_song_url?: string | null;
   song_title?: string | null;
@@ -39,8 +40,8 @@ export interface Lead {
 interface LeadsTableProps {
   leads: Lead[];
   loading: boolean;
-  sort: "latest" | "oldest";
-  onSortChange: (sort: "latest" | "oldest") => void;
+  sort: "latest" | "oldest" | "quality";
+  onSortChange: (sort: "latest" | "oldest" | "quality") => void;
   adminPassword?: string;
   onRefresh?: () => void;
 }
@@ -59,8 +60,23 @@ const statusLabels: Record<string, string> = {
   converted: "Converted",
 };
 
+// Quality score badge helper
+function getQualityBadge(score: number | null | undefined) {
+  if (score === null || score === undefined) {
+    return { label: "N/A", className: "bg-gray-100 text-gray-600", icon: null };
+  }
+  if (score >= 70) {
+    return { label: `${score}`, className: "bg-emerald-100 text-emerald-700", icon: Check };
+  }
+  if (score >= 40) {
+    return { label: `${score}`, className: "bg-amber-100 text-amber-700", icon: Star };
+  }
+  return { label: `${score}`, className: "bg-red-100 text-red-700", icon: AlertTriangle };
+}
+
 export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, onRefresh }: LeadsTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
+  const [qualityFilter, setQualityFilter] = useState("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -71,15 +87,25 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-
-  const filteredLeads = (statusFilter === "all" 
-    ? leads 
-    : leads.filter((lead) => lead.status === statusFilter)
-  ).sort((a, b) => {
-    const dateA = new Date(a.captured_at).getTime();
-    const dateB = new Date(b.captured_at).getTime();
-    return sort === "latest" ? dateB - dateA : dateA - dateB;
-  });
+  // Filter by status and quality
+  const filteredLeads = leads
+    .filter((lead) => statusFilter === "all" || lead.status === statusFilter)
+    .filter((lead) => {
+      if (qualityFilter === "all") return true;
+      const score = lead.quality_score ?? 0;
+      if (qualityFilter === "high") return score >= 70;
+      if (qualityFilter === "medium") return score >= 40 && score < 70;
+      if (qualityFilter === "low") return score < 40;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sort === "quality") {
+        return (b.quality_score ?? 0) - (a.quality_score ?? 0);
+      }
+      const dateA = new Date(a.captured_at).getTime();
+      const dateB = new Date(b.captured_at).getTime();
+      return sort === "latest" ? dateB - dateA : dateA - dateB;
+    });
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -267,6 +293,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       "Genre",
       "Singer",
       "Status",
+      "Quality Score",
       "Captured At",
       "Preview Sent",
       "Follow-up Sent",
@@ -282,6 +309,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       lead.genre,
       lead.singer_preference,
       lead.status,
+      lead.quality_score?.toString() || "",
       new Date(lead.captured_at).toLocaleString(),
       lead.preview_sent_at ? new Date(lead.preview_sent_at).toLocaleString() : "",
       lead.follow_up_sent_at ? new Date(lead.follow_up_sent_at).toLocaleString() : "",
@@ -326,13 +354,25 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               <SelectItem value="converted">Converted</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={sort} onValueChange={(v) => onSortChange(v as "latest" | "oldest")}>
-            <SelectTrigger className="w-36">
+          <Select value={qualityFilter} onValueChange={setQualityFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Quality" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Quality</SelectItem>
+              <SelectItem value="high">High (70+)</SelectItem>
+              <SelectItem value="medium">Medium (40-69)</SelectItem>
+              <SelectItem value="low">Low (&lt;40)</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sort} onValueChange={(v) => onSortChange(v as "latest" | "oldest" | "quality")}>
+            <SelectTrigger className="w-40">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="latest">Latest First</SelectItem>
               <SelectItem value="oldest">Oldest First</SelectItem>
+              <SelectItem value="quality">By Quality</SelectItem>
             </SelectContent>
           </Select>
           <span className="text-sm text-muted-foreground">
@@ -382,6 +422,17 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           Follow-up Ready
                         </Badge>
                       )}
+                      {/* Quality Score Badge */}
+                      {(() => {
+                        const quality = getQualityBadge(lead.quality_score);
+                        const IconComponent = quality.icon;
+                        return (
+                          <Badge className={quality.className}>
+                            {IconComponent && <IconComponent className="h-3 w-3 mr-1" />}
+                            Q: {quality.label}
+                          </Badge>
+                        );
+                      })()}
                     </div>
                     <p className="text-sm text-muted-foreground">
                       <strong>Lead Email:</strong> {lead.email}
@@ -628,6 +679,19 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       <Badge className={statusColors[selectedLead.status]}>
                         {statusLabels[selectedLead.status] || selectedLead.status}
                       </Badge>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Quality Score:</span>{" "}
+                      {(() => {
+                        const quality = getQualityBadge(selectedLead.quality_score);
+                        const IconComponent = quality.icon;
+                        return (
+                          <Badge className={quality.className}>
+                            {IconComponent && <IconComponent className="h-3 w-3 mr-1" />}
+                            {quality.label}
+                          </Badge>
+                        );
+                      })()}
                     </div>
                     <div>
                       <span className="text-muted-foreground">Captured:</span>{" "}

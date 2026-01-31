@@ -71,7 +71,61 @@ function validateLeadInput(input: LeadInput): { valid: boolean; error?: string }
   return { valid: true };
 }
 
-async function triggerLeadZapierWebhook(input: LeadInput): Promise<void> {
+/**
+ * Calculate lead quality score (0-100)
+ * Higher scores = more likely to be a genuine lead worth pursuing
+ */
+function calculateLeadQuality(input: LeadInput): number {
+  let score = 0;
+  
+  const sq = input.specialQualities.trim();
+  const fm = input.favoriteMemory.trim();
+  
+  // Length scoring for special_qualities (0-25)
+  score += sq.length >= 100 ? 25 : sq.length >= 30 ? 20 : sq.length >= 10 ? 10 : 0;
+  
+  // Length scoring for favorite_memory (0-25)
+  score += fm.length >= 100 ? 25 : fm.length >= 30 ? 20 : fm.length >= 10 ? 10 : 0;
+  
+  // Gibberish detection
+  const combined = (sq + " " + fm).toLowerCase();
+  const junkPatterns = /^(test|asdf|qwer|1234|xxx|aaa|zzz|abc|hjk|jkl|fgh|testing)/i;
+  const isAllSameChar = /^(.)\1+$/.test(sq) || /^(.)\1+$/.test(fm);
+  
+  // Apply junk penalty only for short inputs
+  if ((junkPatterns.test(sq) || junkPatterns.test(fm) || isAllSameChar) && combined.length < 30) {
+    score = Math.max(0, score - 30);
+  }
+  
+  // Meaningful words bonus (up to 15 points)
+  const meaningfulWords = [
+    'love', 'heart', 'memory', 'always', 'together', 
+    'beautiful', 'special', 'amazing', 'best', 'happy', 
+    'wonderful', 'caring', 'family', 'friend', 'forever', 
+    'remember', 'moment', 'laugh', 'smile', 'thank',
+    'years', 'life', 'time', 'first', 'day', 'night', 'morning',
+    'birthday', 'anniversary', 'wedding', 'valentine', 'mother', 'father',
+    'wife', 'husband', 'daughter', 'son', 'grandma', 'grandpa', 'baby'
+  ];
+  const wordMatches = meaningfulWords.filter(w => combined.includes(w)).length;
+  score += Math.min(wordMatches * 5, 15);
+  
+  // Email quality (not disposable) (+10)
+  const disposableDomains = ['tempmail', 'guerrilla', '10minute', 'throwaway', 'mailinator', 'yopmail', 'fakeinbox'];
+  const emailDomain = input.email.split('@')[1]?.toLowerCase() || '';
+  if (!disposableDomains.some(d => emailDomain.includes(d))) {
+    score += 10;
+  }
+  
+  // Phone bonus (+5)
+  if (input.phone && input.phone.trim().length >= 10) {
+    score += 5;
+  }
+  
+  return Math.max(0, Math.min(100, score));
+}
+
+async function triggerLeadZapierWebhook(input: LeadInput, qualityScore: number): Promise<void> {
   try {
     const payload = {
       lead_name: input.customerName.trim(),
@@ -82,11 +136,12 @@ async function triggerLeadZapierWebhook(input: LeadInput): Promise<void> {
       occasion: input.occasion,
       genre: input.genre,
       singer_preference: input.singerPreference,
-      relationship: input.recipientType, // Same as recipient_type
+      relationship: input.recipientType,
       special_qualities: input.specialQualities.trim(),
       favorite_memory: input.favoriteMemory.trim(),
       special_message: input.specialMessage?.trim() || "",
       device_type: input.deviceType || "unknown",
+      quality_score: qualityScore,
       captured_at: new Date().toISOString(),
     };
 
@@ -107,7 +162,7 @@ async function triggerLeadZapierWebhook(input: LeadInput): Promise<void> {
   }
 }
 
-async function syncLeadToGoogleSheet(leadId: string, input: LeadInput): Promise<void> {
+async function syncLeadToGoogleSheet(leadId: string, input: LeadInput, qualityScore: number): Promise<void> {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -133,6 +188,7 @@ async function syncLeadToGoogleSheet(leadId: string, input: LeadInput): Promise<
         favoriteMemory: input.favoriteMemory.trim(),
         specialMessage: input.specialMessage?.trim() || "",
         deviceType: input.deviceType || "unknown",
+        qualityScore: qualityScore,
       }),
     });
 
@@ -172,6 +228,10 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Calculate quality score
+    const qualityScore = calculateLeadQuality(input);
+    console.log(`Lead quality score: ${qualityScore} for ${input.email}`);
+
     // Create Supabase client with service role for secure insert
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -209,7 +269,8 @@ Deno.serve(async (req) => {
           special_qualities: input.specialQualities.trim(),
           favorite_memory: input.favoriteMemory.trim(),
           special_message: input.specialMessage?.trim() || null,
-          captured_at: new Date().toISOString(), // Update capture time
+          captured_at: new Date().toISOString(),
+          quality_score: qualityScore,
         })
         .eq("id", existingLead.id);
 
@@ -222,14 +283,14 @@ Deno.serve(async (req) => {
       }
 
       // Trigger Zapier webhook for updated lead
-      triggerLeadZapierWebhook(input);
+      triggerLeadZapierWebhook(input, qualityScore);
       
       // Sync to Google Sheets (unified with orders)
-      syncLeadToGoogleSheet(existingLead.id, input);
+      syncLeadToGoogleSheet(existingLead.id, input, qualityScore);
 
       console.log("Lead updated:", normalizedEmail);
       return new Response(
-        JSON.stringify({ success: true, leadId: existingLead.id }),
+        JSON.stringify({ success: true, leadId: existingLead.id, qualityScore }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -250,6 +311,7 @@ Deno.serve(async (req) => {
         favorite_memory: input.favoriteMemory.trim(),
         special_message: input.specialMessage?.trim() || null,
         status: "lead",
+        quality_score: qualityScore,
       })
       .select("id")
       .single();
@@ -263,14 +325,14 @@ Deno.serve(async (req) => {
     }
 
     // Trigger Zapier webhook for new lead
-    triggerLeadZapierWebhook(input);
+    triggerLeadZapierWebhook(input, qualityScore);
     
     // Sync to Google Sheets (unified with orders)
-    syncLeadToGoogleSheet(data.id, input);
+    syncLeadToGoogleSheet(data.id, input, qualityScore);
 
-    console.log("Lead captured:", normalizedEmail);
+    console.log("Lead captured:", normalizedEmail, "Quality:", qualityScore);
     return new Response(
-      JSON.stringify({ success: true, leadId: data.id }),
+      JSON.stringify({ success: true, leadId: data.id, qualityScore }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

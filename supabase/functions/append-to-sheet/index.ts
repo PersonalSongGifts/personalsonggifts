@@ -107,7 +107,7 @@ async function appendToSheet(
   spreadsheetId: string,
   values: string[]
 ): Promise<void> {
-  const range = "Sheet1!A:Q"; // Columns A through Q (17 columns for unified Order/Lead)
+  const range = "Sheet1!A:R"; // Columns A through R (18 columns for unified Order/Lead + quality score)
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
   const response = await fetch(url, {
@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
     const entryType = data.orderId ? "Order" : "Lead";
     const entryId = data.orderId || data.leadId || "";
 
-    // Build row data (17 columns for unified Order/Lead sheet)
+    // Build row data (18 columns for unified Order/Lead sheet)
     // Column A: Type (Order/Lead)
     // Column B: ID (Order UUID or Lead UUID)
     // Column C: Created At
@@ -219,6 +219,7 @@ Deno.serve(async (req) => {
     // Column O: Favorite Memory
     // Column P: Special Message
     // Column Q: Device Type (for tracking)
+    // Column R: Quality Score (for leads)
     const rowValues = [
       entryType,
       entryId,
@@ -237,6 +238,7 @@ Deno.serve(async (req) => {
       data.favoriteMemory || "",
       data.specialMessage || "",
       data.deviceType || "",
+      data.qualityScore?.toString() || "",
     ];
 
     await appendToSheet(accessToken, spreadsheetId, rowValues);
