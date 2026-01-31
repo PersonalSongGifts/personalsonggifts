@@ -1,50 +1,80 @@
 
+# Valentine's Day Promo & New Pricing Implementation
 
-# Fix: Allow Scheduling for Current Day
-
-## Problem
-The calendar date picker is blocking selection of the current day because it compares calendar dates (which represent midnight) against `new Date()` (which includes the current time). This makes "today" appear to be in the past.
-
-## Solution
-Change the disabled check to compare against the **start of today** (midnight) instead of the current moment, so today remains selectable.
+## Summary
+Update the checkout system to use the new $159.99/$99.99 pricing with automatic 50% off promo codes that switch based on date. Also update the promo banner messaging.
 
 ---
 
-## Changes
+## What Will Change
 
-### 1. Update Calendar disabled logic
-**File:** `src/components/admin/ScheduledDeliveryPicker.tsx`
-
-Change line 208 from:
-```typescript
-disabled={(date) => date < new Date()}
-```
+### 1. Promo Banner Update
+The top banner will change from:
+> 💘 Valentine's Day Special – Limited Time Offer
 
 To:
-```typescript
-disabled={(date) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return date < today;
-}}
+> 💘 Valentine's Day Special – 50% Off! Hurry, Limited Time Offer!
+
+### 2. Checkout Page Pricing Display
+- **Standard Song**: Shows ~~$99.99~~ → **$49.99** (with 50% off applied)
+- **Priority Song**: Shows ~~$159.99~~ → **$79.99** (with 50% off applied)
+- Visual indicator showing the discount is automatically applied
+
+### 3. Automatic Promo Code Scheduling
+The system will automatically apply promo codes at checkout:
+
+| Time Period | Promo Code |
+|-------------|------------|
+| Now until Feb 15, 2026 at 1:00 AM PST | **VALENTINES50** |
+| Feb 15, 2026 at 1:01 AM PST onwards | **WELCOME50** |
+
+---
+
+## About Your Old Stripe Products
+
+**You don't need to archive them.** The old $49 and $79 products will simply not be used since I'm updating the code to use the new Price IDs. They'll remain in your Stripe account if you ever want to switch back - just let me know and I can swap the Price IDs.
+
+---
+
+## Technical Details
+
+### Files to Modify
+
+**1. Edge Function: `supabase/functions/create-checkout/index.ts`**
+- Update `PRICE_IDS` to new values:
+  - Standard: `price_1SvRTtGax2m9otRw75yrsjxS` ($99.99)
+  - Priority: `price_1SvRUXGax2m9otRwZOb1lNHD` ($159.99)
+- Add date-based promo code logic using PST timezone
+- Replace `allow_promotion_codes: true` with `discounts` array containing the active promo code
+
+**2. Promo Banner: `src/components/layout/PromoBanner.tsx`**
+- Update text to include "50% Off" and "Hurry"
+
+**3. Checkout Page: `src/pages/Checkout.tsx`**
+- Update displayed prices to show original ($99.99/$159.99) with strikethrough
+- Show discounted price ($49.99/$79.99) prominently
+- Add "50% OFF - Auto Applied" badge
+- Update analytics tracking values
+- Update button text to show final discounted price
+
+### Promo Code Logic (PST Timezone)
+```text
+┌─────────────────────────────────────────────────────────┐
+│                  Current Time (PST)                      │
+│                         ↓                                │
+│  Before Feb 15, 2026 1:00 AM?                           │
+│         ↓                    ↓                          │
+│        YES                   NO                         │
+│         ↓                    ↓                          │
+│  Apply VALENTINES50    Apply WELCOME50                  │
+└─────────────────────────────────────────────────────────┘
 ```
 
-This sets `today` to midnight, so the current day will always be selectable.
-
 ---
 
-## Why This Works
-- `new Date()` = e.g., "Jan 30, 2026 3:35 PM"
-- Calendar date = e.g., "Jan 30, 2026 12:00 AM" (midnight)
-- Old logic: `midnight < 3:35 PM` → **true** → disabled ❌
-- New logic: `midnight < midnight` → **false** → enabled ✓
+## Future Promo Changes
+When you want to change the active promo code, just let me know:
+- The new promo code name
+- When it should start/end (in PST)
 
-The existing time validation in the `useEffect` (lines 114-118) already prevents selecting a past **time** on the current day — it only calls `onChange(pstDate)` if `pstDate > new Date()`. So users can pick today, and the validation will catch if they pick a time that's already passed.
-
----
-
-## After This Fix
-- You'll be able to select **today** in the calendar
-- If you pick a time earlier than "right now," you'll see the amber warning: "⚠ Selected time is in the past"
-- Only future times will successfully schedule
-
+I'll update the edge function logic accordingly.
