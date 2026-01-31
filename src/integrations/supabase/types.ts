@@ -33,6 +33,7 @@ export type Database = {
           preview_sent_at: string | null
           preview_song_url: string | null
           preview_token: string | null
+          quality_score: number | null
           recipient_name: string
           recipient_type: string
           singer_preference: string
@@ -59,6 +60,7 @@ export type Database = {
           preview_sent_at?: string | null
           preview_song_url?: string | null
           preview_token?: string | null
+          quality_score?: number | null
           recipient_name: string
           recipient_type: string
           singer_preference: string
@@ -85,6 +87,7 @@ export type Database = {
           preview_sent_at?: string | null
           preview_song_url?: string | null
           preview_token?: string | null
+          quality_score?: number | null
           recipient_name?: string
           recipient_type?: string
           singer_preference?: string
@@ -195,7 +198,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      calculate_lead_quality_score: {
+        Args: {
+          p_email: string
+          p_favorite_memory: string
+          p_phone?: string
+          p_special_qualities: string
+        }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never
