@@ -54,8 +54,8 @@ const Checkout = () => {
     
     setIsSubmitting(true);
     
-    // Fire InitiateCheckout event (Meta Pixel)
-    const checkoutValue = selectedTier === "priority" ? 79 : 49;
+    // Fire InitiateCheckout event (Meta Pixel) - use discounted values
+    const checkoutValue = selectedTier === "priority" ? 79.99 : 49.99;
     trackMetaEvent('InitiateCheckout', {
       value: checkoutValue,
       currency: 'USD',
@@ -135,6 +135,14 @@ const Checkout = () => {
             Choose your delivery speed and complete payment
           </p>
 
+          {/* 50% Off Badge */}
+          <div className="flex justify-center mb-6">
+            <div className="bg-primary/10 text-primary font-semibold px-4 py-2 rounded-full text-sm flex items-center gap-2">
+              <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
+              Auto-applied at checkout
+            </div>
+          </div>
+
           <div className="grid md:grid-cols-2 gap-6 mb-10">
             {/* Standard tier */}
             <Card 
@@ -148,7 +156,7 @@ const Checkout = () => {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-foreground">Standard Song</h3>
-                <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                  <p className="text-muted-foreground flex items-center gap-1 mt-1">
                     <Clock className="h-4 w-4" />
                     Typically within 48 hours
                   </p>
@@ -163,8 +171,9 @@ const Checkout = () => {
                   )}
                 </div>
               </div>
-              <div className="text-4xl font-bold text-foreground mb-4">
-                $49
+              <div className="mb-4">
+                <span className="text-lg text-muted-foreground line-through">$99.99</span>
+                <span className="text-4xl font-bold text-foreground ml-2">$49.99</span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -197,7 +206,7 @@ const Checkout = () => {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-foreground">Priority Song</h3>
-                <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                  <p className="text-muted-foreground flex items-center gap-1 mt-1">
                     <Zap className="h-4 w-4" />
                     24-hour rush delivery
                   </p>
@@ -212,8 +221,9 @@ const Checkout = () => {
                   )}
                 </div>
               </div>
-              <div className="text-4xl font-bold text-foreground mb-4">
-                $79
+              <div className="mb-4">
+                <span className="text-lg text-muted-foreground line-through">$159.99</span>
+                <span className="text-4xl font-bold text-foreground ml-2">$79.99</span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -267,9 +277,18 @@ const Checkout = () => {
               </div>
               
               <div className="border-t border-border my-4" />
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Subtotal:</span>
+                <span className="text-muted-foreground">${selectedTier === "priority" ? "159.99" : "99.99"}</span>
+              </div>
+              <div className="flex justify-between items-center text-primary">
+                <span>50% Off Discount:</span>
+                <span>-${selectedTier === "priority" ? "80.00" : "50.00"}</span>
+              </div>
+              <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Total:</span>
-                <span>${selectedTier === "priority" ? "79" : "49"}</span>
+                <span>${selectedTier === "priority" ? "79.99" : "49.99"}</span>
               </div>
             </div>
           </Card>
@@ -302,7 +321,7 @@ const Checkout = () => {
             ) : (
               <CreditCard className="h-5 w-5" />
             )}
-            {isSubmitting ? "Processing..." : `Complete Payment — $${selectedTier === "priority" ? "79" : "49"}`}
+            {isSubmitting ? "Processing..." : `Complete Payment — $${selectedTier === "priority" ? "79.99" : "49.99"}`}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
