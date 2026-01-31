@@ -139,7 +139,7 @@ const Checkout = () => {
           <div className="flex justify-center mb-6">
             <div className="bg-primary/10 text-primary font-semibold px-4 py-2 rounded-full text-sm flex items-center gap-2">
               <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
-              Auto-applied at checkout
+              💘 VALENTINES50 auto-applied at checkout
             </div>
           </div>
 
@@ -282,7 +282,7 @@ const Checkout = () => {
                 <span className="text-muted-foreground">${selectedTier === "priority" ? "159.99" : "99.99"}</span>
               </div>
               <div className="flex justify-between items-center text-primary">
-                <span>50% Off Discount:</span>
+                <span>💘 VALENTINES50 Discount (50% Off):</span>
                 <span>-${selectedTier === "priority" ? "80.00" : "50.00"}</span>
               </div>
               <div className="border-t border-border my-4" />
