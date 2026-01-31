@@ -168,12 +168,26 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
         fileInputRef.current.value = "";
       }
 
+      // Update selectedLead with new data from response
+      if (selectedLead) {
+        setSelectedLead({
+          ...selectedLead,
+          full_song_url: data.fullUrl,
+          preview_song_url: data.previewUrl,
+          preview_token: data.previewToken,
+          song_title: data.songTitle,
+          cover_image_url: data.coverImageUrl || selectedLead.cover_image_url,
+          status: "song_ready",
+          preview_scheduled_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        });
+      }
+
       toast({
         title: "Upload Successful",
         description: `Song uploaded! Email will auto-send in 24 hours. Click "Send Now" to send immediately.`,
       });
 
-      // Refresh leads list and update selected lead
+      // Refresh leads list
       onRefresh?.();
     } catch (error) {
       console.error("Upload error:", error);
