@@ -1,4 +1,9 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { TestEmailSender } from "./TestEmailSender";
+
+interface EmailTemplatesProps {
+  adminPassword: string;
+}
 
 // Sample data for previews
 const sampleData = {
@@ -163,7 +168,7 @@ const songDeliveryHtml = `
 </html>
 `;
 
-export function EmailTemplates() {
+export function EmailTemplates({ adminPassword }: EmailTemplatesProps) {
   return (
     <div className="space-y-6">
       <div className="text-center">
@@ -171,6 +176,11 @@ export function EmailTemplates() {
         <p className="text-muted-foreground mt-1">
           Preview how your transactional emails appear to customers
         </p>
+      </div>
+
+      {/* Test Email Sender - at the top */}
+      <div className="max-w-md mx-auto">
+        <TestEmailSender adminPassword={adminPassword} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
