@@ -12,6 +12,7 @@ import Confirmation from "./pages/Confirmation";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 import SongPlayer from "./pages/SongPlayer";
+import SongPreview from "./pages/SongPreview";
 import SubmitReaction from "./pages/SubmitReaction";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
           <Route path="/confirmation" element={<Confirmation />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/song/:orderId" element={<SongPlayer />} />
+          <Route path="/preview/:token" element={<SongPreview />} />
           <Route path="/submit-reaction" element={<SubmitReaction />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

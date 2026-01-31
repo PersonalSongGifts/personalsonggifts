@@ -107,6 +107,46 @@ async function triggerLeadZapierWebhook(input: LeadInput): Promise<void> {
   }
 }
 
+async function syncLeadToGoogleSheet(leadId: string, input: LeadInput): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/append-to-sheet`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        leadId: leadId,
+        capturedAt: new Date().toISOString(),
+        status: "lead",
+        customerName: input.customerName.trim(),
+        customerEmail: input.email.trim().toLowerCase(),
+        customerPhone: input.phone?.trim() || "",
+        recipientName: input.recipientName.trim(),
+        occasion: input.occasion,
+        genre: input.genre,
+        singerPreference: input.singerPreference,
+        specialQualities: input.specialQualities.trim(),
+        favoriteMemory: input.favoriteMemory.trim(),
+        specialMessage: input.specialMessage?.trim() || "",
+        deviceType: input.deviceType || "unknown",
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Google Sheets sync failed:", response.status, await response.text());
+    } else {
+      console.log("Lead synced to Google Sheets");
+    }
+  } catch (error) {
+    // Fire-and-forget - don't fail lead capture if sheet sync fails
+    console.error("Google Sheets sync error:", error);
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -183,6 +223,9 @@ Deno.serve(async (req) => {
 
       // Trigger Zapier webhook for updated lead
       triggerLeadZapierWebhook(input);
+      
+      // Sync to Google Sheets (unified with orders)
+      syncLeadToGoogleSheet(existingLead.id, input);
 
       console.log("Lead updated:", normalizedEmail);
       return new Response(
@@ -221,6 +264,9 @@ Deno.serve(async (req) => {
 
     // Trigger Zapier webhook for new lead
     triggerLeadZapierWebhook(input);
+    
+    // Sync to Google Sheets (unified with orders)
+    syncLeadToGoogleSheet(data.id, input);
 
     console.log("Lead captured:", normalizedEmail);
     return new Response(

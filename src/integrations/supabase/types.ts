@@ -18,17 +18,25 @@ export type Database = {
         Row: {
           captured_at: string
           converted_at: string | null
+          cover_image_url: string | null
           customer_name: string
           email: string
           favorite_memory: string
+          follow_up_sent_at: string | null
+          full_song_url: string | null
           genre: string
           id: string
           occasion: string
           order_id: string | null
           phone: string | null
+          preview_opened_at: string | null
+          preview_sent_at: string | null
+          preview_song_url: string | null
+          preview_token: string | null
           recipient_name: string
           recipient_type: string
           singer_preference: string
+          song_title: string | null
           special_message: string | null
           special_qualities: string
           status: string
@@ -36,17 +44,25 @@ export type Database = {
         Insert: {
           captured_at?: string
           converted_at?: string | null
+          cover_image_url?: string | null
           customer_name: string
           email: string
           favorite_memory: string
+          follow_up_sent_at?: string | null
+          full_song_url?: string | null
           genre: string
           id?: string
           occasion: string
           order_id?: string | null
           phone?: string | null
+          preview_opened_at?: string | null
+          preview_sent_at?: string | null
+          preview_song_url?: string | null
+          preview_token?: string | null
           recipient_name: string
           recipient_type: string
           singer_preference: string
+          song_title?: string | null
           special_message?: string | null
           special_qualities: string
           status?: string
@@ -54,17 +70,25 @@ export type Database = {
         Update: {
           captured_at?: string
           converted_at?: string | null
+          cover_image_url?: string | null
           customer_name?: string
           email?: string
           favorite_memory?: string
+          follow_up_sent_at?: string | null
+          full_song_url?: string | null
           genre?: string
           id?: string
           occasion?: string
           order_id?: string | null
           phone?: string | null
+          preview_opened_at?: string | null
+          preview_sent_at?: string | null
+          preview_song_url?: string | null
+          preview_token?: string | null
           recipient_name?: string
           recipient_type?: string
           singer_preference?: string
+          song_title?: string | null
           special_message?: string | null
           special_qualities?: string
           status?: string

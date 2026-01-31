@@ -6,6 +6,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Generate a random preview token (16 characters)
+function generatePreviewToken(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let token = '';
+  for (let i = 0; i < 16; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+// Create a 35-second preview clip from audio buffer
+function createPreviewClip(originalBuffer: Uint8Array, durationSeconds: number = 35): Uint8Array {
+  // For simplicity, we'll just take the first portion of the file
+  // This is a rough approximation - actual audio clipping would require decoding
+  // For MP3 files, we estimate ~128kbps = 16KB/s
+  const estimatedBytesPerSecond = 16 * 1024;
+  const previewBytes = Math.min(
+    durationSeconds * estimatedBytesPerSecond,
+    originalBuffer.length
+  );
+  
+  // Keep the entire file if it's shorter than the preview duration
+  if (previewBytes >= originalBuffer.length * 0.9) {
+    return originalBuffer;
+  }
+  
+  // Take the first portion of the audio
+  return originalBuffer.slice(0, previewBytes);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -42,9 +72,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get the file and order ID
+    // Get the file and IDs
     const file = formData.get("file");
     const orderId = formData.get("orderId");
+    const leadId = formData.get("leadId");
+    const entryType = formData.get("type") as string || (orderId ? "order" : "lead");
 
     if (!file || !(file instanceof File)) {
       return new Response(
@@ -53,9 +85,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!orderId || typeof orderId !== "string") {
+    const targetId = orderId || leadId;
+    if (!targetId || typeof targetId !== "string") {
       return new Response(
-        JSON.stringify({ error: "Order ID required" }),
+        JSON.stringify({ error: "Order ID or Lead ID required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -74,10 +107,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create clean filename using order ID
-    const shortOrderId = orderId.slice(0, 8).toUpperCase();
+    // Create clean filename using ID
+    const shortId = targetId.slice(0, 8).toUpperCase();
     const extension = fileExtension || ".mp3";
-    const storagePath = `${shortOrderId}${extension}`;
 
     // Initialize Supabase client with service role
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -122,11 +154,12 @@ Deno.serve(async (req) => {
             
             const format = picture.format || "image/jpeg";
             const ext = format.includes("png") ? "png" : "jpg";
-            const coverPath = `${shortOrderId}-cover.${ext}`;
+            const bucket = entryType === "lead" ? "songs" : "songs";
+            const coverPath = `${shortId}-cover.${ext}`;
             
             // Upload cover to songs bucket
             const { error: coverUploadError } = await supabase.storage
-              .from("songs")
+              .from(bucket)
               .upload(coverPath, coverBytes, {
                 contentType: format,
                 upsert: true,
@@ -136,7 +169,7 @@ Deno.serve(async (req) => {
               console.error("Cover upload error:", coverUploadError);
             } else {
               const { data: coverUrlData } = supabase.storage
-                .from("songs")
+                .from(bucket)
                 .getPublicUrl(coverPath);
               coverImageUrl = coverUrlData.publicUrl;
               console.log("Cover art uploaded:", coverImageUrl);
@@ -150,62 +183,154 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Upload audio to storage (upsert to allow replacing existing files)
-    const { error: uploadError } = await supabase.storage
+    // Handle ORDER uploads
+    if (entryType === "order" || orderId) {
+      const storagePath = `${shortId}${extension}`;
+      
+      // Upload audio to storage (upsert to allow replacing existing files)
+      const { error: uploadError } = await supabase.storage
+        .from("songs")
+        .upload(storagePath, uint8Array, {
+          contentType: file.type || "audio/mpeg",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error("Upload error:", uploadError);
+        throw new Error(`Upload failed: ${uploadError.message}`);
+      }
+
+      // Get public URL for the song
+      const { data: urlData } = supabase.storage
+        .from("songs")
+        .getPublicUrl(storagePath);
+
+      const publicUrl = urlData.publicUrl;
+
+      // Update the order with song URL, title, and cover (if extracted)
+      const updateData: Record<string, string | null> = {
+        song_url: publicUrl,
+        song_title: songTitle,
+      };
+      
+      // Only update cover_image_url if we extracted one
+      if (coverImageUrl) {
+        updateData.cover_image_url = coverImageUrl;
+      }
+
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update(updateData)
+        .eq("id", targetId);
+
+      if (updateError) {
+        console.error("Order update error:", updateError);
+        // Don't fail - the file is uploaded, just couldn't update order
+      }
+
+      console.log(`Song uploaded for order ${shortId}: ${publicUrl}`);
+      console.log(`Title set to: "${songTitle}"`);
+      if (coverImageUrl) {
+        console.log(`Cover art extracted: ${coverImageUrl}`);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          url: publicUrl,
+          orderId: targetId,
+          fileName: storagePath,
+          songTitle: songTitle,
+          coverImageUrl: coverImageUrl,
+          type: "order"
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle LEAD uploads
+    const fullStoragePath = `leads/${shortId}-full${extension}`;
+    const previewStoragePath = `leads/${shortId}-preview${extension}`;
+
+    // Upload full song
+    const { error: fullUploadError } = await supabase.storage
       .from("songs")
-      .upload(storagePath, uint8Array, {
+      .upload(fullStoragePath, uint8Array, {
         contentType: file.type || "audio/mpeg",
         upsert: true,
       });
 
-    if (uploadError) {
-      console.error("Upload error:", uploadError);
-      throw new Error(`Upload failed: ${uploadError.message}`);
+    if (fullUploadError) {
+      console.error("Full song upload error:", fullUploadError);
+      throw new Error(`Upload failed: ${fullUploadError.message}`);
     }
 
-    // Get public URL for the song
-    const { data: urlData } = supabase.storage
+    // Create and upload 35-second preview clip
+    const previewClip = createPreviewClip(uint8Array, 35);
+    const { error: previewUploadError } = await supabase.storage
       .from("songs")
-      .getPublicUrl(storagePath);
+      .upload(previewStoragePath, previewClip, {
+        contentType: file.type || "audio/mpeg",
+        upsert: true,
+      });
 
-    const publicUrl = urlData.publicUrl;
+    if (previewUploadError) {
+      console.error("Preview upload error:", previewUploadError);
+      // Continue even if preview fails - we have the full song
+    }
 
-    // Update the order with song URL, title, and cover (if extracted)
-    const updateData: Record<string, string | null> = {
-      song_url: publicUrl,
+    // Get public URLs
+    const { data: fullUrlData } = supabase.storage
+      .from("songs")
+      .getPublicUrl(fullStoragePath);
+    
+    const { data: previewUrlData } = supabase.storage
+      .from("songs")
+      .getPublicUrl(previewStoragePath);
+
+    const fullSongUrl = fullUrlData.publicUrl;
+    const previewSongUrl = previewUrlData.publicUrl;
+
+    // Generate preview token for secure URL
+    const previewToken = generatePreviewToken();
+
+    // Update the lead with song URLs, title, cover, and token
+    const leadUpdateData: Record<string, string | null> = {
+      full_song_url: fullSongUrl,
+      preview_song_url: previewSongUrl,
       song_title: songTitle,
+      preview_token: previewToken,
+      status: "song_ready",
     };
     
-    // Only update cover_image_url if we extracted one
     if (coverImageUrl) {
-      updateData.cover_image_url = coverImageUrl;
+      leadUpdateData.cover_image_url = coverImageUrl;
     }
 
-    const { error: updateError } = await supabase
-      .from("orders")
-      .update(updateData)
-      .eq("id", orderId);
+    const { error: leadUpdateError } = await supabase
+      .from("leads")
+      .update(leadUpdateData)
+      .eq("id", targetId);
 
-    if (updateError) {
-      console.error("Order update error:", updateError);
-      // Don't fail - the file is uploaded, just couldn't update order
+    if (leadUpdateError) {
+      console.error("Lead update error:", leadUpdateError);
     }
 
-    console.log(`Song uploaded for order ${shortOrderId}: ${publicUrl}`);
-    console.log(`Title set to: "${songTitle}"`);
-    if (coverImageUrl) {
-      console.log(`Cover art extracted: ${coverImageUrl}`);
-    }
+    console.log(`Song uploaded for lead ${shortId}`);
+    console.log(`Full: ${fullSongUrl}`);
+    console.log(`Preview: ${previewSongUrl}`);
+    console.log(`Token: ${previewToken}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        url: publicUrl,
-        orderId: orderId,
-        fileName: storagePath,
+        fullUrl: fullSongUrl,
+        previewUrl: previewSongUrl,
+        previewToken: previewToken,
+        leadId: targetId,
         songTitle: songTitle,
         coverImageUrl: coverImageUrl,
-        type: "song"
+        type: "lead"
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
