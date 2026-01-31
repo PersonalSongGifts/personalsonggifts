@@ -20,6 +20,18 @@ import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 
 type PricingTier = "standard" | "priority";
 
+// Get active promo info based on PST time
+function getActivePromo() {
+  // Feb 15, 2026 at 1:00 AM PST (UTC-8) = 9:00 AM UTC
+  const switchDate = new Date("2026-02-15T09:00:00.000Z");
+  const now = new Date();
+  
+  if (now < switchDate) {
+    return { code: "VALENTINES50", emoji: "💘" };
+  }
+  return { code: "WELCOME50", emoji: "🎵" };
+}
+
 const Checkout = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -29,6 +41,8 @@ const Checkout = () => {
   const formData = location.state?.formData as FormData | undefined;
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const activePromo = getActivePromo();
 
   // Redirect if no form data
   if (!formData) {
@@ -139,7 +153,7 @@ const Checkout = () => {
           <div className="flex justify-center mb-6">
             <div className="bg-primary/10 text-primary font-semibold px-4 py-2 rounded-full text-sm flex items-center gap-2">
               <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
-              💘 VALENTINES50 auto-applied at checkout
+              {activePromo.emoji} {activePromo.code} auto-applied at checkout
             </div>
           </div>
 
@@ -282,7 +296,7 @@ const Checkout = () => {
                 <span className="text-muted-foreground">${selectedTier === "priority" ? "159.99" : "99.99"}</span>
               </div>
               <div className="flex justify-between items-center text-primary">
-                <span>💘 VALENTINES50 Discount (50% Off):</span>
+                <span>{activePromo.emoji} {activePromo.code} Discount (50% Off):</span>
                 <span>-${selectedTier === "priority" ? "80.00" : "50.00"}</span>
               </div>
               <div className="border-t border-border my-4" />
