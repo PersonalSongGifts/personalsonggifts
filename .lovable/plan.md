@@ -1,123 +1,80 @@
 
-# Lead Management Improvements
+# Change Audio Preview Length: 35 → 45 Seconds
 
-## Problem
+## Overview
 
-When managing leads in the admin dashboard, you have two issues:
-1. You can't easily see which leads you've already sent songs to - the visual indicators blend into the other information
-2. You can't dismiss or archive leads that are tests or ones you don't need to deal with, so they clutter your list
-
-## Solution
-
-Add a "dismissed" status for leads and improve the visual feedback for sent songs.
-
----
-
-## Changes Overview
-
-### 1. Database: Add `dismissed_at` Column
-Add a new nullable timestamp column to the `leads` table:
-- `dismissed_at` (timestamp with time zone, nullable) - When set, the lead is considered dismissed/archived
-
-### 2. Backend: Update admin-orders Edge Function
-Add a new action to update lead dismissal status:
-- `action: "dismiss_lead"` - Sets or clears the `dismissed_at` timestamp
-- Works with the existing admin password authentication
-
-### 3. Frontend: LeadsTable Component Updates
-
-**New Filter Option:**
-Add a filter to show/hide dismissed leads:
-- "Show All" (default - excludes dismissed)
-- "Show Dismissed Only"  
-- "Show Everything" (includes dismissed)
-
-**Visual Status Improvements on Lead Cards:**
-Make sent status much more prominent:
-- Green checkmark with "Song Sent" badge directly on the card when `preview_sent_at` is set
-- Gray strikethrough styling for dismissed leads
-- "Dismissed" badge for dismissed leads
-
-**New Dismiss Button:**
-Add a button on each lead card to mark as dismissed:
-- "Dismiss" button for active leads (marks as dismissed)
-- "Restore" button for dismissed leads (clears dismissal)
-
----
-
-## Visual Changes
-
-Before (current):
-```text
-+-------------------------------------------+
-| John Smith                    [Unconverted]|
-| Email: john@test.com                       |
-| Song for: Jane (Wife)                      |
-| [Upload Song]  [View Details]              |
-+-------------------------------------------+
-```
-
-After (improved):
-```text
-+-------------------------------------------+
-| John Smith           [Unconverted] [Q: 75] |
-| Email: john@test.com                       |
-| Song for: Jane (Wife)                      |
-| Preview sent: Jan 30, 2026 3:45 PM PST     |   <-- Already shows
-| [View Details]  [X Dismiss]                |   <-- New dismiss button
-+-------------------------------------------+
-
-When a lead has been sent a song, add prominent indicator:
-+-------------------------------------------+
-| John Smith    [Preview Sent] [SONG SENT]  |  <-- Prominent green badge
-| ...                                        |
-+-------------------------------------------+
-
-Dismissed lead (if showing):
-+-------------------------------------------+
-| John Smith (Test)        [Dismissed]       |  <-- Gray/muted styling
-| Email: test@test.com                       |
-| [Restore]                                  |   
-+-------------------------------------------+
-```
-
----
-
-## Technical Details
-
-### Database Migration
-```sql
-ALTER TABLE leads 
-ADD COLUMN dismissed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
-```
-
-### Edge Function Update
-New action in `admin-orders/index.ts`:
-```text
-action: "update_lead_dismissal"
-leadId: string
-dismissed: boolean (true = dismiss, false = restore)
-```
-
-### UI Component Changes
-
-**LeadsTable.tsx:**
-- Add `dismissedFilter` state: "active" | "dismissed" | "all"
-- Add filter to exclude dismissed leads by default
-- Add dismiss/restore button on each card
-- Add prominent "Song Sent" checkmark badge for leads with `preview_sent_at`
-- Apply muted styling to dismissed leads
-
-**Lead Interface:**
-- Add `dismissed_at?: string | null` to the Lead type
+Update the audio snippet/preview duration from 35 seconds to 45 seconds across the codebase.
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| Database migration | Add `dismissed_at` column |
-| `supabase/functions/admin-orders/index.ts` | Add `update_lead_dismissal` action |
-| `src/components/admin/LeadsTable.tsx` | Add dismissal filter, dismiss button, enhanced status badges |
-| `src/integrations/supabase/types.ts` | Auto-updated after migration |
+| File | Line(s) | Change |
+|------|---------|--------|
+| `src/lib/audioClipper.ts` | 3, 6, 17, 28 | Update constant and comments from 35 to 45 |
+| `supabase/functions/upload-song/index.ts` | 19, 268-269 | Update comment and function call from 35 to 45 |
+| `src/pages/SongPreview.tsx` | 29, 77, 253 | Update default duration and UI text from 35 to 45 |
+
+---
+
+## Detailed Changes
+
+### 1. Client-side Audio Clipper (`src/lib/audioClipper.ts`)
+
+**Line 3** - Update comment:
+```
+Creates a 45-second preview clip from an audio file
+```
+
+**Line 6** - Update constant:
+```typescript
+const PREVIEW_DURATION_SECONDS = 45;
+```
+
+**Line 17** - Update comment:
+```
+// Calculate preview duration (minimum of file duration or 45 seconds)
+```
+
+**Line 28** - Update comment:
+```
+// Copy the first 45 seconds of audio
+```
+
+### 2. Server-side Upload Function (`supabase/functions/upload-song/index.ts`)
+
+**Line 19** - Update comment:
+```
+// Create a 45-second preview clip from audio buffer
+```
+
+**Line 268-269** - Update function call:
+```typescript
+// Create and upload 45-second preview clip
+const previewClip = createPreviewClip(uint8Array, 45);
+```
+
+### 3. Preview Page UI (`src/pages/SongPreview.tsx`)
+
+**Line 29** - Update default duration state:
+```typescript
+const [duration, setDuration] = useState(45);
+```
+
+**Line 77** - Update fallback duration:
+```typescript
+setDuration(audioRef.current?.duration || 45);
+```
+
+**Line 253** - Update badge text:
+```tsx
+45-second preview
+```
+
+---
+
+## After Implementation
+
+- New lead song uploads will create 45-second preview clips
+- The preview page will display "45-second preview" badge
+- Existing 35-second previews will continue to work (duration is read from the actual audio file)
