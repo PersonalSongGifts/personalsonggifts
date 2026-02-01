@@ -373,7 +373,7 @@ const Checkout = () => {
                       placeholder="Enter code"
                       value={promoCode}
                       onChange={(e) => {
-                        setPromoCode(e.target.value.toUpperCase());
+                        setPromoCode(e.target.value);
                         setPromoError("");
                       }}
                       className="flex-1"
