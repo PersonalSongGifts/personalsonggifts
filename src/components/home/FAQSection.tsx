@@ -74,7 +74,7 @@ const FAQSection = () => {
         <p className="text-center text-muted-foreground mt-10">
           Still have questions?{" "}
           <a 
-            href="mailto:hello@personalsonggifts.com" 
+            href="mailto:support@personalsonggifts.com" 
             className="text-primary hover:underline font-medium"
           >
             Email us

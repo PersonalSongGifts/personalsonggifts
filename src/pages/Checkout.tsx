@@ -417,7 +417,7 @@ const Checkout = () => {
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <Mail className="h-5 w-5 text-primary flex-shrink-0" />
-              <span>Support: hello@personalsonggifts.com</span>
+              <span>Support: support@personalsonggifts.com</span>
             </div>
           </div>
 

@@ -321,7 +321,7 @@ export default function SongPreview() {
         <div className="text-center text-sm text-muted-foreground space-y-2">
           <p>✓ Secure payment via Stripe</p>
           <p>✓ Instant access after purchase</p>
-          <p>✓ Questions? hello@personalsonggifts.com</p>
+          <p>✓ Questions? support@personalsonggifts.com</p>
         </div>
       </div>
     </div>

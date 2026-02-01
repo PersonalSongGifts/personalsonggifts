@@ -250,8 +250,7 @@ Deno.serve(async (req) => {
 
     // Handle LEAD uploads
     const fullStoragePath = `leads/${shortId}-full${extension}`;
-    const previewStoragePath = `leads/${shortId}-preview${extension}`;
-
+    
     // Upload full song
     const { error: fullUploadError } = await supabase.storage
       .from("songs")
@@ -265,12 +264,33 @@ Deno.serve(async (req) => {
       throw new Error(`Upload failed: ${fullUploadError.message}`);
     }
 
-    // Create and upload 45-second preview clip
-    const previewClip = createPreviewClip(uint8Array, 45);
+    // Check for client-generated preview file (accurate 45-second clip)
+    const previewFile = formData.get("previewFile") as File | null;
+    
+    let previewStoragePath: string;
+    let previewBytes: Uint8Array;
+    let previewContentType: string;
+    
+    if (previewFile && previewFile instanceof File) {
+      // Use client-generated preview (accurate timing via Web Audio API)
+      console.log("Using client-generated preview file");
+      previewBytes = new Uint8Array(await previewFile.arrayBuffer());
+      previewContentType = previewFile.type || "audio/wav";
+      // Use .wav extension for client-generated previews
+      previewStoragePath = `leads/${shortId}-preview.wav`;
+    } else {
+      // Fallback to byte-slicing (less accurate, for backwards compatibility)
+      console.log("Falling back to byte-slicing preview");
+      previewBytes = createPreviewClip(uint8Array, 45);
+      previewContentType = file.type || "audio/mpeg";
+      previewStoragePath = `leads/${shortId}-preview${extension}`;
+    }
+
+    // Upload preview
     const { error: previewUploadError } = await supabase.storage
       .from("songs")
-      .upload(previewStoragePath, previewClip, {
-        contentType: file.type || "audio/mpeg",
+      .upload(previewStoragePath, previewBytes, {
+        contentType: previewContentType,
         upsert: true,
       });
 
