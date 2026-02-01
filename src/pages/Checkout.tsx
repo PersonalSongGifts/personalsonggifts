@@ -88,6 +88,8 @@ const Checkout = () => {
       "VALENTINES50": 50,
       "WELCOME50": 50,
       "HYPERDRIVETEST": 100, // Free for testing
+      "HYPERDRIVEFREE2026": 100, // Free for testing
+      "HYPERDRIVEFREE2026!": 100, // Free for testing (with exclamation)
       "FRIEND20": 20,
       "VIP75": 75,
     };
