@@ -1,64 +1,123 @@
 
-# Update Email Sender Identity
+# Lead Management Improvements
 
-## Summary
-Update all transactional email edge functions to use the new sender identity with reply-to support.
+## Problem
 
-**Current state:**
-- From email: reads `BREVO_SENDER_EMAIL` secret (fallback: `noreply@personalsonggifts.com`)
-- From name: reads `BREVO_SENDER_NAME` secret (fallback: `Personal Song Gifts`)
-- Reply-To: not set
+When managing leads in the admin dashboard, you have two issues:
+1. You can't easily see which leads you've already sent songs to - the visual indicators blend into the other information
+2. You can't dismiss or archive leads that are tests or ones you don't need to deal with, so they clutter your list
 
-**Target state:**
-- From email: `support@personalsonggifts.com` (hardcoded, no fallback)
-- From name: `Personal Song Gifts` (hardcoded)
-- Reply-To: `support@personalsonggifts.com`
+## Solution
+
+Add a "dismissed" status for leads and improve the visual feedback for sent songs.
 
 ---
 
-## Changes Required
+## Changes Overview
 
-### Edge Functions to Update (6 files)
+### 1. Database: Add `dismissed_at` Column
+Add a new nullable timestamp column to the `leads` table:
+- `dismissed_at` (timestamp with time zone, nullable) - When set, the lead is considered dismissed/archived
 
-| File | Current | Change |
-|------|---------|--------|
-| `send-order-confirmation/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
-| `send-song-delivery/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
-| `send-lead-preview/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
-| `send-lead-followup/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
-| `send-test-email/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
-| `process-scheduled-deliveries/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
+### 2. Backend: Update admin-orders Edge Function
+Add a new action to update lead dismissal status:
+- `action: "dismiss_lead"` - Sets or clears the `dismissed_at` timestamp
+- Works with the existing admin password authentication
+
+### 3. Frontend: LeadsTable Component Updates
+
+**New Filter Option:**
+Add a filter to show/hide dismissed leads:
+- "Show All" (default - excludes dismissed)
+- "Show Dismissed Only"  
+- "Show Everything" (includes dismissed)
+
+**Visual Status Improvements on Lead Cards:**
+Make sent status much more prominent:
+- Green checkmark with "Song Sent" badge directly on the card when `preview_sent_at` is set
+- Gray strikethrough styling for dismissed leads
+- "Dismissed" badge for dismissed leads
+
+**New Dismiss Button:**
+Add a button on each lead card to mark as dismissed:
+- "Dismiss" button for active leads (marks as dismissed)
+- "Restore" button for dismissed leads (clears dismissal)
+
+---
+
+## Visual Changes
+
+Before (current):
+```text
++-------------------------------------------+
+| John Smith                    [Unconverted]|
+| Email: john@test.com                       |
+| Song for: Jane (Wife)                      |
+| [Upload Song]  [View Details]              |
++-------------------------------------------+
+```
+
+After (improved):
+```text
++-------------------------------------------+
+| John Smith           [Unconverted] [Q: 75] |
+| Email: john@test.com                       |
+| Song for: Jane (Wife)                      |
+| Preview sent: Jan 30, 2026 3:45 PM PST     |   <-- Already shows
+| [View Details]  [X Dismiss]                |   <-- New dismiss button
++-------------------------------------------+
+
+When a lead has been sent a song, add prominent indicator:
++-------------------------------------------+
+| John Smith    [Preview Sent] [SONG SENT]  |  <-- Prominent green badge
+| ...                                        |
++-------------------------------------------+
+
+Dismissed lead (if showing):
++-------------------------------------------+
+| John Smith (Test)        [Dismissed]       |  <-- Gray/muted styling
+| Email: test@test.com                       |
+| [Restore]                                  |   
++-------------------------------------------+
+```
 
 ---
 
 ## Technical Details
 
-### Code Changes Per File
-
-Replace this pattern:
-```typescript
-const senderEmail = Deno.env.get("BREVO_SENDER_EMAIL") || "noreply@personalsonggifts.com";
-const senderName = Deno.env.get("BREVO_SENDER_NAME") || "Personal Song Gifts";
+### Database Migration
+```sql
+ALTER TABLE leads 
+ADD COLUMN dismissed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
 ```
 
-With hardcoded values:
-```typescript
-const senderEmail = "support@personalsonggifts.com";
-const senderName = "Personal Song Gifts";
+### Edge Function Update
+New action in `admin-orders/index.ts`:
+```text
+action: "update_lead_dismissal"
+leadId: string
+dismissed: boolean (true = dismiss, false = restore)
 ```
 
-And update the Brevo API call to include `replyTo`:
-```typescript
-body: JSON.stringify({
-  sender: { name: senderName, email: senderEmail },
-  replyTo: { email: senderEmail, name: senderName },  // NEW
-  to: [...],
-  subject: ...,
-  htmlContent: ...,
-}),
-```
+### UI Component Changes
 
-### After Implementation
-- All customer replies will go to `support@personalsonggifts.com`
-- No more `noreply@` appearing in emails
-- Consistent identity across all email types
+**LeadsTable.tsx:**
+- Add `dismissedFilter` state: "active" | "dismissed" | "all"
+- Add filter to exclude dismissed leads by default
+- Add dismiss/restore button on each card
+- Add prominent "Song Sent" checkmark badge for leads with `preview_sent_at`
+- Apply muted styling to dismissed leads
+
+**Lead Interface:**
+- Add `dismissed_at?: string | null` to the Lead type
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| Database migration | Add `dismissed_at` column |
+| `supabase/functions/admin-orders/index.ts` | Add `update_lead_dismissal` action |
+| `src/components/admin/LeadsTable.tsx` | Add dismissal filter, dismiss button, enhanced status badges |
+| `src/integrations/supabase/types.ts` | Auto-updated after migration |
