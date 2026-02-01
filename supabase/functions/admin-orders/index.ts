@@ -212,6 +212,38 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Update lead dismissal status
+      if (body?.action === "update_lead_dismissal") {
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+        const dismissed = body.dismissed === true;
+
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "Lead ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: updatedLead, error: updateError } = await supabase
+          .from("leads")
+          .update({
+            dismissed_at: dismissed ? new Date().toISOString() : null,
+          })
+          .eq("id", leadId)
+          .select("*")
+          .single();
+
+        if (updateError) {
+          console.error("Failed to update lead dismissal:", updateError);
+          throw updateError;
+        }
+
+        return new Response(
+          JSON.stringify({ lead: updatedLead }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = (body ?? {}) as Record<string, unknown>;
 
       if (!orderId) {
