@@ -20,6 +20,7 @@ export type Database = {
           converted_at: string | null
           cover_image_url: string | null
           customer_name: string
+          dismissed_at: string | null
           email: string
           favorite_memory: string
           follow_up_sent_at: string | null
@@ -48,6 +49,7 @@ export type Database = {
           converted_at?: string | null
           cover_image_url?: string | null
           customer_name: string
+          dismissed_at?: string | null
           email: string
           favorite_memory: string
           follow_up_sent_at?: string | null
@@ -76,6 +78,7 @@ export type Database = {
           converted_at?: string | null
           cover_image_url?: string | null
           customer_name?: string
+          dismissed_at?: string | null
           email?: string
           favorite_memory?: string
           follow_up_sent_at?: string | null

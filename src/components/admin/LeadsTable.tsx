@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer } from "lucide-react";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
 
@@ -37,6 +37,7 @@ export interface Lead {
   preview_opened_at?: string | null;
   follow_up_sent_at?: string | null;
   preview_scheduled_at?: string | null;
+  dismissed_at?: string | null;
 }
 
 interface LeadsTableProps {
@@ -79,6 +80,7 @@ function getQualityBadge(score: number | null | undefined) {
 export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, onRefresh }: LeadsTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState("all");
+  const [dismissedFilter, setDismissedFilter] = useState<"active" | "dismissed" | "all">("active");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -86,6 +88,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [sendingPreview, setSendingPreview] = useState(false);
   const [sendingFollowup, setSendingFollowup] = useState(false);
   const [cancellingAutoSend, setCancellingAutoSend] = useState(false);
+  const [dismissingLead, setDismissingLead] = useState<string | null>(null);
   const [savingPreviewTiming, setSavingPreviewTiming] = useState(false);
   const [previewTimingMode, setPreviewTimingMode] = useState<LeadPreviewTimingMode>("auto_24h");
   const [previewScheduledAt, setPreviewScheduledAt] = useState<Date | null>(null);
@@ -93,8 +96,14 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  // Filter by status and quality
+  // Filter by status, quality, and dismissed state
   const filteredLeads = leads
+    .filter((lead) => {
+      // Dismissed filter
+      if (dismissedFilter === "active") return !lead.dismissed_at;
+      if (dismissedFilter === "dismissed") return !!lead.dismissed_at;
+      return true; // "all"
+    })
     .filter((lead) => statusFilter === "all" || lead.status === statusFilter)
     .filter((lead) => {
       if (qualityFilter === "all") return true;
@@ -330,6 +339,47 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     }
   };
 
+  const handleDismissLead = async (lead: Lead, dismiss: boolean) => {
+    if (!adminPassword) return;
+    
+    setDismissingLead(lead.id);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_lead_dismissal",
+          leadId: lead.id,
+          dismissed: dismiss,
+          adminPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to update lead");
+      }
+
+      toast({
+        title: dismiss ? "Lead Dismissed" : "Lead Restored",
+        description: dismiss 
+          ? `${lead.customer_name} has been archived` 
+          : `${lead.customer_name} has been restored to active leads`,
+      });
+
+      onRefresh?.();
+    } catch (error) {
+      console.error("Dismiss lead error:", error);
+      toast({
+        title: "Failed to Update",
+        description: error instanceof Error ? error.message : "Failed to update lead",
+        variant: "destructive",
+      });
+    } finally {
+      setDismissingLead(null);
+    }
+  };
+
   // Check if lead has pending auto-send
   const hasScheduledAutoSend = (lead: Lead) => {
     return lead.preview_scheduled_at && 
@@ -461,6 +511,16 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               <SelectItem value="quality">By Quality</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={dismissedFilter} onValueChange={(v) => setDismissedFilter(v as "active" | "dismissed" | "all")}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Show" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active Only</SelectItem>
+              <SelectItem value="dismissed">Dismissed</SelectItem>
+              <SelectItem value="all">All</SelectItem>
+            </SelectContent>
+          </Select>
           <span className="text-sm text-muted-foreground">
             {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""}
           </span>
@@ -487,29 +547,50 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       ) : (
         <div className="space-y-4">
           {filteredLeads.map((lead) => (
-            <Card key={lead.id} className="hover:shadow-md transition-shadow">
+            <Card 
+              key={lead.id} 
+              className={`hover:shadow-md transition-shadow ${lead.dismissed_at ? 'opacity-60 bg-muted/50' : ''}`}
+            >
               <CardContent className="p-6">
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   <div className="space-y-2 flex-1">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <h3 className="font-semibold text-lg">{lead.customer_name}</h3>
-                      <Badge className={statusColors[lead.status] || "bg-gray-100 text-gray-800"}>
-                        {statusLabels[lead.status] || lead.status}
-                      </Badge>
-                      {lead.preview_opened_at && !lead.converted_at && (
+                      <h3 className={`font-semibold text-lg ${lead.dismissed_at ? 'line-through text-muted-foreground' : ''}`}>
+                        {lead.customer_name}
+                      </h3>
+                      {/* Prominent SONG SENT badge */}
+                      {lead.preview_sent_at && (
+                        <Badge className="bg-emerald-500 text-white font-semibold">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          SONG SENT
+                        </Badge>
+                      )}
+                      {/* Dismissed badge */}
+                      {lead.dismissed_at && (
+                        <Badge variant="outline" className="border-gray-400 text-gray-500">
+                          <Archive className="h-3 w-3 mr-1" />
+                          Dismissed
+                        </Badge>
+                      )}
+                      {!lead.dismissed_at && (
+                        <Badge className={statusColors[lead.status] || "bg-gray-100 text-gray-800"}>
+                          {statusLabels[lead.status] || lead.status}
+                        </Badge>
+                      )}
+                      {lead.preview_opened_at && !lead.converted_at && !lead.dismissed_at && (
                         <Badge variant="outline" className="border-purple-500 text-purple-600">
                           <Eye className="h-3 w-3 mr-1" />
                           Viewed
                         </Badge>
                       )}
-                      {isEligibleForFollowup(lead) && (
+                      {isEligibleForFollowup(lead) && !lead.dismissed_at && (
                         <Badge variant="outline" className="border-orange-500 text-orange-600">
                           <Gift className="h-3 w-3 mr-1" />
                           Follow-up Ready
                         </Badge>
                       )}
                       {/* Quality Score Badge */}
-                      {(() => {
+                      {!lead.dismissed_at && (() => {
                         const quality = getQualityBadge(lead.quality_score);
                         const IconComponent = quality.icon;
                         return (
@@ -532,88 +613,126 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       <strong>Captured:</strong> {new Date(lead.captured_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
                     </p>
                     {lead.preview_sent_at && (
-                      <p className="text-sm text-purple-600">
+                      <p className="text-sm text-emerald-600 font-medium">
+                        <CheckCircle2 className="h-3 w-3 inline mr-1" />
                         <strong>Preview sent:</strong> {new Date(lead.preview_sent_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
                       </p>
                     )}
-                    {hasScheduledAutoSend(lead) && (
+                    {lead.follow_up_sent_at && (
+                      <p className="text-sm text-orange-600">
+                        <Gift className="h-3 w-3 inline mr-1" />
+                        <strong>Follow-up sent:</strong> {new Date(lead.follow_up_sent_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                      </p>
+                    )}
+                    {hasScheduledAutoSend(lead) && !lead.dismissed_at && (
                       <p className="text-sm text-muted-foreground">
                         <Timer className="h-3 w-3 inline mr-1" />
                         <strong>Auto-send in:</strong> {getAutoSendTimeRemaining(lead)}
                       </p>
                     )}
+                    {lead.dismissed_at && (
+                      <p className="text-sm text-gray-500 italic">
+                        Dismissed: {new Date(lead.dismissed_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    {/* Upload Song button - show for unconverted leads without a song */}
-                    {lead.status === "lead" && !lead.full_song_url && (
+                    {/* Show restore button for dismissed leads */}
+                    {lead.dismissed_at ? (
                       <Button
                         size="sm"
-                        variant="default"
-                        onClick={() => setSelectedLead(lead)}
-                      >
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload Song
-                      </Button>
-                    )}
-                    {/* Preview audio button */}
-                    {lead.preview_song_url && (
-                      <Button
                         variant="outline"
-                        size="sm"
-                        onClick={() => toggleAudioPlayback(lead.preview_song_url!)}
+                        onClick={() => handleDismissLead(lead, false)}
+                        disabled={dismissingLead === lead.id}
                       >
-                        {playingAudio === lead.preview_song_url ? (
-                          <Pause className="h-4 w-4 mr-2" />
-                        ) : (
-                          <Play className="h-4 w-4 mr-2" />
-                        )}
-                        Preview
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        {dismissingLead === lead.id ? "Restoring..." : "Restore"}
                       </Button>
-                    )}
-                    {/* Send preview button - show when song ready but not sent */}
-                    {lead.status === "song_ready" && lead.preview_song_url && !lead.preview_sent_at && (
+                    ) : (
                       <>
-                        <Button
-                          size="sm"
-                          onClick={() => handleSendPreview(lead)}
-                          disabled={sendingPreview}
-                        >
-                          <Send className="h-4 w-4 mr-2" />
-                          {sendingPreview ? "Sending..." : "Send Now"}
-                        </Button>
-                        {hasScheduledAutoSend(lead) && (
+                        {/* Upload Song button - show for unconverted leads without a song */}
+                        {lead.status === "lead" && !lead.full_song_url && (
                           <Button
                             size="sm"
-                            variant="outline"
-                            onClick={() => handleCancelAutoSend(lead)}
-                            disabled={cancellingAutoSend}
+                            variant="default"
+                            onClick={() => setSelectedLead(lead)}
                           >
-                            <X className="h-4 w-4 mr-2" />
-                            {cancellingAutoSend ? "Cancelling..." : "Cancel Auto"}
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload Song
                           </Button>
                         )}
+                        {/* Preview audio button */}
+                        {lead.preview_song_url && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleAudioPlayback(lead.preview_song_url!)}
+                          >
+                            {playingAudio === lead.preview_song_url ? (
+                              <Pause className="h-4 w-4 mr-2" />
+                            ) : (
+                              <Play className="h-4 w-4 mr-2" />
+                            )}
+                            Preview
+                          </Button>
+                        )}
+                        {/* Send preview button - show when song ready but not sent */}
+                        {lead.status === "song_ready" && lead.preview_song_url && !lead.preview_sent_at && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handleSendPreview(lead)}
+                              disabled={sendingPreview}
+                            >
+                              <Send className="h-4 w-4 mr-2" />
+                              {sendingPreview ? "Sending..." : "Send Now"}
+                            </Button>
+                            {hasScheduledAutoSend(lead) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCancelAutoSend(lead)}
+                                disabled={cancellingAutoSend}
+                              >
+                                <X className="h-4 w-4 mr-2" />
+                                {cancellingAutoSend ? "Cancelling..." : "Cancel Auto"}
+                              </Button>
+                            )}
+                          </>
+                        )}
+                        {/* Send follow-up button */}
+                        {isEligibleForFollowup(lead) && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleSendFollowup(lead)}
+                            disabled={sendingFollowup}
+                          >
+                            <Gift className="h-4 w-4 mr-2" />
+                            {sendingFollowup ? "Sending..." : "Send $5 Follow-up"}
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedLead(lead)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </Button>
+                        {/* Dismiss button */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDismissLead(lead, true)}
+                          disabled={dismissingLead === lead.id}
+                        >
+                          <Archive className="h-4 w-4 mr-2" />
+                          {dismissingLead === lead.id ? "..." : "Dismiss"}
+                        </Button>
                       </>
                     )}
-                    {/* Send follow-up button */}
-                    {isEligibleForFollowup(lead) && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleSendFollowup(lead)}
-                        disabled={sendingFollowup}
-                      >
-                        <Gift className="h-4 w-4 mr-2" />
-                        {sendingFollowup ? "Sending..." : "Send $5 Follow-up"}
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedLead(lead)}
-                    >
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Details
-                    </Button>
                   </div>
                 </div>
               </CardContent>
