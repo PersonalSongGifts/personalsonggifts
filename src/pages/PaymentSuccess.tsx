@@ -131,8 +131,8 @@ const PaymentSuccess = () => {
               </Button>
               <p className="text-sm text-muted-foreground">
                 If you've been charged, please contact{" "}
-                <a href="mailto:hello@personalsonggifts.com" className="text-primary underline">
-                  hello@personalsonggifts.com
+                <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
+                  support@personalsonggifts.com
                 </a>
               </p>
             </div>
@@ -251,8 +251,8 @@ const PaymentSuccess = () => {
 
           <p className="text-sm text-muted-foreground mt-6">
             Questions? Contact us at{" "}
-            <a href="mailto:hello@personalsonggifts.com" className="text-primary underline">
-              hello@personalsonggifts.com
+            <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
+              support@personalsonggifts.com
             </a>
           </p>
         </div>

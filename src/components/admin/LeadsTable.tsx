@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
+import { createAudioPreview } from "@/lib/audioClipper";
 
 export interface Lead {
   id: string;
@@ -146,16 +147,29 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     if (!selectedFile || !selectedLead || !adminPassword) return;
 
     setUploadingFile(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
 
     try {
+      // Generate 45-second preview client-side using Web Audio API
+      toast({
+        title: "Generating Preview",
+        description: "Creating 45-second preview clip...",
+      });
+      
+      setUploadProgress(10);
+      const previewBlob = await createAudioPreview(selectedFile);
+      const previewFile = new File([previewBlob], "preview.wav", { type: "audio/wav" });
+      
+      setUploadProgress(25);
+      
       const formData = new FormData();
       formData.append("file", selectedFile);
+      formData.append("previewFile", previewFile);
       formData.append("leadId", selectedLead.id);
       formData.append("type", "lead");
       formData.append("adminPassword", adminPassword);
 
-      setUploadProgress(30);
+      setUploadProgress(35);
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-song`,

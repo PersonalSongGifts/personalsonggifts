@@ -100,10 +100,10 @@ const Confirmation = () => {
           <p className="text-muted-foreground mb-8">
             Questions? Email us at{" "}
             <a 
-              href="mailto:hello@personalsonggifts.com" 
+              href="mailto:support@personalsonggifts.com" 
               className="text-primary hover:underline"
             >
-              hello@personalsonggifts.com
+              support@personalsonggifts.com
             </a>
             {" "}— we respond within 24 hours.
           </p>
