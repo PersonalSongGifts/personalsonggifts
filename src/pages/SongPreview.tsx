@@ -26,7 +26,7 @@ export default function SongPreview() {
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(35);
+  const [duration, setDuration] = useState(45);
   const [purchasing, setPurchasing] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -74,7 +74,7 @@ export default function SongPreview() {
       audioRef.current = new Audio(previewData.previewUrl);
       
       audioRef.current.addEventListener("loadedmetadata", () => {
-        setDuration(audioRef.current?.duration || 35);
+        setDuration(audioRef.current?.duration || 45);
       });
 
       audioRef.current.addEventListener("timeupdate", () => {
@@ -250,7 +250,7 @@ export default function SongPreview() {
               <div className="flex justify-center">
                 <Badge variant="secondary" className="gap-1">
                   <Lock className="h-3 w-3" />
-                  35-second preview
+                  45-second preview
                 </Badge>
               </div>
             </div>

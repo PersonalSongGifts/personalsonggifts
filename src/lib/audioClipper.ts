@@ -1,9 +1,9 @@
 /**
  * Client-side audio clipping utility
- * Creates a 35-second preview clip from an audio file
+ * Creates a 45-second preview clip from an audio file
  */
 
-const PREVIEW_DURATION_SECONDS = 35;
+const PREVIEW_DURATION_SECONDS = 45;
 
 export async function createAudioPreview(file: File): Promise<Blob> {
   const arrayBuffer = await file.arrayBuffer();
@@ -14,7 +14,7 @@ export async function createAudioPreview(file: File): Promise<Blob> {
   // Decode the audio file
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
   
-  // Calculate preview duration (minimum of file duration or 35 seconds)
+  // Calculate preview duration (minimum of file duration or 45 seconds)
   const previewDuration = Math.min(audioBuffer.duration, PREVIEW_DURATION_SECONDS);
   const previewSamples = Math.floor(previewDuration * audioBuffer.sampleRate);
   
@@ -25,7 +25,7 @@ export async function createAudioPreview(file: File): Promise<Blob> {
     audioBuffer.sampleRate
   );
   
-  // Copy the first 35 seconds of audio
+  // Copy the first 45 seconds of audio
   for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
     const sourceData = audioBuffer.getChannelData(channel);
     const destData = previewBuffer.getChannelData(channel);

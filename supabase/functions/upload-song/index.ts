@@ -16,8 +16,8 @@ function generatePreviewToken(): string {
   return token;
 }
 
-// Create a 35-second preview clip from audio buffer
-function createPreviewClip(originalBuffer: Uint8Array, durationSeconds: number = 35): Uint8Array {
+// Create a 45-second preview clip from audio buffer
+function createPreviewClip(originalBuffer: Uint8Array, durationSeconds: number = 45): Uint8Array {
   // For simplicity, we'll just take the first portion of the file
   // This is a rough approximation - actual audio clipping would require decoding
   // For MP3 files, we estimate ~128kbps = 16KB/s
@@ -265,8 +265,8 @@ Deno.serve(async (req) => {
       throw new Error(`Upload failed: ${fullUploadError.message}`);
     }
 
-    // Create and upload 35-second preview clip
-    const previewClip = createPreviewClip(uint8Array, 35);
+    // Create and upload 45-second preview clip
+    const previewClip = createPreviewClip(uint8Array, 45);
     const { error: previewUploadError } = await supabase.storage
       .from("songs")
       .upload(previewStoragePath, previewClip, {
