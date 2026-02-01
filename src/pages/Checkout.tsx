@@ -3,6 +3,7 @@ import { useState } from "react";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { 
   Check, 
   Clock, 
@@ -11,7 +12,9 @@ import {
   Mail, 
   CreditCard,
   ArrowLeft,
-  Loader2
+  Loader2,
+  Tag,
+  X
 } from "lucide-react";
 import { FormData } from "@/pages/CreateSong";
 import { useToast } from "@/hooks/use-toast";
@@ -41,8 +44,67 @@ const Checkout = () => {
   const formData = location.state?.formData as FormData | undefined;
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoApplied, setPromoApplied] = useState<{ code: string; discount: number } | null>(null);
+  const [promoError, setPromoError] = useState("");
   
   const activePromo = getActivePromo();
+  
+  // Calculate pricing based on applied promo
+  const getBasePrices = () => {
+    const baseStandard = 99.99;
+    const basePriority = 159.99;
+    
+    // If custom promo applied, use that discount
+    if (promoApplied) {
+      const discountMultiplier = 1 - (promoApplied.discount / 100);
+      return {
+        standard: Math.round(baseStandard * discountMultiplier * 100) / 100,
+        priority: Math.round(basePriority * discountMultiplier * 100) / 100,
+        discountPercent: promoApplied.discount,
+        promoCode: promoApplied.code,
+      };
+    }
+    
+    // Default 50% off promo
+    return {
+      standard: 49.99,
+      priority: 79.99,
+      discountPercent: 50,
+      promoCode: activePromo.code,
+    };
+  };
+  
+  const prices = getBasePrices();
+  
+  const handleApplyPromo = () => {
+    const code = promoCode.trim().toUpperCase();
+    if (!code) return;
+    
+    setPromoError("");
+    
+    // Known promo codes (validated server-side too)
+    const promoCodes: Record<string, number> = {
+      "VALENTINES50": 50,
+      "WELCOME50": 50,
+      "HYPERDRIVETEST": 100, // Free for testing
+      "FRIEND20": 20,
+      "VIP75": 75,
+    };
+    
+    if (promoCodes[code]) {
+      setPromoApplied({ code, discount: promoCodes[code] });
+      toast({ title: "Promo code applied!", description: `${promoCodes[code]}% discount applied.` });
+    } else {
+      setPromoError("Invalid promo code");
+    }
+  };
+  
+  const handleRemovePromo = () => {
+    setPromoApplied(null);
+    setPromoCode("");
+    setPromoError("");
+  };
 
   // Redirect if no form data
   if (!formData) {
@@ -68,8 +130,8 @@ const Checkout = () => {
     
     setIsSubmitting(true);
     
-    // Fire InitiateCheckout event (Meta Pixel) - use discounted values
-    const checkoutValue = selectedTier === "priority" ? 79.99 : 49.99;
+    // Fire InitiateCheckout event (Meta Pixel) - use current discounted values
+    const checkoutValue = selectedTier === "priority" ? prices.priority : prices.standard;
     trackMetaEvent('InitiateCheckout', {
       value: checkoutValue,
       currency: 'USD',
@@ -100,6 +162,7 @@ const Checkout = () => {
           body: JSON.stringify({
             pricingTier: selectedTier,
             formData,
+            promoCode: promoApplied?.code || prices.promoCode,
           }),
         }
       );
@@ -187,7 +250,7 @@ const Checkout = () => {
               </div>
               <div className="mb-4">
                 <span className="text-lg text-muted-foreground line-through">$99.99</span>
-                <span className="text-4xl font-bold text-foreground ml-2">$49.99</span>
+                <span className="text-4xl font-bold text-foreground ml-2">${prices.standard.toFixed(2)}</span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -237,7 +300,7 @@ const Checkout = () => {
               </div>
               <div className="mb-4">
                 <span className="text-lg text-muted-foreground line-through">$159.99</span>
-                <span className="text-4xl font-bold text-foreground ml-2">$79.99</span>
+                <span className="text-4xl font-bold text-foreground ml-2">${prices.priority.toFixed(2)}</span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -290,19 +353,52 @@ const Checkout = () => {
                 </div>
               </div>
               
+              {/* Promo Code Input */}
+              <div className="border-t border-border my-4" />
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground flex items-center gap-1">
+                  <Tag className="h-3 w-3" />
+                  Promo Code
+                </label>
+                {promoApplied ? (
+                  <div className="flex items-center justify-between bg-primary/10 rounded-md px-3 py-2">
+                    <span className="text-primary font-medium">{promoApplied.code} ({promoApplied.discount}% off)</span>
+                    <Button variant="ghost" size="sm" onClick={handleRemovePromo} className="h-6 w-6 p-0">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter code"
+                      value={promoCode}
+                      onChange={(e) => {
+                        setPromoCode(e.target.value.toUpperCase());
+                        setPromoError("");
+                      }}
+                      className="flex-1"
+                    />
+                    <Button variant="outline" onClick={handleApplyPromo} disabled={!promoCode.trim()}>
+                      Apply
+                    </Button>
+                  </div>
+                )}
+                {promoError && <p className="text-destructive text-xs">{promoError}</p>}
+              </div>
+              
               <div className="border-t border-border my-4" />
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Subtotal:</span>
                 <span className="text-muted-foreground">${selectedTier === "priority" ? "159.99" : "99.99"}</span>
               </div>
               <div className="flex justify-between items-center text-primary">
-                <span>{activePromo.emoji} {activePromo.code} Discount (50% Off):</span>
-                <span>-${selectedTier === "priority" ? "80.00" : "50.00"}</span>
+                <span>{promoApplied ? "🎟️" : activePromo.emoji} {prices.promoCode} Discount ({prices.discountPercent}% Off):</span>
+                <span>-${selectedTier === "priority" ? (159.99 - prices.priority).toFixed(2) : (99.99 - prices.standard).toFixed(2)}</span>
               </div>
               <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Total:</span>
-                <span>${selectedTier === "priority" ? "79.99" : "49.99"}</span>
+                <span>${selectedTier === "priority" ? prices.priority.toFixed(2) : prices.standard.toFixed(2)}</span>
               </div>
             </div>
           </Card>
@@ -335,7 +431,7 @@ const Checkout = () => {
             ) : (
               <CreditCard className="h-5 w-5" />
             )}
-            {isSubmitting ? "Processing..." : `Complete Payment — $${selectedTier === "priority" ? "79.99" : "49.99"}`}
+            {isSubmitting ? "Processing..." : `Complete Payment — $${selectedTier === "priority" ? prices.priority.toFixed(2) : prices.standard.toFixed(2)}`}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
