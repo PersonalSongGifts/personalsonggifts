@@ -7,6 +7,7 @@ const corsHeaders = {
 
 interface CheckoutInput {
   pricingTier: "standard" | "priority";
+  promoCode?: string;
   formData: {
     recipientType: string;
     recipientName: string;
@@ -22,13 +23,30 @@ interface CheckoutInput {
   };
 }
 
-// IMPORTANT:
-// We intentionally set the discounted amount server-side so Stripe ALWAYS shows the offer price,
-// even if discount/promo-code configuration changes in Stripe.
-const DISCOUNTED_TOTAL_CENTS: Record<CheckoutInput["pricingTier"], number> = {
-  standard: 4999,
-  priority: 7999,
+// Known promo codes with their discount percentages
+const PROMO_CODES: Record<string, number> = {
+  "VALENTINES50": 50,
+  "WELCOME50": 50,
+  "HYPERDRIVETEST": 100, // Free for testing
+  "FRIEND20": 20,
+  "VIP75": 75,
 };
+
+// Base prices in cents
+const BASE_PRICES: Record<CheckoutInput["pricingTier"], number> = {
+  standard: 9999,  // $99.99
+  priority: 15999, // $159.99
+};
+
+// Calculate discounted price based on promo code
+function getDiscountedPrice(tier: CheckoutInput["pricingTier"], promoCode?: string): number {
+  const basePrice = BASE_PRICES[tier];
+  const discount = promoCode && PROMO_CODES[promoCode.toUpperCase()] 
+    ? PROMO_CODES[promoCode.toUpperCase()] 
+    : 50; // Default 50% off
+  
+  return Math.round(basePrice * (1 - discount / 100));
+}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -45,7 +63,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { pricingTier, formData }: CheckoutInput = await req.json();
+    const { pricingTier, formData, promoCode }: CheckoutInput = await req.json();
 
     // Validate tier
     if (!["standard", "priority"].includes(pricingTier)) {
@@ -108,7 +126,7 @@ Deno.serve(async (req) => {
       metadata.customerPhone = formData.phoneNumber;
     }
 
-    const unitAmount = DISCOUNTED_TOTAL_CENTS[pricingTier];
+    const unitAmount = getDiscountedPrice(pricingTier, promoCode);
     const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
 
     // Create Stripe Checkout Session
