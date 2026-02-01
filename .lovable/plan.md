@@ -1,89 +1,64 @@
 
+# Update Email Sender Identity
 
-# Fix: Add "Send Test Email" Button to Admin Dashboard
+## Summary
+Update all transactional email edge functions to use the new sender identity with reply-to support.
 
-## Problem
-You uploaded a song but nothing happened because:
-1. The current system requires a **2-step process**: Upload → then manually click "Send Preview"
-2. You may have been testing with a converted lead, which hides the upload option
-3. There's no way to quickly test what the email looks like without a real unconverted lead
+**Current state:**
+- From email: reads `BREVO_SENDER_EMAIL` secret (fallback: `noreply@personalsonggifts.com`)
+- From name: reads `BREVO_SENDER_NAME` secret (fallback: `Personal Song Gifts`)
+- Reply-To: not set
 
-## Solution
-Add a **"Send Test Email"** button in the Admin → Emails section that sends the lead preview email template directly to any email address you specify - no lead record needed.
-
----
-
-## Changes
-
-### 1. Update Email Templates Section (Admin → Emails tab)
-Add a "Test Lead Preview Email" card with:
-- Email input field (pre-filled with your email)
-- "Send Test" button
-- Uses placeholder data (sample recipient name, occasion, preview link)
-
-### 2. New Edge Function: `send-test-email`
-Creates a test version of the lead preview email and sends it to the specified address.
+**Target state:**
+- From email: `support@personalsonggifts.com` (hardcoded, no fallback)
+- From name: `Personal Song Gifts` (hardcoded)
+- Reply-To: `support@personalsonggifts.com`
 
 ---
 
-## Email Testing Flow After Implementation
+## Changes Required
 
-```text
-Admin Dashboard → Emails Tab
-┌─────────────────────────────────────────────────────────┐
-│  Test Lead Preview Email                                │
-│                                                         │
-│  Send a test version of the lead preview email to       │
-│  see exactly what customers receive.                    │
-│                                                         │
-│  Email: [ryan@hyperdrivelab.com    ]                   │
-│                                                         │
-│  [ Send Test Email ]                                    │
-└─────────────────────────────────────────────────────────┘
-```
+### Edge Functions to Update (6 files)
 
----
-
-## Files to Create/Modify
-
-| File | Change |
-|------|--------|
-| `supabase/functions/send-test-email/index.ts` | New function to send test emails |
-| `src/components/admin/EmailTemplates.tsx` | Add "Send Test Email" UI |
-| `supabase/config.toml` | Register new edge function |
+| File | Current | Change |
+|------|---------|--------|
+| `send-order-confirmation/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
+| `send-song-delivery/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
+| `send-lead-preview/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
+| `send-lead-followup/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
+| `send-test-email/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
+| `process-scheduled-deliveries/index.ts` | Uses env vars + fallback | Hardcode values + add Reply-To |
 
 ---
 
 ## Technical Details
 
-### send-test-email Edge Function
+### Code Changes Per File
 
+Replace this pattern:
 ```typescript
-// Sends the lead preview email template with sample data
-// to a specified email address for testing
-
-Request body:
-{
-  "email": "ryan@hyperdrivelab.com",
-  "template": "lead_preview",  // or "lead_followup", "order_confirmation", "song_delivery"
-  "adminPassword": "..."
-}
-
-Response:
-{
-  "success": true,
-  "messageId": "..."
-}
+const senderEmail = Deno.env.get("BREVO_SENDER_EMAIL") || "noreply@personalsonggifts.com";
+const senderName = Deno.env.get("BREVO_SENDER_NAME") || "Personal Song Gifts";
 ```
 
-### Sample Data Used in Test Email
-- Customer Name: "Test Customer"
-- Recipient Name: "Test Recipient"  
-- Occasion: "Birthday"
-- Preview URL: Links to `/preview/demo` (a demo preview page)
+With hardcoded values:
+```typescript
+const senderEmail = "support@personalsonggifts.com";
+const senderName = "Personal Song Gifts";
+```
 
----
+And update the Brevo API call to include `replyTo`:
+```typescript
+body: JSON.stringify({
+  sender: { name: senderName, email: senderEmail },
+  replyTo: { email: senderEmail, name: senderName },  // NEW
+  to: [...],
+  subject: ...,
+  htmlContent: ...,
+}),
+```
 
-## Bonus: Demo Preview Page
-Add a `/preview/demo` route that shows the preview page with sample audio, so you can test the full customer experience without a real lead.
-
+### After Implementation
+- All customer replies will go to `support@personalsonggifts.com`
+- No more `noreply@` appearing in emails
+- Consistent identity across all email types
