@@ -85,6 +85,7 @@ export default function Admin() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [songUrl, setSongUrl] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [resendingDelivery, setResendingDelivery] = useState(false);
   const [activeTab, setActiveTab] = useState("analytics");
   const [orderSort, setOrderSort] = useState<"latest" | "oldest">("latest");
   const [leadSort, setLeadSort] = useState<"latest" | "oldest" | "quality">("latest");
@@ -290,6 +291,38 @@ export default function Admin() {
       });
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleResendDeliveryEmail = async (order: Order) => {
+    if (!password) return;
+
+    setResendingDelivery(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "resend_delivery_email",
+          orderId: order.id,
+          adminPassword: password,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Email Resent",
+        description: data?.message || `Delivery email resent to ${order.customer_email}`,
+      });
+    } catch (err) {
+      console.error("Resend delivery error:", err);
+      toast({
+        title: "Failed to Resend",
+        description: err instanceof Error ? err.message : "Failed to resend email",
+        variant: "destructive",
+      });
+    } finally {
+      setResendingDelivery(false);
     }
   };
 
@@ -756,6 +789,17 @@ export default function Admin() {
                       </Button>
                     )}
                   </>
+                )}
+                {/* Resend delivery email button for already-delivered orders */}
+                {selectedOrder.status === "delivered" && selectedOrder.song_url && (
+                  <Button
+                    variant="outline"
+                    onClick={() => handleResendDeliveryEmail(selectedOrder)}
+                    disabled={resendingDelivery}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${resendingDelivery ? "animate-spin" : ""}`} />
+                    {resendingDelivery ? "Resending..." : "Resend Delivery Email"}
+                  </Button>
                 )}
               </DialogFooter>
             </>

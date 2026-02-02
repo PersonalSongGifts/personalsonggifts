@@ -8,6 +8,7 @@ const corsHeaders = {
 interface SendFollowupRequest {
   leadId: string;
   adminPassword: string;
+  resend?: boolean;  // If true, allows resending even if follow-up was already sent
 }
 
 Deno.serve(async (req) => {
@@ -21,7 +22,7 @@ Deno.serve(async (req) => {
       throw new Error("ADMIN_PASSWORD not configured");
     }
 
-    const { leadId, adminPassword: providedPassword }: SendFollowupRequest = await req.json();
+    const { leadId, adminPassword: providedPassword, resend }: SendFollowupRequest = await req.json();
 
     if (!providedPassword || providedPassword.trim() !== adminPassword.trim()) {
       return new Response(
@@ -69,9 +70,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (lead.follow_up_sent_at) {
+    // Check if follow-up already sent (unless resend=true)
+    if (lead.follow_up_sent_at && !resend) {
       return new Response(
-        JSON.stringify({ error: "Follow-up already sent" }),
+        JSON.stringify({ error: "Follow-up already sent. Use resend option to send again." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

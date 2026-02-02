@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw } from "lucide-react";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
 import { createAudioPreview } from "@/lib/audioClipper";
@@ -87,7 +87,9 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sendingPreview, setSendingPreview] = useState(false);
+  const [resendingPreview, setResendingPreview] = useState(false);
   const [sendingFollowup, setSendingFollowup] = useState(false);
+  const [resendingFollowup, setResendingFollowup] = useState(false);
   const [cancellingAutoSend, setCancellingAutoSend] = useState(false);
   const [dismissingLead, setDismissingLead] = useState<string | null>(null);
   const [savingPreviewTiming, setSavingPreviewTiming] = useState(false);
@@ -228,10 +230,14 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     }
   };
 
-  const handleSendPreview = async (lead: Lead) => {
+  const handleSendPreview = async (lead: Lead, resend = false) => {
     if (!adminPassword) return;
 
-    setSendingPreview(true);
+    if (resend) {
+      setResendingPreview(true);
+    } else {
+      setSendingPreview(true);
+    }
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-lead-preview`,
@@ -241,6 +247,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
           body: JSON.stringify({
             leadId: lead.id,
             adminPassword,
+            resend,
           }),
         }
       );
@@ -251,7 +258,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       }
 
       toast({
-        title: "Preview Sent!",
+        title: resend ? "Preview Resent!" : "Preview Sent!",
         description: `Email sent to ${lead.email}`,
       });
 
@@ -265,13 +272,18 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       });
     } finally {
       setSendingPreview(false);
+      setResendingPreview(false);
     }
   };
 
-  const handleSendFollowup = async (lead: Lead) => {
+  const handleSendFollowup = async (lead: Lead, resend = false) => {
     if (!adminPassword) return;
 
-    setSendingFollowup(true);
+    if (resend) {
+      setResendingFollowup(true);
+    } else {
+      setSendingFollowup(true);
+    }
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-lead-followup`,
@@ -281,6 +293,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
           body: JSON.stringify({
             leadId: lead.id,
             adminPassword,
+            resend,
           }),
         }
       );
@@ -291,7 +304,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       }
 
       toast({
-        title: "Follow-up Sent!",
+        title: resend ? "Follow-up Resent!" : "Follow-up Sent!",
         description: `$5 discount email sent to ${lead.email}`,
       });
 
@@ -305,6 +318,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       });
     } finally {
       setSendingFollowup(false);
+      setResendingFollowup(false);
     }
   };
 
@@ -714,6 +728,18 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                             )}
                           </>
                         )}
+                        {/* Resend preview button - show when preview was already sent */}
+                        {lead.preview_sent_at && lead.status !== "converted" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSendPreview(lead, true)}
+                            disabled={resendingPreview}
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            {resendingPreview ? "Resending..." : "Resend Preview"}
+                          </Button>
+                        )}
                         {/* Send follow-up button */}
                         {isEligibleForFollowup(lead) && (
                           <Button
@@ -724,6 +750,18 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           >
                             <Gift className="h-4 w-4 mr-2" />
                             {sendingFollowup ? "Sending..." : "Send $5 Follow-up"}
+                          </Button>
+                        )}
+                        {/* Resend follow-up button - show when follow-up was already sent */}
+                        {lead.follow_up_sent_at && lead.status !== "converted" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSendFollowup(lead, true)}
+                            disabled={resendingFollowup}
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            {resendingFollowup ? "Resending..." : "Resend Follow-up"}
                           </Button>
                         )}
                         <Button

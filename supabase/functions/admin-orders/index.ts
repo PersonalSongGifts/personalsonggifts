@@ -244,6 +244,78 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Resend delivery email for an already-delivered order
+      if (body?.action === "resend_delivery_email") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+
+        if (!orderId) {
+          return new Response(
+            JSON.stringify({ error: "Order ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get order details
+        const { data: order, error: orderError } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("id", orderId)
+          .single();
+
+        if (orderError || !order) {
+          return new Response(
+            JSON.stringify({ error: "Order not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (!order.song_url) {
+          return new Response(
+            JSON.stringify({ error: "No song uploaded for this order" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Send the delivery email
+        try {
+          const emailResponse = await fetch(
+            `${supabaseUrl}/functions/v1/send-song-delivery`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                orderId: order.id,
+                customerEmail: order.customer_email,
+                customerName: order.customer_name,
+                recipientName: order.recipient_name,
+                occasion: order.occasion,
+                songUrl: order.song_url,
+              }),
+            }
+          );
+
+          if (!emailResponse.ok) {
+            const errText = await emailResponse.text();
+            console.error("Failed to resend delivery email:", errText);
+            throw new Error("Failed to send email");
+          }
+
+          return new Response(
+            JSON.stringify({ success: true, message: "Delivery email resent successfully" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        } catch (emailError) {
+          console.error("Email error:", emailError);
+          return new Response(
+            JSON.stringify({ error: "Failed to send delivery email" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
       const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = (body ?? {}) as Record<string, unknown>;
 
       if (!orderId) {
