@@ -50,6 +50,11 @@ interface Order {
   reaction_video_url: string | null;
   reaction_submitted_at: string | null;
   scheduled_delivery_at: string | null;
+  // Engagement tracking
+  song_played_at: string | null;
+  song_play_count: number | null;
+  song_downloaded_at: string | null;
+  song_download_count: number | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -747,6 +752,52 @@ export default function Admin() {
                       value={scheduledDeliveryTime}
                       onChange={setScheduledDeliveryTime}
                     />
+                  </div>
+                )}
+
+                {/* Customer Engagement Section - show for delivered orders */}
+                {selectedOrder.status === "delivered" && (
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-3">Customer Engagement</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Delivered:</span>{" "}
+                        {selectedOrder.delivered_at 
+                          ? new Date(selectedOrder.delivered_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" }) + " PST"
+                          : "—"
+                        }
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Song Played:</span>{" "}
+                        {selectedOrder.song_played_at ? (
+                          <>
+                            {new Date(selectedOrder.song_played_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                            {selectedOrder.song_play_count && selectedOrder.song_play_count > 1 && (
+                              <Badge variant="outline" className="ml-2 text-green-600 border-green-300">
+                                {selectedOrder.song_play_count}x
+                              </Badge>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground italic">Not yet</span>
+                        )}
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Downloaded:</span>{" "}
+                        {selectedOrder.song_downloaded_at ? (
+                          <>
+                            {new Date(selectedOrder.song_downloaded_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                            {selectedOrder.song_download_count && selectedOrder.song_download_count > 1 && (
+                              <Badge variant="outline" className="ml-2 text-blue-600 border-blue-300">
+                                {selectedOrder.song_download_count}x
+                              </Badge>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground italic">Not yet</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

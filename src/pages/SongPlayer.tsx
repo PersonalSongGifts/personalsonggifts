@@ -102,6 +102,14 @@ const SongPlayer = () => {
       audioRef.current.pause();
     } else {
       audioRef.current.play();
+      // Track play event (fire-and-forget)
+      if (orderId) {
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "order", action: "play", orderId }),
+        }).catch((err) => console.error("Failed to track play:", err));
+      }
     }
     setIsPlaying(!isPlaying);
   };
@@ -185,6 +193,15 @@ const SongPlayer = () => {
 
   const downloadSong = async () => {
     if (!songData?.song_url) return;
+    
+    // Track download event (fire-and-forget)
+    if (orderId) {
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "order", action: "download", orderId }),
+      }).catch((err) => console.error("Failed to track download:", err));
+    }
     
     try {
       const response = await fetch(songData.song_url);

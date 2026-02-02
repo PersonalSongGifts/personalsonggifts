@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, TrendingUp, Clock, Users } from "lucide-react";
+import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp } from "lucide-react";
 
 interface Order {
   id: string;
@@ -7,12 +7,18 @@ interface Order {
   status: string;
   pricing_tier: string;
   created_at: string;
+  song_played_at?: string | null;
+  song_play_count?: number | null;
+  song_downloaded_at?: string | null;
+  song_download_count?: number | null;
 }
 
 interface Lead {
   id: string;
   status: string;
   captured_at: string;
+  preview_played_at?: string | null;
+  preview_play_count?: number | null;
 }
 
 interface StatsCardsProps {
@@ -38,17 +44,26 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
     return orderDate >= today;
   }).length;
 
-  const priorityOrders = orders.filter((o) => o.pricing_tier === "priority").length;
   const pendingOrders = orders.filter((o) => 
     ["paid", "in_progress"].includes(o.status)
   ).length;
 
+  // Lead stats
   const totalLeads = leads.length;
   const unconvertedLeads = leads.filter((l) => l.status === "lead").length;
+  const convertedLeads = leads.filter((l) => l.status === "converted").length;
 
-  const priorityRate = totalOrders > 0 
-    ? Math.round((priorityOrders / totalOrders) * 100) 
+  // Engagement stats
+  const leadsWhoPlayed = leads.filter((l) => l.preview_played_at).length;
+  const playedLeadsWhoConverted = leads.filter((l) => l.preview_played_at && l.status === "converted").length;
+  const playToConvertRate = leadsWhoPlayed > 0 
+    ? Math.round((playedLeadsWhoConverted / leadsWhoPlayed) * 100) 
     : 0;
+
+  // Order engagement
+  const deliveredOrders = orders.filter((o) => o.status === "delivered");
+  const songsPlayed = orders.filter((o) => o.song_played_at).length;
+  const songsDownloaded = orders.filter((o) => o.song_downloaded_at).length;
 
   const stats = [
     {
@@ -78,7 +93,7 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
     {
       title: "Leads",
       value: totalLeads.toString(),
-      description: `${unconvertedLeads} unconverted`,
+      description: `${convertedLeads} converted, ${unconvertedLeads} pending`,
       icon: Users,
       color: "text-indigo-600",
       bgColor: "bg-indigo-100",
@@ -91,25 +106,57 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
       color: "text-amber-600",
       bgColor: "bg-amber-100",
     },
+    {
+      title: "Previews Played",
+      value: leadsWhoPlayed.toString(),
+      description: `${leadsWhoPlayed} of ${totalLeads} leads`,
+      icon: Play,
+      color: "text-purple-600",
+      bgColor: "bg-purple-100",
+    },
+    {
+      title: "Play → Convert",
+      value: `${playToConvertRate}%`,
+      description: `${playedLeadsWhoConverted} of ${leadsWhoPlayed} who played`,
+      icon: TrendingUp,
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-100",
+    },
+    {
+      title: "Songs Played",
+      value: songsPlayed.toString(),
+      description: `of ${deliveredOrders.length} delivered`,
+      icon: Play,
+      color: "text-cyan-600",
+      bgColor: "bg-cyan-100",
+    },
+    {
+      title: "Downloads",
+      value: songsDownloaded.toString(),
+      description: `of ${deliveredOrders.length} delivered`,
+      icon: Download,
+      color: "text-rose-600",
+      bgColor: "bg-rose-100",
+    },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-4 mb-8">
       {stats.map((stat) => (
         <Card key={stat.title}>
-          <CardContent className="p-6">
+          <CardContent className="p-4">
             <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground truncate">
                   {stat.title}
                 </p>
-                <p className="text-2xl font-bold mt-1">{stat.value}</p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xl font-bold mt-1">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-1 truncate">
                   {stat.description}
                 </p>
               </div>
-              <div className={`p-2 rounded-lg ${stat.bgColor}`}>
-                <stat.icon className={`h-5 w-5 ${stat.color}`} />
+              <div className={`p-1.5 rounded-lg ${stat.bgColor} shrink-0 ml-2`}>
+                <stat.icon className={`h-4 w-4 ${stat.color}`} />
               </div>
             </div>
           </CardContent>
