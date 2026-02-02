@@ -14,6 +14,7 @@ import NotFound from "./pages/NotFound";
 import SongPlayer from "./pages/SongPlayer";
 import SongPreview from "./pages/SongPreview";
 import SubmitReaction from "./pages/SubmitReaction";
+import Unsubscribe from "./pages/Unsubscribe";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/song/:orderId" element={<SongPlayer />} />
           <Route path="/preview/:token" element={<SongPreview />} />
           <Route path="/submit-reaction" element={<SubmitReaction />} />
+          <Route path="/unsubscribe" element={<Unsubscribe />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

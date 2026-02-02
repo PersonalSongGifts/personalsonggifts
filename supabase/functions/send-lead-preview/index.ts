@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">🎵 Your Song for ${lead.recipient_name} is Ready!</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Your Song for ${lead.recipient_name} is Ready!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -108,13 +108,13 @@ Deno.serve(async (req) => {
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          🎧 Listen to Your Preview
+          Listen to Your Preview
         </a>
       </div>
       
       <div style="background-color: #FFF8E7; border-left: 4px solid #FFA000; padding: 15px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
         <p style="color: #5D4E37; margin: 0; font-size: 15px;">
-          <strong>💘 50% Off Today!</strong><br>
+          <strong>50% Off Today!</strong><br>
           Complete your order now and get instant access to the full song.
         </p>
       </div>
@@ -125,20 +125,50 @@ Deno.serve(async (req) => {
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
         With love and music,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong> 🎶
+        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
       </p>
     </div>
     
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts. Made with ❤️<br>
+        © 2026 Personal Song Gifts<br>
+        123 Music Lane, Nashville, TN 37203<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
+      </p>
+      <p style="color: #999; font-size: 11px; margin-top: 10px;">
+        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color: #999;">Unsubscribe</a>
       </p>
     </div>
   </div>
 </body>
 </html>
     `;
+
+    const textContent = `Your Song for ${lead.recipient_name} is Ready!
+
+Hi ${lead.customer_name}!
+
+Great news! We've created a beautiful personalized ${lead.occasion} song just for ${lead.recipient_name}.
+
+This is a short preview to give you a taste of what's coming. Once you complete your purchase, you'll receive the full-length song.
+
+Listen to your preview here: ${previewUrl}
+
+50% Off Today!
+Complete your order now and get instant access to the full song.
+
+This personalized song will make your gift truly unforgettable. Don't miss out on this special moment!
+
+With love and music,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts
+123 Music Lane, Nashville, TN 37203
+https://personalsonggifts.lovable.app
+
+Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}
+`;
 
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -151,8 +181,13 @@ Deno.serve(async (req) => {
         sender: { name: senderName, email: senderEmail },
         replyTo: { email: senderEmail, name: senderName },
         to: [{ email: lead.email, name: lead.customer_name }],
-        subject: `🎵 Your song for ${lead.recipient_name} is ready - listen now!`,
+        subject: `Your song for ${lead.recipient_name} is ready to preview`,
         htmlContent: emailHtml,
+        textContent: textContent,
+        headers: {
+          "List-Unsubscribe": `<mailto:unsubscribe@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
       }),
     });
 
