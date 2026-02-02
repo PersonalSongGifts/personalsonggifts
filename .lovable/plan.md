@@ -1,129 +1,44 @@
 
-# Stripe Webhook Implementation Plan
+# Plan: Improve Recommended Delivery Time Logic
 
-## Problem Summary
-Currently, order creation depends on users staying on the `/payment-success` page long enough for the `process-payment` edge function to be called. If users close their browser prematurely, experience network issues, or use Stripe Link (which can bypass redirects), the order is never created despite successful payment.
+## The Issue
+The "Recommended" delivery timing option disappears when the calculated recommended time (12 hours before expected delivery) has already passed. This is technically correct but confusing for admins who are uploading songs close to or after the recommended window.
 
-## Solution: Server-to-Server Webhook
-Implement a Stripe webhook handler that receives `checkout.session.completed` events directly from Stripe's servers. This ensures 100% reliable order fulfillment regardless of user behavior.
+## Why It's Happening
+For the order you're looking at (Eugene Pennewell):
+- Expected delivery: Feb 3, 2026 at 5:47 AM UTC
+- Recommended time would be: Feb 2, 2026 at 5:47 PM UTC
+- Current time: Feb 2, 2026 at ~11:00 PM UTC
 
-```text
-┌─────────────┐      ┌──────────────┐      ┌─────────────┐
-│   Browser   │──────│    Stripe    │──────│  Database   │
-│   (User)    │      │   Servers    │      │  (Orders)   │
-└─────────────┘      └──────────────┘      └─────────────┘
-       │                    │                     │
-       │  1. Pay at Stripe  │                     │
-       │───────────────────>│                     │
-       │                    │                     │
-       │                    │  2. Webhook POST    │
-       │                    │  (checkout.session  │
-       │                    │   .completed)       │
-       │                    │────────────────────>│
-       │                    │                     │
-       │  3. Redirect to    │  ✓ Order created    │
-       │     success page   │  (already done!)    │
-       │<───────────────────│                     │
-       │                    │                     │
-       │  (Even if user     │                     │
-       │   closes browser,  │                     │
-       │   order exists!)   │                     │
-       └────────────────────┴─────────────────────┘
-```
+Since the recommended time (5:47 PM) has passed, the system hides the option because scheduling a delivery for a past time makes no sense.
 
-## Implementation Steps
+## Proposed Solution
+Instead of hiding the "Recommended" option entirely, show a smart fallback:
 
-### 1. Create `stripe-webhook` Edge Function
-A new edge function that:
-- Receives POST requests from Stripe
-- Verifies the webhook signature using `STRIPE_WEBHOOK_SECRET`
-- Handles `checkout.session.completed` events
-- Creates orders using existing logic from `process-payment`
-- Is idempotent (won't create duplicate orders)
+1. **If 12 hours before expected delivery is still in the future** - Show that as "Recommended"
+2. **If that time has passed but expected delivery is still in the future** - Show a fallback recommendation (e.g., "ASAP" or "1 hour from now") as "Suggested"
+3. **If expected delivery itself has passed** - Show "Overdue" warning and suggest sending immediately
 
-### 2. Add Webhook Signing Secret
-You'll need to add `STRIPE_WEBHOOK_SECRET` to your backend secrets. This secret is obtained from Stripe Dashboard when you configure the webhook endpoint.
+## Technical Changes
 
-### 3. Update `PaymentSuccess.tsx` 
-Make the success page more resilient:
-- Poll for the order to exist (webhook might complete before or after redirect)
-- Show loading state while checking
-- Gracefully handle the case where order already exists
-- Keep existing analytics tracking
+### File: `src/components/admin/ScheduledDeliveryPicker.tsx`
 
-### 4. Configure Webhook in Stripe Dashboard
-After deployment, you'll register the webhook URL in your Stripe Dashboard:
-- Endpoint URL: `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/stripe-webhook`
-- Events: `checkout.session.completed`
-
----
-
-## Technical Details
-
-### New Edge Function: `supabase/functions/stripe-webhook/index.ts`
-
-**Key features:**
-- Signature verification using `stripe.webhooks.constructEventAsync()` with Deno's SubtleCrypto
-- Extracts metadata from checkout session (same fields already stored)
-- Creates order in database (reusing existing logic)
-- Sends confirmation email via `send-order-confirmation`
-- Syncs to Zapier/Google Sheets
-- Marks leads as converted
-- Returns 200 to acknowledge receipt (Stripe will retry on failure)
-
-**Idempotency:**
-- Uses `notes: stripe_session:${sessionId}` to detect duplicate orders
-- Safe to be called multiple times (Stripe may retry)
-
-### Config Changes: `supabase/config.toml`
-
-Add webhook function configuration:
-```toml
-[functions.stripe-webhook]
-verify_jwt = false
-```
-
-### Updated Success Page Logic
+Update `getRecommendedTime` function to return a fallback when the ideal recommended time has passed:
 
 ```text
-1. Load page with session_id
-2. Check if order already exists (webhook may have completed)
-3. If order exists → Show success immediately
-4. If not → Wait briefly and check again (webhook in progress)
-5. After ~5 seconds, if still no order → Show "processing" message
-6. Track analytics events
+Current logic:
+- Returns: 12hr before expected delivery
+- Returns null if that time is past
+
+New logic:
+- If 12hr before expected is future: return that (label: "Recommended - 12hr before delivery")
+- If 12hr before is past but expected is future: return 30min from now (label: "Suggested - Delivery due soon")
+- If expected is past: return now + 5min (label: "Overdue - Send immediately")
 ```
 
----
+The UI will show appropriate context for each scenario:
+- "Recommended" with sparkle icon for optimal timing
+- "Suggested" with clock icon when running late
+- "Overdue" with warning icon when past expected delivery
 
-## Required User Action
-
-After I implement the code changes, you'll need to:
-
-1. **Get the webhook signing secret** from Stripe:
-   - Go to Stripe Dashboard → Developers → Webhooks
-   - Add endpoint: `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/stripe-webhook`
-   - Select event: `checkout.session.completed`
-   - Copy the "Signing secret" (starts with `whsec_`)
-
-2. **Add the secret** to your backend secrets as `STRIPE_WEBHOOK_SECRET`
-
----
-
-## What This Fixes
-
-| Before (Client-Side) | After (Webhook) |
-|---------------------|-----------------|
-| Order created only if user stays on success page | Order created by Stripe servers |
-| Browser close = lost order | Browser close = order still created |
-| Network issues = lost order | Network issues = Stripe retries |
-| Stripe Link bypass = lost order | Works with all payment methods |
-
-## Files to be Modified/Created
-
-| File | Action |
-|------|--------|
-| `supabase/functions/stripe-webhook/index.ts` | Create new |
-| `supabase/config.toml` | Add webhook config |
-| `src/pages/PaymentSuccess.tsx` | Update to poll for order |
-
+This ensures admins always have a one-click scheduling option while understanding the timing context.
