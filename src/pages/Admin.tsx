@@ -816,6 +816,40 @@ export default function Admin() {
                     </div>
                   </div>
                 )}
+
+                {/* Traffic Source Section */}
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3">Traffic Source</h4>
+                  {selectedOrder.utm_source ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Source:</span> {selectedOrder.utm_source}
+                      </div>
+                      {selectedOrder.utm_medium && (
+                        <div>
+                          <span className="text-muted-foreground">Medium:</span> {selectedOrder.utm_medium}
+                        </div>
+                      )}
+                      {selectedOrder.utm_campaign && (
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground">Campaign:</span> {selectedOrder.utm_campaign}
+                        </div>
+                      )}
+                      {selectedOrder.utm_content && (
+                        <div>
+                          <span className="text-muted-foreground">Content:</span> {selectedOrder.utm_content}
+                        </div>
+                      )}
+                      {selectedOrder.utm_term && (
+                        <div>
+                          <span className="text-muted-foreground">Term:</span> {selectedOrder.utm_term}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Direct (no tracking data)</p>
+                  )}
+                </div>
               </div>
 
               <DialogFooter className="flex-col sm:flex-row gap-2">
