@@ -849,10 +849,12 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   </div>
                 )}
 
-                {/* Upload Song Section - only show if song not uploaded yet */}
-                {selectedLead.status === "lead" && !selectedLead.full_song_url && (
+                {/* Upload Song Section - show for new leads OR to replace existing song */}
+                {(selectedLead.status !== "converted") && (
                   <div className="border-t pt-4">
-                    <h4 className="font-medium mb-3">Upload Song for Lead Recovery</h4>
+                    <h4 className="font-medium mb-3">
+                      {selectedLead.full_song_url ? "Replace Song" : "Upload Song for Lead Recovery"}
+                    </h4>
                     
                     <div className="space-y-4">
                       <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4">
@@ -865,6 +867,11 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                             <p className="text-xs text-muted-foreground">
                               MP3, WAV, M4A, OGG, or FLAC
                             </p>
+                            {selectedLead.full_song_url && (
+                              <p className="text-xs text-amber-600 mt-1">
+                                This will replace the existing song
+                              </p>
+                            )}
                           </div>
                           <input
                             ref={fileInputRef}
@@ -890,7 +897,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                                 disabled={uploadingFile}
                               >
                                 <Upload className="h-4 w-4 mr-2" />
-                                {uploadingFile ? "Uploading..." : "Upload"}
+                                {uploadingFile ? "Uploading..." : selectedLead.full_song_url ? "Replace" : "Upload"}
                               </Button>
                             )}
                           </div>
@@ -1138,7 +1145,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                 </div>
               </div>
 
-              <DialogFooter className="flex-col sm:flex-row gap-2">
+              <DialogFooter className="flex-col sm:flex-row gap-2 flex-wrap">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1151,7 +1158,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                 >
                   Close
                 </Button>
-                {/* Send Preview button in dialog */}
+                {/* Send Preview button in dialog - first time */}
                 {selectedLead.status === "song_ready" && selectedLead.preview_song_url && !selectedLead.preview_sent_at && (
                   <>
                     <Button
@@ -1173,7 +1180,18 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     )}
                   </>
                 )}
-                {/* Send Follow-up button in dialog */}
+                {/* Resend Preview button in dialog - when already sent */}
+                {selectedLead.preview_sent_at && selectedLead.status !== "converted" && (
+                  <Button
+                    variant="outline"
+                    onClick={() => handleSendPreview(selectedLead, true)}
+                    disabled={resendingPreview}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    {resendingPreview ? "Resending..." : "Resend Preview Email"}
+                  </Button>
+                )}
+                {/* Send Follow-up button in dialog - first time */}
                 {isEligibleForFollowup(selectedLead) && (
                   <Button
                     variant="secondary"
@@ -1182,6 +1200,17 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   >
                     <Gift className="h-4 w-4 mr-2" />
                     {sendingFollowup ? "Sending..." : "Send $5 Follow-up"}
+                  </Button>
+                )}
+                {/* Resend Follow-up button in dialog - when already sent */}
+                {selectedLead.follow_up_sent_at && selectedLead.status !== "converted" && (
+                  <Button
+                    variant="outline"
+                    onClick={() => handleSendFollowup(selectedLead, true)}
+                    disabled={resendingFollowup}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    {resendingFollowup ? "Resending..." : "Resend Follow-up"}
                   </Button>
                 )}
               </DialogFooter>
