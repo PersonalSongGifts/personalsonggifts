@@ -44,13 +44,15 @@ export function ReactionsTable({ orders, loading, sort, onSortChange }: Reaction
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleString("en-US", {
+      timeZone: "America/Los_Angeles",
+      weekday: "short",
       month: "short",
       day: "numeric",
-      year: "numeric",
       hour: "numeric",
       minute: "2-digit",
-    });
+      hour12: true,
+    }) + " PST";
   };
 
   if (loading) {

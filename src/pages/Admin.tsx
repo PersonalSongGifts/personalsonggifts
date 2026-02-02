@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock } from "lucide-react";
+import { formatAdminDate } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
@@ -513,18 +514,18 @@ export default function Admin() {
                           </p>
                           <p className="text-sm text-muted-foreground">
                             <strong>Order Date/Time:</strong>{" "}
-                            {new Date(order.created_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                            {formatAdminDate(order.created_at)}
                           </p>
                           {order.expected_delivery && (
                             <p className="text-sm text-muted-foreground">
                               <strong>Expected Delivery:</strong>{" "}
-                              {new Date(order.expected_delivery).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                              {formatAdminDate(order.expected_delivery)}
                             </p>
                           )}
                           {order.scheduled_delivery_at && order.status === "ready" && (
                             <p className="text-sm text-amber-600">
                               <strong>📅 Scheduled Send:</strong>{" "}
-                              {new Date(order.scheduled_delivery_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                              {formatAdminDate(order.scheduled_delivery_at)}
                             </p>
                           )}
                         </div>
@@ -763,7 +764,7 @@ export default function Admin() {
                       <div>
                         <span className="text-muted-foreground">Delivered:</span>{" "}
                         {selectedOrder.delivered_at 
-                          ? new Date(selectedOrder.delivered_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" }) + " PST"
+                          ? formatAdminDate(selectedOrder.delivered_at)
                           : "—"
                         }
                       </div>
@@ -771,7 +772,7 @@ export default function Admin() {
                         <span className="text-muted-foreground">Song Played:</span>{" "}
                         {selectedOrder.song_played_at ? (
                           <>
-                            {new Date(selectedOrder.song_played_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                            {formatAdminDate(selectedOrder.song_played_at)}
                             {selectedOrder.song_play_count && selectedOrder.song_play_count > 1 && (
                               <Badge variant="outline" className="ml-2 text-green-600 border-green-300">
                                 {selectedOrder.song_play_count}x
@@ -786,7 +787,7 @@ export default function Admin() {
                         <span className="text-muted-foreground">Downloaded:</span>{" "}
                         {selectedOrder.song_downloaded_at ? (
                           <>
-                            {new Date(selectedOrder.song_downloaded_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                            {formatAdminDate(selectedOrder.song_downloaded_at)}
                             {selectedOrder.song_download_count && selectedOrder.song_download_count > 1 && (
                               <Badge variant="outline" className="ml-2 text-blue-600 border-blue-300">
                                 {selectedOrder.song_download_count}x
