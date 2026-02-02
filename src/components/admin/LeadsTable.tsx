@@ -1202,6 +1202,40 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     )}
                   </div>
                 </div>
+
+                {/* Traffic Source Section */}
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3">Traffic Source</h4>
+                  {selectedLead.utm_source ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Source:</span> {selectedLead.utm_source}
+                      </div>
+                      {selectedLead.utm_medium && (
+                        <div>
+                          <span className="text-muted-foreground">Medium:</span> {selectedLead.utm_medium}
+                        </div>
+                      )}
+                      {selectedLead.utm_campaign && (
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground">Campaign:</span> {selectedLead.utm_campaign}
+                        </div>
+                      )}
+                      {selectedLead.utm_content && (
+                        <div>
+                          <span className="text-muted-foreground">Content:</span> {selectedLead.utm_content}
+                        </div>
+                      )}
+                      {selectedLead.utm_term && (
+                        <div>
+                          <span className="text-muted-foreground">Term:</span> {selectedLead.utm_term}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Direct (no tracking data)</p>
+                  )}
+                </div>
               </div>
 
               <DialogFooter className="flex-col sm:flex-row gap-2 flex-wrap">
