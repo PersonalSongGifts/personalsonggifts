@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw } from "lucide-react";
+import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
 import { createAudioPreview } from "@/lib/audioClipper";
@@ -655,18 +656,18 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       <strong>Occasion:</strong> {lead.occasion}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      <strong>Captured:</strong> {new Date(lead.captured_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                      <strong>Captured:</strong> {formatAdminDate(lead.captured_at)}
                     </p>
                     {lead.preview_sent_at && (
                       <p className="text-sm text-emerald-600 font-medium">
                         <CheckCircle2 className="h-3 w-3 inline mr-1" />
-                        <strong>Preview sent:</strong> {new Date(lead.preview_sent_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                        <strong>Preview sent:</strong> {formatAdminDate(lead.preview_sent_at)}
                       </p>
                     )}
                     {lead.follow_up_sent_at && (
                       <p className="text-sm text-orange-600">
                         <Gift className="h-3 w-3 inline mr-1" />
-                        <strong>Follow-up sent:</strong> {new Date(lead.follow_up_sent_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                        <strong>Follow-up sent:</strong> {formatAdminDate(lead.follow_up_sent_at)}
                       </p>
                     )}
                     {hasScheduledAutoSend(lead) && !lead.dismissed_at && (
@@ -683,14 +684,14 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         <span className="font-mono">{lead.order_id.slice(0, 8).toUpperCase()}</span>
                         {lead.converted_at && (
                           <span className="text-muted-foreground font-normal ml-2">
-                            on {new Date(lead.converted_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
+                            on {formatAdminDateShort(lead.converted_at)}
                           </span>
                         )}
                       </p>
                     )}
                     {lead.dismissed_at && (
                       <p className="text-sm text-gray-500 italic">
-                        Dismissed: {new Date(lead.dismissed_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                        Dismissed: {formatAdminDate(lead.dismissed_at)}
                       </p>
                     )}
                   </div>
@@ -978,7 +979,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                             Preview email will be sent automatically in {getAutoSendTimeRemaining(selectedLead)}
                             {selectedLead.preview_scheduled_at && (
                               <span className="block text-xs mt-1">
-                                ({new Date(selectedLead.preview_scheduled_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST)
+                                ({formatAdminDate(selectedLead.preview_scheduled_at)})
                               </span>
                             )}
                           </p>
@@ -993,7 +994,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                             <span className="font-medium">Preview email sent</span>
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">
-                            Sent on {new Date(selectedLead.preview_sent_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PST
+                            Sent on {formatAdminDate(selectedLead.preview_sent_at)}
                           </p>
                         </div>
                       )}
@@ -1145,30 +1146,30 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     </div>
                     <div>
                       <span className="text-muted-foreground">Captured:</span>{" "}
-                      {new Date(selectedLead.captured_at).toLocaleString()}
+                      {formatAdminDate(selectedLead.captured_at)}
                     </div>
                     {selectedLead.preview_sent_at && (
                       <div>
                         <span className="text-muted-foreground">Preview Sent:</span>{" "}
-                        {new Date(selectedLead.preview_sent_at).toLocaleString()}
+                        {formatAdminDate(selectedLead.preview_sent_at)}
                       </div>
                     )}
                     {selectedLead.preview_opened_at && (
                       <div>
                         <span className="text-muted-foreground">Preview Opened:</span>{" "}
-                        {new Date(selectedLead.preview_opened_at).toLocaleString()}
+                        {formatAdminDate(selectedLead.preview_opened_at)}
                       </div>
                     )}
                     {selectedLead.follow_up_sent_at && (
                       <div>
                         <span className="text-muted-foreground">Follow-up Sent:</span>{" "}
-                        {new Date(selectedLead.follow_up_sent_at).toLocaleString()}
+                        {formatAdminDate(selectedLead.follow_up_sent_at)}
                       </div>
                     )}
                     {selectedLead.converted_at && (
                       <div>
                         <span className="text-muted-foreground">Converted:</span>{" "}
-                        {new Date(selectedLead.converted_at).toLocaleString()}
+                        {formatAdminDate(selectedLead.converted_at)}
                       </div>
                     )}
                     {selectedLead.order_id && (
@@ -1181,7 +1182,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     {selectedLead.preview_played_at && (
                       <div>
                         <span className="text-muted-foreground">Preview Played:</span>{" "}
-                        {new Date(selectedLead.preview_played_at).toLocaleString()}
+                        {formatAdminDate(selectedLead.preview_played_at)}
                         {selectedLead.preview_play_count && selectedLead.preview_play_count > 1 && (
                           <span className="ml-1 text-green-600">({selectedLead.preview_play_count} times)</span>
                         )}
