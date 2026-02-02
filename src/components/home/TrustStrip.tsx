@@ -1,12 +1,11 @@
 import { Star, Users } from "lucide-react";
-import asSeenOnImage from "@/assets/as-seen-on.png";
 
 const TrustStrip = () => {
   return (
-    <section className="py-8 md:py-12 border-y border-border bg-card">
+    <section className="py-6 md:py-8 border-y border-border bg-card">
       <div className="container mx-auto px-4">
-        {/* Stats row */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-12 md:gap-16 mb-8 md:mb-10">
+        {/* Stats row - centered */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-12 md:gap-16">
           {/* Rating */}
           <div className="flex items-center gap-3">
             <div className="flex text-gold">
@@ -27,15 +26,6 @@ const TrustStrip = () => {
             <span className="text-foreground font-semibold text-lg md:text-xl">1,000+</span>
             <span className="text-muted-foreground text-base md:text-lg">Families Served</span>
           </div>
-        </div>
-
-        {/* As Seen On - Centered and larger */}
-        <div className="flex flex-col items-center justify-center">
-          <img 
-            src={asSeenOnImage} 
-            alt="As Seen On ABC, NBC, CBS, FOX" 
-            className="w-full max-w-[280px] sm:max-w-[360px] md:max-w-[450px] lg:max-w-[520px] h-auto"
-          />
         </div>
       </div>
     </section>
