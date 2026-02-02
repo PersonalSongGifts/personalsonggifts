@@ -7,8 +7,11 @@ import OccasionsGrid from "@/components/home/OccasionsGrid";
 import Testimonials from "@/components/home/Testimonials";
 import FAQSection from "@/components/home/FAQSection";
 import FinalCTA from "@/components/home/FinalCTA";
+import { useUtmCapture } from "@/hooks/useUtmCapture";
 
 const Index = () => {
+  // Capture UTM parameters on landing page
+  useUtmCapture();
   return (
     <Layout>
       <HeroSection />

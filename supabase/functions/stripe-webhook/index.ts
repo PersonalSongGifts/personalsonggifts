@@ -144,6 +144,12 @@ Deno.serve(async (req) => {
           device_type: "Web",
           notes: `stripe_session:${session.id}`,
           status: "paid",
+          // UTM tracking fields
+          utm_source: metadata.utmSource || null,
+          utm_medium: metadata.utmMedium || null,
+          utm_campaign: metadata.utmCampaign || null,
+          utm_content: metadata.utmContent || null,
+          utm_term: metadata.utmTerm || null,
         })
         .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
         .single();

@@ -45,6 +45,11 @@ export type Database = {
           special_message: string | null
           special_qualities: string
           status: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
         }
         Insert: {
           captured_at?: string
@@ -76,6 +81,11 @@ export type Database = {
           special_message?: string | null
           special_qualities: string
           status?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
         }
         Update: {
           captured_at?: string
@@ -107,6 +117,11 @@ export type Database = {
           special_message?: string | null
           special_qualities?: string
           status?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
         }
         Relationships: [
           {
@@ -150,6 +165,11 @@ export type Database = {
           special_message: string | null
           special_qualities: string
           status: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
         }
         Insert: {
           cover_image_url?: string | null
@@ -182,6 +202,11 @@ export type Database = {
           special_message?: string | null
           special_qualities: string
           status?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
         }
         Update: {
           cover_image_url?: string | null
@@ -214,6 +239,11 @@ export type Database = {
           special_message?: string | null
           special_qualities?: string
           status?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
         }
         Relationships: []
       }
