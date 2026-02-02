@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,9 @@ interface OrderDetails {
   songUrl?: string;
 }
 
+const MAX_POLL_ATTEMPTS = 10;
+const POLL_INTERVAL_MS = 1500;
+
 const PaymentSuccess = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("session_id");
@@ -30,6 +33,36 @@ const PaymentSuccess = () => {
   const [error, setError] = useState<string | null>(null);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isLeadConversion, setIsLeadConversion] = useState(false);
+  const [pollAttempts, setPollAttempts] = useState(0);
+  const [showProcessingMessage, setShowProcessingMessage] = useState(false);
+
+  const trackPurchaseEvent = useCallback((data: OrderDetails) => {
+    if (hasTrackedPurchase.current) return;
+    
+    const purchaseValue = data.pricingTier === "priority" ? 79 : 49;
+    
+    // Meta Pixel Purchase
+    trackMetaEvent('Purchase', {
+      value: purchaseValue,
+      currency: 'USD',
+      transaction_id: data.orderId,
+    });
+    
+    // Google Analytics Purchase
+    trackGAEvent('purchase', {
+      transaction_id: data.orderId,
+      value: purchaseValue,
+      currency: 'USD',
+      items: [{
+        item_name: `${data.pricingTier === "priority" ? "Priority" : "Standard"} Song for ${data.recipientName}`,
+        item_category: data.occasion,
+        price: purchaseValue,
+        quantity: 1,
+      }],
+    });
+    
+    hasTrackedPurchase.current = true;
+  }, [trackMetaEvent, trackGAEvent]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -38,15 +71,49 @@ const PaymentSuccess = () => {
       return;
     }
 
-    const processPayment = async () => {
-      try {
-        // Determine which endpoint to call based on source
-        const endpoint = source === "lead" 
-          ? "process-lead-payment" 
-          : "process-payment";
+    // For lead conversions, use the existing endpoint
+    if (source === "lead") {
+      const processLeadPayment = async () => {
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-lead-payment`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              },
+              body: JSON.stringify({ sessionId }),
+            }
+          );
 
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to process payment");
+          }
+
+          const data = await response.json();
+          setOrderDetails(data);
+          setIsLeadConversion(true);
+          trackPurchaseEvent(data);
+        } catch (err) {
+          console.error("Payment processing error:", err);
+          setError(err instanceof Error ? err.message : "Something went wrong");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      processLeadPayment();
+      return;
+    }
+
+    // For regular orders, poll process-payment which checks if order exists
+    // The webhook creates the order, this just retrieves it
+    const pollForOrder = async (attempt: number) => {
+      try {
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${endpoint}`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-payment`,
           {
             method: "POST",
             headers: {
@@ -64,44 +131,45 @@ const PaymentSuccess = () => {
 
         const data = await response.json();
         setOrderDetails(data);
-        setIsLeadConversion(source === "lead");
-        
-        // Fire Purchase events after successful order processing
-        if (!hasTrackedPurchase.current && data) {
-          const purchaseValue = data.pricingTier === "priority" ? 79 : 49;
-          
-          // Meta Pixel Purchase
-          trackMetaEvent('Purchase', {
-            value: purchaseValue,
-            currency: 'USD',
-            transaction_id: data.orderId,
-          });
-          
-          // Google Analytics Purchase
-          trackGAEvent('purchase', {
-            transaction_id: data.orderId,
-            value: purchaseValue,
-            currency: 'USD',
-            items: [{
-              item_name: `${data.pricingTier === "priority" ? "Priority" : "Standard"} Song for ${data.recipientName}`,
-              item_category: data.occasion,
-              price: purchaseValue,
-              quantity: 1,
-            }],
-          });
-          
-          hasTrackedPurchase.current = true;
-        }
-      } catch (err) {
-        console.error("Payment processing error:", err);
-        setError(err instanceof Error ? err.message : "Something went wrong");
-      } finally {
+        trackPurchaseEvent(data);
         setLoading(false);
+        return true; // Success
+      } catch (err) {
+        console.error(`Poll attempt ${attempt} failed:`, err);
+        
+        // Show processing message after a few attempts
+        if (attempt >= 3) {
+          setShowProcessingMessage(true);
+        }
+        
+        // If we've exhausted attempts, show error
+        if (attempt >= MAX_POLL_ATTEMPTS) {
+          setError(
+            "Your payment was successful, but we're still processing your order. " +
+            "You'll receive a confirmation email shortly. If you don't hear from us within an hour, please contact support."
+          );
+          setLoading(false);
+          return true; // Stop polling
+        }
+        
+        return false; // Continue polling
       }
     };
 
-    processPayment();
-  }, [sessionId, source]);
+    // Start polling
+    let currentAttempt = 0;
+    const poll = async () => {
+      currentAttempt++;
+      setPollAttempts(currentAttempt);
+      const success = await pollForOrder(currentAttempt);
+      
+      if (!success) {
+        setTimeout(poll, POLL_INTERVAL_MS);
+      }
+    };
+
+    poll();
+  }, [sessionId, source, trackPurchaseEvent]);
 
   if (loading) {
     return (
@@ -109,8 +177,15 @@ const PaymentSuccess = () => {
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Processing your order...</h2>
-            <p className="text-muted-foreground">Please wait while we confirm your payment.</p>
+            <h2 className="text-xl font-semibold mb-2">
+              {showProcessingMessage ? "Finalizing your order..." : "Processing your order..."}
+            </h2>
+            <p className="text-muted-foreground">
+              {showProcessingMessage 
+                ? "Almost there! Just a moment while we confirm everything."
+                : "Please wait while we confirm your payment."
+              }
+            </p>
           </div>
         </div>
       </Layout>
