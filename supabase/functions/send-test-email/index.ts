@@ -20,7 +20,7 @@ const sampleData = {
   songUrl: "https://personalsonggifts.lovable.app/song/demo",
 };
 
-function getLeadPreviewHtml(previewUrl: string) {
+function getLeadPreviewHtml(previewUrl: string, email: string) {
   return `
 <!DOCTYPE html>
 <html>
@@ -31,7 +31,7 @@ function getLeadPreviewHtml(previewUrl: string) {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">🎵 Your Song for ${sampleData.recipientName} is Ready!</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Your Song for ${sampleData.recipientName} is Ready!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -49,13 +49,13 @@ function getLeadPreviewHtml(previewUrl: string) {
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          🎧 Listen to Your Preview
+          Listen to Your Preview
         </a>
       </div>
       
       <div style="background-color: #FFF8E7; border-left: 4px solid #FFA000; padding: 15px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
         <p style="color: #5D4E37; margin: 0; font-size: 15px;">
-          <strong>💘 50% Off Today!</strong><br>
+          <strong>50% Off Today!</strong><br>
           Complete your order now and get instant access to the full song.
         </p>
       </div>
@@ -66,17 +66,21 @@ function getLeadPreviewHtml(previewUrl: string) {
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
         With love and music,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong> 🎶
+        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
       </p>
     </div>
     
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts. Made with ❤️<br>
+        © 2026 Personal Song Gifts<br>
+        123 Music Lane, Nashville, TN 37203<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        ⚠️ This is a TEST EMAIL sent from the Admin Dashboard
+        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}" style="color: #999;">Unsubscribe</a>
+      </p>
+      <p style="color: #999; font-size: 11px; margin-top: 10px;">
+        This is a TEST EMAIL sent from the Admin Dashboard
       </p>
     </div>
   </div>
@@ -85,7 +89,35 @@ function getLeadPreviewHtml(previewUrl: string) {
   `;
 }
 
-function getLeadFollowupHtml(previewUrl: string) {
+function getLeadPreviewText(previewUrl: string, email: string) {
+  return `Your Song for ${sampleData.recipientName} is Ready!
+
+Hi ${sampleData.customerName}!
+
+Great news! We've created a beautiful personalized ${sampleData.occasion} song just for ${sampleData.recipientName}.
+
+We're so excited for you to hear it! Listen to a preview here: ${previewUrl}
+
+50% Off Today!
+Complete your order now and get instant access to the full song.
+
+This personalized song will make your gift truly unforgettable. Don't miss out on this special moment!
+
+With love and music,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts
+123 Music Lane, Nashville, TN 37203
+https://personalsonggifts.lovable.app
+
+Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}
+
+This is a TEST EMAIL sent from the Admin Dashboard
+`;
+}
+
+function getLeadFollowupHtml(previewUrl: string, email: string) {
   return `
 <!DOCTYPE html>
 <html>
@@ -96,7 +128,7 @@ function getLeadFollowupHtml(previewUrl: string) {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">🎁 Special Offer: $5 Off Your Song!</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">A special offer for ${sampleData.recipientName}'s song</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -110,7 +142,7 @@ function getLeadFollowupHtml(previewUrl: string) {
       
       <div style="background-color: #E8F5E9; border: 2px dashed #4CAF50; padding: 20px; margin: 30px 0; border-radius: 8px; text-align: center;">
         <p style="color: #2E7D32; margin: 0; font-size: 20px; font-weight: bold;">
-          🎉 Use code: SAVE5
+          Use code: SAVE5
         </p>
         <p style="color: #5D4E37; margin: 10px 0 0 0; font-size: 14px;">
           Get $5 off your order today!
@@ -119,22 +151,27 @@ function getLeadFollowupHtml(previewUrl: string) {
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          🎧 Listen Again & Complete Order
+          Listen Again & Complete Order
         </a>
       </div>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
         With love and music,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong> 🎶
+        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
       </p>
     </div>
     
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts. Made with ❤️
+        © 2026 Personal Song Gifts<br>
+        123 Music Lane, Nashville, TN 37203<br>
+        <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        ⚠️ This is a TEST EMAIL sent from the Admin Dashboard
+        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}" style="color: #999;">Unsubscribe</a>
+      </p>
+      <p style="color: #999; font-size: 11px; margin-top: 10px;">
+        This is a TEST EMAIL sent from the Admin Dashboard
       </p>
     </div>
   </div>
@@ -143,7 +180,33 @@ function getLeadFollowupHtml(previewUrl: string) {
   `;
 }
 
-function getOrderConfirmationHtml() {
+function getLeadFollowupText(previewUrl: string, email: string) {
+  return `A special offer for ${sampleData.recipientName}'s song
+
+Hi ${sampleData.customerName}!
+
+We noticed you haven't completed your order for ${sampleData.recipientName}'s personalized ${sampleData.occasion} song yet.
+
+Use code: SAVE5
+Get $5 off your order today!
+
+Listen again and complete your order: ${previewUrl}
+
+With love and music,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts
+123 Music Lane, Nashville, TN 37203
+https://personalsonggifts.lovable.app
+
+Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}
+
+This is a TEST EMAIL sent from the Admin Dashboard
+`;
+}
+
+function getOrderConfirmationHtml(email: string) {
   const tierLabel = "Priority (24-hour)";
   const deliveryDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString("en-US", {
     weekday: "long",
@@ -162,7 +225,7 @@ function getOrderConfirmationHtml() {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">🎵 Order Confirmed!</h1>
+      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">Order Confirmed!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -213,16 +276,21 @@ function getOrderConfirmationHtml() {
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
         With love,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong> 🎶
+        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
       </p>
     </div>
     
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts. Made with ❤️
+        © 2026 Personal Song Gifts<br>
+        123 Music Lane, Nashville, TN 37203<br>
+        <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        ⚠️ This is a TEST EMAIL sent from the Admin Dashboard
+        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}" style="color: #999;">Unsubscribe</a>
+      </p>
+      <p style="color: #999; font-size: 11px; margin-top: 10px;">
+        This is a TEST EMAIL sent from the Admin Dashboard
       </p>
     </div>
   </div>
@@ -231,7 +299,47 @@ function getOrderConfirmationHtml() {
   `;
 }
 
-function getSongDeliveryHtml() {
+function getOrderConfirmationText(email: string) {
+  const tierLabel = "Priority (24-hour)";
+  const deliveryDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  return `Order Confirmed!
+
+Dear ${sampleData.customerName},
+
+Thank you for your order! We're thrilled to create a personalized song for ${sampleData.recipientName}. Our talented musicians are already getting inspired.
+
+Order Details:
+- Order ID: ${sampleData.orderId}
+- For: ${sampleData.recipientName}
+- Occasion: ${sampleData.occasion}
+- Genre: ${sampleData.genre}
+- Delivery: ${tierLabel}
+
+Expected Delivery: by ${deliveryDate}
+
+We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
+
+With love,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts
+123 Music Lane, Nashville, TN 37203
+https://personalsonggifts.lovable.app
+
+Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}
+
+This is a TEST EMAIL sent from the Admin Dashboard
+`;
+}
+
+function getSongDeliveryHtml(email: string) {
   return `
 <!DOCTYPE html>
 <html>
@@ -242,7 +350,7 @@ function getSongDeliveryHtml() {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 32px; font-weight: normal;">🎉 Your Song is Ready!</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 32px; font-weight: normal;">${sampleData.recipientName}'s song is complete!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -256,12 +364,12 @@ function getSongDeliveryHtml() {
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="${sampleData.songUrl}" style="display: inline-block; background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); color: #FDF8F3; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(30, 58, 95, 0.3);">
-          🎵 Listen to Your Song
+          Listen to Your Song
         </a>
       </div>
       
       <div style="background-color: #F5F8FB; border-radius: 8px; padding: 20px; margin: 30px 0;">
-        <h3 style="color: #1E3A5F; margin: 0 0 10px 0; font-size: 16px;">💡 Tips for Sharing</h3>
+        <h3 style="color: #1E3A5F; margin: 0 0 10px 0; font-size: 16px;">Tips for Sharing</h3>
         <ul style="color: #5D4E37; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
           <li>Play it at your next celebration or gathering</li>
           <li>Send the link directly via text or messaging apps</li>
@@ -282,23 +390,60 @@ function getSongDeliveryHtml() {
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
         With love and music,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong> 🎶
+        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
       </p>
     </div>
     
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts. Made with ❤️<br>
+        © 2026 Personal Song Gifts<br>
+        123 Music Lane, Nashville, TN 37203<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">Order another song</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        ⚠️ This is a TEST EMAIL sent from the Admin Dashboard
+        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}" style="color: #999;">Unsubscribe</a>
+      </p>
+      <p style="color: #999; font-size: 11px; margin-top: 10px;">
+        This is a TEST EMAIL sent from the Admin Dashboard
       </p>
     </div>
   </div>
 </body>
 </html>
   `;
+}
+
+function getSongDeliveryText(email: string) {
+  return `${sampleData.recipientName}'s song is complete and ready to share!
+
+Dear ${sampleData.customerName},
+
+Great news! Your personalized ${sampleData.occasion} song for ${sampleData.recipientName} is complete and ready to share!
+
+Listen to your song here: ${sampleData.songUrl}
+
+Tips for Sharing:
+- Play it at your next celebration or gathering
+- Send the link directly via text or messaging apps
+- Download and save it forever
+- Share on social media to spread the joy
+
+Order ID: ${sampleData.orderId}
+
+We hope this song brings joy and unforgettable memories! If you love it, we'd be honored if you shared your experience with friends and family.
+
+With love and music,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts
+123 Music Lane, Nashville, TN 37203
+https://personalsonggifts.lovable.app
+
+Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}
+
+This is a TEST EMAIL sent from the Admin Dashboard
+`;
 }
 
 Deno.serve(async (req) => {
@@ -348,24 +493,29 @@ Deno.serve(async (req) => {
     const previewUrl = `https://personalsonggifts.lovable.app/preview/${sampleData.previewToken}`;
     
     let emailHtml: string;
+    let textContent: string;
     let subject: string;
 
     switch (template) {
       case "lead_preview":
-        emailHtml = getLeadPreviewHtml(previewUrl);
-        subject = `🎵 [TEST] Your song for ${sampleData.recipientName} is ready - listen now!`;
+        emailHtml = getLeadPreviewHtml(previewUrl, email);
+        textContent = getLeadPreviewText(previewUrl, email);
+        subject = `[TEST] Your song for ${sampleData.recipientName} is ready to preview`;
         break;
       case "lead_followup":
-        emailHtml = getLeadFollowupHtml(previewUrl);
-        subject = `🎁 [TEST] Special Offer: $5 Off Your ${sampleData.occasion} Song!`;
+        emailHtml = getLeadFollowupHtml(previewUrl, email);
+        textContent = getLeadFollowupText(previewUrl, email);
+        subject = `[TEST] A special offer for ${sampleData.recipientName}'s song`;
         break;
       case "order_confirmation":
-        emailHtml = getOrderConfirmationHtml();
-        subject = `🎵 [TEST] Order Confirmed - Your song for ${sampleData.recipientName}!`;
+        emailHtml = getOrderConfirmationHtml(email);
+        textContent = getOrderConfirmationText(email);
+        subject = `[TEST] Order confirmed - ${sampleData.recipientName}'s song is being created`;
         break;
       case "song_delivery":
-        emailHtml = getSongDeliveryHtml();
-        subject = `🎉 [TEST] Your Song is Ready - Listen Now!`;
+        emailHtml = getSongDeliveryHtml(email);
+        textContent = getSongDeliveryText(email);
+        subject = `[TEST] ${sampleData.recipientName}'s song is complete and ready to share`;
         break;
       default:
         return new Response(
@@ -387,6 +537,11 @@ Deno.serve(async (req) => {
         to: [{ email, name: "Test User" }],
         subject,
         htmlContent: emailHtml,
+        textContent: textContent,
+        headers: {
+          "List-Unsubscribe": `<mailto:unsubscribe@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
       }),
     });
 

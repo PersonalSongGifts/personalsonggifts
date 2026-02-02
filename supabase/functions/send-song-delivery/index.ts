@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 32px; font-weight: normal;">🎉 Your Song is Ready!</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 32px; font-weight: normal;">${recipientName}'s song is complete!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -66,12 +66,12 @@ Deno.serve(async (req) => {
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}" style="display: inline-block; background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); color: #FDF8F3; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(30, 58, 95, 0.3);">
-          🎵 Listen to Your Song
+          Listen to Your Song
         </a>
       </div>
       
       <div style="background-color: #F5F8FB; border-radius: 8px; padding: 20px; margin: 30px 0;">
-        <h3 style="color: #1E3A5F; margin: 0 0 10px 0; font-size: 16px;">💡 Tips for Sharing</h3>
+        <h3 style="color: #1E3A5F; margin: 0 0 10px 0; font-size: 16px;">Tips for Sharing</h3>
         <ul style="color: #5D4E37; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
           <li>Play it at your next celebration or gathering</li>
           <li>Send the link directly via text or messaging apps</li>
@@ -92,20 +92,53 @@ Deno.serve(async (req) => {
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
         With love and music,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong> 🎶
+        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
       </p>
     </div>
     
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts. Made with ❤️<br>
+        © 2026 Personal Song Gifts<br>
+        123 Music Lane, Nashville, TN 37203<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">Order another song</a>
+      </p>
+      <p style="color: #999; font-size: 11px; margin-top: 10px;">
+        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}" style="color: #999;">Unsubscribe</a>
       </p>
     </div>
   </div>
 </body>
 </html>
     `;
+
+    const textContent = `${recipientName}'s song is complete and ready to share!
+
+Dear ${customerName || "Valued Customer"},
+
+Great news! Your personalized ${occasion} song for ${recipientName} is complete and ready to share!
+
+Listen to your song here: https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}
+
+Tips for Sharing:
+- Play it at your next celebration or gathering
+- Send the link directly via text or messaging apps
+- Download and save it forever
+- Share on social media to spread the joy
+
+Order ID: ${orderId.slice(0, 8).toUpperCase()}
+
+We hope this song brings joy and unforgettable memories! If you love it, we'd be honored if you shared your experience with friends and family.
+
+With love and music,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts
+123 Music Lane, Nashville, TN 37203
+https://personalsonggifts.lovable.app
+
+Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}
+`;
 
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -124,8 +157,13 @@ Deno.serve(async (req) => {
           name: senderName,
         },
         to: [{ email: customerEmail, name: customerName || customerEmail }],
-        subject: `🎉 Your song for ${recipientName} is ready!`,
+        subject: `${recipientName}'s song is complete and ready to share`,
         htmlContent: emailHtml,
+        textContent: textContent,
+        headers: {
+          "List-Unsubscribe": `<mailto:unsubscribe@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
       }),
     });
 
