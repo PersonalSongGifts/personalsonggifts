@@ -38,3 +38,9 @@ verify_jwt = false
 
 [functions.track-song-engagement]
 verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.process-payment]
+verify_jwt = false
