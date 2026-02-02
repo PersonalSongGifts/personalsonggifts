@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Pause } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
+import asSeenOnImage from "@/assets/as-seen-on.png";
 
 const HeroSection = () => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -94,26 +95,23 @@ const HeroSection = () => {
           A one-of-a-kind song created from your words, your memories, and your love.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4 animate-fade-in-up">
+        <div className="flex flex-col items-center justify-center gap-3 md:gap-4 animate-fade-in-up">
           <Button asChild size="lg" className="text-base md:text-lg px-6 md:px-8 py-5 md:py-6 font-semibold shadow-elevated w-full sm:w-auto">
             <Link to="/create">Create Your Song</Link>
           </Button>
-          
-          <Button 
-            variant="outline" 
-            size="lg" 
-            className="text-base md:text-lg px-6 md:px-8 py-5 md:py-6 font-medium border-2 w-full sm:w-auto"
-            asChild
-          >
-            <a href="#samples" className="flex items-center gap-2">
-              <Play className="h-5 w-5" />
-              Hear Sample Songs
-            </a>
-          </Button>
+        </div>
+
+        {/* As Seen On - Above the fold */}
+        <div className="mt-6 md:mt-8 flex flex-col items-center justify-center animate-fade-in">
+          <img 
+            src={asSeenOnImage} 
+            alt="As Seen On ABC, NBC, CBS, FOX" 
+            className="w-full max-w-[280px] sm:max-w-[360px] md:max-w-[450px] h-auto"
+          />
         </div>
 
         {/* Trust indicator */}
-        <p className="mt-6 md:mt-8 text-muted-foreground text-xs md:text-sm animate-fade-in">
+        <p className="mt-4 md:mt-6 text-muted-foreground text-xs md:text-sm animate-fade-in">
           ★★★★★ Trusted by 1,000+ families for life's most meaningful moments
         </p>
       </div>
