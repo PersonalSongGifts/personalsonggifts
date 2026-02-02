@@ -1,216 +1,129 @@
 
+# Stripe Webhook Implementation Plan
 
-# Engagement Tracking & Lead Conversion Visibility
+## Problem Summary
+Currently, order creation depends on users staying on the `/payment-success` page long enough for the `process-payment` edge function to be called. If users close their browser prematurely, experience network issues, or use Stripe Link (which can bypass redirects), the order is never created despite successful payment.
 
-## Summary
-
-Add tracking for when leads and customers play/download songs, and improve the visual display of converted leads in the admin panel.
-
----
-
-## Part 1: Database Schema Updates
-
-Add new tracking columns to both tables:
-
-**leads table:**
-| Column | Type | Purpose |
-|--------|------|---------|
-| `preview_played_at` | timestamp | First time lead played the 45-second preview |
-| `preview_play_count` | integer | Total times preview was played |
-
-**orders table:**
-| Column | Type | Purpose |
-|--------|------|---------|
-| `song_played_at` | timestamp | First time customer played the full song |
-| `song_play_count` | integer | Total times song was played |
-| `song_downloaded_at` | timestamp | First time customer downloaded the song |
-| `song_download_count` | integer | Total times song was downloaded |
-
----
-
-## Part 2: Backend Tracking Endpoints
-
-### New Edge Function: `track-song-engagement`
-
-Creates a new endpoint that the frontend can call to log play/download events.
-
-```
-POST /functions/v1/track-song-engagement
-{
-  "type": "lead" | "order",
-  "action": "play" | "download",
-  "token": "preview-token" (for leads),
-  "orderId": "uuid" (for orders)
-}
-```
-
-The function will:
-1. Validate the token/orderId
-2. Update `*_played_at` or `*_downloaded_at` (only on first occurrence)
-3. Increment the count each time
-
----
-
-## Part 3: Frontend Tracking Calls
-
-### SongPreview.tsx (Lead Preview Page)
-
-Add tracking when user clicks play:
-```typescript
-const togglePlayback = async () => {
-  if (!audioRef.current) return;
-  
-  if (!isPlaying) {
-    // Track play event
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "lead", action: "play", token }),
-    });
-  }
-  // ... existing play logic
-};
-```
-
-### SongPlayer.tsx (Customer Song Page)
-
-Add tracking for play and download:
-```typescript
-// On play
-const togglePlay = () => {
-  if (!isPlaying) {
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "order", action: "play", orderId }),
-    });
-  }
-  // ...
-};
-
-// On download
-const downloadSong = async () => {
-  fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "order", action: "download", orderId }),
-  });
-  // ... existing download logic
-};
-```
-
----
-
-## Part 4: Admin Panel Enhancements
-
-### LeadsTable.tsx - Better Converted Lead Visibility
-
-Add a prominent "CONVERTED" visual treatment:
-- Green highlight row for converted leads
-- Badge with checkmark icon and conversion date
-- Show the order ID it converted to (clickable link)
-- Separate section or filter for "Converted" leads
-
-```typescript
-// Row styling for converted leads
-<Card className={`${lead.status === "converted" ? "border-2 border-green-500 bg-green-50/30" : ""}`}>
-```
-
-Add engagement indicators in lead cards:
-```typescript
-{lead.preview_played_at && (
-  <Badge variant="outline" className="text-green-600 border-green-300">
-    <Play className="h-3 w-3 mr-1" />
-    Played {lead.preview_play_count}x
-  </Badge>
-)}
-```
-
-### StatsCards.tsx - New Engagement Stats
-
-Add cards for:
-- **Previews Played**: Count of leads who actually played the song
-- **Conversion Rate**: % of leads who played preview and then converted
-- **Songs Played**: Count of delivered orders where customer played the song
-- **Downloads**: Count of songs downloaded
-
-### Lead Details Dialog
-
-Show engagement timeline:
-```text
-Timeline:
-- Captured: Jan 15, 2:30 PM
-- Preview Sent: Jan 16, 10:00 AM
-- Preview Opened: Jan 16, 2:15 PM
-- Preview Played: Jan 16, 2:16 PM (3 times)
-- Converted: Jan 16, 2:20 PM -> Order #ABC123
-```
-
-### Order Details Dialog
-
-Show customer engagement:
-```text
-Engagement:
-- Delivered: Jan 17, 9:00 AM
-- Song Played: Jan 17, 9:05 AM (5 times)
-- Downloaded: Jan 17, 9:10 AM (2 times)
-```
-
----
-
-## Files to Create/Modify
-
-| File | Action | Changes |
-|------|--------|---------|
-| Database migration | CREATE | Add tracking columns to leads and orders |
-| `supabase/functions/track-song-engagement/index.ts` | CREATE | New edge function for tracking |
-| `src/pages/SongPreview.tsx` | MODIFY | Add play tracking call |
-| `src/pages/SongPlayer.tsx` | MODIFY | Add play/download tracking calls |
-| `src/components/admin/LeadsTable.tsx` | MODIFY | Enhanced converted lead display, engagement badges |
-| `src/components/admin/StatsCards.tsx` | MODIFY | Add engagement statistics |
-| `src/pages/Admin.tsx` | MODIFY | Show engagement data in order details |
-| `supabase/functions/admin-orders/index.ts` | MODIFY | Return new tracking fields |
-| `src/integrations/supabase/types.ts` | AUTO-UPDATE | New columns added automatically |
-
----
-
-## Visual Mockups
-
-### Converted Lead Card
+## Solution: Server-to-Server Webhook
+Implement a Stripe webhook handler that receives `checkout.session.completed` events directly from Stripe's servers. This ensures 100% reliable order fulfillment regardless of user behavior.
 
 ```text
-+--------------------------------------------------------------+
-| [GREEN BORDER]                                               |
-| CONVERTED ✓                                                  |
-|                                                              |
-| John Doe                                     Score: 85       |
-| john@email.com                              [CONVERTED]      |
-|                                                              |
-| Song for: Mom (Mother)                                       |
-| Occasion: Mother's Day • Pop                                 |
-|                                                              |
-| Engagement: [Played 3x] [Opened 2x]                         |
-|                                                              |
-| Converted to Order #A1B2C3D4 on Jan 16, 2026                |
-+--------------------------------------------------------------+
+┌─────────────┐      ┌──────────────┐      ┌─────────────┐
+│   Browser   │──────│    Stripe    │──────│  Database   │
+│   (User)    │      │   Servers    │      │  (Orders)   │
+└─────────────┘      └──────────────┘      └─────────────┘
+       │                    │                     │
+       │  1. Pay at Stripe  │                     │
+       │───────────────────>│                     │
+       │                    │                     │
+       │                    │  2. Webhook POST    │
+       │                    │  (checkout.session  │
+       │                    │   .completed)       │
+       │                    │────────────────────>│
+       │                    │                     │
+       │  3. Redirect to    │  ✓ Order created    │
+       │     success page   │  (already done!)    │
+       │<───────────────────│                     │
+       │                    │                     │
+       │  (Even if user     │                     │
+       │   closes browser,  │                     │
+       │   order exists!)   │                     │
+       └────────────────────┴─────────────────────┘
 ```
 
-### Lead Engagement in Analytics
+## Implementation Steps
+
+### 1. Create `stripe-webhook` Edge Function
+A new edge function that:
+- Receives POST requests from Stripe
+- Verifies the webhook signature using `STRIPE_WEBHOOK_SECRET`
+- Handles `checkout.session.completed` events
+- Creates orders using existing logic from `process-payment`
+- Is idempotent (won't create duplicate orders)
+
+### 2. Add Webhook Signing Secret
+You'll need to add `STRIPE_WEBHOOK_SECRET` to your backend secrets. This secret is obtained from Stripe Dashboard when you configure the webhook endpoint.
+
+### 3. Update `PaymentSuccess.tsx` 
+Make the success page more resilient:
+- Poll for the order to exist (webhook might complete before or after redirect)
+- Show loading state while checking
+- Gracefully handle the case where order already exists
+- Keep existing analytics tracking
+
+### 4. Configure Webhook in Stripe Dashboard
+After deployment, you'll register the webhook URL in your Stripe Dashboard:
+- Endpoint URL: `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/stripe-webhook`
+- Events: `checkout.session.completed`
+
+---
+
+## Technical Details
+
+### New Edge Function: `supabase/functions/stripe-webhook/index.ts`
+
+**Key features:**
+- Signature verification using `stripe.webhooks.constructEventAsync()` with Deno's SubtleCrypto
+- Extracts metadata from checkout session (same fields already stored)
+- Creates order in database (reusing existing logic)
+- Sends confirmation email via `send-order-confirmation`
+- Syncs to Zapier/Google Sheets
+- Marks leads as converted
+- Returns 200 to acknowledge receipt (Stripe will retry on failure)
+
+**Idempotency:**
+- Uses `notes: stripe_session:${sessionId}` to detect duplicate orders
+- Safe to be called multiple times (Stripe may retry)
+
+### Config Changes: `supabase/config.toml`
+
+Add webhook function configuration:
+```toml
+[functions.stripe-webhook]
+verify_jwt = false
+```
+
+### Updated Success Page Logic
 
 ```text
-+------------------+  +------------------+  +------------------+
-| Previews Played  |  | Play → Convert   |  | Songs Downloaded |
-|       24         |  |      38%         |  |        18        |
-| 24 of 45 leads   |  | of played leads  |  | of 28 delivered  |
-+------------------+  +------------------+  +------------------+
+1. Load page with session_id
+2. Check if order already exists (webhook may have completed)
+3. If order exists → Show success immediately
+4. If not → Wait briefly and check again (webhook in progress)
+5. After ~5 seconds, if still no order → Show "processing" message
+6. Track analytics events
 ```
 
 ---
 
-## Technical Notes
+## Required User Action
 
-1. **Rate limiting**: The tracking endpoint will use client IP + token to prevent abuse (don't count rapid-fire plays)
-2. **Async tracking**: Tracking calls are fire-and-forget (don't block playback)
-3. **First-play timestamp**: Only the first play sets `preview_played_at`; subsequent plays just increment count
-4. **Privacy**: No additional PII is collected - just timestamps and counts
+After I implement the code changes, you'll need to:
+
+1. **Get the webhook signing secret** from Stripe:
+   - Go to Stripe Dashboard → Developers → Webhooks
+   - Add endpoint: `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/stripe-webhook`
+   - Select event: `checkout.session.completed`
+   - Copy the "Signing secret" (starts with `whsec_`)
+
+2. **Add the secret** to your backend secrets as `STRIPE_WEBHOOK_SECRET`
+
+---
+
+## What This Fixes
+
+| Before (Client-Side) | After (Webhook) |
+|---------------------|-----------------|
+| Order created only if user stays on success page | Order created by Stripe servers |
+| Browser close = lost order | Browser close = order still created |
+| Network issues = lost order | Network issues = Stripe retries |
+| Stripe Link bypass = lost order | Works with all payment methods |
+
+## Files to be Modified/Created
+
+| File | Action |
+|------|--------|
+| `supabase/functions/stripe-webhook/index.ts` | Create new |
+| `supabase/config.toml` | Add webhook config |
+| `src/pages/PaymentSuccess.tsx` | Update to poll for order |
 
