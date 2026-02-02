@@ -8,6 +8,7 @@ const corsHeaders = {
 interface SendPreviewRequest {
   leadId: string;
   adminPassword: string;
+  resend?: boolean;  // If true, allows resending even if preview was already sent
 }
 
 Deno.serve(async (req) => {
@@ -21,7 +22,7 @@ Deno.serve(async (req) => {
       throw new Error("ADMIN_PASSWORD not configured");
     }
 
-    const { leadId, adminPassword: providedPassword }: SendPreviewRequest = await req.json();
+    const { leadId, adminPassword: providedPassword, resend }: SendPreviewRequest = await req.json();
 
     if (!providedPassword || providedPassword.trim() !== adminPassword.trim()) {
       return new Response(
@@ -58,6 +59,14 @@ Deno.serve(async (req) => {
     if (lead.status === "converted") {
       return new Response(
         JSON.stringify({ error: "Lead already converted" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if preview already sent (unless resend=true)
+    if (lead.preview_sent_at && !resend) {
+      return new Response(
+        JSON.stringify({ error: "Preview already sent. Use resend option to send again." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
