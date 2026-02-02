@@ -1,162 +1,216 @@
 
 
-# Fix Email Deliverability (Stop Emails Going to Spam)
+# Engagement Tracking & Lead Conversion Visibility
 
-## Root Causes Identified
+## Summary
 
-| Issue | Impact | Fix |
-|-------|--------|-----|
-| Missing physical address | CAN-SPAM violation, spam trigger | Add address to footer |
-| Spammy subject lines (emojis, urgency) | Major spam trigger | Rewrite cleaner subjects |
-| No List-Unsubscribe header | Gmail/Yahoo/Microsoft requirement | Add HTTP header via Brevo API |
-| Promotional content in transactional emails | Mixed signals to spam filters | Separate or tone down |
-| No plain text version | Looks like spam to filters | Add `textContent` to API calls |
-| No unsubscribe link | Required for promotional emails | Add footer link |
+Add tracking for when leads and customers play/download songs, and improve the visual display of converted leads in the admin panel.
 
 ---
 
-## Part 1: Add List-Unsubscribe Header
+## Part 1: Database Schema Updates
 
-Add the `headers` parameter to all Brevo API calls. This is the most impactful fix.
+Add new tracking columns to both tables:
 
-**All email edge functions** (lead-preview, lead-followup, order-confirmation, song-delivery, send-test-email):
+**leads table:**
+| Column | Type | Purpose |
+|--------|------|---------|
+| `preview_played_at` | timestamp | First time lead played the 45-second preview |
+| `preview_play_count` | integer | Total times preview was played |
 
+**orders table:**
+| Column | Type | Purpose |
+|--------|------|---------|
+| `song_played_at` | timestamp | First time customer played the full song |
+| `song_play_count` | integer | Total times song was played |
+| `song_downloaded_at` | timestamp | First time customer downloaded the song |
+| `song_download_count` | integer | Total times song was downloaded |
+
+---
+
+## Part 2: Backend Tracking Endpoints
+
+### New Edge Function: `track-song-engagement`
+
+Creates a new endpoint that the frontend can call to log play/download events.
+
+```
+POST /functions/v1/track-song-engagement
+{
+  "type": "lead" | "order",
+  "action": "play" | "download",
+  "token": "preview-token" (for leads),
+  "orderId": "uuid" (for orders)
+}
+```
+
+The function will:
+1. Validate the token/orderId
+2. Update `*_played_at` or `*_downloaded_at` (only on first occurrence)
+3. Increment the count each time
+
+---
+
+## Part 3: Frontend Tracking Calls
+
+### SongPreview.tsx (Lead Preview Page)
+
+Add tracking when user clicks play:
 ```typescript
-body: JSON.stringify({
-  sender: { name: senderName, email: senderEmail },
-  replyTo: { email: senderEmail, name: senderName },
-  to: [{ email: customerEmail, name: customerName }],
-  subject: subject,
-  htmlContent: emailHtml,
-  textContent: plainTextVersion,  // NEW
-  headers: {
-    "List-Unsubscribe": `<mailto:unsubscribe@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
-    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+const togglePlayback = async () => {
+  if (!audioRef.current) return;
+  
+  if (!isPlaying) {
+    // Track play event
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "lead", action: "play", token }),
+    });
   }
-}),
+  // ... existing play logic
+};
+```
+
+### SongPlayer.tsx (Customer Song Page)
+
+Add tracking for play and download:
+```typescript
+// On play
+const togglePlay = () => {
+  if (!isPlaying) {
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "order", action: "play", orderId }),
+    });
+  }
+  // ...
+};
+
+// On download
+const downloadSong = async () => {
+  fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "order", action: "download", orderId }),
+  });
+  // ... existing download logic
+};
 ```
 
 ---
 
-## Part 2: Add Plain Text Versions
+## Part 4: Admin Panel Enhancements
 
-Generate a plain text alternative for each email template. Example for order confirmation:
+### LeadsTable.tsx - Better Converted Lead Visibility
+
+Add a prominent "CONVERTED" visual treatment:
+- Green highlight row for converted leads
+- Badge with checkmark icon and conversion date
+- Show the order ID it converted to (clickable link)
+- Separate section or filter for "Converted" leads
 
 ```typescript
-const textContent = `
-Order Confirmed!
+// Row styling for converted leads
+<Card className={`${lead.status === "converted" ? "border-2 border-green-500 bg-green-50/30" : ""}`}>
+```
 
-Dear ${customerName},
+Add engagement indicators in lead cards:
+```typescript
+{lead.preview_played_at && (
+  <Badge variant="outline" className="text-green-600 border-green-300">
+    <Play className="h-3 w-3 mr-1" />
+    Played {lead.preview_play_count}x
+  </Badge>
+)}
+```
 
-Thank you for your order! We're creating a personalized song for ${recipientName}.
+### StatsCards.tsx - New Engagement Stats
 
-Order Details:
-- Order ID: ${orderId.slice(0, 8).toUpperCase()}
-- For: ${recipientName}
-- Occasion: ${occasion}
-- Genre: ${genre}
-- Expected Delivery: ${deliveryDate}
+Add cards for:
+- **Previews Played**: Count of leads who actually played the song
+- **Conversion Rate**: % of leads who played preview and then converted
+- **Songs Played**: Count of delivered orders where customer played the song
+- **Downloads**: Count of songs downloaded
 
-We'll email you when your song is ready.
+### Lead Details Dialog
 
-With love,
-The Personal Song Gifts Team
+Show engagement timeline:
+```text
+Timeline:
+- Captured: Jan 15, 2:30 PM
+- Preview Sent: Jan 16, 10:00 AM
+- Preview Opened: Jan 16, 2:15 PM
+- Preview Played: Jan 16, 2:16 PM (3 times)
+- Converted: Jan 16, 2:20 PM -> Order #ABC123
+```
 
-Personal Song Gifts
-123 Music Lane, Nashville, TN 37203
-https://personalsonggifts.lovable.app
-`;
+### Order Details Dialog
+
+Show customer engagement:
+```text
+Engagement:
+- Delivered: Jan 17, 9:00 AM
+- Song Played: Jan 17, 9:05 AM (5 times)
+- Downloaded: Jan 17, 9:10 AM (2 times)
 ```
 
 ---
 
-## Part 3: Clean Up Subject Lines
+## Files to Create/Modify
 
-Replace emoji-heavy, urgent subject lines with cleaner versions:
-
-| Template | Current Subject | New Subject |
-|----------|-----------------|-------------|
-| Lead Preview | `🎵 Your song for ${name} is ready - listen now!` | `Your song for ${name} is ready to preview` |
-| Lead Follow-up | `🎁 Extra $5 off your song for ${name} - limited time!` | `A special offer for ${name}'s song` |
-| Order Confirmation | `🎵 Your song for ${name} is being created!` | `Order confirmed - ${name}'s song is being created` |
-| Song Delivery | `🎉 Your song for ${name} is ready!` | `${name}'s song is complete and ready to share` |
+| File | Action | Changes |
+|------|--------|---------|
+| Database migration | CREATE | Add tracking columns to leads and orders |
+| `supabase/functions/track-song-engagement/index.ts` | CREATE | New edge function for tracking |
+| `src/pages/SongPreview.tsx` | MODIFY | Add play tracking call |
+| `src/pages/SongPlayer.tsx` | MODIFY | Add play/download tracking calls |
+| `src/components/admin/LeadsTable.tsx` | MODIFY | Enhanced converted lead display, engagement badges |
+| `src/components/admin/StatsCards.tsx` | MODIFY | Add engagement statistics |
+| `src/pages/Admin.tsx` | MODIFY | Show engagement data in order details |
+| `supabase/functions/admin-orders/index.ts` | MODIFY | Return new tracking fields |
+| `src/integrations/supabase/types.ts` | AUTO-UPDATE | New columns added automatically |
 
 ---
 
-## Part 4: Add Physical Address to All Email Footers
+## Visual Mockups
 
-Update the footer section in all email templates:
+### Converted Lead Card
 
-```html
-<div style="text-align: center; padding: 20px;">
-  <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-    © 2026 Personal Song Gifts<br>
-    123 Music Lane, Nashville, TN 37203<br>
-    <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
-  </p>
-  <p style="color: #999; font-size: 11px; margin-top: 10px;">
-    <a href="https://personalsonggifts.lovable.app/unsubscribe?email={{email}}" style="color: #999;">Unsubscribe</a>
-  </p>
-</div>
+```text
++--------------------------------------------------------------+
+| [GREEN BORDER]                                               |
+| CONVERTED ✓                                                  |
+|                                                              |
+| John Doe                                     Score: 85       |
+| john@email.com                              [CONVERTED]      |
+|                                                              |
+| Song for: Mom (Mother)                                       |
+| Occasion: Mother's Day • Pop                                 |
+|                                                              |
+| Engagement: [Played 3x] [Opened 2x]                         |
+|                                                              |
+| Converted to Order #A1B2C3D4 on Jan 16, 2026                |
++--------------------------------------------------------------+
+```
+
+### Lead Engagement in Analytics
+
+```text
++------------------+  +------------------+  +------------------+
+| Previews Played  |  | Play → Convert   |  | Songs Downloaded |
+|       24         |  |      38%         |  |        18        |
+| 24 of 45 leads   |  | of played leads  |  | of 28 delivered  |
++------------------+  +------------------+  +------------------+
 ```
 
 ---
 
-## Part 5: (Optional) Create Unsubscribe Page
+## Technical Notes
 
-Create a simple `/unsubscribe` route that:
-1. Reads the email from query params
-2. Displays a confirmation message
-3. (Future) Stores preference in database
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/send-lead-preview/index.ts` | Add headers, textContent, clean subject, fix footer |
-| `supabase/functions/send-lead-followup/index.ts` | Add headers, textContent, clean subject, fix footer |
-| `supabase/functions/send-order-confirmation/index.ts` | Add headers, textContent, clean subject, fix footer |
-| `supabase/functions/send-song-delivery/index.ts` | Add headers, textContent, clean subject, fix footer |
-| `supabase/functions/send-test-email/index.ts` | Add headers, textContent, clean subjects, fix footers |
-| `src/pages/Unsubscribe.tsx` | NEW - Simple unsubscribe confirmation page |
-| `src/App.tsx` | Add route for `/unsubscribe` |
-
----
-
-## DNS/Brevo Verification (Manual Steps)
-
-You should also verify these settings in Brevo and GoDaddy (outside of Lovable):
-
-1. **Brevo Dashboard** → Senders, Domains, IPs → Verify green checkmarks for:
-   - DKIM signature ✅
-   - DMARC policy ✅
-
-2. **GoDaddy DNS** → Confirm these records exist:
-   - SPF record: `v=spf1 include:spf.brevo.com ~all`
-   - DKIM record: (provided by Brevo)
-   - DMARC record: `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com`
-
-3. **Gmail Postmaster Tools** → Monitor spam complaint rate (must stay under 0.3%)
-
----
-
-## Important Note About Your Address
-
-You'll need to provide a real physical mailing address to include in the email footer. This is legally required for commercial emails. If you don't have a business address, you can use:
-- A PO Box
-- A virtual mailbox service (like iPostal1 or Anytime Mailbox)
-- A registered agent address
-
----
-
-## Expected Impact
-
-After these changes:
-- **List-Unsubscribe header**: Major improvement for Gmail/Yahoo/Microsoft
-- **Plain text version**: Signals legitimate email to spam filters
-- **Cleaner subjects**: Reduces spam score significantly
-- **Physical address**: Legal compliance + trust signal
-- **Unsubscribe link**: Required for promotional content
+1. **Rate limiting**: The tracking endpoint will use client IP + token to prevent abuse (don't count rapid-fire plays)
+2. **Async tracking**: Tracking calls are fire-and-forget (don't block playback)
+3. **First-play timestamp**: Only the first play sets `preview_played_at`; subsequent plays just increment count
+4. **Privacy**: No additional PII is collected - just timestamps and counts
 
