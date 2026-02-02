@@ -39,6 +39,9 @@ export interface Lead {
   follow_up_sent_at?: string | null;
   preview_scheduled_at?: string | null;
   dismissed_at?: string | null;
+  // Engagement tracking fields
+  preview_played_at?: string | null;
+  preview_play_count?: number | null;
 }
 
 interface LeadsTableProps {
@@ -577,7 +580,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
           {filteredLeads.map((lead) => (
             <Card 
               key={lead.id} 
-              className={`hover:shadow-md transition-shadow ${lead.dismissed_at ? 'opacity-60 bg-muted/50' : ''}`}
+              className={`hover:shadow-md transition-shadow ${lead.dismissed_at ? 'opacity-60 bg-muted/50' : ''} ${lead.status === "converted" ? 'border-2 border-green-500 bg-green-50/30 dark:bg-green-950/20' : ''}`}
             >
               <CardContent className="p-6">
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
@@ -586,8 +589,15 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       <h3 className={`font-semibold text-lg ${lead.dismissed_at ? 'line-through text-muted-foreground' : ''}`}>
                         {lead.customer_name}
                       </h3>
+                      {/* Prominent CONVERTED badge */}
+                      {lead.status === "converted" && (
+                        <Badge className="bg-green-600 text-white font-semibold">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          CONVERTED
+                        </Badge>
+                      )}
                       {/* Prominent SONG SENT badge */}
-                      {lead.preview_sent_at && (
+                      {lead.preview_sent_at && lead.status !== "converted" && (
                         <Badge className="bg-emerald-500 text-white font-semibold">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           SONG SENT
@@ -600,7 +610,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           Dismissed
                         </Badge>
                       )}
-                      {!lead.dismissed_at && (
+                      {!lead.dismissed_at && lead.status !== "converted" && (
                         <Badge className={statusColors[lead.status] || "bg-gray-100 text-gray-800"}>
                           {statusLabels[lead.status] || lead.status}
                         </Badge>
@@ -609,6 +619,13 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         <Badge variant="outline" className="border-purple-500 text-purple-600">
                           <Eye className="h-3 w-3 mr-1" />
                           Viewed
+                        </Badge>
+                      )}
+                      {/* Engagement: Preview Played badge */}
+                      {lead.preview_played_at && !lead.dismissed_at && (
+                        <Badge variant="outline" className="border-green-500 text-green-600">
+                          <Play className="h-3 w-3 mr-1" />
+                          Played {lead.preview_play_count || 1}x
                         </Badge>
                       )}
                       {isEligibleForFollowup(lead) && !lead.dismissed_at && (
@@ -656,6 +673,19 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       <p className="text-sm text-muted-foreground">
                         <Timer className="h-3 w-3 inline mr-1" />
                         <strong>Auto-send in:</strong> {getAutoSendTimeRemaining(lead)}
+                      </p>
+                    )}
+                    {/* Converted lead shows linked order */}
+                    {lead.status === "converted" && lead.order_id && (
+                      <p className="text-sm text-green-600 font-medium">
+                        <CheckCircle2 className="h-3 w-3 inline mr-1" />
+                        <strong>Converted to Order:</strong>{" "}
+                        <span className="font-mono">{lead.order_id.slice(0, 8).toUpperCase()}</span>
+                        {lead.converted_at && (
+                          <span className="text-muted-foreground font-normal ml-2">
+                            on {new Date(lead.converted_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}
+                          </span>
+                        )}
                       </p>
                     )}
                     {lead.dismissed_at && (
@@ -1139,6 +1169,22 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       <div>
                         <span className="text-muted-foreground">Converted:</span>{" "}
                         {new Date(selectedLead.converted_at).toLocaleString()}
+                      </div>
+                    )}
+                    {selectedLead.order_id && (
+                      <div>
+                        <span className="text-muted-foreground">Order ID:</span>{" "}
+                        <span className="font-mono">{selectedLead.order_id.slice(0, 8).toUpperCase()}</span>
+                      </div>
+                    )}
+                    {/* Engagement tracking */}
+                    {selectedLead.preview_played_at && (
+                      <div>
+                        <span className="text-muted-foreground">Preview Played:</span>{" "}
+                        {new Date(selectedLead.preview_played_at).toLocaleString()}
+                        {selectedLead.preview_play_count && selectedLead.preview_play_count > 1 && (
+                          <span className="ml-1 text-green-600">({selectedLead.preview_play_count} times)</span>
+                        )}
                       </div>
                     )}
                   </div>

@@ -100,6 +100,14 @@ export default function SongPreview() {
       audioRef.current.pause();
     } else {
       audioRef.current.play();
+      // Track play event (fire-and-forget)
+      if (token) {
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "lead", action: "play", token }),
+        }).catch((err) => console.error("Failed to track play:", err));
+      }
     }
     setIsPlaying(!isPlaying);
   };

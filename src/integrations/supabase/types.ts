@@ -31,6 +31,8 @@ export type Database = {
           order_id: string | null
           phone: string | null
           preview_opened_at: string | null
+          preview_play_count: number | null
+          preview_played_at: string | null
           preview_scheduled_at: string | null
           preview_sent_at: string | null
           preview_song_url: string | null
@@ -60,6 +62,8 @@ export type Database = {
           order_id?: string | null
           phone?: string | null
           preview_opened_at?: string | null
+          preview_play_count?: number | null
+          preview_played_at?: string | null
           preview_scheduled_at?: string | null
           preview_sent_at?: string | null
           preview_song_url?: string | null
@@ -89,6 +93,8 @@ export type Database = {
           order_id?: string | null
           phone?: string | null
           preview_opened_at?: string | null
+          preview_play_count?: number | null
+          preview_played_at?: string | null
           preview_scheduled_at?: string | null
           preview_sent_at?: string | null
           preview_song_url?: string | null
@@ -135,6 +141,10 @@ export type Database = {
           recipient_type: string
           scheduled_delivery_at: string | null
           singer_preference: string
+          song_download_count: number | null
+          song_downloaded_at: string | null
+          song_play_count: number | null
+          song_played_at: string | null
           song_title: string | null
           song_url: string | null
           special_message: string | null
@@ -163,6 +173,10 @@ export type Database = {
           recipient_type: string
           scheduled_delivery_at?: string | null
           singer_preference: string
+          song_download_count?: number | null
+          song_downloaded_at?: string | null
+          song_play_count?: number | null
+          song_played_at?: string | null
           song_title?: string | null
           song_url?: string | null
           special_message?: string | null
@@ -191,6 +205,10 @@ export type Database = {
           recipient_type?: string
           scheduled_delivery_at?: string | null
           singer_preference?: string
+          song_download_count?: number | null
+          song_downloaded_at?: string | null
+          song_play_count?: number | null
+          song_played_at?: string | null
           song_title?: string | null
           song_url?: string | null
           special_message?: string | null
