@@ -1,68 +1,109 @@
 
-# Plan: Homepage Redesign - Remove Videos, Add Text Review Grid, Move "As Seen On"
 
-## Summary of Changes
+# Plan: Improve Date/Time Readability in Admin Panel (PST Format)
 
-### 1. Remove "Hear Sample Songs" Button from Hero
-The secondary outline button that links to `#samples` will be removed from `HeroSection.tsx`. Only the "Create Your Song" CTA will remain.
+## Overview
+Make all date and time displays in the admin panel more human-readable while maintaining the PST timezone standard. This is a display-only change and will **not** affect any backend logic for sending emails or processing deliveries.
 
-### 2. Move "As Seen On" Graphic to Hero Section
-Move the "As Seen On TV" image from `TrustStrip.tsx` into `HeroSection.tsx`, positioned directly below the "Create Your Song" button. This places it above the fold for maximum trust-building impact.
+## Current State
+The admin panel currently displays dates using:
+1. `toLocaleString("en-US", { timeZone: "America/Los_Angeles" }) + " PST"` - which produces output like `2/2/2026, 3:17:33 PM PST`
+2. Some places use `toLocaleString()` without timezone - inconsistent
+3. The ReactionsTable uses a custom `formatDate` function but doesn't include timezone
 
-### 3. Convert Testimonials to Text-Only Grid
-Completely rewrite `Testimonials.tsx` to:
-- Remove all video testimonials and video-related code
-- Create a clean 4-column x 2-row grid of text reviews (8 total)
-- Keep the existing 4 text reviews and add 4 new ones to match your screenshot
+The format works but could be more scannable with a cleaner, more consistent format across all date displays.
 
-The new reviews to add:
-- Stephen: "He raised five kids that weren't his... and loved them like they were. That's the kind of man he is."
-- Rachel M.: "I gave this to my mom for her 70th birthday and she played it on repeat for a week straight."
-- James & Olivia: "Our wedding guests were in tears. It was the highlight of the entire reception."
-- Marcus T.: "I ordered this for my wife's birthday and she said it was the most thoughtful gift she's ever received."
-- The Rivera Family: "We played it at Dad's memorial and there wasn't a dry eye in the room. It captured him perfectly."
+## Proposed Format
+Change all dates to a more readable format:
+- **Before:** `2/2/2026, 3:17:33 PM PST`
+- **After:** `Sun, Feb 2 at 3:17 PM PST`
 
-### 4. Simplify TrustStrip Component
-Remove the "As Seen On" image from `TrustStrip.tsx` since it's moving to the hero. Keep only the stats (4.9 Rating, 1,000+ Families Served) if that section remains, or consider removing the TrustStrip entirely if it becomes redundant.
+This format is:
+- More scannable (day of week helps admins plan)
+- Cleaner (no seconds, uses abbreviated month)
+- Consistent timezone display
+
+## Technical Approach
+
+### Step 1: Create a Shared Date Formatting Utility
+Create a new utility function in `src/lib/utils.ts` that all admin components can use:
+
+```typescript
+// Format date for admin display in PST
+export function formatAdminDate(dateString: string | Date): string {
+  const date = typeof dateString === "string" ? new Date(dateString) : dateString;
+  return date.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "short",
+    month: "short", 
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }) + " PST";
+}
+
+// Shorter format for inline/compact displays (no weekday)
+export function formatAdminDateShort(dateString: string | Date): string {
+  const date = typeof dateString === "string" ? new Date(dateString) : dateString;
+  return date.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "short",
+    day: "numeric",
+    hour: "numeric", 
+    minute: "2-digit",
+    hour12: true,
+  }) + " PST";
+}
+```
+
+### Step 2: Update Admin.tsx (Orders Tab)
+Replace all inline date formatting with the utility function.
+
+**Locations to update:**
+- Line 516: Order Date/Time in order cards
+- Line 521: Expected Delivery in order cards  
+- Line 527: Scheduled Send in order cards
+- Line 766: Delivered date in dialog
+- Line 774: Song Played date in dialog
+- Line 789: Downloaded date in dialog
+
+### Step 3: Update LeadsTable.tsx
+Replace all inline date formatting with the utility function.
+
+**Locations to update:**
+- Line 658: Captured date in lead cards
+- Line 663: Preview sent date in lead cards
+- Line 669: Follow-up sent date in lead cards
+- Line 686: Converted date in lead cards
+- Line 693: Dismissed date in lead cards
+- Line 981: Scheduled auto-send date in dialog
+- Line 996: Preview sent date in dialog
+- Lines 1148, 1153, 1159, 1165, 1171, 1184: Various dates in dialog grid
+
+### Step 4: Update ReactionsTable.tsx
+Update the existing `formatDate` function to include PST timezone.
+
+**Location:**
+- Lines 46-54: Replace formatDate function to use PST
+
+### Step 5: Update ScheduledDeliveryPicker.tsx
+The `formatPST` function already exists and produces a good format. No changes needed here.
 
 ---
 
-## Technical Changes
+## Files to Modify
 
-### File 1: `src/components/home/HeroSection.tsx`
-- Remove the "Hear Sample Songs" button (lines 102-112)
-- Import the `asSeenOnImage` asset
-- Add the "As Seen On" image below the CTA button
-- Keep the video with "Listen to Example" button overlay at top
+| File | Changes |
+|------|---------|
+| `src/lib/utils.ts` | Add `formatAdminDate` and `formatAdminDateShort` functions |
+| `src/pages/Admin.tsx` | Import and use new formatting functions (6 locations) |
+| `src/components/admin/LeadsTable.tsx` | Import and use new formatting functions (~12 locations) |
+| `src/components/admin/ReactionsTable.tsx` | Update `formatDate` function to use PST |
 
-### File 2: `src/components/home/Testimonials.tsx`
-Complete rewrite to text-only grid:
-- Remove all video-related interfaces, components, and logic
-- Keep only `TextTestimonial` interface
-- Expand testimonials array to 8 text reviews
-- Create a simple 4-column responsive grid layout
-- Each card: 5 gold stars, quote text, author name, verified badge
+## Safety Guarantee
+- **No backend changes** - all date logic in edge functions remains untouched
+- **Display only** - these are purely UI formatting changes
+- **Timezone preserved** - all dates will continue to display in PST as required
+- **Backend dates stored as UTC** - nothing changes in how dates are stored or compared
 
-### File 3: `src/components/home/TrustStrip.tsx`
-- Remove the "As Seen On" image (now in hero)
-- Keep just the rating and families served stats
-- Simplify the layout
-
----
-
-## Visual Result
-The homepage will flow as:
-1. **Hero Section**:
-   - Video with "Listen to Example" button
-   - Headline + subheadline
-   - Single "Create Your Song" CTA button
-   - "As Seen On" logos immediately below (above the fold)
-   - Trust indicator text
-
-2. **Testimonials Section**:
-   - "Real stories from real customers" heading
-   - Clean 4x2 grid of text review cards
-   - Each card with stars, quote, author, verified badge
-
-3. **Trust Strip** (simplified):
-   - Just the 4.9 Rating and 1,000+ Families stats
