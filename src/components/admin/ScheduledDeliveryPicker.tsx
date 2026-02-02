@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { CalendarIcon, Clock, Sparkles } from "lucide-react";
+import { CalendarIcon, Clock, Sparkles, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -25,6 +25,13 @@ interface ScheduledDeliveryPickerProps {
   onChange: (date: Date | null) => void;
 }
 
+type RecommendedTimeResult = {
+  time: Date;
+  type: "recommended" | "suggested" | "overdue";
+  label: string;
+  sublabel: string;
+} | null;
+
 // Convert UTC date to PST Date object
 function toPST(date: Date): Date {
   return new Date(
@@ -45,19 +52,43 @@ function formatPST(date: Date): string {
   }) + " PST";
 }
 
-// Get recommended time (12 hours before expected delivery)
-function getRecommendedTime(expectedDelivery: string | null): Date | null {
+// Get recommended time with smart fallback logic
+function getRecommendedTime(expectedDelivery: string | null): RecommendedTimeResult {
   if (!expectedDelivery) return null;
   
+  const now = new Date();
   const expected = new Date(expectedDelivery);
-  const recommended = new Date(expected.getTime() - 12 * 60 * 60 * 1000);
+  const idealRecommended = new Date(expected.getTime() - 12 * 60 * 60 * 1000);
   
-  // If recommended time is in the past, return null
-  if (recommended <= new Date()) {
-    return null;
+  // If 12 hours before expected delivery is still in the future - optimal case
+  if (idealRecommended > now) {
+    return {
+      time: idealRecommended,
+      type: "recommended",
+      label: "Recommended",
+      sublabel: "12 hours before expected delivery"
+    };
   }
   
-  return recommended;
+  // If expected delivery itself has passed - overdue
+  if (expected <= now) {
+    const overdueTime = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes from now
+    return {
+      time: overdueTime,
+      type: "overdue",
+      label: "Overdue",
+      sublabel: "Expected delivery has passed - send immediately"
+    };
+  }
+  
+  // Expected delivery is still in future but ideal recommended time has passed
+  const suggestedTime = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+  return {
+    time: suggestedTime,
+    type: "suggested",
+    label: "Suggested",
+    sublabel: "Delivery due soon - send ASAP"
+  };
 }
 
 // Generate hour options (1-12 AM/PM)
@@ -94,7 +125,7 @@ export function ScheduledDeliveryPicker({
   const [selectedHour, setSelectedHour] = useState<string>("9");
   const [selectedMinute, setSelectedMinute] = useState<string>("0");
 
-  const recommendedTime = getRecommendedTime(expectedDelivery);
+  const recommendedResult = getRecommendedTime(expectedDelivery);
   const hourOptions = generateHourOptions();
   const minuteOptions = generateMinuteOptions();
 
@@ -102,8 +133,8 @@ export function ScheduledDeliveryPicker({
   useEffect(() => {
     if (mode === "now") {
       onChange(null);
-    } else if (mode === "recommended" && recommendedTime) {
-      onChange(recommendedTime);
+    } else if (mode === "recommended" && recommendedResult) {
+      onChange(recommendedResult.time);
     } else if (mode === "custom" && selectedDate) {
       // Create a date string in PST, then parse to get UTC
       const pstDateStr = `${format(selectedDate, "yyyy-MM-dd")}T${selectedHour.padStart(2, "0")}:${selectedMinute.padStart(2, "0")}:00`;
@@ -118,7 +149,7 @@ export function ScheduledDeliveryPicker({
         onChange(null);
       }
     }
-  }, [mode, selectedDate, selectedHour, selectedMinute, recommendedTime]);
+  }, [mode, selectedDate, selectedHour, selectedMinute, recommendedResult]);
 
   // Initialize custom date/time from value
   useEffect(() => {
@@ -132,6 +163,31 @@ export function ScheduledDeliveryPicker({
       setSelectedMinute((roundedMins % 60).toString());
     }
   }, [value, mode]);
+
+  // Get icon and color based on recommendation type
+  const getRecommendedIcon = () => {
+    if (!recommendedResult) return null;
+    switch (recommendedResult.type) {
+      case "recommended":
+        return <Sparkles className="h-3 w-3 text-amber-500" />;
+      case "suggested":
+        return <Clock className="h-3 w-3 text-blue-500" />;
+      case "overdue":
+        return <AlertTriangle className="h-3 w-3 text-red-500" />;
+    }
+  };
+
+  const getRecommendedTextColor = () => {
+    if (!recommendedResult) return "";
+    switch (recommendedResult.type) {
+      case "recommended":
+        return "text-amber-600";
+      case "suggested":
+        return "text-blue-600";
+      case "overdue":
+        return "text-red-600";
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -155,19 +211,21 @@ export function ScheduledDeliveryPicker({
           </Label>
         </div>
 
-        {recommendedTime && (
+        {recommendedResult && (
           <div className="flex items-start space-x-3">
             <RadioGroupItem value="recommended" id="delivery-recommended" />
             <Label htmlFor="delivery-recommended" className="font-normal cursor-pointer">
               <div className="flex items-center gap-2">
-                <span className="font-medium">Recommended</span>
-                <Sparkles className="h-3 w-3 text-amber-500" />
+                <span className={cn("font-medium", getRecommendedTextColor())}>
+                  {recommendedResult.label}
+                </span>
+                {getRecommendedIcon()}
               </div>
               <p className="text-sm text-muted-foreground">
-                {formatPST(recommendedTime)}
+                {formatPST(recommendedResult.time)}
               </p>
               <p className="text-xs text-muted-foreground/70">
-                12 hours before expected delivery
+                {recommendedResult.sublabel}
               </p>
             </Label>
           </div>
