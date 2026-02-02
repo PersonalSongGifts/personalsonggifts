@@ -21,6 +21,12 @@ interface CheckoutInput {
     yourEmail: string;
     phoneNumber?: string;
   };
+  // UTM tracking fields
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  utmTerm?: string;
 }
 
 // Known promo codes with their discount percentages
@@ -65,7 +71,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { pricingTier, formData, promoCode }: CheckoutInput = await req.json();
+    const { pricingTier, formData, promoCode, utmSource, utmMedium, utmCampaign, utmContent, utmTerm }: CheckoutInput = await req.json();
 
     // Validate tier
     if (!["standard", "priority"].includes(pricingTier)) {
@@ -126,6 +132,22 @@ Deno.serve(async (req) => {
     }
     if (formData.phoneNumber) {
       metadata.customerPhone = formData.phoneNumber;
+    }
+    // Add UTM fields to metadata
+    if (utmSource) {
+      metadata.utmSource = utmSource;
+    }
+    if (utmMedium) {
+      metadata.utmMedium = utmMedium;
+    }
+    if (utmCampaign) {
+      metadata.utmCampaign = utmCampaign;
+    }
+    if (utmContent) {
+      metadata.utmContent = utmContent;
+    }
+    if (utmTerm) {
+      metadata.utmTerm = utmTerm;
     }
 
     const unitAmount = getDiscountedPrice(pricingTier, promoCode);

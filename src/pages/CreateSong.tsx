@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { validateStep } from "@/lib/songFormValidation";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
+import { useUtmCapture, getStoredUtmParams } from "@/hooks/useUtmCapture";
 
 // Form step components
 import RecipientStep from "@/components/create/RecipientStep";
@@ -73,6 +74,10 @@ const CreateSong = () => {
   const { trackEvent: trackMetaEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const hasTrackedViewContent = useRef(false);
+  
+  // Capture UTM parameters on this page too (in case user lands here directly)
+  useUtmCapture();
+  
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(() => {
     const occasion = searchParams.get("occasion");
@@ -127,6 +132,9 @@ const CreateSong = () => {
         deviceType = "tablet";
       }
 
+      // Get stored UTM parameters
+      const utmParams = getStoredUtmParams();
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-lead`,
         {
@@ -148,6 +156,12 @@ const CreateSong = () => {
             favoriteMemory: data.favoriteMemory,
             specialMessage: data.specialMessage || undefined,
             deviceType,
+            // Include UTM parameters
+            utmSource: utmParams.utm_source || undefined,
+            utmMedium: utmParams.utm_medium || undefined,
+            utmCampaign: utmParams.utm_campaign || undefined,
+            utmContent: utmParams.utm_content || undefined,
+            utmTerm: utmParams.utm_term || undefined,
           }),
         }
       );

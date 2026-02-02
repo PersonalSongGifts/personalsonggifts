@@ -20,6 +20,12 @@ interface LeadInput {
   favoriteMemory: string;
   specialMessage?: string;
   deviceType?: string;
+  // UTM tracking fields
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  utmTerm?: string;
 }
 
 function validateEmail(email: string): boolean {
@@ -271,6 +277,12 @@ Deno.serve(async (req) => {
           special_message: input.specialMessage?.trim() || null,
           captured_at: new Date().toISOString(),
           quality_score: qualityScore,
+          // Update UTM fields if provided (don't overwrite existing with null)
+          ...(input.utmSource && { utm_source: input.utmSource }),
+          ...(input.utmMedium && { utm_medium: input.utmMedium }),
+          ...(input.utmCampaign && { utm_campaign: input.utmCampaign }),
+          ...(input.utmContent && { utm_content: input.utmContent }),
+          ...(input.utmTerm && { utm_term: input.utmTerm }),
         })
         .eq("id", existingLead.id);
 
@@ -312,6 +324,12 @@ Deno.serve(async (req) => {
         special_message: input.specialMessage?.trim() || null,
         status: "lead",
         quality_score: qualityScore,
+        // UTM tracking fields
+        utm_source: input.utmSource || null,
+        utm_medium: input.utmMedium || null,
+        utm_campaign: input.utmCampaign || null,
+        utm_content: input.utmContent || null,
+        utm_term: input.utmTerm || null,
       })
       .select("id")
       .single();

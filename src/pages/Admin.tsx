@@ -23,6 +23,7 @@ import { LeadsTable, Lead } from "@/components/admin/LeadsTable";
 import { EmailTemplates } from "@/components/admin/EmailTemplates";
 import { ReactionsTable } from "@/components/admin/ReactionsTable";
 import { ScheduledDeliveryPicker } from "@/components/admin/ScheduledDeliveryPicker";
+import { SourceAnalytics } from "@/components/admin/SourceAnalytics";
 
 interface Order {
   id: string;
@@ -56,6 +57,12 @@ interface Order {
   song_play_count: number | null;
   song_downloaded_at: string | null;
   song_download_count: number | null;
+  // UTM tracking
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -443,6 +450,9 @@ export default function Admin() {
               <StatusChart orders={allOrders} />
               <GenreChart orders={allOrders} />
             </div>
+            
+            {/* Source Analytics */}
+            <SourceAnalytics orders={allOrders} leads={leads} />
           </TabsContent>
 
           <TabsContent value="orders" className="space-y-6">
@@ -505,6 +515,11 @@ export default function Admin() {
                             <Badge variant="outline">
                               {order.pricing_tier === "priority" ? "Priority" : "Standard"}
                             </Badge>
+                            {order.utm_source && (
+                              <Badge variant="outline" className="border-blue-300 text-blue-600">
+                                {order.utm_source}{order.utm_medium ? ` / ${order.utm_medium}` : ""}
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             <strong>Song for:</strong> {order.recipient_name} ({order.recipient_type})

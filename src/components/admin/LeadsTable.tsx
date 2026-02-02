@@ -43,6 +43,12 @@ export interface Lead {
   // Engagement tracking fields
   preview_played_at?: string | null;
   preview_play_count?: number | null;
+  // UTM tracking fields
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_content?: string | null;
+  utm_term?: string | null;
 }
 
 interface LeadsTableProps {
@@ -646,6 +652,12 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           </Badge>
                         );
                       })()}
+                      {/* UTM Source Badge */}
+                      {lead.utm_source && !lead.dismissed_at && (
+                        <Badge variant="outline" className="border-blue-300 text-blue-600">
+                          {lead.utm_source}{lead.utm_medium ? ` / ${lead.utm_medium}` : ""}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">
                       <strong>Lead Email:</strong> {lead.email}

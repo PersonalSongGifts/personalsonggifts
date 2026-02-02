@@ -20,6 +20,7 @@ import { FormData } from "@/pages/CreateSong";
 import { useToast } from "@/hooks/use-toast";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
+import { getStoredUtmParams } from "@/hooks/useUtmCapture";
 
 type PricingTier = "standard" | "priority";
 
@@ -152,6 +153,9 @@ const Checkout = () => {
     });
     
     try {
+      // Get stored UTM parameters
+      const utmParams = getStoredUtmParams();
+
       // Call the create-checkout edge function
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout`,
@@ -165,6 +169,12 @@ const Checkout = () => {
             pricingTier: selectedTier,
             formData,
             promoCode: promoApplied?.code || prices.promoCode,
+            // Include UTM parameters
+            utmSource: utmParams.utm_source || undefined,
+            utmMedium: utmParams.utm_medium || undefined,
+            utmCampaign: utmParams.utm_campaign || undefined,
+            utmContent: utmParams.utm_content || undefined,
+            utmTerm: utmParams.utm_term || undefined,
           }),
         }
       );
