@@ -1,44 +1,68 @@
 
-# Plan: Improve Recommended Delivery Time Logic
+# Plan: Homepage Redesign - Remove Videos, Add Text Review Grid, Move "As Seen On"
 
-## The Issue
-The "Recommended" delivery timing option disappears when the calculated recommended time (12 hours before expected delivery) has already passed. This is technically correct but confusing for admins who are uploading songs close to or after the recommended window.
+## Summary of Changes
 
-## Why It's Happening
-For the order you're looking at (Eugene Pennewell):
-- Expected delivery: Feb 3, 2026 at 5:47 AM UTC
-- Recommended time would be: Feb 2, 2026 at 5:47 PM UTC
-- Current time: Feb 2, 2026 at ~11:00 PM UTC
+### 1. Remove "Hear Sample Songs" Button from Hero
+The secondary outline button that links to `#samples` will be removed from `HeroSection.tsx`. Only the "Create Your Song" CTA will remain.
 
-Since the recommended time (5:47 PM) has passed, the system hides the option because scheduling a delivery for a past time makes no sense.
+### 2. Move "As Seen On" Graphic to Hero Section
+Move the "As Seen On TV" image from `TrustStrip.tsx` into `HeroSection.tsx`, positioned directly below the "Create Your Song" button. This places it above the fold for maximum trust-building impact.
 
-## Proposed Solution
-Instead of hiding the "Recommended" option entirely, show a smart fallback:
+### 3. Convert Testimonials to Text-Only Grid
+Completely rewrite `Testimonials.tsx` to:
+- Remove all video testimonials and video-related code
+- Create a clean 4-column x 2-row grid of text reviews (8 total)
+- Keep the existing 4 text reviews and add 4 new ones to match your screenshot
 
-1. **If 12 hours before expected delivery is still in the future** - Show that as "Recommended"
-2. **If that time has passed but expected delivery is still in the future** - Show a fallback recommendation (e.g., "ASAP" or "1 hour from now") as "Suggested"
-3. **If expected delivery itself has passed** - Show "Overdue" warning and suggest sending immediately
+The new reviews to add:
+- Stephen: "He raised five kids that weren't his... and loved them like they were. That's the kind of man he is."
+- Rachel M.: "I gave this to my mom for her 70th birthday and she played it on repeat for a week straight."
+- James & Olivia: "Our wedding guests were in tears. It was the highlight of the entire reception."
+- Marcus T.: "I ordered this for my wife's birthday and she said it was the most thoughtful gift she's ever received."
+- The Rivera Family: "We played it at Dad's memorial and there wasn't a dry eye in the room. It captured him perfectly."
+
+### 4. Simplify TrustStrip Component
+Remove the "As Seen On" image from `TrustStrip.tsx` since it's moving to the hero. Keep only the stats (4.9 Rating, 1,000+ Families Served) if that section remains, or consider removing the TrustStrip entirely if it becomes redundant.
+
+---
 
 ## Technical Changes
 
-### File: `src/components/admin/ScheduledDeliveryPicker.tsx`
+### File 1: `src/components/home/HeroSection.tsx`
+- Remove the "Hear Sample Songs" button (lines 102-112)
+- Import the `asSeenOnImage` asset
+- Add the "As Seen On" image below the CTA button
+- Keep the video with "Listen to Example" button overlay at top
 
-Update `getRecommendedTime` function to return a fallback when the ideal recommended time has passed:
+### File 2: `src/components/home/Testimonials.tsx`
+Complete rewrite to text-only grid:
+- Remove all video-related interfaces, components, and logic
+- Keep only `TextTestimonial` interface
+- Expand testimonials array to 8 text reviews
+- Create a simple 4-column responsive grid layout
+- Each card: 5 gold stars, quote text, author name, verified badge
 
-```text
-Current logic:
-- Returns: 12hr before expected delivery
-- Returns null if that time is past
+### File 3: `src/components/home/TrustStrip.tsx`
+- Remove the "As Seen On" image (now in hero)
+- Keep just the rating and families served stats
+- Simplify the layout
 
-New logic:
-- If 12hr before expected is future: return that (label: "Recommended - 12hr before delivery")
-- If 12hr before is past but expected is future: return 30min from now (label: "Suggested - Delivery due soon")
-- If expected is past: return now + 5min (label: "Overdue - Send immediately")
-```
+---
 
-The UI will show appropriate context for each scenario:
-- "Recommended" with sparkle icon for optimal timing
-- "Suggested" with clock icon when running late
-- "Overdue" with warning icon when past expected delivery
+## Visual Result
+The homepage will flow as:
+1. **Hero Section**:
+   - Video with "Listen to Example" button
+   - Headline + subheadline
+   - Single "Create Your Song" CTA button
+   - "As Seen On" logos immediately below (above the fold)
+   - Trust indicator text
 
-This ensures admins always have a one-click scheduling option while understanding the timing context.
+2. **Testimonials Section**:
+   - "Real stories from real customers" heading
+   - Clean 4x2 grid of text review cards
+   - Each card with stars, quote, author, verified badge
+
+3. **Trust Strip** (simplified):
+   - Just the 4.9 Rating and 1,000+ Families stats
