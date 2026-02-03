@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2 } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive } from "lucide-react";
 import { formatAdminDate } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
@@ -72,6 +72,8 @@ interface Order {
   automation_started_at: string | null;
   automation_retry_count: number | null;
   automation_last_error: string | null;
+  // Dismissal tracking
+  dismissed_at: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -125,6 +127,9 @@ export default function Admin() {
   const [savingOrderEdits, setSavingOrderEdits] = useState(false);
   // Order automation state
   const [triggeringOrderAutomation, setTriggeringOrderAutomation] = useState<string | null>(null);
+  // Order dismissal state
+  const [dismissedOrderFilter, setDismissedOrderFilter] = useState<"active" | "cancelled" | "all">("active");
+  const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -533,6 +538,44 @@ export default function Admin() {
     }
   };
 
+  // Handler for dismissing/restoring orders
+  const handleDismissOrder = async (order: Order, dismiss: boolean) => {
+    if (!password) return;
+    
+    setDismissingOrder(order.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "update_order_dismissal",
+          orderId: order.id,
+          dismissed: dismiss,
+          adminPassword: password,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: dismiss ? "Order Cancelled" : "Order Restored",
+        description: dismiss 
+          ? `Order for ${order.recipient_name} has been cancelled and hidden from active view.`
+          : `Order for ${order.recipient_name} has been restored to active status.`,
+      });
+
+      fetchOrders();
+    } catch (err) {
+      console.error("Order dismissal error:", err);
+      toast({
+        title: dismiss ? "Failed to Cancel" : "Failed to Restore",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setDismissingOrder(null);
+    }
+  };
+
   useEffect(() => {
     // Intentionally do not auto-authenticate via browser storage.
     // Admin access must always be validated server-side.
@@ -678,6 +721,16 @@ export default function Admin() {
                   <SelectItem value="oldest">Oldest First</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={dismissedOrderFilter} onValueChange={(v) => setDismissedOrderFilter(v as "active" | "cancelled" | "all")}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Show" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active Only</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                </SelectContent>
+              </Select>
               <Input
                 placeholder="Search orders..."
                 value={orderSearch}
@@ -719,6 +772,11 @@ export default function Admin() {
 
             {(() => {
               const filteredOrders = orders.filter((order) => {
+                // First apply dismissed filter
+                if (dismissedOrderFilter === "active" && order.dismissed_at) return false;
+                if (dismissedOrderFilter === "cancelled" && !order.dismissed_at) return false;
+                
+                // Then apply search filter
                 if (!orderSearch.trim()) return true;
                 const searchLower = orderSearch.toLowerCase();
                 return (
@@ -752,18 +810,27 @@ export default function Admin() {
                     const dateB = new Date(b.created_at).getTime();
                   return orderSort === "latest" ? dateB - dateA : dateA - dateB;
                 }).map((order) => (
-                  <Card key={order.id} className="hover:shadow-md transition-shadow">
+                  <Card 
+                    key={order.id} 
+                    className={`hover:shadow-md transition-shadow ${order.dismissed_at ? "opacity-60 bg-muted/50" : ""}`}
+                  >
                     <CardContent className="p-6">
                       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                         <div className="space-y-2 flex-1">
                           <div className="flex items-center gap-3 flex-wrap">
-                            <h3 className="font-semibold text-lg">
+                            <h3 className={`font-semibold text-lg ${order.dismissed_at ? "line-through text-muted-foreground" : ""}`}>
                               {order.customer_name}
                             </h3>
                             <Badge className={statusColors[order.status] || "bg-gray-100 text-gray-800"}>
                               <span className="mr-1">{statusIcons[order.status]}</span>
                               {order.status}
                             </Badge>
+                            {order.dismissed_at && (
+                              <Badge variant="outline" className="border-red-300 text-red-600">
+                                <Archive className="h-3 w-3 mr-1" />
+                                Cancelled
+                              </Badge>
+                            )}
                             <Badge variant="outline">
                               {order.pricing_tier === "priority" ? "Priority" : "Standard"}
                             </Badge>
@@ -813,8 +880,39 @@ export default function Admin() {
                           )}
                         </div>
                         <div className="flex gap-2 flex-wrap">
-                          {/* AI Generate button - show when no song_url and not currently generating */}
-                          {!order.song_url && !["pending", "lyrics_generating", "audio_generating"].includes(order.automation_status || "") && (
+                          {/* Cancel/Restore buttons */}
+                          {!order.dismissed_at ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDismissOrder(order, true)}
+                              disabled={dismissingOrder === order.id}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              {dismissingOrder === order.id ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <X className="h-4 w-4 mr-2" />
+                              )}
+                              Cancel
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDismissOrder(order, false)}
+                              disabled={dismissingOrder === order.id}
+                            >
+                              {dismissingOrder === order.id ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-4 w-4 mr-2" />
+                              )}
+                              Restore
+                            </Button>
+                          )}
+                          {/* AI Generate button - show when no song_url and not currently generating and not dismissed */}
+                          {!order.dismissed_at && !order.song_url && !["pending", "lyrics_generating", "audio_generating"].includes(order.automation_status || "") && (
                             <Button
                               variant="outline"
                               size="sm"

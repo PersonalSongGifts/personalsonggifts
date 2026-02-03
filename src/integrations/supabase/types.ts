@@ -199,6 +199,7 @@ export type Database = {
           customer_phone: string | null
           delivered_at: string | null
           device_type: string | null
+          dismissed_at: string | null
           expected_delivery: string | null
           favorite_memory: string
           genre: string
@@ -245,6 +246,7 @@ export type Database = {
           customer_phone?: string | null
           delivered_at?: string | null
           device_type?: string | null
+          dismissed_at?: string | null
           expected_delivery?: string | null
           favorite_memory: string
           genre: string
@@ -291,6 +293,7 @@ export type Database = {
           customer_phone?: string | null
           delivered_at?: string | null
           device_type?: string | null
+          dismissed_at?: string | null
           expected_delivery?: string | null
           favorite_memory?: string
           genre?: string

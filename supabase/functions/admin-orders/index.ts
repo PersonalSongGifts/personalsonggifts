@@ -624,6 +624,52 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Update order dismissal/cancellation status
+      if (body?.action === "update_order_dismissal") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        const dismissed = body.dismissed === true;
+
+        if (!orderId) {
+          return new Response(
+            JSON.stringify({ error: "Order ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // When dismissing: set dismissed_at, change status to cancelled, block automation
+        // When restoring: clear dismissed_at, restore status to paid
+        const updates: Record<string, unknown> = {
+          dismissed_at: dismissed ? new Date().toISOString() : null,
+          status: dismissed ? "cancelled" : "paid",
+        };
+
+        if (dismissed) {
+          // Block any in-progress automation from completing
+          updates.automation_manual_override_at = new Date().toISOString();
+          updates.automation_status = null;
+          updates.automation_last_error = "Cancelled by admin";
+        }
+
+        const { data: updatedOrder, error: updateError } = await supabase
+          .from("orders")
+          .update(updates)
+          .eq("id", orderId)
+          .select("*")
+          .single();
+
+        if (updateError) {
+          console.error("Failed to update order dismissal:", updateError);
+          throw updateError;
+        }
+
+        console.log(`Order ${orderId} ${dismissed ? "cancelled" : "restored"}`);
+
+        return new Response(
+          JSON.stringify({ order: updatedOrder }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Update order fields (editable fields)
       if (body?.action === "update_order_fields") {
         const orderId = typeof body.orderId === "string" ? body.orderId : null;
