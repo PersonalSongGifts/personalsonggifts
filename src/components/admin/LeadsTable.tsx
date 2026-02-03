@@ -1598,11 +1598,11 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               className="mt-2"
             >
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="4900" id="price-standard" />
+                <RadioGroupItem value="49" id="price-standard" />
                 <Label htmlFor="price-standard" className="cursor-pointer">$49 (Standard)</Label>
               </div>
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="7900" id="price-priority" />
+                <RadioGroupItem value="79" id="price-priority" />
                 <Label htmlFor="price-priority" className="cursor-pointer">$79 (Priority)</Label>
               </div>
             </RadioGroup>
