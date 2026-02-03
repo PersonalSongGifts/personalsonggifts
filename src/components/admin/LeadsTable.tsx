@@ -2,10 +2,11 @@ import { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw } from "lucide-react";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search } from "lucide-react";
 import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
@@ -92,6 +93,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [statusFilter, setStatusFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState("all");
   const [dismissedFilter, setDismissedFilter] = useState<"active" | "dismissed" | "all">("active");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -109,7 +111,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  // Filter by status, quality, and dismissed state
+  // Filter by status, quality, dismissed state, and search query
   const filteredLeads = leads
     .filter((lead) => {
       // Dismissed filter
@@ -125,6 +127,21 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       if (qualityFilter === "medium") return score >= 40 && score < 70;
       if (qualityFilter === "low") return score < 40;
       return true;
+    })
+    .filter((lead) => {
+      if (!searchQuery.trim()) return true;
+      const searchLower = searchQuery.toLowerCase();
+      return (
+        lead.customer_name.toLowerCase().includes(searchLower) ||
+        lead.email.toLowerCase().includes(searchLower) ||
+        lead.recipient_name.toLowerCase().includes(searchLower) ||
+        lead.genre.toLowerCase().includes(searchLower) ||
+        lead.special_qualities.toLowerCase().includes(searchLower) ||
+        lead.favorite_memory.toLowerCase().includes(searchLower) ||
+        (lead.special_message?.toLowerCase().includes(searchLower) ?? false) ||
+        (lead.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
+        lead.occasion.toLowerCase().includes(searchLower)
+      );
     })
     .sort((a, b) => {
       if (sort === "quality") {
@@ -559,6 +576,12 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
+          <Input
+            placeholder="Search leads..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-64"
+          />
           <span className="text-sm text-muted-foreground">
             {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""}
           </span>
