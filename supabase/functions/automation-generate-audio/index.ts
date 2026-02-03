@@ -5,6 +5,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Helper to normalize entity data from leads or orders
+interface EntityData {
+  id: string;
+  recipient_name: string;
+  genre: string;
+  singer_preference: string;
+  automation_manual_override_at?: string | null;
+  automation_lyrics?: string | null;
+  automation_retry_count?: number | null;
+  song_title?: string | null;
+}
+
+function normalizeEntityData(entity: Record<string, unknown>): EntityData {
+  return {
+    id: entity.id as string,
+    recipient_name: entity.recipient_name as string,
+    genre: entity.genre as string,
+    singer_preference: entity.singer_preference as string,
+    automation_manual_override_at: entity.automation_manual_override_at as string | null,
+    automation_lyrics: entity.automation_lyrics as string | null,
+    automation_retry_count: entity.automation_retry_count as number | null,
+    song_title: entity.song_title as string | null,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -17,13 +42,19 @@ Deno.serve(async (req) => {
       throw new Error("KIE_API_KEY not configured");
     }
 
-    const { leadId } = await req.json();
-    console.log(`[AUDIO] Starting audio generation for lead ${leadId}`);
+    const { leadId, orderId } = await req.json();
     
-    if (!leadId) {
-      console.error("[AUDIO] Missing leadId in request");
+    // Determine entity type
+    const entityType = orderId ? "order" : "lead";
+    const entityId = orderId || leadId;
+    const tableName = entityType === "order" ? "orders" : "leads";
+    
+    console.log(`[AUDIO] Starting audio generation for ${entityType} ${entityId}`);
+    
+    if (!entityId) {
+      console.error("[AUDIO] Missing entityId in request");
       return new Response(
-        JSON.stringify({ error: "leadId required" }),
+        JSON.stringify({ error: "leadId or orderId required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -33,26 +64,27 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch lead with lyrics
-    const { data: lead, error: fetchError } = await supabase
-      .from("leads")
+    // Fetch entity with lyrics
+    const { data: rawEntity, error: fetchError } = await supabase
+      .from(tableName)
       .select("*, song_styles!automation_style_id(*)")
-      .eq("id", leadId)
+      .eq("id", entityId)
       .single();
 
-    if (fetchError || !lead) {
-      console.error(`[AUDIO] Lead not found: ${leadId}`, fetchError);
+    if (fetchError || !rawEntity) {
+      console.error(`[AUDIO] ${entityType} not found: ${entityId}`, fetchError);
       return new Response(
-        JSON.stringify({ error: "Lead not found" }),
+        JSON.stringify({ error: `${entityType} not found` }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[AUDIO] Found lead: ${lead.recipient_name}, genre: ${lead.genre}, singer: ${lead.singer_preference}`);
+    const entity = normalizeEntityData(rawEntity);
+    console.log(`[AUDIO] Found ${entityType}: ${entity.recipient_name}, genre: ${entity.genre}, singer: ${entity.singer_preference}`);
 
     // Check if manual override is set
-    if (lead.automation_manual_override_at) {
-      console.log(`[AUDIO] Manual override active for lead ${lead.id}, skipping`);
+    if (entity.automation_manual_override_at) {
+      console.log(`[AUDIO] Manual override active for ${entityType} ${entity.id}, skipping`);
       return new Response(
         JSON.stringify({ error: "Manual override active, skipping automation" }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -60,15 +92,15 @@ Deno.serve(async (req) => {
     }
 
     // Ensure we have lyrics
-    if (!lead.automation_lyrics) {
-      console.error(`[AUDIO] No lyrics available for lead ${leadId}`);
+    if (!entity.automation_lyrics) {
+      console.error(`[AUDIO] No lyrics available for ${entityType} ${entityId}`);
       return new Response(
-        JSON.stringify({ error: "No lyrics available for this lead" }),
+        JSON.stringify({ error: `No lyrics available for this ${entityType}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[AUDIO] Lyrics available, length: ${lead.automation_lyrics.length} chars`);
+    console.log(`[AUDIO] Lyrics available, length: ${entity.automation_lyrics.length} chars`);
 
     // Match style based on genre and singer preference
     const genreMap: Record<string, string> = {
@@ -89,8 +121,8 @@ Deno.serve(async (req) => {
       "EDM": "edm",
     };
 
-    const normalizedGenre = genreMap[lead.genre] || "pop";
-    const vocalGender = lead.singer_preference?.toLowerCase() === "female" ? "female" : "male";
+    const normalizedGenre = genreMap[entity.genre] || "pop";
+    const vocalGender = entity.singer_preference?.toLowerCase() === "female" ? "female" : "male";
 
     console.log(`[AUDIO] Looking for style: genre=${normalizedGenre}, vocal=${vocalGender}`);
 
@@ -147,15 +179,15 @@ Deno.serve(async (req) => {
       console.log(`[AUDIO] Found exact style match: ${style.label}`);
     }
 
-    // Update lead with style selection and reset timer for accurate STUCK detection
+    // Update entity with style selection and reset timer for accurate STUCK detection
     await supabase
-      .from("leads")
+      .from(tableName)
       .update({ 
         automation_status: "audio_generating",
         automation_style_id: selectedStyle.id,
         automation_started_at: new Date().toISOString(), // Reset timer for audio phase
       })
-      .eq("id", leadId);
+      .eq("id", entityId);
 
     // Increment style usage count
     if (selectedStyle.id) {
@@ -165,12 +197,12 @@ Deno.serve(async (req) => {
         .eq("id", selectedStyle.id);
     }
 
-    // Build callback URL
+    // Build callback URL with entity type info encoded in taskId prefix
     const callbackUrl = `${supabaseUrl}/functions/v1/automation-suno-callback`;
     console.log(`[AUDIO] Callback URL: ${callbackUrl}`);
 
     // Use customMode for better quality: separate style, title, and lyrics
-    const songTitle = lead.song_title || `Song for ${lead.recipient_name}`;
+    const songTitle = entity.song_title || `Song for ${entity.recipient_name}`;
 
     console.log(`[AUDIO] Calling Suno API via Kie.ai`);
     console.log(`[AUDIO] Style: ${selectedStyle.suno_prompt?.substring(0, 80)}...`);
@@ -185,12 +217,12 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        prompt: lead.automation_lyrics,           // Lyrics only in prompt
-        style: selectedStyle.suno_prompt,         // Style prompt separately
-        title: songTitle,                         // Title separately
-        customMode: true,                         // Enable custom mode for better control
+        prompt: entity.automation_lyrics,           // Lyrics only in prompt
+        style: selectedStyle.suno_prompt,           // Style prompt separately
+        title: songTitle,                           // Title separately
+        customMode: true,                           // Enable custom mode for better control
         instrumental: false,
-        model: "V4_5",                            // Upgraded from V3_5 for smarter prompts
+        model: "V4_5",                              // Upgraded from V3_5 for smarter prompts
         callBackUrl: callbackUrl,
       }),
     });
@@ -202,13 +234,13 @@ Deno.serve(async (req) => {
       console.error(`[AUDIO] Suno API error: ${sunoResponse.status}`, errorText);
       
       await supabase
-        .from("leads")
+        .from(tableName)
         .update({
           automation_status: "failed",
           automation_last_error: `[AUDIO] Suno API error: ${sunoResponse.status} - ${errorText.substring(0, 200)}`,
-          automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          automation_retry_count: (entity.automation_retry_count || 0) + 1,
         })
-        .eq("id", leadId);
+        .eq("id", entityId);
 
       return new Response(
         JSON.stringify({ error: "Audio generation failed", details: errorText }),
@@ -223,13 +255,13 @@ Deno.serve(async (req) => {
       console.error("[AUDIO] Invalid Suno response:", sunoData);
       
       await supabase
-        .from("leads")
+        .from(tableName)
         .update({
           automation_status: "failed",
           automation_last_error: `[AUDIO] Invalid Suno response: ${sunoData?.msg || "No taskId returned"}`,
-          automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          automation_retry_count: (entity.automation_retry_count || 0) + 1,
         })
-        .eq("id", leadId);
+        .eq("id", entityId);
 
       return new Response(
         JSON.stringify({ error: "Invalid Suno response", details: sunoData }),
@@ -242,17 +274,18 @@ Deno.serve(async (req) => {
 
     // Store task ID for callback matching
     await supabase
-      .from("leads")
+      .from(tableName)
       .update({ automation_task_id: taskId })
-      .eq("id", leadId);
+      .eq("id", entityId);
 
-    console.log(`[AUDIO] TaskId saved to lead ${leadId}`);
+    console.log(`[AUDIO] TaskId saved to ${entityType} ${entityId}`);
     console.log(`[AUDIO] Waiting for callback from Suno (1-3 minutes)`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        leadId,
+        entityType,
+        entityId,
         taskId,
         styleUsed: selectedStyle.label || selectedStyle.suno_prompt?.substring(0, 50),
         callbackUrl,

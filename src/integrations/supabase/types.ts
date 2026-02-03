@@ -184,6 +184,14 @@ export type Database = {
       }
       orders: {
         Row: {
+          automation_last_error: string | null
+          automation_lyrics: string | null
+          automation_manual_override_at: string | null
+          automation_retry_count: number | null
+          automation_started_at: string | null
+          automation_status: string | null
+          automation_style_id: string | null
+          automation_task_id: string | null
           cover_image_url: string | null
           created_at: string
           customer_email: string
@@ -222,6 +230,14 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          automation_last_error?: string | null
+          automation_lyrics?: string | null
+          automation_manual_override_at?: string | null
+          automation_retry_count?: number | null
+          automation_started_at?: string | null
+          automation_status?: string | null
+          automation_style_id?: string | null
+          automation_task_id?: string | null
           cover_image_url?: string | null
           created_at?: string
           customer_email: string
@@ -260,6 +276,14 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          automation_last_error?: string | null
+          automation_lyrics?: string | null
+          automation_manual_override_at?: string | null
+          automation_retry_count?: number | null
+          automation_started_at?: string | null
+          automation_status?: string | null
+          automation_style_id?: string | null
+          automation_task_id?: string | null
           cover_image_url?: string | null
           created_at?: string
           customer_email?: string
@@ -297,7 +321,15 @@ export type Database = {
           utm_source?: string | null
           utm_term?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orders_automation_style_id_fkey"
+            columns: ["automation_style_id"]
+            isOneToOne: false
+            referencedRelation: "song_styles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       song_styles: {
         Row: {
