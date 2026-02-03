@@ -22,8 +22,8 @@ Deno.serve(async (req) => {
     // This job runs frequently, so we can "poke" the existing callback handler
     // for any lead that's been generating for a while, letting it finalize from
     // canonical task status.
-    const AUDIO_RECOVERY_AFTER_MINUTES = 10;
-    const MAX_AUDIO_RECOVERIES_PER_RUN = 1;
+    const AUDIO_RECOVERY_AFTER_MINUTES = 5;  // Reduced from 10 for faster recovery
+    const MAX_AUDIO_RECOVERIES_PER_RUN = 3;  // Increased from 1 to handle multiple stuck jobs
 
     try {
       const cutoffIso = new Date(

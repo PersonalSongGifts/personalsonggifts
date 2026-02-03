@@ -434,6 +434,72 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Manually recover audio for a stuck lead - re-invokes the callback handler
+      if (body?.action === "recover_audio") {
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "Lead ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Fetch lead to get taskId
+        const { data: lead, error: leadError } = await supabase
+          .from("leads")
+          .select("id, automation_task_id, automation_status")
+          .eq("id", leadId)
+          .single();
+
+        if (leadError || !lead) {
+          return new Response(
+            JSON.stringify({ error: "Lead not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (!lead.automation_task_id) {
+          return new Response(
+            JSON.stringify({ error: "No automation task ID found for this lead" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (lead.automation_status !== "audio_generating") {
+          return new Response(
+            JSON.stringify({ error: `Lead is not in audio_generating state (current: ${lead.automation_status})` }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        console.log(`[RECOVER] Manual recovery triggered for lead ${leadId}, taskId=${lead.automation_task_id}`);
+
+        // Re-invoke the callback handler (same as scheduled recovery)
+        const recoveryResp = await fetch(
+          `${supabaseUrl}/functions/v1/automation-suno-callback`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              taskId: lead.automation_task_id,
+              data: { task_id: lead.automation_task_id },
+            }),
+          }
+        );
+
+        const recoveryBody = await recoveryResp.text();
+        console.log(`[RECOVER] automation-suno-callback response: ${recoveryResp.status} ${recoveryBody.substring(0, 300)}`);
+
+        return new Response(
+          JSON.stringify({ success: true, status: recoveryResp.status, response: recoveryBody.substring(0, 200) }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Update lead preview schedule (used by Leads UI). This must be server-side because leads are not client-updatable.
       if (body?.action === "update_lead_preview_schedule") {
         const leadId = typeof body.leadId === "string" ? body.leadId : null;
