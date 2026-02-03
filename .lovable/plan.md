@@ -1,219 +1,47 @@
 
-# AI Automation Control Panel
+# Fix: Manual Automation Trigger Ignoring Quality Threshold
 
-## What You'll Get
+## The Problem
 
-A dedicated control center in the Admin dashboard to manage AI song generation with:
+When you manually trigger automation from the Automation dashboard, the system still enforces the quality score threshold. This happens because:
 
-1. **Global Start/Stop Toggle** - Pause or resume all automated song generation
-2. **Queue Dashboard** - See all leads currently being processed by AI
-3. **Progress Tracking** - Real-time status of each lead in the pipeline
-4. **Manual Controls** - Trigger, pause, or retry automation for specific leads
-5. **Settings Panel** - Adjust quality threshold and other automation parameters
+1. The `batch_trigger_automation` action in `admin-orders/index.ts` (line 342) calls `automation-trigger` with just `{ leadId }`
+2. The `automation-trigger` function defaults `forceRun` to `false`
+3. Without `forceRun: true`, the quality check on lines 77-87 rejects low-quality leads
 
----
+## The Fix
 
-## New "Automation" Tab in Admin Dashboard
+Pass `forceRun: true` when the trigger comes from the admin dashboard (manual action). This bypasses the quality threshold check for intentional manual triggers.
 
-```text
-+------------------------------------------------------------------+
-| Analytics | Orders | Reactions | Leads | Emails | AUTOMATION     |
-+------------------------------------------------------------------+
+### File: `supabase/functions/admin-orders/index.ts`
 
-┌─────────────────────────────────────────────────────────────────┐
-│ AI Song Generation                                              │
-│                                                                 │
-│ ┌───────────────────────┐  ┌──────────────────────────────────┐│
-│ │ AUTOMATION STATUS     │  │ Quick Stats                      ││
-│ │                       │  │                                  ││
-│ │   [====] RUNNING      │  │  In Queue: 3                     ││
-│ │                       │  │  Generating Lyrics: 1            ││
-│ │ Quality Threshold: 65 │  │  Generating Audio: 2             ││
-│ │ [  -  ] [65] [  +  ]  │  │  Completed Today: 12             ││
-│ │                       │  │  Failed: 1                       ││
-│ └───────────────────────┘  └──────────────────────────────────┘│
-│                                                                 │
-│ ┌───────────────────────────────────────────────────────────────┐
-│ │ Active Jobs                                           [Refresh]│
-│ ├───────────────────────────────────────────────────────────────┤
-│ │ Lead           Status              Started      Actions       │
-│ ├───────────────────────────────────────────────────────────────┤
-│ │ Crystal        [●] Generating      2 min ago    [Pause][View] │
-│ │                Audio...                                       │
-│ │ Jordan         [●] Lyrics Ready    5 min ago    [Cancel]      │
-│ │ Mark           [✓] Completed       10 min ago   [View Song]   │
-│ │ Bianca         [✗] Failed          15 min ago   [Retry][View] │
-│ │                "Suno API timeout"                             │
-│ └───────────────────────────────────────────────────────────────┘
-│                                                                 │
-│ ┌───────────────────────────────────────────────────────────────┐
-│ │ Eligible Leads (Quality >= 65, No Song)              [Run All]│
-│ ├───────────────────────────────────────────────────────────────┤
-│ │ [ ] Crystal (Score: 80) - Valentine's Day, Pop               │
-│ │ [ ] Reggie (Score: 80) - Birthday, Country                   │
-│ │ [ ] Shakiethia (Score: 75) - Anniversary, R&B                │
-│ │ [ ] Mark (Score: 75) - Mother's Day, Acoustic                │
-│ │                                                               │
-│ │ Selected: 0        [Generate Selected]                        │
-│ └───────────────────────────────────────────────────────────────┘
-└─────────────────────────────────────────────────────────────────┘
-```
+Update the batch_trigger_automation action (line 342):
 
----
-
-## Features Breakdown
-
-### 1. Global Automation Toggle
-
-- **ON/OFF switch** stored in `admin_settings` table
-- When OFF, `capture-lead` function skips auto-triggering
-- When OFF, manual triggers still work
-- Visual indicator shows current state
-
-### 2. Active Jobs Panel
-
-Shows leads currently in the automation pipeline:
-- Status badges with progress indicators
-- Time since job started
-- View lyrics (if generated)
-- Cancel/retry options
-- Error messages for failed jobs
-
-### 3. Eligible Leads Queue
-
-Lists leads that qualify for automation but haven't been processed:
-- Multi-select checkboxes
-- "Generate Selected" to batch trigger
-- "Run All Eligible" for bulk processing
-- Filter by quality score
-
-### 4. Settings Panel
-
-- Quality threshold slider (0-100)
-- Save changes in real-time
-
----
-
-## Database Changes
-
-Add one new setting to `admin_settings`:
-
-| Key | Default Value | Description |
-|-----|---------------|-------------|
-| `automation_enabled` | `true` | Global on/off for auto-triggering |
-
----
-
-## Edge Function Updates
-
-### `capture-lead/index.ts`
-
-Add check before auto-triggering:
-
+**Before:**
 ```typescript
-// Check if automation is globally enabled
-const { data: enabledSetting } = await supabase
-  .from("admin_settings")
-  .select("value")
-  .eq("key", "automation_enabled")
-  .single();
-
-const automationEnabled = enabledSetting?.value !== "false";
-
-if (!automationEnabled) {
-  console.log("Automation disabled globally, skipping auto-trigger");
-  return;
-}
+body: JSON.stringify({ leadId }),
 ```
 
-### `admin-orders/index.ts`
-
-Add new actions:
-- `get_automation_status` - Returns queue stats and active jobs
-- `batch_trigger_automation` - Triggers automation for multiple leads
-- `cancel_automation` - Cancels a running automation job
-
----
-
-## Frontend Components
-
-### New File: `src/components/admin/AutomationDashboard.tsx`
-
-Contains:
-- `AutomationToggle` - Global on/off switch
-- `ActiveJobsTable` - Shows leads in pipeline
-- `EligibleLeadsQueue` - Shows leads ready for automation
-- `AutomationSettings` - Quality threshold control
-
----
-
-## Files to Create/Modify
-
-| File | Change |
-|------|--------|
-| `src/components/admin/AutomationDashboard.tsx` | **New** - Main automation control component |
-| `src/pages/Admin.tsx` | Add "Automation" tab |
-| `supabase/functions/admin-orders/index.ts` | Add automation management actions |
-| `supabase/functions/capture-lead/index.ts` | Check `automation_enabled` before auto-trigger |
-| `admin_settings` table | Add `automation_enabled` setting (via edge function) |
-
----
-
-## Technical Implementation
-
-### Automation Status Endpoint
-
+**After:**
 ```typescript
-// GET /admin-orders with action: "get_automation_status"
-Response: {
-  enabled: true,
-  qualityThreshold: 65,
-  stats: {
-    pending: 1,
-    lyricsGenerating: 0,
-    audioGenerating: 2,
-    completedToday: 12,
-    failedToday: 1
-  },
-  activeJobs: [
-    { leadId, recipientName, status, startedAt, error },
-    ...
-  ],
-  eligibleLeads: [
-    { id, recipientName, qualityScore, genre, occasion },
-    ...
-  ]
-}
+body: JSON.stringify({ leadId, forceRun: true }),
 ```
 
-### Batch Trigger
+Also update the retry_automation action to pass `forceRun: true` for consistency.
 
-```typescript
-// POST /admin-orders with action: "batch_trigger_automation"
-Body: { leadIds: ["uuid1", "uuid2", ...] }
-Response: {
-  triggered: 3,
-  skipped: 1,
-  errors: [{ leadId, error }]
-}
-```
+### File: `supabase/functions/automation-trigger/index.ts`
+
+No changes needed - it already supports `forceRun: true` and bypasses all checks when set.
 
 ---
 
-## How It Works
+## Behavior After Fix
 
-1. **New lead comes in** via `capture-lead`
-2. Function checks if `automation_enabled` = true
-3. If enabled AND quality >= threshold, triggers `automation-trigger`
-4. Lead appears in "Active Jobs" panel
-5. Admin can monitor progress, retry failures, or manually trigger more
+| Trigger Source | Quality Check | When It Runs |
+|----------------|--------------|--------------|
+| New lead capture (automatic) | YES - enforces threshold | Only if quality >= threshold |
+| Admin dashboard "Generate" button | NO - bypasses threshold | Always runs |
+| Admin dashboard "Retry" button | NO - bypasses threshold | Always runs |
+| "Run All Eligible" button | NO - bypasses threshold | Always runs |
 
----
-
-## Success Criteria
-
-- Toggle turns automation on/off globally
-- Active jobs show real-time status
-- Eligible leads can be batch-triggered
-- Quality threshold is adjustable
-- Failed jobs show error details and retry option
+This gives you full control from the admin panel to manually run automation on any lead, regardless of quality score.
