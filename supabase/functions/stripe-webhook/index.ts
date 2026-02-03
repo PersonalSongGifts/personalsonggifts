@@ -6,6 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
 };
 
+// Timing constants
+const STABILIZATION_MINUTES = 5; // Wait before generation starts
+const HOURS_BEFORE_EXPECTED_TO_SEND = 12; // Send 12h before expected delivery
+
 function calculateExpectedDelivery(tier: string): string {
   const now = new Date();
   if (tier === "priority") {
@@ -14,6 +18,42 @@ function calculateExpectedDelivery(tier: string): string {
   }
   // 48 hours from now for standard
   return new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
+}
+
+// Compute timing fields for background automation
+function computeOrderTiming(expectedDelivery: string): {
+  earliestGenerateAt: string;
+  targetSendAt: string;
+} {
+  const now = Date.now();
+  const expectedMs = new Date(expectedDelivery).getTime();
+  
+  // Earliest generation: 5 minutes from now (stabilization window)
+  const earliestGenerateAt = new Date(now + STABILIZATION_MINUTES * 60 * 1000).toISOString();
+  
+  // Target send: 12 hours before expected delivery
+  let targetSendMs = expectedMs - HOURS_BEFORE_EXPECTED_TO_SEND * 60 * 60 * 1000;
+  
+  // If target send is in the past, add 30-minute buffer
+  if (targetSendMs <= now) {
+    targetSendMs = now + 30 * 60 * 1000;
+    console.log(`[WEBHOOK] target_send_at was past, adjusted to ${new Date(targetSendMs).toISOString()}`);
+  }
+  
+  return {
+    earliestGenerateAt,
+    targetSendAt: new Date(targetSendMs).toISOString(),
+  };
+}
+
+// Compute hash of key input fields for change detection
+async function computeInputsHash(fields: string[]): Promise<string> {
+  const combined = fields.join('|');
+  const encoder = new TextEncoder();
+  const data = encoder.encode(combined);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
 }
 
 Deno.serve(async (req) => {
@@ -119,10 +159,23 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Create the order
+      // Create the order with timing fields for background automation
       const pricingTier = metadata.pricingTier || "standard";
       const price = pricingTier === "priority" ? 79 : 49;
       const expectedDelivery = calculateExpectedDelivery(pricingTier);
+      
+      // Compute timing for background automation
+      const timing = computeOrderTiming(expectedDelivery);
+      console.log(`[WEBHOOK] Order timing: generate after ${timing.earliestGenerateAt}, send at ${timing.targetSendAt}`);
+      
+      // Compute inputs hash for change detection
+      const inputsHash = await computeInputsHash([
+        metadata.recipientName || "",
+        metadata.specialQualities || "",
+        metadata.favoriteMemory || "",
+        metadata.genre || "",
+        metadata.occasion || "",
+      ]);
 
       const { data: newOrder, error: insertError } = await supabase
         .from("orders")
@@ -144,6 +197,11 @@ Deno.serve(async (req) => {
           device_type: "Web",
           notes: `stripe_session:${session.id}`,
           status: "paid",
+          // Background automation timing fields
+          earliest_generate_at: timing.earliestGenerateAt,
+          target_send_at: timing.targetSendAt,
+          inputs_hash: inputsHash,
+          delivery_status: "pending",
           // UTM tracking fields
           utm_source: metadata.utmSource || null,
           utm_medium: metadata.utmMedium || null,

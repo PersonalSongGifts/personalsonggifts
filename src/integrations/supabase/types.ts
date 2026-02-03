@@ -37,6 +37,7 @@ export type Database = {
           automation_last_error: string | null
           automation_lyrics: string | null
           automation_manual_override_at: string | null
+          automation_raw_callback: Json | null
           automation_retry_count: number | null
           automation_started_at: string | null
           automation_status: string | null
@@ -47,12 +48,16 @@ export type Database = {
           cover_image_url: string | null
           customer_name: string
           dismissed_at: string | null
+          earliest_generate_at: string | null
           email: string
           favorite_memory: string
           follow_up_sent_at: string | null
           full_song_url: string | null
+          generated_at: string | null
           genre: string
           id: string
+          inputs_hash: string | null
+          next_attempt_at: string | null
           occasion: string
           order_id: string | null
           phone: string | null
@@ -66,11 +71,13 @@ export type Database = {
           quality_score: number | null
           recipient_name: string
           recipient_type: string
+          sent_at: string | null
           singer_preference: string
           song_title: string | null
           special_message: string | null
           special_qualities: string
           status: string
+          target_send_at: string | null
           utm_campaign: string | null
           utm_content: string | null
           utm_medium: string | null
@@ -81,6 +88,7 @@ export type Database = {
           automation_last_error?: string | null
           automation_lyrics?: string | null
           automation_manual_override_at?: string | null
+          automation_raw_callback?: Json | null
           automation_retry_count?: number | null
           automation_started_at?: string | null
           automation_status?: string | null
@@ -91,12 +99,16 @@ export type Database = {
           cover_image_url?: string | null
           customer_name: string
           dismissed_at?: string | null
+          earliest_generate_at?: string | null
           email: string
           favorite_memory: string
           follow_up_sent_at?: string | null
           full_song_url?: string | null
+          generated_at?: string | null
           genre: string
           id?: string
+          inputs_hash?: string | null
+          next_attempt_at?: string | null
           occasion: string
           order_id?: string | null
           phone?: string | null
@@ -110,11 +122,13 @@ export type Database = {
           quality_score?: number | null
           recipient_name: string
           recipient_type: string
+          sent_at?: string | null
           singer_preference: string
           song_title?: string | null
           special_message?: string | null
           special_qualities: string
           status?: string
+          target_send_at?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -125,6 +139,7 @@ export type Database = {
           automation_last_error?: string | null
           automation_lyrics?: string | null
           automation_manual_override_at?: string | null
+          automation_raw_callback?: Json | null
           automation_retry_count?: number | null
           automation_started_at?: string | null
           automation_status?: string | null
@@ -135,12 +150,16 @@ export type Database = {
           cover_image_url?: string | null
           customer_name?: string
           dismissed_at?: string | null
+          earliest_generate_at?: string | null
           email?: string
           favorite_memory?: string
           follow_up_sent_at?: string | null
           full_song_url?: string | null
+          generated_at?: string | null
           genre?: string
           id?: string
+          inputs_hash?: string | null
+          next_attempt_at?: string | null
           occasion?: string
           order_id?: string | null
           phone?: string | null
@@ -154,11 +173,13 @@ export type Database = {
           quality_score?: number | null
           recipient_name?: string
           recipient_type?: string
+          sent_at?: string | null
           singer_preference?: string
           song_title?: string | null
           special_message?: string | null
           special_qualities?: string
           status?: string
+          target_send_at?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -187,6 +208,7 @@ export type Database = {
           automation_last_error: string | null
           automation_lyrics: string | null
           automation_manual_override_at: string | null
+          automation_raw_callback: Json | null
           automation_retry_count: number | null
           automation_started_at: string | null
           automation_status: string | null
@@ -198,12 +220,19 @@ export type Database = {
           customer_name: string
           customer_phone: string | null
           delivered_at: string | null
+          delivery_last_error: string | null
+          delivery_retry_count: number | null
+          delivery_status: string | null
           device_type: string | null
           dismissed_at: string | null
+          earliest_generate_at: string | null
           expected_delivery: string | null
           favorite_memory: string
+          generated_at: string | null
           genre: string
           id: string
+          inputs_hash: string | null
+          next_attempt_at: string | null
           notes: string | null
           occasion: string
           price: number
@@ -214,6 +243,7 @@ export type Database = {
           recipient_type: string
           resend_scheduled_at: string | null
           scheduled_delivery_at: string | null
+          sent_at: string | null
           singer_preference: string
           song_download_count: number | null
           song_downloaded_at: string | null
@@ -224,6 +254,7 @@ export type Database = {
           special_message: string | null
           special_qualities: string
           status: string
+          target_send_at: string | null
           utm_campaign: string | null
           utm_content: string | null
           utm_medium: string | null
@@ -234,6 +265,7 @@ export type Database = {
           automation_last_error?: string | null
           automation_lyrics?: string | null
           automation_manual_override_at?: string | null
+          automation_raw_callback?: Json | null
           automation_retry_count?: number | null
           automation_started_at?: string | null
           automation_status?: string | null
@@ -245,12 +277,19 @@ export type Database = {
           customer_name: string
           customer_phone?: string | null
           delivered_at?: string | null
+          delivery_last_error?: string | null
+          delivery_retry_count?: number | null
+          delivery_status?: string | null
           device_type?: string | null
           dismissed_at?: string | null
+          earliest_generate_at?: string | null
           expected_delivery?: string | null
           favorite_memory: string
+          generated_at?: string | null
           genre: string
           id?: string
+          inputs_hash?: string | null
+          next_attempt_at?: string | null
           notes?: string | null
           occasion: string
           price: number
@@ -261,6 +300,7 @@ export type Database = {
           recipient_type: string
           resend_scheduled_at?: string | null
           scheduled_delivery_at?: string | null
+          sent_at?: string | null
           singer_preference: string
           song_download_count?: number | null
           song_downloaded_at?: string | null
@@ -271,6 +311,7 @@ export type Database = {
           special_message?: string | null
           special_qualities: string
           status?: string
+          target_send_at?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -281,6 +322,7 @@ export type Database = {
           automation_last_error?: string | null
           automation_lyrics?: string | null
           automation_manual_override_at?: string | null
+          automation_raw_callback?: Json | null
           automation_retry_count?: number | null
           automation_started_at?: string | null
           automation_status?: string | null
@@ -292,12 +334,19 @@ export type Database = {
           customer_name?: string
           customer_phone?: string | null
           delivered_at?: string | null
+          delivery_last_error?: string | null
+          delivery_retry_count?: number | null
+          delivery_status?: string | null
           device_type?: string | null
           dismissed_at?: string | null
+          earliest_generate_at?: string | null
           expected_delivery?: string | null
           favorite_memory?: string
+          generated_at?: string | null
           genre?: string
           id?: string
+          inputs_hash?: string | null
+          next_attempt_at?: string | null
           notes?: string | null
           occasion?: string
           price?: number
@@ -308,6 +357,7 @@ export type Database = {
           recipient_type?: string
           resend_scheduled_at?: string | null
           scheduled_delivery_at?: string | null
+          sent_at?: string | null
           singer_preference?: string
           song_download_count?: number | null
           song_downloaded_at?: string | null
@@ -318,6 +368,7 @@ export type Database = {
           special_message?: string | null
           special_qualities?: string
           status?: string
+          target_send_at?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
