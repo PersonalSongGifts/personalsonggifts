@@ -1,102 +1,126 @@
 
 
-# Plan: Add Full Traffic Source Information to Order & Lead Details
+# Plan: Add Search Functionality to Orders and Leads
 
-## What You're Getting
+## Overview
+Add a search bar to both the Orders and Leads tabs in the admin panel that allows searching by:
+- Customer name (first or last)
+- Email address
+- Recipient name
+- Music style/genre
+- Keywords in request fields (special qualities, favorite memory, special message)
 
-Each order and lead will show exactly where the customer came from - including the complete UTM tracking breakdown in the detail dialogs.
-
-## Current State
-- **Cards show source badge**: `facebook / cpc` (already implemented)
-- **Dialogs don't show source details**: Missing the full campaign, content, and term information
-
-## Changes to Make
-
-### 1. Add Source Section to Order Details Dialog
-In the Order Details dialog (`Admin.tsx`), add a new "Traffic Source" section after the Customer/Recipient info showing:
-- Source (e.g., facebook)
-- Medium (e.g., cpc)
-- Campaign (e.g., valentines2026)
-- Content (if set)
-- Term (if set)
-
-Will display "Direct" if no UTM data exists.
-
-### 2. Add Source Section to Lead Details Dialog
-In the Lead Details dialog (`LeadsTable.tsx`), add a similar "Traffic Source" section showing the same UTM breakdown.
-
-### 3. Display Format
-Both will show as a clean grid like:
-```
-Traffic Source
-Source: facebook    Medium: cpc
-Campaign: valentines2026
-Content: ad_variant_a    Term: personalized gifts
-```
-
-If no UTM data exists, it will show:
-```
-Traffic Source: Direct (no tracking data)
-```
+## Implementation Approach: Client-Side Filtering
+Since orders and leads are already fetched in full from the backend, I'll implement **instant client-side search** - no API changes needed. This provides immediate search results as you type.
 
 ---
 
 ## Technical Changes
 
-### File: `src/pages/Admin.tsx`
-**Add after line 633 (after Recipient section):**
+### 1. Admin.tsx (Orders Tab)
+
+**Add search state:**
 ```tsx
-{/* Traffic Source Section */}
-<div className="col-span-2">
-  <h4 className="font-medium text-sm text-muted-foreground mb-1">Traffic Source</h4>
-  {selectedOrder.utm_source ? (
-    <div className="grid grid-cols-2 gap-2 text-sm">
-      <div><span className="text-muted-foreground">Source:</span> {selectedOrder.utm_source}</div>
-      {selectedOrder.utm_medium && (
-        <div><span className="text-muted-foreground">Medium:</span> {selectedOrder.utm_medium}</div>
-      )}
-      {selectedOrder.utm_campaign && (
-        <div className="col-span-2"><span className="text-muted-foreground">Campaign:</span> {selectedOrder.utm_campaign}</div>
-      )}
-      {selectedOrder.utm_content && (
-        <div><span className="text-muted-foreground">Content:</span> {selectedOrder.utm_content}</div>
-      )}
-      {selectedOrder.utm_term && (
-        <div><span className="text-muted-foreground">Term:</span> {selectedOrder.utm_term}</div>
-      )}
-    </div>
-  ) : (
-    <p className="text-sm text-muted-foreground italic">Direct (no tracking data)</p>
-  )}
-</div>
+const [orderSearch, setOrderSearch] = useState("");
 ```
 
-### File: `src/components/admin/LeadsTable.tsx`
-**Add to the details grid section (around line 1200, after the engagement tracking section):**
+**Add search input after status filter:**
 ```tsx
-{/* Traffic Source Section */}
-<div className="col-span-2 border-t pt-3 mt-2">
-  <h4 className="font-medium text-sm mb-2">Traffic Source</h4>
-  {selectedLead.utm_source ? (
-    <div className="grid grid-cols-2 gap-2 text-sm">
-      <div><span className="text-muted-foreground">Source:</span> {selectedLead.utm_source}</div>
-      {selectedLead.utm_medium && (
-        <div><span className="text-muted-foreground">Medium:</span> {selectedLead.utm_medium}</div>
-      )}
-      {selectedLead.utm_campaign && (
-        <div className="col-span-2"><span className="text-muted-foreground">Campaign:</span> {selectedLead.utm_campaign}</div>
-      )}
-      {selectedLead.utm_content && (
-        <div><span className="text-muted-foreground">Content:</span> {selectedLead.utm_content}</div>
-      )}
-      {selectedLead.utm_term && (
-        <div><span className="text-muted-foreground">Term:</span> {selectedLead.utm_term}</div>
-      )}
-    </div>
-  ) : (
-    <p className="text-sm text-muted-foreground italic">Direct (no tracking data)</p>
-  )}
-</div>
+<Input
+  placeholder="Search orders..."
+  value={orderSearch}
+  onChange={(e) => setOrderSearch(e.target.value)}
+  className="w-64"
+/>
+```
+
+**Add filtering logic:**
+```tsx
+const filteredOrders = orders.filter((order) => {
+  if (!orderSearch.trim()) return true;
+  const searchLower = orderSearch.toLowerCase();
+  return (
+    order.customer_name.toLowerCase().includes(searchLower) ||
+    order.customer_email.toLowerCase().includes(searchLower) ||
+    order.recipient_name.toLowerCase().includes(searchLower) ||
+    order.genre.toLowerCase().includes(searchLower) ||
+    order.special_qualities.toLowerCase().includes(searchLower) ||
+    order.favorite_memory.toLowerCase().includes(searchLower) ||
+    (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
+    (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
+    order.occasion.toLowerCase().includes(searchLower)
+  );
+});
+```
+
+### 2. LeadsTable.tsx
+
+**Add search state:**
+```tsx
+const [searchQuery, setSearchQuery] = useState("");
+```
+
+**Add search input to filter bar:**
+```tsx
+<Input
+  placeholder="Search leads..."
+  value={searchQuery}
+  onChange={(e) => setSearchQuery(e.target.value)}
+  className="w-64"
+/>
+```
+
+**Update filtering logic to include search:**
+```tsx
+const filteredLeads = leads
+  .filter((lead) => {
+    // Existing filters...
+  })
+  .filter((lead) => {
+    if (!searchQuery.trim()) return true;
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      lead.customer_name.toLowerCase().includes(searchLower) ||
+      lead.email.toLowerCase().includes(searchLower) ||
+      lead.recipient_name.toLowerCase().includes(searchLower) ||
+      lead.genre.toLowerCase().includes(searchLower) ||
+      lead.special_qualities.toLowerCase().includes(searchLower) ||
+      lead.favorite_memory.toLowerCase().includes(searchLower) ||
+      (lead.special_message?.toLowerCase().includes(searchLower) ?? false) ||
+      (lead.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
+      lead.occasion.toLowerCase().includes(searchLower)
+    );
+  });
+```
+
+---
+
+## Search Fields Covered
+
+| Field | Orders | Leads | Example Search |
+|-------|--------|-------|----------------|
+| Customer Name | Yes | Yes | "John", "Smith" |
+| Customer Email | Yes | Yes | "gmail", "john@" |
+| Recipient Name | Yes | Yes | "Mom", "Sarah" |
+| Genre/Style | Yes | Yes | "pop", "country" |
+| Singer Preference | Yes | Yes | "female", "male" |
+| Occasion | Yes | Yes | "birthday", "wedding" |
+| Special Qualities | Yes | Yes | "kind", "loving" |
+| Favorite Memory | Yes | Yes | "beach", "vacation" |
+| Special Message | Yes | Yes | Any keyword |
+
+---
+
+## UI Placement
+
+**Orders Tab:**
+```
+[Status Filter ▼] [Sort By ▼] [🔍 Search orders...        ] X orders
+```
+
+**Leads Tab:**
+```
+[Status Filter ▼] [Quality ▼] [Sort ▼] [Show ▼] [🔍 Search leads...        ] X leads
 ```
 
 ---
@@ -105,13 +129,12 @@ Traffic Source: Direct (no tracking data)
 
 | File | Changes |
 |------|---------|
-| `src/pages/Admin.tsx` | Add Traffic Source section to Order Details dialog |
-| `src/components/admin/LeadsTable.tsx` | Add Traffic Source section to Lead Details dialog |
+| `src/pages/Admin.tsx` | Add `orderSearch` state, search input, and filter logic |
+| `src/components/admin/LeadsTable.tsx` | Add `searchQuery` state, search input, and filter logic |
 
-## Result
-After these changes:
-- Each order's detail dialog will show complete source info
-- Each lead's detail dialog will show complete source info  
-- You'll know exactly where every customer came from
-- Works alongside the existing source badges on cards
+## Benefits
+- **Instant results** - no API calls, filters as you type
+- **No backend changes** - purely frontend implementation
+- **Comprehensive search** - searches across all relevant text fields
+- **Works with existing filters** - search combines with status/quality filters
 
