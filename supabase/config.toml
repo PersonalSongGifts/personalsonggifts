@@ -44,3 +44,18 @@ verify_jwt = false
 
 [functions.process-payment]
 verify_jwt = false
+
+[functions.automation-generate-lyrics]
+verify_jwt = false
+
+[functions.automation-generate-audio]
+verify_jwt = false
+
+[functions.automation-suno-callback]
+verify_jwt = false
+
+[functions.automation-trigger]
+verify_jwt = false
+
+[functions.automation-get-settings]
+verify_jwt = false
