@@ -314,66 +314,92 @@ Deno.serve(async (req) => {
 
     const normalizedEmail = input.email.trim().toLowerCase();
 
-    // Check if lead already exists with this email
-    const { data: existingLead } = await supabase
-      .from("leads")
-      .select("id, status")
-      .eq("email", normalizedEmail)
-      .single();
+    // Check if this is an admin tester email (can always create fresh leads)
+    const { data: testerSetting } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "admin_tester_emails")
+      .maybeSingle();
 
-    if (existingLead) {
-      // Lead already exists - update it with latest info (unless already converted)
-      if (existingLead.status === "converted") {
-        console.log("Lead already converted, skipping update:", normalizedEmail);
+    const testerEmails = (testerSetting?.value || "")
+      .split(",")
+      .map((e: string) => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    const isAdminTester = testerEmails.includes(normalizedEmail);
+
+    if (isAdminTester) {
+      console.log(`[CAPTURE-LEAD] Admin tester email detected: ${normalizedEmail}, clearing existing lead`);
+      
+      // Delete any existing lead for this email (allows fresh start)
+      await supabase
+        .from("leads")
+        .delete()
+        .eq("email", normalizedEmail);
+    }
+
+    // Check if lead already exists with this email (skip for admin testers - they were deleted above)
+    if (!isAdminTester) {
+      const { data: existingLead } = await supabase
+        .from("leads")
+        .select("id, status")
+        .eq("email", normalizedEmail)
+        .single();
+
+      if (existingLead) {
+        // Lead already exists - update it with latest info (unless already converted)
+        if (existingLead.status === "converted") {
+          console.log("Lead already converted, skipping update:", normalizedEmail);
+          return new Response(
+            JSON.stringify({ success: true, message: "Lead already converted" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { error: updateError } = await supabase
+          .from("leads")
+          .update({
+            phone: input.phone?.trim() || null,
+            customer_name: input.customerName.trim(),
+            recipient_name: input.recipientName.trim(),
+            recipient_type: input.recipientType,
+            occasion: input.occasion,
+            genre: input.genre,
+            singer_preference: input.singerPreference,
+            special_qualities: input.specialQualities.trim(),
+            favorite_memory: input.favoriteMemory.trim(),
+            special_message: input.specialMessage?.trim() || null,
+            captured_at: new Date().toISOString(),
+            quality_score: qualityScore,
+            // Update UTM fields if provided (don't overwrite existing with null)
+            ...(input.utmSource && { utm_source: input.utmSource }),
+            ...(input.utmMedium && { utm_medium: input.utmMedium }),
+            ...(input.utmCampaign && { utm_campaign: input.utmCampaign }),
+            ...(input.utmContent && { utm_content: input.utmContent }),
+            ...(input.utmTerm && { utm_term: input.utmTerm }),
+          })
+          .eq("id", existingLead.id);
+
+        if (updateError) {
+          console.error("Database update error:", updateError);
+          return new Response(
+            JSON.stringify({ error: "Failed to update lead" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Trigger Zapier webhook for updated lead
+        triggerLeadZapierWebhook(input, qualityScore);
+        
+        // Sync to Google Sheets (unified with orders)
+        syncLeadToGoogleSheet(existingLead.id, input, qualityScore);
+
+        console.log("Lead updated:", normalizedEmail);
         return new Response(
-          JSON.stringify({ success: true, message: "Lead already converted" }),
+          JSON.stringify({ success: true, leadId: existingLead.id, qualityScore }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-
-      const { error: updateError } = await supabase
-        .from("leads")
-        .update({
-          phone: input.phone?.trim() || null,
-          customer_name: input.customerName.trim(),
-          recipient_name: input.recipientName.trim(),
-          recipient_type: input.recipientType,
-          occasion: input.occasion,
-          genre: input.genre,
-          singer_preference: input.singerPreference,
-          special_qualities: input.specialQualities.trim(),
-          favorite_memory: input.favoriteMemory.trim(),
-          special_message: input.specialMessage?.trim() || null,
-          captured_at: new Date().toISOString(),
-          quality_score: qualityScore,
-          // Update UTM fields if provided (don't overwrite existing with null)
-          ...(input.utmSource && { utm_source: input.utmSource }),
-          ...(input.utmMedium && { utm_medium: input.utmMedium }),
-          ...(input.utmCampaign && { utm_campaign: input.utmCampaign }),
-          ...(input.utmContent && { utm_content: input.utmContent }),
-          ...(input.utmTerm && { utm_term: input.utmTerm }),
-        })
-        .eq("id", existingLead.id);
-
-      if (updateError) {
-        console.error("Database update error:", updateError);
-        return new Response(
-          JSON.stringify({ error: "Failed to update lead" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Trigger Zapier webhook for updated lead
-      triggerLeadZapierWebhook(input, qualityScore);
-      
-      // Sync to Google Sheets (unified with orders)
-      syncLeadToGoogleSheet(existingLead.id, input, qualityScore);
-
-      console.log("Lead updated:", normalizedEmail);
-      return new Response(
-        JSON.stringify({ success: true, leadId: existingLead.id, qualityScore }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
     }
 
     // Insert new lead
