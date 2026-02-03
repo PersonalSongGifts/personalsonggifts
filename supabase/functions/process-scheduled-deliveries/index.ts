@@ -17,6 +17,71 @@ Deno.serve(async (req) => {
 
     const now = new Date().toISOString();
 
+    // ---- Automation recovery: leads stuck in audio_generating ----
+    // Sometimes the external provider does not call our webhook reliably.
+    // This job runs frequently, so we can "poke" the existing callback handler
+    // for any lead that's been generating for a while, letting it finalize from
+    // canonical task status.
+    const AUDIO_RECOVERY_AFTER_MINUTES = 10;
+    const MAX_AUDIO_RECOVERIES_PER_RUN = 1;
+
+    try {
+      const cutoffIso = new Date(
+        Date.now() - AUDIO_RECOVERY_AFTER_MINUTES * 60 * 1000,
+      ).toISOString();
+
+      const { data: stuckLeads, error: stuckLeadsError } = await supabase
+        .from("leads")
+        .select("id, automation_task_id, automation_started_at")
+        .eq("automation_status", "audio_generating")
+        .is("automation_manual_override_at", null)
+        .is("preview_song_url", null)
+        .not("automation_task_id", "is", null)
+        .not("automation_started_at", "is", null)
+        .lte("automation_started_at", cutoffIso)
+        .order("automation_started_at", { ascending: true })
+        .limit(MAX_AUDIO_RECOVERIES_PER_RUN);
+
+      if (stuckLeadsError) {
+        console.error("[RECOVERY] Error fetching stuck leads:", stuckLeadsError);
+      } else if ((stuckLeads?.length || 0) > 0) {
+        console.log(
+          `[RECOVERY] Found ${stuckLeads?.length || 0} lead(s) stuck in audio_generating (cutoff=${cutoffIso})`,
+        );
+
+        for (const lead of stuckLeads || []) {
+          const taskId = lead.automation_task_id as string | null;
+          if (!taskId) continue;
+
+          console.log(
+            `[RECOVERY] Re-invoking automation-suno-callback for lead ${lead.id} (taskId=${taskId})`,
+          );
+
+          const recoveryResp = await fetch(
+            `${supabaseUrl}/functions/v1/automation-suno-callback`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                taskId,
+                data: { task_id: taskId },
+              }),
+            },
+          );
+
+          const recoveryBody = await recoveryResp.text();
+          console.log(
+            `[RECOVERY] automation-suno-callback response for lead ${lead.id}: ${recoveryResp.status} ${recoveryBody.substring(0, 300)}`,
+          );
+        }
+      }
+    } catch (e) {
+      console.error("[RECOVERY] Unexpected recovery error:", e);
+    }
+
     // Find orders that are ready for scheduled delivery
     // - Have a scheduled_delivery_at in the past (or now)
     // - Status is 'ready' (meaning song is uploaded but not delivered)
