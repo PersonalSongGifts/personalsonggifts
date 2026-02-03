@@ -244,6 +244,226 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Update order fields (editable fields)
+      if (body?.action === "update_order_fields") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        const updates = body.updates as Record<string, unknown> || {};
+
+        if (!orderId) {
+          return new Response(
+            JSON.stringify({ error: "Order ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Whitelist allowed fields
+        const allowedFields = [
+          "customer_name", "customer_email", "customer_phone",
+          "recipient_name", "special_qualities", "favorite_memory",
+          "special_message", "notes"
+        ];
+
+        const safeUpdates: Record<string, unknown> = {};
+        for (const field of allowedFields) {
+          if (updates[field] !== undefined) {
+            safeUpdates[field] = updates[field];
+          }
+        }
+
+        if (Object.keys(safeUpdates).length === 0) {
+          return new Response(
+            JSON.stringify({ error: "No valid fields to update" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Basic email validation if email is being updated
+        if (safeUpdates.customer_email && typeof safeUpdates.customer_email === "string") {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(safeUpdates.customer_email)) {
+            return new Response(
+              JSON.stringify({ error: "Invalid email format" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
+        const { data: order, error: updateError } = await supabase
+          .from("orders")
+          .update(safeUpdates)
+          .eq("id", orderId)
+          .select("*")
+          .single();
+
+        if (updateError) {
+          console.error("Failed to update order fields:", updateError);
+          throw updateError;
+        }
+
+        return new Response(
+          JSON.stringify({ order }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Update lead fields (editable fields)
+      if (body?.action === "update_lead_fields") {
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+        const updates = body.updates as Record<string, unknown> || {};
+
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "Lead ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Whitelist allowed fields
+        const allowedFields = [
+          "customer_name", "email", "phone",
+          "recipient_name", "special_qualities", "favorite_memory",
+          "special_message"
+        ];
+
+        const safeUpdates: Record<string, unknown> = {};
+        for (const field of allowedFields) {
+          if (updates[field] !== undefined) {
+            safeUpdates[field] = updates[field];
+          }
+        }
+
+        if (Object.keys(safeUpdates).length === 0) {
+          return new Response(
+            JSON.stringify({ error: "No valid fields to update" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Basic email validation if email is being updated
+        if (safeUpdates.email && typeof safeUpdates.email === "string") {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(safeUpdates.email)) {
+            return new Response(
+              JSON.stringify({ error: "Invalid email format" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
+        const { data: lead, error: updateError } = await supabase
+          .from("leads")
+          .update(safeUpdates)
+          .eq("id", leadId)
+          .select("*")
+          .single();
+
+        if (updateError) {
+          console.error("Failed to update lead fields:", updateError);
+          throw updateError;
+        }
+
+        return new Response(
+          JSON.stringify({ lead }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Convert lead to order (for failed webhook cases)
+      if (body?.action === "convert_lead_to_order") {
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+        const price = typeof body.price === "number" ? body.price : 4900; // Default to $49
+
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "Lead ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get the lead
+        const { data: lead, error: leadError } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("id", leadId)
+          .single();
+
+        if (leadError || !lead) {
+          return new Response(
+            JSON.stringify({ error: "Lead not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Check if already converted
+        if (lead.status === "converted") {
+          return new Response(
+            JSON.stringify({ error: "Lead already converted", orderId: lead.order_id }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Create new order from lead data
+        const orderData = {
+          customer_name: lead.customer_name,
+          customer_email: lead.email,
+          customer_phone: lead.phone,
+          recipient_name: lead.recipient_name,
+          recipient_type: lead.recipient_type,
+          occasion: lead.occasion,
+          genre: lead.genre,
+          singer_preference: lead.singer_preference,
+          special_qualities: lead.special_qualities,
+          favorite_memory: lead.favorite_memory,
+          special_message: lead.special_message,
+          song_url: lead.full_song_url,
+          song_title: lead.song_title,
+          cover_image_url: lead.cover_image_url,
+          price: price,
+          pricing_tier: price >= 7900 ? "priority" : "standard",
+          status: lead.full_song_url ? "completed" : "paid",
+          notes: "Manual conversion from lead (webhook failure)",
+          device_type: "Manual Conversion",
+          utm_source: lead.utm_source,
+          utm_medium: lead.utm_medium,
+          utm_campaign: lead.utm_campaign,
+          utm_content: lead.utm_content,
+          utm_term: lead.utm_term,
+        };
+
+        const { data: order, error: orderError } = await supabase
+          .from("orders")
+          .insert(orderData)
+          .select("*")
+          .single();
+
+        if (orderError) {
+          console.error("Failed to create order from lead:", orderError);
+          throw orderError;
+        }
+
+        // Mark lead as converted
+        const { error: updateLeadError } = await supabase
+          .from("leads")
+          .update({
+            status: "converted",
+            converted_at: new Date().toISOString(),
+            order_id: order.id,
+          })
+          .eq("id", leadId);
+
+        if (updateLeadError) {
+          console.error("Failed to mark lead as converted:", updateLeadError);
+          // Still return success since order was created
+        }
+
+        console.log(`Lead ${leadId} converted to order ${order.id}`);
+
+        return new Response(
+          JSON.stringify({ success: true, order }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Resend delivery email for an already-delivered order
       if (body?.action === "resend_delivery_email") {
         const orderId = typeof body.orderId === "string" ? body.orderId : null;

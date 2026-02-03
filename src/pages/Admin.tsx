@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save } from "lucide-react";
 import { formatAdminDate } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
@@ -108,6 +108,10 @@ export default function Admin() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [scheduledDeliveryTime, setScheduledDeliveryTime] = useState<Date | null>(null);
+  // Edit mode state for orders
+  const [isEditingOrder, setIsEditingOrder] = useState(false);
+  const [editedOrder, setEditedOrder] = useState<Partial<Order>>({});
+  const [savingOrderEdits, setSavingOrderEdits] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -338,6 +342,65 @@ export default function Admin() {
     } finally {
       setResendingDelivery(false);
     }
+  };
+
+  const handleSaveOrderEdits = async () => {
+    if (!selectedOrder || !password) return;
+
+    setSavingOrderEdits(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "update_order_fields",
+          orderId: selectedOrder.id,
+          updates: editedOrder,
+          adminPassword: password,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Changes Saved",
+        description: "Order information updated successfully",
+      });
+
+      // Update local state
+      setSelectedOrder(data.order);
+      setIsEditingOrder(false);
+      setEditedOrder({});
+      fetchOrders();
+    } catch (err) {
+      console.error("Save order edits error:", err);
+      toast({
+        title: "Failed to Save",
+        description: err instanceof Error ? err.message : "Failed to save changes",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingOrderEdits(false);
+    }
+  };
+
+  const startEditingOrder = () => {
+    if (!selectedOrder) return;
+    setEditedOrder({
+      customer_name: selectedOrder.customer_name,
+      customer_email: selectedOrder.customer_email,
+      customer_phone: selectedOrder.customer_phone || "",
+      recipient_name: selectedOrder.recipient_name,
+      special_qualities: selectedOrder.special_qualities,
+      favorite_memory: selectedOrder.favorite_memory,
+      special_message: selectedOrder.special_message || "",
+      notes: selectedOrder.notes || "",
+    });
+    setIsEditingOrder(true);
+  };
+
+  const cancelEditingOrder = () => {
+    setIsEditingOrder(false);
+    setEditedOrder({});
   };
 
   useEffect(() => {
@@ -659,33 +722,104 @@ export default function Admin() {
         </Tabs>
       </main>
 
-      <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
+      <Dialog open={!!selectedOrder} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedOrder(null);
+          setIsEditingOrder(false);
+          setEditedOrder({});
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedOrder && (
             <>
               <DialogHeader>
-                <DialogTitle>Order Details</DialogTitle>
-                <DialogDescription>
-                  Order ID: {selectedOrder.id.slice(0, 8).toUpperCase()}
-                </DialogDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <DialogTitle>Order Details</DialogTitle>
+                    <DialogDescription>
+                      Order ID: {selectedOrder.id.slice(0, 8).toUpperCase()}
+                    </DialogDescription>
+                  </div>
+                  {!isEditingOrder ? (
+                    <Button variant="outline" size="sm" onClick={startEditingOrder}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={cancelEditingOrder} disabled={savingOrderEdits}>
+                        <X className="h-4 w-4 mr-2" />
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={handleSaveOrderEdits} disabled={savingOrderEdits}>
+                        <Save className="h-4 w-4 mr-2" />
+                        {savingOrderEdits ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </DialogHeader>
 
               <div className="space-y-6 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Customer</h4>
-                    <p>{selectedOrder.customer_name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedOrder.customer_email}</p>
-                    {selectedOrder.customer_phone && (
-                      <p className="text-sm text-muted-foreground">{selectedOrder.customer_phone}</p>
+                    {isEditingOrder ? (
+                      <div className="space-y-2">
+                        <div>
+                          <Label className="text-xs">Name</Label>
+                          <Input
+                            value={editedOrder.customer_name || ""}
+                            onChange={(e) => setEditedOrder({ ...editedOrder, customer_name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Email</Label>
+                          <Input
+                            type="email"
+                            value={editedOrder.customer_email || ""}
+                            onChange={(e) => setEditedOrder({ ...editedOrder, customer_email: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Phone</Label>
+                          <Input
+                            value={editedOrder.customer_phone || ""}
+                            onChange={(e) => setEditedOrder({ ...editedOrder, customer_phone: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p>{selectedOrder.customer_name}</p>
+                        <p className="text-sm text-muted-foreground">{selectedOrder.customer_email}</p>
+                        {selectedOrder.customer_phone && (
+                          <p className="text-sm text-muted-foreground">{selectedOrder.customer_phone}</p>
+                        )}
+                      </>
                     )}
                   </div>
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Recipient</h4>
-                    <p>{selectedOrder.recipient_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedOrder.recipient_type} • {selectedOrder.relationship}
-                    </p>
+                    {isEditingOrder ? (
+                      <div>
+                        <Label className="text-xs">Name</Label>
+                        <Input
+                          value={editedOrder.recipient_name || ""}
+                          onChange={(e) => setEditedOrder({ ...editedOrder, recipient_name: e.target.value })}
+                        />
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedOrder.recipient_type} • {selectedOrder.relationship}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <p>{selectedOrder.recipient_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedOrder.recipient_type} • {selectedOrder.relationship}
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -702,20 +836,65 @@ export default function Admin() {
 
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground mb-1">Special Qualities</h4>
-                  <p className="text-sm">{selectedOrder.special_qualities}</p>
+                  {isEditingOrder ? (
+                    <Textarea
+                      value={editedOrder.special_qualities || ""}
+                      onChange={(e) => setEditedOrder({ ...editedOrder, special_qualities: e.target.value })}
+                      rows={3}
+                    />
+                  ) : (
+                    <p className="text-sm">{selectedOrder.special_qualities}</p>
+                  )}
                 </div>
 
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground mb-1">Favorite Memory</h4>
-                  <p className="text-sm">{selectedOrder.favorite_memory}</p>
+                  {isEditingOrder ? (
+                    <Textarea
+                      value={editedOrder.favorite_memory || ""}
+                      onChange={(e) => setEditedOrder({ ...editedOrder, favorite_memory: e.target.value })}
+                      rows={3}
+                    />
+                  ) : (
+                    <p className="text-sm">{selectedOrder.favorite_memory}</p>
+                  )}
                 </div>
 
-                {selectedOrder.special_message && (
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Special Message</h4>
-                    <p className="text-sm">{selectedOrder.special_message}</p>
-                  </div>
-                )}
+                <div>
+                  <h4 className="font-medium text-sm text-muted-foreground mb-1">Special Message</h4>
+                  {isEditingOrder ? (
+                    <Textarea
+                      value={editedOrder.special_message || ""}
+                      onChange={(e) => setEditedOrder({ ...editedOrder, special_message: e.target.value })}
+                      rows={2}
+                    />
+                  ) : (
+                    selectedOrder.special_message ? (
+                      <p className="text-sm">{selectedOrder.special_message}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No special message</p>
+                    )
+                  )}
+                </div>
+
+                {/* Notes - always show for editing */}
+                <div>
+                  <h4 className="font-medium text-sm text-muted-foreground mb-1">Admin Notes</h4>
+                  {isEditingOrder ? (
+                    <Textarea
+                      value={editedOrder.notes || ""}
+                      onChange={(e) => setEditedOrder({ ...editedOrder, notes: e.target.value })}
+                      rows={2}
+                      placeholder="Internal notes about this order..."
+                    />
+                  ) : (
+                    selectedOrder.notes ? (
+                      <p className="text-sm bg-muted/50 p-2 rounded">{selectedOrder.notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No notes</p>
+                    )
+                  )}
+                </div>
 
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-3">Upload Song</h4>
@@ -915,6 +1094,8 @@ export default function Admin() {
                     setSelectedOrder(null);
                     setSelectedFile(null);
                     setScheduledDeliveryTime(null);
+                    setIsEditingOrder(false);
+                    setEditedOrder({});
                     if (fileInputRef.current) {
                       fileInputRef.current.value = "";
                     }
