@@ -1,70 +1,103 @@
 
-## Enable Promo Code Field for Lead Checkout
+## Add AI Song Generation for Orders
 
 ### Problem
-When leads try to unlock their full song, the Stripe Checkout page doesn't have a promotion code input field. If you want to send them a special discount code later (like `FULLSONG` for $5 off), they have no way to enter it.
+Currently, admins can trigger AI song generation for leads but not for paid orders. This is because:
+1. The `orders` table lacks automation tracking columns
+2. All automation edge functions only work with leads
+3. The Orders tab UI doesn't have an "AI Generate" button
 
 ### Solution
-Enable Stripe's built-in promotion code field on the lead checkout page by adding a single parameter to the checkout session configuration.
-
-**Good news:** Stripe promotion codes are already case-insensitive by default - entering "fullsong", "FULLSONG", or "FullSong" will all work the same.
+Extend the automation pipeline to support orders alongside leads.
 
 ---
 
-## Technical Changes
+## Database Changes
 
-### File: `supabase/functions/create-lead-checkout/index.ts`
-
-**Add one parameter** to the `stripe.checkout.sessions.create()` call:
+Add automation columns to the `orders` table to mirror the leads table:
 
 ```text
-Before:
-const session = await stripe.checkout.sessions.create({
-  customer_email: lead.email,
-  line_items: [...],
-  mode: "payment",
-  ...
-});
-
-After:
-const session = await stripe.checkout.sessions.create({
-  customer_email: lead.email,
-  line_items: [...],
-  mode: "payment",
-  allow_promotion_codes: true,  // <-- ADD THIS LINE
-  ...
-});
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS automation_status text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS automation_task_id text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS automation_lyrics text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS automation_started_at timestamptz;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS automation_retry_count integer DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS automation_last_error text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS automation_style_id uuid REFERENCES song_styles(id);
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS automation_manual_override_at timestamptz;
 ```
 
-This enables the promotion code redemption box in Stripe's hosted checkout UI.
+---
+
+## Edge Function Changes
+
+### 1. Create `automation-trigger-order` function
+A new edge function that mirrors `automation-trigger` but works with orders:
+- Accepts `orderId` instead of `leadId`
+- Queries the `orders` table
+- Calls the same lyrics/audio generation pipeline with an `entityType: "order"` parameter
+
+### 2. Update `automation-generate-lyrics` and `automation-generate-audio`
+Modify to accept an optional `orderId` parameter alongside `leadId`:
+- Add `entityType` parameter ("lead" or "order")
+- Query the appropriate table based on entity type
+- Update the correct table with results
+
+### 3. Update `automation-suno-callback`
+Handle callbacks for both leads and orders:
+- Store entity type in task metadata or use a lookup table
+- Update the correct table when Suno completes
 
 ---
 
-## Existing Stripe Coupons Available
+## UI Changes
 
-Your Stripe account already has these coupons configured:
+### File: `src/pages/Admin.tsx`
 
-| Coupon Name | Discount | Type |
-|------------|----------|------|
-| FULLSONG | $5 off | Fixed amount |
-| VALENTINES50 | 50% off | Percentage |
-| WELCOME50 | 50% off | Percentage |
-| HyperdriveFREE2026 | 100% off | Percentage |
-| HyperdriveFREE2026! | 100% off | Percentage |
+Add an "AI Generate" button to each order card (similar to leads):
 
-To use these in the checkout field, each coupon needs a **promotion code** (customer-facing code) attached to it. The `FULLSONG` coupon exists, but I'll need to verify/create its promotion code so customers can actually type "FULLSONG" in the box.
+```text
+<Button onClick={() => handleTriggerOrderAutomation(order)}>
+  <Wand2 className="h-4 w-4 mr-2" />
+  AI Generate
+</Button>
+```
+
+Add state and handler:
+- `triggeringOrderAutomation: string | null`
+- `handleTriggerOrderAutomation(order: Order)`
+
+Display automation status badges on order cards (like leads show).
 
 ---
 
-## What Customers Will See
+## Alternative: Simpler Unified Approach
 
-After this change, the lead checkout page will show a "Add promotion code" link that expands to a text input field. Customers can enter any valid promo code (case-insensitive), and Stripe will automatically apply the discount and show the updated total.
+Instead of duplicating functions, refactor the existing ones to be "entity-agnostic":
+
+1. Rename parameters to `entityId` and add `entityType: "lead" | "order"`
+2. Create a helper function that queries/updates the correct table
+3. Store `entityType` alongside `taskId` for callback routing
+
+This reduces code duplication and ensures both leads and orders follow the exact same generation pipeline.
 
 ---
 
-## Deployment
+## Summary of Changes
 
-1. Update `create-lead-checkout/index.ts` with `allow_promotion_codes: true`
-2. Deploy the edge function
-3. Create promotion codes for any coupons that don't have them yet
-4. Test with a lead preview to verify the promo code field appears
+| Component | Change |
+|-----------|--------|
+| Database | Add 8 automation columns to `orders` table |
+| `automation-trigger` | Accept `orderId` + `entityType` parameter |
+| `automation-generate-lyrics` | Support both leads and orders via `entityType` |
+| `automation-generate-audio` | Support both leads and orders via `entityType` |
+| `automation-suno-callback` | Route callbacks to correct table |
+| `Admin.tsx` | Add AI Generate button to Orders tab |
+| Order interface | Add automation fields to TypeScript interface |
+
+---
+
+## Estimated Scope
+- Database migration: 1 migration file
+- Edge functions: Modify 4 functions
+- Frontend: Update Admin.tsx and Order interface
