@@ -99,6 +99,83 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ---- Scheduled resends for delivered orders ----
+    const { data: resendOrders, error: resendFetchError } = await supabase
+      .from("orders")
+      .select("*")
+      .not("resend_scheduled_at", "is", null)
+      .lte("resend_scheduled_at", now)
+      .eq("status", "delivered")
+      .not("song_url", "is", null);
+
+    if (resendFetchError) {
+      console.error("Error fetching scheduled resends:", resendFetchError);
+      throw resendFetchError;
+    }
+
+    console.log(`Found ${resendOrders?.length || 0} orders ready for scheduled resend`);
+
+    const resendResults: Array<{ orderId: string; success: boolean; error?: string }> = [];
+
+    for (const order of resendOrders || []) {
+      try {
+        console.log(`Processing scheduled resend for order ${order.id}`);
+
+        // Clear the scheduled resend first (prevents duplicate processing)
+        const { error: updateError } = await supabase
+          .from("orders")
+          .update({
+            resend_scheduled_at: null,
+          })
+          .eq("id", order.id)
+          .not("resend_scheduled_at", "is", null); // Optimistic lock
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        // Send the delivery email
+        const emailResponse = await fetch(
+          `${supabaseUrl}/functions/v1/send-song-delivery`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              orderId: order.id,
+              customerEmail: order.customer_email,
+              customerName: order.customer_name,
+              recipientName: order.recipient_name,
+              occasion: order.occasion,
+              songUrl: order.song_url,
+            }),
+          }
+        );
+
+        if (!emailResponse.ok) {
+          const errorText = await emailResponse.text();
+          console.error(`Failed to send resend email for order ${order.id}:`, errorText);
+          resendResults.push({
+            orderId: order.id,
+            success: false,
+            error: `Email failed: ${errorText}`,
+          });
+        } else {
+          console.log(`Successfully resent delivery for order ${order.id}`);
+          resendResults.push({ orderId: order.id, success: true });
+        }
+      } catch (orderError) {
+        console.error(`Error processing resend for order ${order.id}:`, orderError);
+        resendResults.push({
+          orderId: order.id,
+          success: false,
+          error: orderError instanceof Error ? orderError.message : "Unknown error",
+        });
+      }
+    }
+
     // ---- Lead preview auto-sends (preview_scheduled_at) ----
     // Find leads that are due to receive their preview email
     const { data: leads, error: leadsFetchError } = await supabase
@@ -247,8 +324,10 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         processed: orders?.length || 0,
+        resendsProcessed: resendOrders?.length || 0,
         leadsProcessed: leads?.length || 0,
         results,
+        resendResults,
         leadResults,
         timestamp: now,
       }),

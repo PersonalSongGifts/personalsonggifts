@@ -203,6 +203,7 @@ export type Database = {
           reaction_video_url: string | null
           recipient_name: string
           recipient_type: string
+          resend_scheduled_at: string | null
           scheduled_delivery_at: string | null
           singer_preference: string
           song_download_count: number | null
@@ -240,6 +241,7 @@ export type Database = {
           reaction_video_url?: string | null
           recipient_name: string
           recipient_type: string
+          resend_scheduled_at?: string | null
           scheduled_delivery_at?: string | null
           singer_preference: string
           song_download_count?: number | null
@@ -277,6 +279,7 @@ export type Database = {
           reaction_video_url?: string | null
           recipient_name?: string
           recipient_type?: string
+          resend_scheduled_at?: string | null
           scheduled_delivery_at?: string | null
           singer_preference?: string
           song_download_count?: number | null
