@@ -371,7 +371,7 @@ Deno.serve(async (req) => {
       // Convert lead to order (for failed webhook cases)
       if (body?.action === "convert_lead_to_order") {
         const leadId = typeof body.leadId === "string" ? body.leadId : null;
-        const price = typeof body.price === "number" ? body.price : 4900; // Default to $49
+        const price = typeof body.price === "number" ? body.price : 49; // Default to $49
 
         if (!leadId) {
           return new Response(
@@ -419,7 +419,7 @@ Deno.serve(async (req) => {
           song_title: lead.song_title,
           cover_image_url: lead.cover_image_url,
           price: price,
-          pricing_tier: price >= 7900 ? "priority" : "standard",
+          pricing_tier: price >= 79 ? "priority" : "standard",
           status: lead.full_song_url ? "completed" : "paid",
           notes: "Manual conversion from lead (webhook failure)",
           device_type: "Manual Conversion",
