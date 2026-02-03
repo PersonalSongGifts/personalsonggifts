@@ -48,6 +48,26 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Block automation for cancelled/dismissed orders
+    if (entityType === "order") {
+      if (entity.status === "cancelled" || entity.dismissed_at) {
+        console.log(`[TRIGGER] Order ${entityId} is cancelled/dismissed, skipping automation`);
+        return new Response(
+          JSON.stringify({ error: "Order is cancelled", dismissed: true }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Block automation for dismissed leads
+    if (entityType === "lead" && entity.dismissed_at) {
+      console.log(`[TRIGGER] Lead ${entityId} is dismissed, skipping automation`);
+      return new Response(
+        JSON.stringify({ error: "Lead is dismissed", dismissed: true }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Normalize field access (leads use email, orders use customer_email)
     const recipientName = entity.recipient_name;
     const email = entityType === "order" ? entity.customer_email : entity.email;
