@@ -21,7 +21,8 @@ import {
   RotateCcw,
   Settings2,
   Users,
-  ShoppingCart
+  ShoppingCart,
+  AlertTriangle
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Label } from "@/components/ui/label";
@@ -91,6 +92,18 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [triggering, setTriggering] = useState(false);
   const [viewingLyrics, setViewingLyrics] = useState<ActiveJob | null>(null);
+  // Alert state
+  const [alerts, setAlerts] = useState<{
+    stuckOrders: number;
+    failedOrders: number;
+    overdueOrders: number;
+    needsReviewOrders: number;
+    deliveryFailedOrders: number;
+    stuckLeads: number;
+    failedLeads: number;
+    overdueLeads: number;
+  } | null>(null);
+  const [alertsTotal, setAlertsTotal] = useState(0);
   const { toast } = useToast();
 
   const fetchAutomationStatus = async () => {
@@ -124,8 +137,27 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
     }
   };
 
+  const fetchAlerts = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "get_alerts_summary",
+          adminPassword,
+        },
+      });
+
+      if (error) throw error;
+      setAlerts(data.alerts);
+      setAlertsTotal(data.total);
+    } catch (err) {
+      console.error("Failed to fetch alerts:", err);
+    }
+  };
+
   useEffect(() => {
     fetchAutomationStatus();
+    fetchAlerts();
   }, [adminPassword]);
 
   const handleToggleAutomation = async (newEnabled: boolean) => {
@@ -417,6 +449,44 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
 
   return (
     <div className="space-y-6">
+      {/* Alert Banner */}
+      {alertsTotal > 0 && (
+        <Card className="border-red-300 bg-red-50">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold text-red-800">
+                  {alertsTotal} item{alertsTotal !== 1 ? "s" : ""} need attention
+                </p>
+                <ul className="text-sm text-red-700 mt-1 space-y-0.5">
+                  {alerts?.stuckOrders && alerts.stuckOrders > 0 && <li>• {alerts.stuckOrders} order(s) stuck in audio generation</li>}
+                  {alerts?.overdueOrders && alerts.overdueOrders > 0 && <li>• {alerts.overdueOrders} order(s) overdue for delivery</li>}
+                  {alerts?.failedOrders && alerts.failedOrders > 0 && <li>• {alerts.failedOrders} order(s) failed</li>}
+                  {alerts?.needsReviewOrders && alerts.needsReviewOrders > 0 && <li>• {alerts.needsReviewOrders} order(s) need review</li>}
+                  {alerts?.deliveryFailedOrders && alerts.deliveryFailedOrders > 0 && <li>• {alerts.deliveryFailedOrders} order(s) delivery failed</li>}
+                  {alerts?.stuckLeads && alerts.stuckLeads > 0 && <li>• {alerts.stuckLeads} lead(s) stuck in audio generation</li>}
+                  {alerts?.overdueLeads && alerts.overdueLeads > 0 && <li>• {alerts.overdueLeads} lead(s) overdue for preview</li>}
+                  {alerts?.failedLeads && alerts.failedLeads > 0 && <li>• {alerts.failedLeads} lead(s) failed</li>}
+                </ul>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                  fetchAutomationStatus();
+                  fetchAlerts();
+                  onRefresh?.();
+                }}
+                className="border-red-300 text-red-600 hover:bg-red-100"
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Refresh
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* Header Controls */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Automation Status Card */}

@@ -1163,6 +1163,163 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Reset automation (allows re-generation)
+    if (body?.action === "reset_automation") {
+      const orderId = typeof body.orderId === "string" ? body.orderId : null;
+      const leadId = typeof body.leadId === "string" ? body.leadId : null;
+      const clearAssets = body.clearAssets === true; // For "Reset + Regenerate"
+
+      if (!orderId && !leadId) {
+        return new Response(
+          JSON.stringify({ error: "Order ID or Lead ID required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const entityType = orderId ? "orders" : "leads";
+      const entityId = orderId || leadId;
+
+      // Base reset fields (always cleared)
+      const updates: Record<string, unknown> = {
+        automation_status: null,
+        automation_task_id: null,
+        automation_lyrics: null,
+        automation_started_at: null,
+        automation_retry_count: 0,
+        automation_last_error: null,
+        automation_raw_callback: null,
+        automation_style_id: null,
+        automation_audio_url_source: null,
+        generated_at: null,
+        inputs_hash: null,
+        next_attempt_at: null,
+        automation_manual_override_at: null, // Re-enable automation
+      };
+
+      // If clearAssets=true, also wipe the song
+      if (clearAssets) {
+        if (entityType === "orders") {
+          updates.song_url = null;
+          updates.song_title = null;
+          updates.cover_image_url = null;
+          updates.sent_at = null;
+          updates.delivery_status = "pending";
+          updates.status = "paid"; // Reset to paid status
+        } else {
+          updates.preview_song_url = null;
+          updates.full_song_url = null;
+          updates.song_title = null;
+          updates.cover_image_url = null;
+          updates.preview_sent_at = null;
+          updates.preview_token = null;
+          updates.status = "lead"; // Reset to initial status
+        }
+      }
+
+      const { error: updateError } = await supabase
+        .from(entityType)
+        .update(updates)
+        .eq("id", entityId);
+
+      if (updateError) {
+        console.error("Failed to reset automation:", updateError);
+        throw updateError;
+      }
+
+      console.log(`[ADMIN] Automation reset for ${entityType} ${entityId}, clearAssets=${clearAssets}`);
+
+      return new Response(
+        JSON.stringify({ success: true, mode: clearAssets ? "full_reset" : "preserve_song" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get alerts summary for dashboard banner
+    if (body?.action === "get_alerts_summary") {
+      const now = new Date().toISOString();
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
+      // Stuck orders (audio_generating > 15 min)
+      const { count: stuckOrders } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("automation_status", "audio_generating")
+        .lt("automation_started_at", fifteenMinAgo)
+        .is("dismissed_at", null);
+
+      // Failed orders
+      const { count: failedOrders } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .in("automation_status", ["failed", "permanently_failed"])
+        .is("dismissed_at", null);
+
+      // Overdue orders (completed but not sent, target_send_at passed)
+      const { count: overdueOrders } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("automation_status", "completed")
+        .lte("target_send_at", now)
+        .is("sent_at", null)
+        .is("dismissed_at", null);
+
+      // Needs review orders (inputs changed or delivery issues)
+      const { count: needsReviewOrders } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("delivery_status", "needs_review")
+        .is("dismissed_at", null);
+
+      // Delivery failed orders
+      const { count: deliveryFailedOrders } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("delivery_status", "failed")
+        .is("dismissed_at", null);
+
+      // Stuck leads
+      const { count: stuckLeads } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("automation_status", "audio_generating")
+        .lt("automation_started_at", fifteenMinAgo)
+        .is("dismissed_at", null);
+
+      // Failed leads
+      const { count: failedLeads } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .in("automation_status", ["failed", "permanently_failed"])
+        .is("dismissed_at", null);
+
+      // Overdue lead previews (song_ready but not sent, target_send_at passed)
+      const { count: overdueLeads } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "song_ready")
+        .lte("target_send_at", now)
+        .is("preview_sent_at", null)
+        .is("dismissed_at", null);
+
+      const alerts = {
+        stuckOrders: stuckOrders || 0,
+        failedOrders: failedOrders || 0,
+        overdueOrders: overdueOrders || 0,
+        needsReviewOrders: needsReviewOrders || 0,
+        deliveryFailedOrders: deliveryFailedOrders || 0,
+        stuckLeads: stuckLeads || 0,
+        failedLeads: failedLeads || 0,
+        overdueLeads: overdueLeads || 0,
+      };
+
+      const total = Object.values(alerts).reduce((sum, count) => sum + count, 0);
+
+      return new Response(
+        JSON.stringify({ alerts, total }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }

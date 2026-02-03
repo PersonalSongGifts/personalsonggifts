@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
@@ -72,6 +73,21 @@ interface Order {
   automation_started_at: string | null;
   automation_retry_count: number | null;
   automation_last_error: string | null;
+  automation_raw_callback: unknown | null;
+  automation_audio_url_source: string | null;
+  automation_style_id: string | null;
+  // Timing fields
+  earliest_generate_at: string | null;
+  target_send_at: string | null;
+  generated_at: string | null;
+  sent_at: string | null;
+  next_attempt_at: string | null;
+  // Delivery tracking
+  delivery_status: string | null;
+  delivery_last_error: string | null;
+  delivery_retry_count: number | null;
+  // Input change detection
+  inputs_hash: string | null;
   // Dismissal tracking
   dismissed_at: string | null;
 }
@@ -130,6 +146,11 @@ export default function Admin() {
   // Order dismissal state
   const [dismissedOrderFilter, setDismissedOrderFilter] = useState<"active" | "cancelled" | "all">("active");
   const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
+  // Reset automation state
+  const [resettingAutomation, setResettingAutomation] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState<"soft" | "full" | null>(null);
+  const [regenerateConfirmText, setRegenerateConfirmText] = useState("");
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -576,6 +597,64 @@ export default function Admin() {
     }
   };
 
+  // Handler for resetting automation (allows re-generation)
+  const handleResetAutomation = async (clearAssets: boolean) => {
+    if (!selectedOrder || !password) return;
+    
+    setResettingAutomation(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "reset_automation",
+          orderId: selectedOrder.id,
+          clearAssets,
+          adminPassword: password,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: clearAssets ? "Automation Reset + Assets Cleared" : "Automation Reset",
+        description: clearAssets 
+          ? "Song has been deleted. You can now edit inputs and regenerate."
+          : "Automation state cleared. Existing song preserved.",
+      });
+
+      setShowResetConfirm(null);
+      setRegenerateConfirmText("");
+      fetchOrders();
+      // Update selected order to reflect reset
+      setSelectedOrder(null);
+    } catch (err) {
+      console.error("Reset automation error:", err);
+      toast({
+        title: "Reset Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setResettingAutomation(false);
+    }
+  };
+
+  // Helper to check if order needs attention
+  const orderNeedsAttention = (order: Order): boolean => {
+    const now = new Date();
+    // Failed automation
+    if (["failed", "permanently_failed", "rate_limited"].includes(order.automation_status || "")) return true;
+    // Delivery issues
+    if (["failed", "needs_review"].includes(order.delivery_status || "")) return true;
+    // Overdue: completed but not sent and target_send_at passed
+    if (order.automation_status === "completed" && 
+        order.target_send_at && 
+        new Date(order.target_send_at) <= now && 
+        !order.sent_at &&
+        !order.dismissed_at) return true;
+    return false;
+  };
+
   useEffect(() => {
     // Intentionally do not auto-authenticate via browser storage.
     // Admin access must always be validated server-side.
@@ -704,6 +783,9 @@ export default function Admin() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Orders</SelectItem>
+                  <SelectItem value="needs_attention" className="text-red-600 font-medium">
+                    ⚠️ Needs Attention ({orders.filter(orderNeedsAttention).length})
+                  </SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="in_progress">In Progress</SelectItem>
                   <SelectItem value="ready">Ready (Scheduled)</SelectItem>
@@ -775,6 +857,16 @@ export default function Admin() {
                 // First apply dismissed filter
                 if (dismissedOrderFilter === "active" && order.dismissed_at) return false;
                 if (dismissedOrderFilter === "cancelled" && !order.dismissed_at) return false;
+                
+                // Needs Attention filter
+                if (statusFilter === "needs_attention") {
+                  return orderNeedsAttention(order);
+                }
+                
+                // Standard status filter
+                if (statusFilter && statusFilter !== "all") {
+                  if (order.status !== statusFilter) return false;
+                }
                 
                 // Then apply search filter
                 if (!orderSearch.trim()) return true;
@@ -855,7 +947,36 @@ export default function Admin() {
                                 {order.utm_source}{order.utm_medium ? ` / ${order.utm_medium}` : ""}
                               </Badge>
                             )}
+                            {/* Delivery status badge */}
+                            {order.delivery_status && order.delivery_status !== "pending" && (
+                              <Badge 
+                                variant="outline" 
+                                className={
+                                  order.delivery_status === "sent" ? "border-green-300 text-green-600" :
+                                  order.delivery_status === "scheduled" ? "border-blue-300 text-blue-600" :
+                                  order.delivery_status === "needs_review" ? "border-amber-300 text-amber-600" :
+                                  order.delivery_status === "failed" ? "border-red-300 text-red-600" :
+                                  "border-gray-300"
+                                }
+                              >
+                                <Mail className="h-3 w-3 mr-1" />
+                                {order.delivery_status}
+                              </Badge>
+                            )}
+                            {/* Retry count badge */}
+                            {(order.automation_retry_count || 0) > 0 && (
+                              <Badge variant="outline" className="border-orange-300 text-orange-600">
+                                Retry #{order.automation_retry_count}
+                              </Badge>
+                            )}
                           </div>
+                          {/* Show last error directly on card for items needing attention */}
+                          {(order.automation_last_error || order.delivery_last_error) && (
+                            <div className="mt-2 p-2 bg-red-50 rounded text-xs text-red-700 border border-red-200">
+                              <AlertCircle className="h-3 w-3 inline mr-1" />
+                              {order.automation_last_error || order.delivery_last_error}
+                            </div>
+                          )}
                           <p className="text-sm text-muted-foreground">
                             <strong>Song for:</strong> {order.recipient_name} ({order.recipient_type})
                           </p>
@@ -1171,6 +1292,52 @@ export default function Admin() {
                   )}
                 </div>
 
+                {/* Automation Controls Section */}
+                {(selectedOrder.automation_status || selectedOrder.song_url) && (
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Bot className="h-4 w-4" />
+                      Automation Controls
+                    </h4>
+                    <div className="flex gap-2 flex-wrap">
+                      {/* Debug Info Button */}
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setShowDebugInfo(true)}
+                      >
+                        <Bug className="h-4 w-4 mr-2" />
+                        Debug Info
+                      </Button>
+
+                      {/* Reset Automation Button */}
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setShowResetConfirm("soft")}
+                        disabled={resettingAutomation}
+                      >
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        Reset Automation
+                      </Button>
+
+                      {/* Reset + Regenerate Button (dangerous) */}
+                      {selectedOrder.song_url && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => setShowResetConfirm("full")}
+                          disabled={resettingAutomation}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Reset + Regenerate
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-3">Upload Song</h4>
                   
@@ -1467,6 +1634,136 @@ export default function Admin() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Debug Info Dialog */}
+      <Dialog open={showDebugInfo} onOpenChange={setShowDebugInfo}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Debug Information</DialogTitle>
+            <DialogDescription>
+              Order {selectedOrder?.id.slice(0, 8).toUpperCase()} - Automation Details
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedOrder && (
+            <div className="space-y-4">
+              {/* Automation Timeline */}
+              <div>
+                <h4 className="font-medium text-sm mb-2">Automation Timeline (UTC)</h4>
+                <div className="text-xs font-mono bg-muted p-3 rounded space-y-1">
+                  <p>earliest_generate_at: {selectedOrder.earliest_generate_at || "N/A"}</p>
+                  <p>automation_started_at: {selectedOrder.automation_started_at || "N/A"}</p>
+                  <p>generated_at: {selectedOrder.generated_at || "N/A"}</p>
+                  <p>target_send_at: {selectedOrder.target_send_at || "N/A"}</p>
+                  <p>sent_at: {selectedOrder.sent_at || "N/A"}</p>
+                </div>
+              </div>
+
+              {/* Audio URL Source */}
+              {selectedOrder.automation_audio_url_source && (
+                <div>
+                  <h4 className="font-medium text-sm mb-2">Audio URL Extraction</h4>
+                  <Badge variant="outline" className="font-mono">
+                    Extracted from: {selectedOrder.automation_audio_url_source}
+                  </Badge>
+                </div>
+              )}
+
+              {/* Generated Lyrics */}
+              {selectedOrder.automation_lyrics && (
+                <div>
+                  <h4 className="font-medium text-sm mb-2">Generated Lyrics</h4>
+                  <pre className="text-xs bg-muted p-4 rounded overflow-auto max-h-48 whitespace-pre-wrap">
+                    {selectedOrder.automation_lyrics}
+                  </pre>
+                </div>
+              )}
+
+              {/* Raw Callback Payload */}
+              {selectedOrder.automation_raw_callback && (
+                <div>
+                  <h4 className="font-medium text-sm mb-2">Raw Suno Callback</h4>
+                  <pre className="text-xs bg-muted p-4 rounded overflow-auto max-h-64">
+                    {JSON.stringify(selectedOrder.automation_raw_callback, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* Last Error */}
+              {(selectedOrder.automation_last_error || selectedOrder.delivery_last_error) && (
+                <div>
+                  <h4 className="font-medium text-sm mb-2 text-red-600">Last Error</h4>
+                  <pre className="text-xs bg-red-50 p-4 rounded overflow-auto text-red-800">
+                    {selectedOrder.automation_last_error || selectedOrder.delivery_last_error}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Automation Confirmation */}
+      <AlertDialog open={showResetConfirm === "soft"} onOpenChange={(open) => !open && setShowResetConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Automation</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear automation status and allow the order to be picked up for generation again.
+              The existing song (if any) will be preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleResetAutomation(false)} disabled={resettingAutomation}>
+              {resettingAutomation ? "Resetting..." : "Reset Automation"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset + Regenerate Confirmation (Two-Step) */}
+      <AlertDialog open={showResetConfirm === "full"} onOpenChange={(open) => {
+        if (!open) {
+          setShowResetConfirm(null);
+          setRegenerateConfirmText("");
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-600 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Song & Regenerate
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>This will <strong>permanently delete</strong> the existing song and all generated assets.</p>
+                <p>The order will return to "paid" status and can be edited before regeneration.</p>
+                <p className="text-red-600 font-medium">This action cannot be undone.</p>
+                <div className="mt-4">
+                  <Label>Type "REGENERATE" to confirm:</Label>
+                  <Input 
+                    value={regenerateConfirmText}
+                    onChange={(e) => setRegenerateConfirmText(e.target.value)}
+                    placeholder="REGENERATE"
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => handleResetAutomation(true)} 
+              disabled={resettingAutomation || regenerateConfirmText !== "REGENERATE"}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {resettingAutomation ? "Deleting..." : "Delete & Reset"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

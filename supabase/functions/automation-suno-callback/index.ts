@@ -630,6 +630,7 @@ Deno.serve(async (req) => {
           automation_status: "completed",
           automation_last_error: null,
           generated_at: new Date().toISOString(), // Track when generation completed
+          automation_audio_url_source: canonical.extractedFrom, // Track which URL field was used
         })
         .eq("id", entityId);
 
@@ -650,6 +651,7 @@ Deno.serve(async (req) => {
           automation_last_error: null,
           generated_at: new Date().toISOString(), // Track when generation completed
           delivery_status: "scheduled", // Ready for scheduled delivery
+          automation_audio_url_source: canonical.extractedFrom, // Track which URL field was used
         })
         .eq("id", entityId);
 
