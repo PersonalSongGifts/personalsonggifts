@@ -1,26 +1,71 @@
-# ✅ Automation Pipeline Improvements - COMPLETED
 
-All changes from the Kie.ai documentation review have been implemented.
 
-## Changes Made
+# Fix: Song Replacement Not Showing New Version
 
-### 1. automation-generate-audio/index.ts
-- ✅ Switched to `customMode: true` with separate `style`, `title`, and `prompt` fields
-- ✅ Upgraded model from `V3_5` to `V4_5` for smarter prompts and faster generation
+## The Problem
 
-### 2. automation-generate-lyrics/index.ts
-- ✅ Changed message role from `system` to `developer` per Gemini 3 Pro docs
-- ✅ Removed non-standard parameters (`include_thoughts`, `reasoning_effort`)
+When you upload a corrected song, the file IS being overwritten in storage, but **Supabase Storage CDN caching** is returning the old cached version to customers. The CDN doesn't know the content changed because the URL path stays the same.
 
-### 3. automation-suno-callback/index.ts
-- ✅ Added explicit handling for all Suno status codes:
-  - `PENDING` - Still processing
-  - `CREATE_TASK_FAILED` - Task creation failed
-  - `GENERATE_AUDIO_FAILED` - Audio generation failed
-  - `SENSITIVE_WORD_ERROR` - Content filtered
-  - `CALLBACK_EXCEPTION` - Callback error
-  - `SUCCESS` / `FIRST_SUCCESS` - Process audio
+---
+
+## The Solution
+
+Add a **cache-busting query parameter** to the song URL whenever a file is uploaded or replaced. This forces browsers and CDNs to fetch the fresh version.
+
+---
+
+## Changes Required
+
+### 1. Update `upload-song` Edge Function
+
+When generating the public URL after upload, append a timestamp or version parameter:
+
+```javascript
+// Current:
+const publicUrl = urlData.publicUrl;
+
+// Fixed:
+const cacheBuster = Date.now();
+const publicUrl = `${urlData.publicUrl}?v=${cacheBuster}`;
+```
+
+This ensures every upload creates a unique URL, bypassing the CDN cache.
+
+---
+
+### 2. What This Fixes
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| Upload corrected song | CDN returns old cached file | Fresh file served immediately |
+| Resend delivery email | Customer gets old song | Customer gets corrected song |
+| Customer refreshes page | May still see old song | Always sees latest version |
+
+---
+
+## Files to Update
+
+| File | Change |
+|------|--------|
+| `supabase/functions/upload-song/index.ts` | Add cache-buster to song_url and cover_image_url |
+
+---
+
+## Technical Details
+
+**For Orders (line ~204-208):**
+- After getting the public URL, append `?v=${Date.now()}`
+- Update the order record with the cache-busted URL
+
+**For Leads (line ~303-312):**
+- Same approach for `full_song_url`, `preview_song_url`, and `cover_image_url`
+
+**For Cover Images (line ~171-174):**
+- Apply the same cache-buster pattern
+
+---
 
 ## No Database Changes Required
 
-All changes were to edge function logic only.
+The `song_url` column already stores the full URL - we're just adding a query parameter that storage ignores but CDNs respect.
+
