@@ -81,6 +81,16 @@ function createPreviewClip(originalBuffer: Uint8Array, durationSeconds: number =
   return originalBuffer.slice(0, previewBytes);
 }
 
+// Entity types
+type EntityType = "lead" | "order";
+
+interface EntityInfo {
+  type: EntityType;
+  table: string;
+  id: string;
+  entity: Record<string, unknown>;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -97,8 +107,6 @@ Deno.serve(async (req) => {
     console.log("[CALLBACK] Received payload:", JSON.stringify(payload).substring(0, 1000));
 
     // Extract task ID from callback - handle both formats
-    // Callback format: payload.data.task_id (snake_case)
-    // Alternative: payload.data.taskId or payload.taskId
     const taskId = payload?.data?.task_id || payload?.data?.taskId || payload?.taskId;
     const callbackType = payload?.data?.callbackType || "unknown";
     
@@ -114,34 +122,53 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Find lead by task ID (security: validates the task exists in our DB)
-    const { data: lead, error: fetchError } = await supabase
+    // Try to find entity by task ID - check both leads and orders
+    let entityInfo: EntityInfo | null = null;
+    
+    // Check leads first
+    const { data: lead, error: leadError } = await supabase
       .from("leads")
       .select("*")
       .eq("automation_task_id", taskId)
       .single();
 
-    if (fetchError || !lead) {
-      console.error(`[CALLBACK] Lead not found for taskId: ${taskId}`, fetchError);
-      return new Response("Lead not found", { status: 404, headers: corsHeaders });
+    if (lead && !leadError) {
+      entityInfo = { type: "lead", table: "leads", id: lead.id, entity: lead };
+      console.log(`[CALLBACK] Found lead ${lead.id} (${lead.recipient_name}) for taskId ${taskId}`);
+    } else {
+      // Check orders
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("automation_task_id", taskId)
+        .single();
+
+      if (order && !orderError) {
+        entityInfo = { type: "order", table: "orders", id: order.id, entity: order };
+        console.log(`[CALLBACK] Found order ${order.id} (${order.recipient_name}) for taskId ${taskId}`);
+      }
     }
 
-    console.log(`[CALLBACK] Found lead ${lead.id} (${lead.recipient_name}) for taskId ${taskId}`);
+    if (!entityInfo) {
+      console.error(`[CALLBACK] No entity found for taskId: ${taskId}`);
+      return new Response("Entity not found", { status: 404, headers: corsHeaders });
+    }
+
+    const { type: entityType, table: tableName, id: entityId, entity } = entityInfo;
 
     // Security: Check if manual override was set (admin took over)
-    if (lead.automation_manual_override_at) {
-      console.log(`[CALLBACK] Manual override active for lead ${lead.id}, ignoring callback`);
+    if (entity.automation_manual_override_at) {
+      console.log(`[CALLBACK] Manual override active for ${entityType} ${entityId}, ignoring callback`);
       return new Response("Manual override active", { status: 200, headers: corsHeaders });
     }
 
     // Security: Verify status is in expected state
-    if (lead.automation_status !== "audio_generating") {
-      console.log(`[CALLBACK] Unexpected status ${lead.automation_status} for lead ${lead.id}, current: ${lead.automation_status}`);
+    if (entity.automation_status !== "audio_generating") {
+      console.log(`[CALLBACK] Unexpected status ${entity.automation_status} for ${entityType} ${entityId}`);
       return new Response("Unexpected status", { status: 200, headers: corsHeaders });
     }
 
     // Try to extract audio data directly from callback payload first (faster)
-    // Callback format: payload.data.data[0].audio_url (snake_case)
     const callbackAudioData = payload?.data?.data;
     let audioDataFromCallback = null;
     
@@ -184,49 +211,49 @@ Deno.serve(async (req) => {
       case "CREATE_TASK_FAILED":
         console.error(`[CALLBACK] Task ${taskId} creation failed:`, task?.errorMessage);
         await supabase
-          .from("leads")
+          .from(tableName)
           .update({
             automation_status: "failed",
             automation_last_error: `[CALLBACK] Suno task creation failed: ${task?.errorMessage || "Unknown error"}`,
-            automation_retry_count: (lead.automation_retry_count || 0) + 1,
+            automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
           })
-          .eq("id", lead.id);
+          .eq("id", entityId);
         return new Response("Task creation failed", { status: 200, headers: corsHeaders });
 
       case "GENERATE_AUDIO_FAILED":
         console.error(`[CALLBACK] Task ${taskId} audio generation failed:`, task?.errorMessage);
         await supabase
-          .from("leads")
+          .from(tableName)
           .update({
             automation_status: "failed",
             automation_last_error: `[CALLBACK] Audio generation failed: ${task?.errorMessage || "Unknown error"}`,
-            automation_retry_count: (lead.automation_retry_count || 0) + 1,
+            automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
           })
-          .eq("id", lead.id);
+          .eq("id", entityId);
         return new Response("Audio generation failed", { status: 200, headers: corsHeaders });
 
       case "SENSITIVE_WORD_ERROR":
         console.error(`[CALLBACK] Task ${taskId} content filtered:`, task?.errorMessage);
         await supabase
-          .from("leads")
+          .from(tableName)
           .update({
             automation_status: "failed",
             automation_last_error: `[CALLBACK] Content filtered by Suno: ${task?.errorMessage || "Sensitive content detected"}`,
-            automation_retry_count: (lead.automation_retry_count || 0) + 1,
+            automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
           })
-          .eq("id", lead.id);
+          .eq("id", entityId);
         return new Response("Content filtered", { status: 200, headers: corsHeaders });
 
       case "CALLBACK_EXCEPTION":
         console.error(`[CALLBACK] Task ${taskId} callback error:`, task?.errorMessage);
         await supabase
-          .from("leads")
+          .from(tableName)
           .update({
             automation_status: "failed",
             automation_last_error: `[CALLBACK] Callback exception: ${task?.errorMessage || "Unknown error"}`,
-            automation_retry_count: (lead.automation_retry_count || 0) + 1,
+            automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
           })
-          .eq("id", lead.id);
+          .eq("id", entityId);
         return new Response("Callback exception", { status: 200, headers: corsHeaders });
 
       case "SUCCESS":
@@ -239,12 +266,9 @@ Deno.serve(async (req) => {
         return new Response("Unknown status", { status: 200, headers: corsHeaders });
     }
 
-    // Get audio data - try multiple sources:
-    // 1. record-info response: task.response.sunoData (camelCase)
-    // 2. Callback payload: payload.data.data (snake_case for URLs)
+    // Get audio data - try multiple sources
     let sunoData = task?.response?.sunoData;
     
-    // Fallback to callback payload if record-info doesn't have it
     if (!sunoData || !Array.isArray(sunoData) || sunoData.length === 0) {
       console.log("[CALLBACK] No sunoData in record-info response, trying callback payload");
       sunoData = audioDataFromCallback || payload?.data?.data;
@@ -254,17 +278,15 @@ Deno.serve(async (req) => {
 
     if (!sunoData || !Array.isArray(sunoData) || sunoData.length === 0) {
       console.error("[CALLBACK] No audio data found in any source");
-      console.error("[CALLBACK] task.response:", JSON.stringify(task?.response));
-      console.error("[CALLBACK] payload.data:", JSON.stringify(payload?.data));
       
       await supabase
-        .from("leads")
+        .from(tableName)
         .update({
           automation_status: "failed",
           automation_last_error: "[CALLBACK] No audio data returned from Suno - check record-info and callback payload formats",
-          automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
         })
-        .eq("id", lead.id);
+        .eq("id", entityId);
 
       return new Response("No audio data", { status: 200, headers: corsHeaders });
     }
@@ -276,22 +298,21 @@ Deno.serve(async (req) => {
     // Handle both camelCase (record-info) and snake_case (callback) field names
     const audioUrl = song.audioUrl || song.audio_url;
     const coverUrl = song.imageUrl || song.image_url;
-    const title = song.title || lead.song_title || `Song for ${lead.recipient_name}`;
+    const title = song.title || (entity.song_title as string) || `Song for ${entity.recipient_name}`;
 
     console.log(`[CALLBACK] Extracted - audioUrl: ${audioUrl ? 'present' : 'missing'}, coverUrl: ${coverUrl ? 'present' : 'missing'}, title: ${title}`);
 
     if (!audioUrl) {
       console.error("[CALLBACK] No audio URL found in song data");
-      console.error("[CALLBACK] song keys:", Object.keys(song || {}));
       
       await supabase
-        .from("leads")
+        .from(tableName)
         .update({
           automation_status: "failed",
           automation_last_error: `[CALLBACK] No audio URL in Suno response. Keys: ${Object.keys(song || {}).join(', ')}`,
-          automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
         })
-        .eq("id", lead.id);
+        .eq("id", entityId);
 
       return new Response("No audio URL", { status: 200, headers: corsHeaders });
     }
@@ -318,9 +339,10 @@ Deno.serve(async (req) => {
     console.log(`[CALLBACK] Downloaded ${audioBytes.length} bytes`);
 
     // Deterministic storage path for idempotency
-    const shortId = lead.id.slice(0, 8).toUpperCase();
-    const fullStoragePath = `leads/${shortId}-full.mp3`;
-    const previewStoragePath = `leads/${shortId}-preview.mp3`;
+    const shortId = entityId.slice(0, 8).toUpperCase();
+    const folderPrefix = entityType === "order" ? "orders" : "leads";
+    const fullStoragePath = `${folderPrefix}/${shortId}-full.mp3`;
+    const previewStoragePath = `${folderPrefix}/${shortId}-preview.mp3`;
 
     // Upload full song
     console.log(`[CALLBACK] Uploading full song to: ${fullStoragePath}`);
@@ -328,7 +350,7 @@ Deno.serve(async (req) => {
       .from("songs")
       .upload(fullStoragePath, audioBytes, {
         contentType: "audio/mpeg",
-        upsert: true, // Idempotent: overwrites on retry
+        upsert: true,
       });
 
     if (fullUploadError) {
@@ -336,31 +358,35 @@ Deno.serve(async (req) => {
       throw new Error(`Upload failed: ${fullUploadError.message}`);
     }
 
-    // Create and upload preview
-    console.log(`[CALLBACK] Creating and uploading preview to: ${previewStoragePath}`);
-    const previewBytes = createPreviewClip(audioBytes, 45);
-    const { error: previewUploadError } = await supabase.storage
-      .from("songs")
-      .upload(previewStoragePath, previewBytes, {
-        contentType: "audio/mpeg",
-        upsert: true,
-      });
+    // Create and upload preview (only for leads)
+    let previewUrlData = null;
+    if (entityType === "lead") {
+      console.log(`[CALLBACK] Creating and uploading preview to: ${previewStoragePath}`);
+      const previewBytes = createPreviewClip(audioBytes, 45);
+      const { error: previewUploadError } = await supabase.storage
+        .from("songs")
+        .upload(previewStoragePath, previewBytes, {
+          contentType: "audio/mpeg",
+          upsert: true,
+        });
 
-    if (previewUploadError) {
-      console.error("[CALLBACK] Preview upload error:", previewUploadError);
-      // Continue even if preview fails
+      if (previewUploadError) {
+        console.error("[CALLBACK] Preview upload error:", previewUploadError);
+        // Continue even if preview fails
+      } else {
+        const { data } = supabase.storage
+          .from("songs")
+          .getPublicUrl(previewStoragePath);
+        previewUrlData = data;
+      }
     }
 
     // Get public URLs
     const { data: fullUrlData } = supabase.storage
       .from("songs")
       .getPublicUrl(fullStoragePath);
-    
-    const { data: previewUrlData } = supabase.storage
-      .from("songs")
-      .getPublicUrl(previewStoragePath);
 
-    console.log(`[CALLBACK] Storage URLs - Full: ${fullUrlData.publicUrl}, Preview: ${previewUrlData.publicUrl}`);
+    console.log(`[CALLBACK] Storage URLs - Full: ${fullUrlData.publicUrl}`);
 
     // Try to download Suno's cover image if available
     let coverImageUrl = null;
@@ -374,7 +400,7 @@ Deno.serve(async (req) => {
         if (coverResponse.ok) {
           const coverBuffer = await coverResponse.arrayBuffer();
           const coverBytes = new Uint8Array(coverBuffer);
-          const coverPath = `leads/${shortId}-cover.jpg`;
+          const coverPath = `${folderPrefix}/${shortId}-cover.jpg`;
           
           const { error: coverUploadError } = await supabase.storage
             .from("songs")
@@ -415,7 +441,7 @@ Deno.serve(async (req) => {
             
             const format = picture.format || "image/jpeg";
             const ext = format.includes("png") ? "png" : "jpg";
-            const coverPath = `leads/${shortId}-cover.${ext}`;
+            const coverPath = `${folderPrefix}/${shortId}-cover.${ext}`;
             
             const { error: coverUploadError } = await supabase.storage
               .from("songs")
@@ -438,59 +464,86 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Generate preview token
-    const previewToken = generatePreviewToken();
+    // Build update object based on entity type
+    if (entityType === "lead") {
+      // Generate preview token for leads
+      const previewToken = generatePreviewToken();
 
-    // Check if lead email is in admin tester allowlist for accelerated preview
-    let autoSendTime: string;
-    const { data: testerEmailsSetting } = await supabase
-      .from("admin_settings")
-      .select("value")
-      .eq("key", "admin_tester_emails")
-      .maybeSingle();
+      // Check if lead email is in admin tester allowlist for accelerated preview
+      let autoSendTime: string;
+      const { data: testerEmailsSetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "admin_tester_emails")
+        .maybeSingle();
 
-    const testerEmails = (testerEmailsSetting?.value || "")
-      .split(",")
-      .map((e: string) => e.trim().toLowerCase())
-      .filter((e: string) => e.length > 0);
+      const testerEmails = (testerEmailsSetting?.value || "")
+        .split(",")
+        .map((e: string) => e.trim().toLowerCase())
+        .filter((e: string) => e.length > 0);
 
-    const isAdminTester = testerEmails.includes(lead.email.toLowerCase());
+      const isAdminTester = testerEmails.includes((entity.email as string).toLowerCase());
 
-    if (isAdminTester) {
-      // Admin testers get preview email within ~1 minute
-      autoSendTime = new Date(Date.now() + 60 * 1000).toISOString();
-      console.log(`[CALLBACK] Admin tester detected (${lead.email}), scheduling preview for ${autoSendTime}`);
+      if (isAdminTester) {
+        // Admin testers get preview email within ~1 minute
+        autoSendTime = new Date(Date.now() + 60 * 1000).toISOString();
+        console.log(`[CALLBACK] Admin tester detected (${entity.email}), scheduling preview for ${autoSendTime}`);
+      } else {
+        // Regular leads: 24 hours from capture for conversion optimization
+        const capturedAt = new Date(entity.captured_at as string);
+        autoSendTime = new Date(capturedAt.getTime() + 24 * 60 * 60 * 1000).toISOString();
+        console.log(`[CALLBACK] Regular lead, scheduling preview for ${autoSendTime}`);
+      }
+
+      // Update lead with all song data
+      console.log(`[CALLBACK] Updating lead ${entityId} with final song data`);
+      await supabase
+        .from("leads")
+        .update({
+          full_song_url: fullUrlData.publicUrl,
+          preview_song_url: previewUrlData?.publicUrl || fullUrlData.publicUrl,
+          song_title: title,
+          cover_image_url: coverImageUrl,
+          preview_token: previewToken,
+          status: "song_ready",
+          preview_scheduled_at: autoSendTime,
+          automation_status: "completed",
+          automation_last_error: null,
+        })
+        .eq("id", entityId);
+
+      console.log(`[CALLBACK] ✅ Automation complete for lead ${entityId}`);
+      console.log(`[CALLBACK] Preview scheduled for: ${autoSendTime}`);
+
     } else {
-      // Regular leads: 24 hours from capture for conversion optimization
-      const capturedAt = new Date(lead.captured_at);
-      autoSendTime = new Date(capturedAt.getTime() + 24 * 60 * 60 * 1000).toISOString();
-      console.log(`[CALLBACK] Regular lead, scheduling preview for ${autoSendTime}`);
+      // Update order with song data
+      console.log(`[CALLBACK] Updating order ${entityId} with final song data`);
+      await supabase
+        .from("orders")
+        .update({
+          song_url: fullUrlData.publicUrl,
+          song_title: title,
+          cover_image_url: coverImageUrl,
+          status: "completed", // Mark order as completed (ready for delivery)
+          automation_status: "completed",
+          automation_last_error: null,
+        })
+        .eq("id", entityId);
+
+      console.log(`[CALLBACK] ✅ Automation complete for order ${entityId}`);
     }
 
-    // Update lead with all song data
-    console.log(`[CALLBACK] Updating lead ${lead.id} with final song data`);
-    await supabase
-      .from("leads")
-      .update({
-        full_song_url: fullUrlData.publicUrl,
-        preview_song_url: previewUrlData.publicUrl,
-        song_title: title,
-        cover_image_url: coverImageUrl,
-        preview_token: previewToken,
-        status: "song_ready",
-        preview_scheduled_at: autoSendTime,
-        automation_status: "completed",
-        automation_last_error: null, // Clear any previous errors
-      })
-      .eq("id", lead.id);
-
-    console.log(`[CALLBACK] ✅ Automation complete for lead ${lead.id}`);
     console.log(`[CALLBACK] Title: ${title}`);
     console.log(`[CALLBACK] Full URL: ${fullUrlData.publicUrl}`);
-    console.log(`[CALLBACK] Preview scheduled for: ${autoSendTime}`);
 
     return new Response(
-      JSON.stringify({ success: true, leadId: lead.id, title, audioUrl: fullUrlData.publicUrl }),
+      JSON.stringify({ 
+        success: true, 
+        entityType,
+        entityId, 
+        title, 
+        audioUrl: fullUrlData.publicUrl 
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

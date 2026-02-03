@@ -62,6 +62,37 @@ Target a typical 3:00-3:30 song. Keep line lengths short and singable (4-10 word
 - Do NOT explain reasoning or ask questions
 - Output lyrics ONLY in the specified format`;
 
+// Helper to normalize entity data from leads or orders
+interface EntityData {
+  id: string;
+  recipient_type: string;
+  recipient_name: string;
+  occasion: string;
+  genre: string;
+  singer_preference: string;
+  special_qualities: string;
+  favorite_memory: string;
+  special_message?: string | null;
+  automation_manual_override_at?: string | null;
+  automation_retry_count?: number | null;
+}
+
+function normalizeEntityData(entity: Record<string, unknown>, entityType: "lead" | "order"): EntityData {
+  return {
+    id: entity.id as string,
+    recipient_type: entity.recipient_type as string,
+    recipient_name: entity.recipient_name as string,
+    occasion: entity.occasion as string,
+    genre: entity.genre as string,
+    singer_preference: entity.singer_preference as string,
+    special_qualities: entity.special_qualities as string,
+    favorite_memory: entity.favorite_memory as string,
+    special_message: entity.special_message as string | null,
+    automation_manual_override_at: entity.automation_manual_override_at as string | null,
+    automation_retry_count: entity.automation_retry_count as number | null,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -74,13 +105,19 @@ Deno.serve(async (req) => {
       throw new Error("KIE_API_KEY not configured");
     }
 
-    const { leadId } = await req.json();
-    console.log(`[LYRICS] Starting lyrics generation for lead ${leadId}`);
+    const { leadId, orderId } = await req.json();
     
-    if (!leadId) {
-      console.error("[LYRICS] Missing leadId in request");
+    // Determine entity type
+    const entityType = orderId ? "order" : "lead";
+    const entityId = orderId || leadId;
+    const tableName = entityType === "order" ? "orders" : "leads";
+    
+    console.log(`[LYRICS] Starting lyrics generation for ${entityType} ${entityId}`);
+    
+    if (!entityId) {
+      console.error("[LYRICS] Missing entityId in request");
       return new Response(
-        JSON.stringify({ error: "leadId required" }),
+        JSON.stringify({ error: "leadId or orderId required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -90,26 +127,27 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch lead data
-    const { data: lead, error: fetchError } = await supabase
-      .from("leads")
+    // Fetch entity data
+    const { data: rawEntity, error: fetchError } = await supabase
+      .from(tableName)
       .select("*")
-      .eq("id", leadId)
+      .eq("id", entityId)
       .single();
 
-    if (fetchError || !lead) {
-      console.error(`[LYRICS] Lead not found: ${leadId}`, fetchError);
+    if (fetchError || !rawEntity) {
+      console.error(`[LYRICS] ${entityType} not found: ${entityId}`, fetchError);
       return new Response(
-        JSON.stringify({ error: "Lead not found" }),
+        JSON.stringify({ error: `${entityType} not found` }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[LYRICS] Found lead: ${lead.recipient_name} (${lead.recipient_type}), genre: ${lead.genre}`);
+    const entity = normalizeEntityData(rawEntity, entityType);
+    console.log(`[LYRICS] Found ${entityType}: ${entity.recipient_name} (${entity.recipient_type}), genre: ${entity.genre}`);
 
     // Check if manual override is set
-    if (lead.automation_manual_override_at) {
-      console.log(`[LYRICS] Manual override active for lead ${lead.id}, skipping`);
+    if (entity.automation_manual_override_at) {
+      console.log(`[LYRICS] Manual override active for ${entityType} ${entity.id}, skipping`);
       return new Response(
         JSON.stringify({ error: "Manual override active, skipping automation" }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -118,24 +156,24 @@ Deno.serve(async (req) => {
 
     // Update status to lyrics_generating
     await supabase
-      .from("leads")
+      .from(tableName)
       .update({ 
         automation_status: "lyrics_generating",
         automation_started_at: new Date().toISOString(),
       })
-      .eq("id", leadId);
+      .eq("id", entityId);
 
-    // Build user prompt with lead data
+    // Build user prompt with entity data
     const userPrompt = `Write Suno-ready song lyrics only, no explanations.
 
-RecipientType: ${lead.recipient_type}
-RecipientName: ${lead.recipient_name}
-Occasion: ${lead.occasion}
-Genre: ${lead.genre}
-SingerPreference: ${lead.singer_preference}
-SpecialQualities: "${lead.special_qualities}"
-FavoriteMemory: "${lead.favorite_memory}"
-SpecialMessage: "${lead.special_message || ""}"
+RecipientType: ${entity.recipient_type}
+RecipientName: ${entity.recipient_name}
+Occasion: ${entity.occasion}
+Genre: ${entity.genre}
+SingerPreference: ${entity.singer_preference}
+SpecialQualities: "${entity.special_qualities}"
+FavoriteMemory: "${entity.favorite_memory}"
+SpecialMessage: "${entity.special_message || ""}"
 
 Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
@@ -145,7 +183,7 @@ Remember:
     console.log(`[LYRICS] Calling Gemini API, prompt length: ${userPrompt.length} chars`);
 
     // Call Gemini via Kie.ai (using documented OpenAI-compatible format)
-    const geminiResponse = await fetch("https://api.kie.ai/gemini-3-pro/v1/chat/completions", {
+    const geminiResponse = await fetch("https://api.kie.ai/gemini-3-flash/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${KIE_API_KEY}`,
@@ -154,7 +192,7 @@ Remember:
       body: JSON.stringify({
         stream: false,
         messages: [
-          { role: "developer", content: SYSTEM_PROMPT },  // Use "developer" role per Gemini 3 Pro docs
+          { role: "developer", content: SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
       }),
@@ -166,15 +204,15 @@ Remember:
       const errorText = await geminiResponse.text();
       console.error(`[LYRICS] Gemini API error: ${geminiResponse.status}`, errorText);
       
-      // Update lead with error
+      // Update entity with error
       await supabase
-        .from("leads")
+        .from(tableName)
         .update({
           automation_status: "failed",
           automation_last_error: `[LYRICS] Gemini API error: ${geminiResponse.status} - ${errorText.substring(0, 200)}`,
-          automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          automation_retry_count: (entity.automation_retry_count || 0) + 1,
         })
-        .eq("id", leadId);
+        .eq("id", entityId);
 
       return new Response(
         JSON.stringify({ error: "Lyrics generation failed", details: errorText }),
@@ -190,13 +228,13 @@ Remember:
     if (!lyrics) {
       console.error("[LYRICS] No lyrics returned from Gemini");
       await supabase
-        .from("leads")
+        .from(tableName)
         .update({
           automation_status: "failed",
           automation_last_error: "[LYRICS] No lyrics returned from Gemini API",
-          automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          automation_retry_count: (entity.automation_retry_count || 0) + 1,
         })
-        .eq("id", leadId);
+        .eq("id", entityId);
 
       return new Response(
         JSON.stringify({ error: "No lyrics generated" }),
@@ -207,7 +245,7 @@ Remember:
     console.log(`[LYRICS] Generated lyrics length: ${lyrics.length} chars`);
 
     // Extract title from lyrics (look for first meaningful line after [Intro])
-    let songTitle = `Song for ${lead.recipient_name}`;
+    let songTitle = `Song for ${entity.recipient_name}`;
     const lines = lyrics.split('\n').filter((l: string) => l.trim() && !l.startsWith('['));
     if (lines.length > 0) {
       // Use first line of chorus or verse as title inspiration
@@ -219,22 +257,23 @@ Remember:
 
     console.log(`[LYRICS] Extracted title: "${songTitle}"`);
 
-    // Update lead with lyrics
+    // Update entity with lyrics
     await supabase
-      .from("leads")
+      .from(tableName)
       .update({
         automation_status: "lyrics_ready",
         automation_lyrics: lyrics,
         song_title: songTitle,
       })
-      .eq("id", leadId);
+      .eq("id", entityId);
 
-    console.log(`[LYRICS] ✅ Lyrics saved for lead ${leadId}`);
+    console.log(`[LYRICS] ✅ Lyrics saved for ${entityType} ${entityId}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        leadId,
+        entityType,
+        entityId,
         title: songTitle,
         lyricsLength: lyrics.length,
         lyrics: lyrics.substring(0, 200) + "...",

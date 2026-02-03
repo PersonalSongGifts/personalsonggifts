@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2 } from "lucide-react";
 import { formatAdminDate } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
@@ -65,6 +65,13 @@ interface Order {
   utm_campaign: string | null;
   utm_content: string | null;
   utm_term: string | null;
+  // Automation tracking
+  automation_status: string | null;
+  automation_task_id: string | null;
+  automation_lyrics: string | null;
+  automation_started_at: string | null;
+  automation_retry_count: number | null;
+  automation_last_error: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -116,6 +123,8 @@ export default function Admin() {
   const [isEditingOrder, setIsEditingOrder] = useState(false);
   const [editedOrder, setEditedOrder] = useState<Partial<Order>>({});
   const [savingOrderEdits, setSavingOrderEdits] = useState(false);
+  // Order automation state
+  const [triggeringOrderAutomation, setTriggeringOrderAutomation] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -480,6 +489,50 @@ export default function Admin() {
     setEditedOrder({});
   };
 
+  // Handler for triggering AI generation for orders
+  const handleTriggerOrderAutomation = async (order: Order) => {
+    if (!password) return;
+    
+    setTriggeringOrderAutomation(order.id);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/automation-trigger`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            "x-admin-password": password,
+          },
+          body: JSON.stringify({ orderId: order.id, forceRun: true }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to trigger automation");
+      }
+
+      toast({
+        title: "AI Generation Started",
+        description: `Song for ${order.recipient_name} is being generated. This will take 1-3 minutes.`,
+      });
+
+      // Refresh to show updated status
+      fetchOrders();
+    } catch (err) {
+      console.error("Order automation trigger error:", err);
+      toast({
+        title: "Failed to Start Generation",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setTriggeringOrderAutomation(null);
+    }
+  };
+
   useEffect(() => {
     // Intentionally do not auto-authenticate via browser storage.
     // Admin access must always be validated server-side.
@@ -714,6 +767,22 @@ export default function Admin() {
                             <Badge variant="outline">
                               {order.pricing_tier === "priority" ? "Priority" : "Standard"}
                             </Badge>
+                            {/* Automation status badge */}
+                            {order.automation_status && (
+                              <Badge 
+                                variant="outline" 
+                                className={
+                                  order.automation_status === "completed" 
+                                    ? "border-green-300 text-green-600" 
+                                    : order.automation_status === "failed" 
+                                      ? "border-red-300 text-red-600" 
+                                      : "border-purple-300 text-purple-600"
+                                }
+                              >
+                                <Bot className="h-3 w-3 mr-1" />
+                                {order.automation_status}
+                              </Badge>
+                            )}
                             {order.utm_source && (
                               <Badge variant="outline" className="border-blue-300 text-blue-600">
                                 {order.utm_source}{order.utm_medium ? ` / ${order.utm_medium}` : ""}
@@ -743,7 +812,30 @@ export default function Admin() {
                             </p>
                           )}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
+                          {/* AI Generate button - show when no song_url and not currently generating */}
+                          {!order.song_url && !["pending", "lyrics_generating", "audio_generating"].includes(order.automation_status || "") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleTriggerOrderAutomation(order)}
+                              disabled={triggeringOrderAutomation === order.id}
+                            >
+                              {triggeringOrderAutomation === order.id ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <Wand2 className="h-4 w-4 mr-2" />
+                              )}
+                              AI Generate
+                            </Button>
+                          )}
+                          {/* Show generating status */}
+                          {["pending", "lyrics_generating", "audio_generating"].includes(order.automation_status || "") && (
+                            <Button variant="outline" size="sm" disabled>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Generating...
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
