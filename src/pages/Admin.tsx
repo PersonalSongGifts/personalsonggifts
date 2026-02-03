@@ -52,6 +52,7 @@ interface Order {
   reaction_video_url: string | null;
   reaction_submitted_at: string | null;
   scheduled_delivery_at: string | null;
+  resend_scheduled_at: string | null;
   // Engagement tracking
   song_played_at: string | null;
   song_play_count: number | null;
@@ -108,6 +109,8 @@ export default function Admin() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [scheduledDeliveryTime, setScheduledDeliveryTime] = useState<Date | null>(null);
+  const [resendScheduledTime, setResendScheduledTime] = useState<Date | null>(null);
+  const [schedulingResend, setSchedulingResend] = useState(false);
   // Edit mode state for orders
   const [isEditingOrder, setIsEditingOrder] = useState(false);
   const [editedOrder, setEditedOrder] = useState<Partial<Order>>({});
@@ -312,9 +315,46 @@ export default function Admin() {
     }
   };
 
-  const handleResendDeliveryEmail = async (order: Order) => {
+  const handleResendDeliveryEmail = async (order: Order, scheduledAt?: Date | null) => {
     if (!password) return;
 
+    // If scheduling a resend
+    if (scheduledAt) {
+      setSchedulingResend(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("admin-orders", {
+          method: "POST",
+          body: {
+            action: "schedule_resend_delivery",
+            orderId: order.id,
+            resendScheduledAt: scheduledAt.toISOString(),
+            adminPassword: password,
+          },
+        });
+
+        if (error) throw error;
+
+        toast({
+          title: "Resend Scheduled",
+          description: data?.message || "Delivery email will be resent at the scheduled time",
+        });
+
+        setResendScheduledTime(null);
+        fetchOrders();
+      } catch (err) {
+        console.error("Schedule resend error:", err);
+        toast({
+          title: "Failed to Schedule",
+          description: err instanceof Error ? err.message : "Failed to schedule resend",
+          variant: "destructive",
+        });
+      } finally {
+        setSchedulingResend(false);
+      }
+      return;
+    }
+
+    // Immediate resend
     setResendingDelivery(true);
     try {
       const { data, error } = await supabase.functions.invoke("admin-orders", {
@@ -341,6 +381,41 @@ export default function Admin() {
       });
     } finally {
       setResendingDelivery(false);
+    }
+  };
+
+  const handleCancelScheduledResend = async (order: Order) => {
+    if (!password) return;
+
+    setSchedulingResend(true);
+    try {
+      const { error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "schedule_resend_delivery",
+          orderId: order.id,
+          resendScheduledAt: null,
+          adminPassword: password,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Schedule Cancelled",
+        description: "Scheduled resend has been cancelled",
+      });
+
+      fetchOrders();
+    } catch (err) {
+      console.error("Cancel scheduled resend error:", err);
+      toast({
+        title: "Failed to Cancel",
+        description: err instanceof Error ? err.message : "Failed to cancel scheduled resend",
+        variant: "destructive",
+      });
+    } finally {
+      setSchedulingResend(false);
     }
   };
 
@@ -1052,6 +1127,43 @@ export default function Admin() {
                   </div>
                 )}
 
+                {/* Resend Delivery Scheduling - for delivered orders with a song */}
+                {selectedOrder.status === "delivered" && selectedOrder.song_url && (
+                  <div className="border-t pt-4 bg-muted/30 rounded-lg p-4 -mx-2">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Send className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="font-medium text-sm">Resend Delivery</h4>
+                    </div>
+                    
+                    {selectedOrder.resend_scheduled_at ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
+                          <CalendarClock className="h-4 w-4" />
+                          <span>
+                            Resend scheduled for{" "}
+                            <strong>{formatAdminDate(selectedOrder.resend_scheduled_at)}</strong>
+                          </span>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCancelScheduledResend(selectedOrder)}
+                          disabled={schedulingResend}
+                        >
+                          <X className="h-4 w-4 mr-2" />
+                          Cancel Scheduled Resend
+                        </Button>
+                      </div>
+                    ) : (
+                      <ScheduledDeliveryPicker
+                        expectedDelivery={null}
+                        value={resendScheduledTime}
+                        onChange={setResendScheduledTime}
+                      />
+                    )}
+                  </div>
+                )}
+
                 {/* Traffic Source Section */}
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-3">Traffic Source</h4>
@@ -1129,15 +1241,26 @@ export default function Admin() {
                   </>
                 )}
                 {/* Resend delivery email button for already-delivered orders */}
-                {selectedOrder.status === "delivered" && selectedOrder.song_url && (
-                  <Button
-                    variant="outline"
-                    onClick={() => handleResendDeliveryEmail(selectedOrder)}
-                    disabled={resendingDelivery}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${resendingDelivery ? "animate-spin" : ""}`} />
-                    {resendingDelivery ? "Resending..." : "Resend Delivery Email"}
-                  </Button>
+                {selectedOrder.status === "delivered" && selectedOrder.song_url && !selectedOrder.resend_scheduled_at && (
+                  resendScheduledTime ? (
+                    <Button
+                      onClick={() => handleResendDeliveryEmail(selectedOrder, resendScheduledTime)}
+                      disabled={schedulingResend}
+                      className="gap-2"
+                    >
+                      <CalendarClock className="h-4 w-4" />
+                      {schedulingResend ? "Scheduling..." : "Schedule Resend"}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => handleResendDeliveryEmail(selectedOrder)}
+                      disabled={resendingDelivery}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${resendingDelivery ? "animate-spin" : ""}`} />
+                      {resendingDelivery ? "Resending..." : "Resend Delivery Email"}
+                    </Button>
+                  )
                 )}
               </DialogFooter>
             </>

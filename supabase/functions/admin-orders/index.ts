@@ -536,6 +536,101 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Schedule resend delivery for an already-delivered order
+      if (body?.action === "schedule_resend_delivery") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        const resendScheduledAtRaw =
+          body.resendScheduledAt === null
+            ? null
+            : typeof body.resendScheduledAt === "string"
+              ? body.resendScheduledAt
+              : null;
+
+        if (!orderId) {
+          return new Response(
+            JSON.stringify({ error: "Order ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get order details
+        const { data: order, error: orderError } = await supabase
+          .from("orders")
+          .select("id, status, song_url")
+          .eq("id", orderId)
+          .single();
+
+        if (orderError || !order) {
+          return new Response(
+            JSON.stringify({ error: "Order not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (order.status !== "delivered") {
+          return new Response(
+            JSON.stringify({ error: "Order must be delivered to schedule a resend" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (!order.song_url) {
+          return new Response(
+            JSON.stringify({ error: "No song uploaded for this order" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Validate scheduled time if provided
+        if (resendScheduledAtRaw) {
+          const dt = new Date(resendScheduledAtRaw);
+          if (Number.isNaN(dt.getTime())) {
+            return new Response(
+              JSON.stringify({ error: "Invalid resendScheduledAt" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          if (dt <= new Date()) {
+            return new Response(
+              JSON.stringify({ error: "Scheduled time must be in the future" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
+        // Update the order with scheduled resend time
+        const { data: updatedOrder, error: updateError } = await supabase
+          .from("orders")
+          .update({
+            resend_scheduled_at: resendScheduledAtRaw,
+          })
+          .eq("id", orderId)
+          .select("*")
+          .single();
+
+        if (updateError) {
+          console.error("Failed to schedule resend:", updateError);
+          throw updateError;
+        }
+
+        const message = resendScheduledAtRaw
+          ? `Resend scheduled for ${new Date(resendScheduledAtRaw).toLocaleString("en-US", {
+              timeZone: "America/Los_Angeles",
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })} PST`
+          : "Scheduled resend cancelled";
+
+        return new Response(
+          JSON.stringify({ order: updatedOrder, message }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = (body ?? {}) as Record<string, unknown>;
 
       if (!orderId) {
