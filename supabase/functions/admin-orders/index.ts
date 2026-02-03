@@ -339,7 +339,7 @@ Deno.serve(async (req) => {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${supabaseServiceKey}`,
               },
-              body: JSON.stringify({ leadId }),
+              body: JSON.stringify({ leadId, forceRun: true }),
             });
 
             if (response.ok) {
@@ -390,7 +390,7 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${supabaseServiceKey}`,
           },
-          body: JSON.stringify({ leadId }),
+          body: JSON.stringify({ leadId, forceRun: true }),
         });
 
         if (!response.ok) {
