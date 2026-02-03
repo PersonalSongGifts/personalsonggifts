@@ -3,10 +3,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search, Pencil, Save, ArrowRightCircle } from "lucide-react";
 import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
@@ -108,6 +112,14 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [previewTimingMode, setPreviewTimingMode] = useState<LeadPreviewTimingMode>("auto_24h");
   const [previewScheduledAt, setPreviewScheduledAt] = useState<Date | null>(null);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  // Edit mode state
+  const [isEditingLead, setIsEditingLead] = useState(false);
+  const [editedLead, setEditedLead] = useState<Partial<Lead>>({});
+  const [savingLeadEdits, setSavingLeadEdits] = useState(false);
+  // Convert to order state
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
+  const [convertPrice, setConvertPrice] = useState<number>(4900);
+  const [convertingLead, setConvertingLead] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -529,6 +541,113 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     return hoursSincePreview >= 24;
   };
 
+  const handleSaveLeadEdits = async () => {
+    if (!selectedLead || !adminPassword) return;
+
+    setSavingLeadEdits(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_lead_fields",
+          leadId: selectedLead.id,
+          updates: editedLead,
+          adminPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save changes");
+      }
+
+      const data = await response.json();
+
+      toast({
+        title: "Changes Saved",
+        description: "Lead information updated successfully",
+      });
+
+      // Update local state
+      setSelectedLead(data.lead);
+      setIsEditingLead(false);
+      setEditedLead({});
+      onRefresh?.();
+    } catch (err) {
+      console.error("Save lead edits error:", err);
+      toast({
+        title: "Failed to Save",
+        description: err instanceof Error ? err.message : "Failed to save changes",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingLeadEdits(false);
+    }
+  };
+
+  const startEditingLead = () => {
+    if (!selectedLead) return;
+    setEditedLead({
+      customer_name: selectedLead.customer_name,
+      email: selectedLead.email,
+      phone: selectedLead.phone || "",
+      recipient_name: selectedLead.recipient_name,
+      special_qualities: selectedLead.special_qualities,
+      favorite_memory: selectedLead.favorite_memory,
+      special_message: selectedLead.special_message || "",
+    });
+    setIsEditingLead(true);
+  };
+
+  const cancelEditingLead = () => {
+    setIsEditingLead(false);
+    setEditedLead({});
+  };
+
+  const handleConvertToOrder = async () => {
+    if (!selectedLead || !adminPassword) return;
+
+    setConvertingLead(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "convert_lead_to_order",
+          leadId: selectedLead.id,
+          price: convertPrice,
+          adminPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to convert lead");
+      }
+
+      const data = await response.json();
+
+      toast({
+        title: "Lead Converted to Order!",
+        description: `Order ${data.order.id.slice(0, 8).toUpperCase()} created. Switch to Orders tab to manage.`,
+      });
+
+      setShowConvertDialog(false);
+      setSelectedLead(null);
+      onRefresh?.();
+    } catch (err) {
+      console.error("Convert lead error:", err);
+      toast({
+        title: "Failed to Convert",
+        description: err instanceof Error ? err.message : "Failed to convert lead to order",
+        variant: "destructive",
+      });
+    } finally {
+      setConvertingLead(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -859,31 +978,102 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
         </div>
       )}
 
-      <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
+      <Dialog open={!!selectedLead} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedLead(null);
+          setIsEditingLead(false);
+          setEditedLead({});
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedLead && (
             <>
               <DialogHeader>
-                <DialogTitle>Lead Details</DialogTitle>
-                <DialogDescription>
-                  Lead ID: {selectedLead.id.slice(0, 8).toUpperCase()}
-                </DialogDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <DialogTitle>Lead Details</DialogTitle>
+                    <DialogDescription>
+                      Lead ID: {selectedLead.id.slice(0, 8).toUpperCase()}
+                    </DialogDescription>
+                  </div>
+                  {selectedLead.status !== "converted" && (
+                    !isEditingLead ? (
+                      <Button variant="outline" size="sm" onClick={startEditingLead}>
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={cancelEditingLead} disabled={savingLeadEdits}>
+                          <X className="h-4 w-4 mr-2" />
+                          Cancel
+                        </Button>
+                        <Button size="sm" onClick={handleSaveLeadEdits} disabled={savingLeadEdits}>
+                          <Save className="h-4 w-4 mr-2" />
+                          {savingLeadEdits ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                    )
+                  )}
+                </div>
               </DialogHeader>
 
               <div className="space-y-6 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Lead Name</h4>
-                    <p>{selectedLead.customer_name}</p>
-                    <p className="text-sm text-muted-foreground"><strong>Email:</strong> {selectedLead.email}</p>
-                    {selectedLead.phone && (
-                      <p className="text-sm text-muted-foreground"><strong>Phone:</strong> {selectedLead.phone}</p>
+                    {isEditingLead ? (
+                      <div className="space-y-2">
+                        <div>
+                          <Label className="text-xs">Name</Label>
+                          <Input
+                            value={editedLead.customer_name || ""}
+                            onChange={(e) => setEditedLead({ ...editedLead, customer_name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Email</Label>
+                          <Input
+                            type="email"
+                            value={editedLead.email || ""}
+                            onChange={(e) => setEditedLead({ ...editedLead, email: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Phone</Label>
+                          <Input
+                            value={editedLead.phone || ""}
+                            onChange={(e) => setEditedLead({ ...editedLead, phone: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p>{selectedLead.customer_name}</p>
+                        <p className="text-sm text-muted-foreground"><strong>Email:</strong> {selectedLead.email}</p>
+                        {selectedLead.phone && (
+                          <p className="text-sm text-muted-foreground"><strong>Phone:</strong> {selectedLead.phone}</p>
+                        )}
+                      </>
                     )}
                   </div>
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Recipient</h4>
-                    <p>{selectedLead.recipient_name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedLead.recipient_type}</p>
+                    {isEditingLead ? (
+                      <div>
+                        <Label className="text-xs">Name</Label>
+                        <Input
+                          value={editedLead.recipient_name || ""}
+                          onChange={(e) => setEditedLead({ ...editedLead, recipient_name: e.target.value })}
+                        />
+                        <p className="text-sm text-muted-foreground mt-1">{selectedLead.recipient_type}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <p>{selectedLead.recipient_name}</p>
+                        <p className="text-sm text-muted-foreground">{selectedLead.recipient_type}</p>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -900,18 +1090,71 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
 
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground mb-1">Special Qualities</h4>
-                  <p className="text-sm">{selectedLead.special_qualities}</p>
+                  {isEditingLead ? (
+                    <Textarea
+                      value={editedLead.special_qualities || ""}
+                      onChange={(e) => setEditedLead({ ...editedLead, special_qualities: e.target.value })}
+                      rows={3}
+                    />
+                  ) : (
+                    <p className="text-sm">{selectedLead.special_qualities}</p>
+                  )}
                 </div>
 
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground mb-1">Favorite Memory</h4>
-                  <p className="text-sm">{selectedLead.favorite_memory}</p>
+                  {isEditingLead ? (
+                    <Textarea
+                      value={editedLead.favorite_memory || ""}
+                      onChange={(e) => setEditedLead({ ...editedLead, favorite_memory: e.target.value })}
+                      rows={3}
+                    />
+                  ) : (
+                    <p className="text-sm">{selectedLead.favorite_memory}</p>
+                  )}
                 </div>
 
-                {selectedLead.special_message && (
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Special Message</h4>
-                    <p className="text-sm">{selectedLead.special_message}</p>
+                <div>
+                  <h4 className="font-medium text-sm text-muted-foreground mb-1">Special Message</h4>
+                  {isEditingLead ? (
+                    <Textarea
+                      value={editedLead.special_message || ""}
+                      onChange={(e) => setEditedLead({ ...editedLead, special_message: e.target.value })}
+                      rows={2}
+                    />
+                  ) : (
+                    selectedLead.special_message ? (
+                      <p className="text-sm">{selectedLead.special_message}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No special message</p>
+                    )
+                  )}
+                </div>
+
+                {/* Convert to Order section - for unconverted leads */}
+                {selectedLead.status !== "converted" && (
+                  <div className="border-t pt-4">
+                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <ArrowRightCircle className="h-5 w-5 text-amber-600 mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="font-medium text-amber-800 dark:text-amber-200">Convert to Order</h4>
+                          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                            Use when customer paid via Stripe but order wasn't created (webhook failure).
+                            Verify payment in Stripe first.
+                          </p>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-3 border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                            onClick={() => setShowConvertDialog(true)}
+                          >
+                            <ArrowRightCircle className="h-4 w-4 mr-2" />
+                            Convert to Order
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1267,6 +1510,8 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   onClick={() => {
                     setSelectedLead(null);
                     setSelectedFile(null);
+                    setIsEditingLead(false);
+                    setEditedLead({});
                     if (fileInputRef.current) {
                       fileInputRef.current.value = "";
                     }
@@ -1334,6 +1579,54 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Convert to Order Confirmation Dialog */}
+      <AlertDialog open={showConvertDialog} onOpenChange={setShowConvertDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Convert Lead to Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will create a new order from this lead's information. Use this when a customer has already paid via Stripe but the order wasn't created automatically (webhook failure).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="py-4">
+            <Label className="text-sm font-medium">Price Paid</Label>
+            <RadioGroup 
+              value={convertPrice.toString()} 
+              onValueChange={(v) => setConvertPrice(parseInt(v))}
+              className="mt-2"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="4900" id="price-standard" />
+                <Label htmlFor="price-standard" className="cursor-pointer">$49 (Standard)</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="7900" id="price-priority" />
+                <Label htmlFor="price-priority" className="cursor-pointer">$79 (Priority)</Label>
+              </div>
+            </RadioGroup>
+            
+            {selectedLead && (
+              <div className="mt-4 p-3 bg-muted rounded-lg text-sm">
+                <p><strong>Customer:</strong> {selectedLead.customer_name}</p>
+                <p><strong>Email:</strong> {selectedLead.email}</p>
+                <p><strong>Song for:</strong> {selectedLead.recipient_name}</p>
+                {selectedLead.full_song_url && (
+                  <p className="text-green-600 mt-1">✓ Song already uploaded - will be included in order</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={convertingLead}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConvertToOrder} disabled={convertingLead}>
+              {convertingLead ? "Converting..." : "Convert to Order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
