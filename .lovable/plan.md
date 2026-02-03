@@ -1,53 +1,101 @@
 
-## ✅ Dismiss/Cancel Feature for Orders - COMPLETED
+## Fix Lyrics Generation - Switch to Lovable AI Gateway
 
-### What Was Implemented
+### Root Cause
+The lyrics generation is failing because the Kie.ai Gemini endpoint is returning a 200 response but with no `choices` array. The logs show:
+```
+[LYRICS] Gemini API response status: 200
+[LYRICS] Gemini response received, choices: undefined
+[LYRICS] No lyrics returned from Gemini
+```
 
-**Database Changes:**
-- Added `dismissed_at` timestamptz column to the `orders` table
+The current code uses Kie.ai's Gemini endpoint with a message format that may be incompatible. The API returns 200 but an empty/different response structure.
 
-**Backend Changes:**
-1. **`admin-orders/index.ts`**: Added `update_order_dismissal` action that:
-   - Sets `dismissed_at` timestamp when dismissed
-   - Changes status to `cancelled`
-   - Sets `automation_manual_override_at` to prevent AI from running
-   - Clears any in-progress automation status
-   - Can restore orders by clearing `dismissed_at` and setting status back to `paid`
-
-2. **`automation-trigger/index.ts`**: Added checks to block automation for:
-   - Orders with `status === "cancelled"`
-   - Orders with `dismissed_at` set
-   - Leads with `dismissed_at` set
-
-**Frontend Changes (`Admin.tsx`):**
-1. Added `dismissed_at` to Order interface
-2. Added `dismissedOrderFilter` state with options: "active" / "cancelled" / "all"
-3. Added `dismissingOrder` loading state
-4. Added `handleDismissOrder(order, dismiss)` handler
-5. Added filter dropdown in Orders tab toolbar
-6. Added Cancel/Restore buttons on order cards
-7. Visual styling for cancelled orders:
-   - Reduced opacity (`opacity-60 bg-muted/50`)
-   - Strikethrough on customer name
-   - "Cancelled" badge with Archive icon
-8. AI Generate button hidden for dismissed orders
+### Solution
+Switch the lyrics generation from Kie.ai to the **Lovable AI Gateway**, which:
+- Uses the standard OpenAI-compatible format
+- Has `LOVABLE_API_KEY` already configured (auto-provisioned)
+- Provides access to `google/gemini-3-flash-preview` (same model)
+- Is the recommended approach for AI integrations
 
 ---
 
-### Behavior When Order is Cancelled
+## Technical Changes
 
-1. `dismissed_at` is set to current timestamp
-2. `status` changes to `cancelled`
-3. `automation_manual_override_at` is set (blocks callbacks)
-4. Any in-progress automation is cleared
-5. Order is hidden from default view (Active filter)
-6. Order can be restored by clicking "Restore Order"
+### File: `supabase/functions/automation-generate-lyrics/index.ts`
+
+**Change 1: Switch API endpoint and auth key**
+
+```text
+Before:
+const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
+...
+const geminiResponse = await fetch("https://api.kie.ai/gemini-3-flash/v1/chat/completions", {
+  headers: {
+    "Authorization": `Bearer ${KIE_API_KEY}`,
+  },
+
+After:
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+...
+const geminiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  headers: {
+    "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+  },
+```
+
+**Change 2: Fix message format (use standard OpenAI format)**
+
+```text
+Before:
+messages: [
+  { role: "developer", content: SYSTEM_PROMPT },
+  { role: "user", content: userPrompt },
+],
+
+After:
+model: "google/gemini-3-flash-preview",
+messages: [
+  { role: "system", content: SYSTEM_PROMPT },
+  { role: "user", content: userPrompt },
+],
+```
+
+**Change 3: Add debug logging for response structure**
+
+Add a log to see the full response structure when lyrics are missing:
+```javascript
+if (!lyrics) {
+  console.error("[LYRICS] No lyrics returned. Response structure:", JSON.stringify(geminiData).substring(0, 500));
+  ...
+}
+```
 
 ---
 
-## Previous Feature: AI Song Generation for Orders
+## Why This Fixes the Issue
 
-The automation pipeline was extended to support orders alongside leads:
-- Edge functions now accept either `leadId` or `orderId`
-- Callback routes results to the correct table
-- Orders tab has "AI Generate" button
+| Aspect | Kie.ai (Current) | Lovable AI Gateway (New) |
+|--------|------------------|-------------------------|
+| Format | Uses `developer` role and nested content | Standard OpenAI format |
+| Auth | `KIE_API_KEY` | `LOVABLE_API_KEY` (auto-provisioned) |
+| Model | `gemini-3-flash` | `google/gemini-3-flash-preview` |
+| Reliability | Different response structure | Standard `choices[0].message.content` |
+
+---
+
+## Deployment Steps
+
+1. Update `automation-generate-lyrics/index.ts` with the new endpoint and format
+2. Deploy the edge function
+3. Test by triggering AI generation on an order
+
+---
+
+## Summary
+
+Single file change in `automation-generate-lyrics/index.ts`:
+- Switch from Kie.ai to Lovable AI Gateway
+- Use `LOVABLE_API_KEY` instead of `KIE_API_KEY`
+- Use standard OpenAI message format (`system` role, string content)
+- Add model specification: `google/gemini-3-flash-preview`
