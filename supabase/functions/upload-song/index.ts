@@ -171,7 +171,8 @@ Deno.serve(async (req) => {
               const { data: coverUrlData } = supabase.storage
                 .from(bucket)
                 .getPublicUrl(coverPath);
-              coverImageUrl = coverUrlData.publicUrl;
+              const cacheBuster = Date.now();
+              coverImageUrl = `${coverUrlData.publicUrl}?v=${cacheBuster}`;
               console.log("Cover art uploaded:", coverImageUrl);
             }
           }
@@ -200,12 +201,13 @@ Deno.serve(async (req) => {
         throw new Error(`Upload failed: ${uploadError.message}`);
       }
 
-      // Get public URL for the song
+      // Get public URL for the song with cache-busting
       const { data: urlData } = supabase.storage
         .from("songs")
         .getPublicUrl(storagePath);
 
-      const publicUrl = urlData.publicUrl;
+      const cacheBuster = Date.now();
+      const publicUrl = `${urlData.publicUrl}?v=${cacheBuster}`;
 
       // Update the order with song URL, title, and cover (if extracted)
       const updateData: Record<string, string | null> = {
@@ -299,7 +301,7 @@ Deno.serve(async (req) => {
       // Continue even if preview fails - we have the full song
     }
 
-    // Get public URLs
+    // Get public URLs with cache-busting
     const { data: fullUrlData } = supabase.storage
       .from("songs")
       .getPublicUrl(fullStoragePath);
@@ -308,8 +310,9 @@ Deno.serve(async (req) => {
       .from("songs")
       .getPublicUrl(previewStoragePath);
 
-    const fullSongUrl = fullUrlData.publicUrl;
-    const previewSongUrl = previewUrlData.publicUrl;
+    const leadCacheBuster = Date.now();
+    const fullSongUrl = `${fullUrlData.publicUrl}?v=${leadCacheBuster}`;
+    const previewSongUrl = `${previewUrlData.publicUrl}?v=${leadCacheBuster}`;
 
     // Generate preview token for secure URL
     const previewToken = generatePreviewToken();
