@@ -99,10 +99,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
-    if (!KIE_API_KEY) {
-      console.error("[LYRICS] KIE_API_KEY not configured");
-      throw new Error("KIE_API_KEY not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      console.error("[LYRICS] LOVABLE_API_KEY not configured");
+      throw new Error("LOVABLE_API_KEY not configured");
     }
 
     const { leadId, orderId } = await req.json();
@@ -182,17 +182,18 @@ Remember:
 
     console.log(`[LYRICS] Calling Gemini API, prompt length: ${userPrompt.length} chars`);
 
-    // Call Gemini via Kie.ai (using documented OpenAI-compatible format)
-    const geminiResponse = await fetch("https://api.kie.ai/gemini-3-flash/v1/chat/completions", {
+    // Call Gemini via Lovable AI Gateway (standard OpenAI-compatible format)
+    const geminiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${KIE_API_KEY}`,
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
         stream: false,
         messages: [
-          { role: "developer", content: SYSTEM_PROMPT },
+          { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
       }),
@@ -226,7 +227,7 @@ Remember:
     const lyrics = geminiData.choices?.[0]?.message?.content;
 
     if (!lyrics) {
-      console.error("[LYRICS] No lyrics returned from Gemini");
+      console.error("[LYRICS] No lyrics returned. Response structure:", JSON.stringify(geminiData).substring(0, 500));
       await supabase
         .from(tableName)
         .update({
