@@ -228,6 +228,20 @@ async function triggerAutomationIfQualified(leadId: string, qualityScore: number
       console.log(`[CAPTURE-LEAD] Automation disabled globally, skipping auto-trigger for lead ${leadId}`);
       return;
     }
+
+    // Check automation target (leads, orders, or both)
+    const { data: targetSetting } = await supabaseClient
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "automation_target")
+      .maybeSingle();
+
+    const automationTarget = (targetSetting as { value: string } | null)?.value || "leads";
+
+    if (automationTarget === "orders") {
+      console.log(`[CAPTURE-LEAD] Automation target is 'orders' only, skipping lead ${leadId}`);
+      return;
+    }
     
     // Get quality threshold from admin settings (default 65)
     const { data: thresholdSetting } = await supabaseClient

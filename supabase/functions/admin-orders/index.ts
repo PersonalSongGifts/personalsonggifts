@@ -137,8 +137,16 @@ Deno.serve(async (req) => {
           .eq("key", "automation_quality_threshold")
           .maybeSingle();
 
+        // Get automation target setting
+        const { data: targetSetting } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", "automation_target")
+          .maybeSingle();
+
         const enabled = enabledSetting?.value !== "false";
         const qualityThreshold = parseInt(thresholdSetting?.value || "65", 10);
+        const automationTarget = targetSetting?.value || "leads";
 
         // Get active jobs (leads with automation_status set)
         const { data: activeLeads } = await supabase
@@ -152,7 +160,6 @@ Deno.serve(async (req) => {
         // Get stats
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const todayISO = today.toISOString();
 
         const { data: allAutomationLeads } = await supabase
           .from("leads")
@@ -205,6 +212,7 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify({
             enabled,
+            automationTarget,
             qualityThreshold,
             stats,
             activeJobs,
@@ -258,6 +266,34 @@ Deno.serve(async (req) => {
 
         return new Response(
           JSON.stringify({ success: true, threshold }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Set automation target (leads, orders, or both)
+      if (body?.action === "set_automation_target") {
+        const target = typeof body.target === "string" ? body.target : "leads";
+        const validTargets = ["leads", "orders", "both"];
+        
+        if (!validTargets.includes(target)) {
+          return new Response(
+            JSON.stringify({ error: "Invalid target. Must be 'leads', 'orders', or 'both'" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        await supabase
+          .from("admin_settings")
+          .upsert({
+            key: "automation_target",
+            value: target,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "key" });
+
+        console.log(`Automation target set to ${target}`);
+
+        return new Response(
+          JSON.stringify({ success: true, target }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
