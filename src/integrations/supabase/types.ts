@@ -34,6 +34,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          automation_audio_url_source: string | null
           automation_last_error: string | null
           automation_lyrics: string | null
           automation_manual_override_at: string | null
@@ -85,6 +86,7 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          automation_audio_url_source?: string | null
           automation_last_error?: string | null
           automation_lyrics?: string | null
           automation_manual_override_at?: string | null
@@ -136,6 +138,7 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          automation_audio_url_source?: string | null
           automation_last_error?: string | null
           automation_lyrics?: string | null
           automation_manual_override_at?: string | null
@@ -205,6 +208,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          automation_audio_url_source: string | null
           automation_last_error: string | null
           automation_lyrics: string | null
           automation_manual_override_at: string | null
@@ -262,6 +266,7 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          automation_audio_url_source?: string | null
           automation_last_error?: string | null
           automation_lyrics?: string | null
           automation_manual_override_at?: string | null
@@ -319,6 +324,7 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          automation_audio_url_source?: string | null
           automation_last_error?: string | null
           automation_lyrics?: string | null
           automation_manual_override_at?: string | null
