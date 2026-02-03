@@ -118,7 +118,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [savingLeadEdits, setSavingLeadEdits] = useState(false);
   // Convert to order state
   const [showConvertDialog, setShowConvertDialog] = useState(false);
-  const [convertPrice, setConvertPrice] = useState<number>(4900);
+  const [convertPrice, setConvertPrice] = useState<number>(49);
   const [convertingLead, setConvertingLead] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
