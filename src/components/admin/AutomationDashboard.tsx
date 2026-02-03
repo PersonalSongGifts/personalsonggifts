@@ -19,7 +19,9 @@ import {
   Zap,
   Eye,
   RotateCcw,
-  Settings2
+  Settings2,
+  Users,
+  ShoppingCart
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Label } from "@/components/ui/label";
@@ -30,6 +32,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
 
 interface AutomationStats {
   pending: number;
@@ -66,9 +72,12 @@ interface AutomationDashboardProps {
   onRefresh?: () => void;
 }
 
+type AutomationTarget = "leads" | "orders" | "both";
+
 export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(true);
+  const [automationTarget, setAutomationTarget] = useState<AutomationTarget>("leads");
   const [qualityThreshold, setQualityThreshold] = useState(65);
   const [stats, setStats] = useState<AutomationStats>({
     pending: 0,
@@ -98,6 +107,7 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
       if (error) throw error;
 
       setEnabled(data.enabled);
+      setAutomationTarget(data.automationTarget || "leads");
       setQualityThreshold(data.qualityThreshold);
       setStats(data.stats);
       setActiveJobs(data.activeJobs || []);
@@ -135,7 +145,7 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
       toast({
         title: newEnabled ? "Automation Enabled" : "Automation Paused",
         description: newEnabled 
-          ? "New high-quality leads will automatically trigger song generation" 
+          ? "New high-quality entries will automatically trigger song generation" 
           : "Automatic song generation is paused. Manual triggers still work.",
       });
     } catch (err) {
@@ -143,6 +153,34 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
       toast({
         title: "Error",
         description: "Failed to update automation setting",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUpdateTarget = async (newTarget: AutomationTarget) => {
+    try {
+      const { error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "set_automation_target",
+          target: newTarget,
+          adminPassword,
+        },
+      });
+
+      if (error) throw error;
+
+      setAutomationTarget(newTarget);
+      toast({
+        title: "Target Updated",
+        description: `Automation will now run for ${newTarget === "both" ? "leads and orders" : newTarget}`,
+      });
+    } catch (err) {
+      console.error("Failed to update target:", err);
+      toast({
+        title: "Error",
+        description: "Failed to update automation target",
         variant: "destructive",
       });
     }
@@ -344,6 +382,36 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
                   Paused
                 </Badge>
               )}
+            </div>
+
+            {/* Automation Target Toggle */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                Target
+              </Label>
+              <ToggleGroup 
+                type="single" 
+                value={automationTarget} 
+                onValueChange={(value) => value && handleUpdateTarget(value as AutomationTarget)}
+                className="justify-start"
+              >
+                <ToggleGroupItem value="leads" aria-label="Leads only" className="gap-2">
+                  <Users className="h-4 w-4" />
+                  Leads
+                </ToggleGroupItem>
+                <ToggleGroupItem value="orders" aria-label="Orders only" className="gap-2">
+                  <ShoppingCart className="h-4 w-4" />
+                  Orders
+                </ToggleGroupItem>
+                <ToggleGroupItem value="both" aria-label="Both" className="gap-2">
+                  Both
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <p className="text-xs text-muted-foreground">
+                {automationTarget === "leads" && "AI generates songs for marketing leads (free previews)"}
+                {automationTarget === "orders" && "AI generates songs for paid orders only"}
+                {automationTarget === "both" && "AI generates songs for both leads and orders"}
+              </p>
             </div>
 
             <div className="space-y-2">
