@@ -518,27 +518,80 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     }
   };
 
-  // Get automation status badge
+  // Get automation status badge - with STUCK detection
   const getAutomationBadge = (lead: Lead) => {
     const status = lead.automation_status;
     if (!status) return null;
 
+    // Check if stuck in audio_generating for more than 5 minutes
+    const isStuck = status === "audio_generating" && 
+      lead.automation_started_at && 
+      (Date.now() - new Date(lead.automation_started_at).getTime()) > 5 * 60 * 1000;
+
     switch (status) {
       case "pending":
       case "lyrics_generating":
-        return { label: "Generating Lyrics...", className: "bg-yellow-100 text-yellow-800", icon: Loader2, spin: true };
+        return { label: "Generating Lyrics...", className: "bg-yellow-100 text-yellow-800", icon: Loader2, spin: true, isStuck: false };
       case "lyrics_ready":
-        return { label: "Lyrics Ready", className: "bg-blue-100 text-blue-800", icon: Check, spin: false };
+        return { label: "Lyrics Ready", className: "bg-blue-100 text-blue-800", icon: Check, spin: false, isStuck: false };
       case "audio_generating":
-        return { label: "Generating Audio...", className: "bg-purple-100 text-purple-800", icon: Loader2, spin: true };
+        if (isStuck) {
+          const elapsedMs = Date.now() - new Date(lead.automation_started_at!).getTime();
+          const elapsedMin = Math.floor(elapsedMs / 60000);
+          return { label: `STUCK (${elapsedMin}m)`, className: "bg-red-100 text-red-800 animate-pulse", icon: AlertCircle, spin: false, isStuck: true };
+        }
+        return { label: "Generating Audio...", className: "bg-purple-100 text-purple-800", icon: Loader2, spin: true, isStuck: false };
       case "completed":
-        return { label: "AI Generated", className: "bg-green-100 text-green-800", icon: Wand2, spin: false };
+        return { label: "AI Generated", className: "bg-green-100 text-green-800", icon: Wand2, spin: false, isStuck: false };
       case "failed":
-        return { label: "Failed", className: "bg-red-100 text-red-800", icon: AlertCircle, spin: false };
+        return { label: "Failed", className: "bg-red-100 text-red-800", icon: AlertCircle, spin: false, isStuck: false };
       case "manual":
-        return { label: "Manual", className: "bg-gray-100 text-gray-600", icon: null, spin: false };
+        return { label: "Manual", className: "bg-gray-100 text-gray-600", icon: null, spin: false, isStuck: false };
       default:
         return null;
+    }
+  };
+
+  // Handle manual audio recovery for stuck leads
+  const handleRecoverAudio = async (lead: Lead) => {
+    if (!adminPassword) return;
+
+    try {
+      toast({
+        title: "Recovering...",
+        description: "Attempting to recover audio generation",
+      });
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "recover_audio",
+          leadId: lead.id,
+          adminPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Recovery failed");
+      }
+
+      toast({
+        title: "Recovery Triggered",
+        description: "Checking audio status with provider. Refresh in a moment.",
+      });
+
+      // Refresh after a short delay
+      setTimeout(() => onRefresh?.(), 2000);
+    } catch (error) {
+      console.error("Recovery error:", error);
+      toast({
+        title: "Recovery Failed",
+        description: error instanceof Error ? error.message : "Failed to recover audio",
+        variant: "destructive",
+      });
     }
   };
 

@@ -308,7 +308,36 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  // Check if a job is stuck (audio_generating for >5 minutes)
+  const isJobStuck = (job: ActiveJob) => {
+    return job.status === "generating_audio" && 
+      job.startedAt && 
+      (Date.now() - new Date(job.startedAt).getTime()) > 5 * 60 * 1000;
+  };
+
+  const getElapsedTime = (startedAt: string | null) => {
+    if (!startedAt) return null;
+    const elapsed = Date.now() - new Date(startedAt).getTime();
+    const minutes = Math.floor(elapsed / 60000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m ago`;
+  };
+
+  const getStatusBadge = (status: string, job?: ActiveJob) => {
+    // Check for stuck state first
+    if (job && isJobStuck(job)) {
+      const elapsedMs = Date.now() - new Date(job.startedAt!).getTime();
+      const elapsedMin = Math.floor(elapsedMs / 60000);
+      return (
+        <Badge className="gap-1 bg-red-500 animate-pulse">
+          <AlertCircle className="h-3 w-3" />
+          STUCK ({elapsedMin}m)
+        </Badge>
+      );
+    }
+
     switch (status) {
       case "pending":
         return <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />Pending</Badge>;
@@ -324,6 +353,45 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
         return <Badge variant="destructive" className="gap-1"><AlertCircle className="h-3 w-3" />Failed</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  // Handle manual audio recovery
+  const handleRecoverAudio = async (leadId: string) => {
+    try {
+      toast({
+        title: "Recovering...",
+        description: "Attempting to recover audio from provider",
+      });
+
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "recover_audio",
+          leadId,
+          adminPassword,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Recovery Triggered",
+        description: "Checking audio status. Refresh in a moment.",
+      });
+
+      // Refresh after a short delay
+      setTimeout(() => {
+        fetchAutomationStatus();
+        onRefresh?.();
+      }, 2000);
+    } catch (err) {
+      console.error("Recovery error:", err);
+      toast({
+        title: "Recovery Failed",
+        description: err instanceof Error ? err.message : "Failed to recover audio",
+        variant: "destructive",
+      });
     }
   };
 
@@ -504,16 +572,16 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium">{job.recipientName}</span>
-                        {getStatusBadge(job.status)}
+                        {getStatusBadge(job.status, job)}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {job.occasion} • {job.genre} • {job.customerName}
                       </p>
                       {job.startedAt && (
                         <p className="text-xs text-muted-foreground">
-                          Started {formatDistanceToNow(new Date(job.startedAt), { addSuffix: true })}
+                          Started {getElapsedTime(job.startedAt)}
                         </p>
                       )}
                       {job.error && (
@@ -522,11 +590,17 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {job.lyrics && (
                         <Button variant="outline" size="sm" onClick={() => setViewingLyrics(job)}>
                           <Eye className="h-4 w-4 mr-1" />
                           Lyrics
+                        </Button>
+                      )}
+                      {isJobStuck(job) && (
+                        <Button variant="default" size="sm" onClick={() => handleRecoverAudio(job.id)} className="bg-orange-500 hover:bg-orange-600">
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          Recover
                         </Button>
                       )}
                       {job.status === "failed" && (
