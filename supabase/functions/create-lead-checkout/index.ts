@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
     // Create Stripe checkout session - leads only get standard pricing
     const session = await stripe.checkout.sessions.create({
       customer_email: lead.email,
+      allow_promotion_codes: true,
       line_items: [
         {
           price_data: {
