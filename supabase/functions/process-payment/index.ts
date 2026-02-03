@@ -122,7 +122,33 @@ Deno.serve(async (req) => {
       .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
       .single();
 
+    // Handle unique constraint violation (race condition) - re-query for existing order
     if (insertError) {
+      // Check if it's a unique constraint violation (code 23505)
+      if (insertError.code === "23505" || insertError.message?.includes("duplicate")) {
+        console.log(`Race condition detected for session ${sessionId}, fetching existing order`);
+        const { data: raceOrder } = await supabase
+          .from("orders")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
+          .eq("notes", `stripe_session:${sessionId}`)
+          .single();
+
+        if (raceOrder) {
+          return new Response(
+            JSON.stringify({
+              orderId: raceOrder.id,
+              recipientName: raceOrder.recipient_name,
+              occasion: raceOrder.occasion,
+              genre: raceOrder.genre,
+              pricingTier: raceOrder.pricing_tier,
+              customerEmail: raceOrder.customer_email,
+              expectedDelivery: raceOrder.expected_delivery,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+      
       console.error("Database error:", insertError);
       return new Response(
         JSON.stringify({ error: "Failed to create order" }),

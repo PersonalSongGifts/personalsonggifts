@@ -154,7 +154,25 @@ Deno.serve(async (req) => {
         .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
         .single();
 
+      // Handle unique constraint violation (race condition) - return existing order
       if (insertError) {
+        // Check if it's a unique constraint violation (code 23505)
+        if (insertError.code === "23505" || insertError.message?.includes("duplicate")) {
+          console.log(`Race condition in webhook for session ${session.id}, fetching existing order`);
+          const { data: raceOrder } = await supabase
+            .from("orders")
+            .select("id")
+            .eq("notes", `stripe_session:${session.id}`)
+            .single();
+
+          if (raceOrder) {
+            return new Response(
+              JSON.stringify({ received: true, orderId: raceOrder.id, status: "already_exists" }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
         console.error("Database error:", insertError);
         // Return 500 so Stripe will retry
         return new Response(
