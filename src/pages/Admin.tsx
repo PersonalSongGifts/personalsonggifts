@@ -258,9 +258,10 @@ export default function Admin() {
 
       if (error) throw error;
       setOrders(data.orders || []);
+      // Always update leads regardless of filter (fixes stale UI bug)
+      setLeads(data.leads || []);
       if (statusFilter === "all") {
         setAllOrders(data.orders || []);
-        setLeads(data.leads || []);
       }
     } catch {
       toast({

@@ -147,12 +147,13 @@ Deno.serve(async (req) => {
       console.log(`[AUDIO] Found exact style match: ${style.label}`);
     }
 
-    // Update lead with style selection
+    // Update lead with style selection and reset timer for accurate STUCK detection
     await supabase
       .from("leads")
       .update({ 
         automation_status: "audio_generating",
         automation_style_id: selectedStyle.id,
+        automation_started_at: new Date().toISOString(), // Reset timer for audio phase
       })
       .eq("id", leadId);
 
