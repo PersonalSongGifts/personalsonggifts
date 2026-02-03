@@ -55,6 +55,8 @@ Deno.serve(async (req) => {
       timeZone: "America/New_York",
     });
 
+    const messageId = `<${orderId}.${Date.now()}@personalsonggifts.com>`;
+
     const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -62,10 +64,10 @@ Deno.serve(async (req) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
+<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">Order Confirmed!</h1>
+      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">Order Confirmed</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -74,7 +76,7 @@ Deno.serve(async (req) => {
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Thank you for your order! We're thrilled to create a personalized song for ${recipientName}. Our talented musicians are already getting inspired.
+        Thank you for your order. We are excited to create a personalized song for ${recipientName}. Our team is already getting started.
       </p>
       
       <div style="background-color: #F5F8FB; border-left: 4px solid #1E3A5F; padding: 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
@@ -111,19 +113,19 @@ Deno.serve(async (req) => {
       </div>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
+        We will email you as soon as your song is ready. If you have any questions, just reply to this email.
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
-        With love,<br>
+        Warm regards,<br>
         <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
       </p>
     </div>
     
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts<br>
-        123 Music Lane, Nashville, TN 37203<br>
+        Personal Song Gifts<br>
+        2323 Music Row, Nashville, TN 37212<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
@@ -135,11 +137,11 @@ Deno.serve(async (req) => {
 </html>
     `;
 
-    const textContent = `Order Confirmed!
+    const textContent = `Order Confirmed
 
 Dear ${customerName || "Valued Customer"},
 
-Thank you for your order! We're thrilled to create a personalized song for ${recipientName}. Our talented musicians are already getting inspired.
+Thank you for your order. We are excited to create a personalized song for ${recipientName}. Our team is already getting started.
 
 Order Details:
 - Order ID: ${orderId.slice(0, 8).toUpperCase()}
@@ -150,17 +152,17 @@ Order Details:
 
 Expected Delivery: by ${deliveryDate}
 
-We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
+We will email you as soon as your song is ready. If you have any questions, just reply to this email.
 
-With love,
+Warm regards,
 The Personal Song Gifts Team
 
 ---
 Personal Song Gifts
-123 Music Lane, Nashville, TN 37203
+2323 Music Row, Nashville, TN 37212
 https://personalsonggifts.lovable.app
 
-Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}
+To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}
 `;
 
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -184,7 +186,9 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
-          "List-Unsubscribe": `<mailto:unsubscribe@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
+          "Message-ID": messageId,
+          "X-Entity-Ref-ID": orderId,
+          "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }
       }),
