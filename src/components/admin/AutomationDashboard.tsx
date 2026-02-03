@@ -309,8 +309,9 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
   };
 
   // Check if a job is stuck (audio_generating for >5 minutes)
+  // Uses actual pipeline status "audio_generating" (not "generating_audio")
   const isJobStuck = (job: ActiveJob) => {
-    return job.status === "generating_audio" && 
+    return job.status === "audio_generating" && 
       job.startedAt && 
       (Date.now() - new Date(job.startedAt).getTime()) > 5 * 60 * 1000;
   };
@@ -338,14 +339,15 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
       );
     }
 
+    // Use actual pipeline status names
     switch (status) {
       case "pending":
         return <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />Pending</Badge>;
-      case "generating_lyrics":
+      case "lyrics_generating":
         return <Badge className="gap-1 bg-purple-500"><RefreshCw className="h-3 w-3 animate-spin" />Generating Lyrics</Badge>;
       case "lyrics_ready":
         return <Badge className="gap-1 bg-blue-500"><CheckCircle2 className="h-3 w-3" />Lyrics Ready</Badge>;
-      case "generating_audio":
+      case "audio_generating":
         return <Badge className="gap-1 bg-amber-500"><RefreshCw className="h-3 w-3 animate-spin" />Generating Audio</Badge>;
       case "completed":
         return <Badge className="gap-1 bg-green-500"><CheckCircle2 className="h-3 w-3" />Completed</Badge>;

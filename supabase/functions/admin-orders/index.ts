@@ -166,10 +166,11 @@ Deno.serve(async (req) => {
           .select("automation_status, automation_started_at")
           .not("automation_status", "is", null);
 
+        // Use actual pipeline status names: lyrics_generating, audio_generating (not generating_lyrics, generating_audio)
         const stats = {
           pending: allAutomationLeads?.filter(l => l.automation_status === "pending").length || 0,
-          generatingLyrics: allAutomationLeads?.filter(l => l.automation_status === "generating_lyrics").length || 0,
-          generatingAudio: allAutomationLeads?.filter(l => l.automation_status === "generating_audio" || l.automation_status === "lyrics_ready").length || 0,
+          generatingLyrics: allAutomationLeads?.filter(l => l.automation_status === "lyrics_generating").length || 0,
+          generatingAudio: allAutomationLeads?.filter(l => l.automation_status === "audio_generating" || l.automation_status === "lyrics_ready").length || 0,
           completedToday: allAutomationLeads?.filter(l => 
             l.automation_status === "completed" && 
             l.automation_started_at && 
@@ -182,9 +183,9 @@ Deno.serve(async (req) => {
           ).length || 0,
         };
 
-        // Map active jobs
+        // Map active jobs - use actual pipeline statuses
         const activeJobs = (activeLeads || [])
-          .filter(l => ["pending", "generating_lyrics", "lyrics_ready", "generating_audio", "completed", "failed"].includes(l.automation_status || ""))
+          .filter(l => ["pending", "lyrics_generating", "lyrics_ready", "audio_generating", "completed", "failed"].includes(l.automation_status || ""))
           .map(l => ({
             id: l.id,
             recipientName: l.recipient_name,

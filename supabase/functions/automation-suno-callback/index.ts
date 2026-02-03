@@ -391,9 +391,31 @@ Deno.serve(async (req) => {
     // Generate preview token
     const previewToken = generatePreviewToken();
 
-    // Calculate auto-send time (24 hours from lead capture)
-    const capturedAt = new Date(lead.captured_at);
-    const autoSendTime = new Date(capturedAt.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    // Check if lead email is in admin tester allowlist for accelerated preview
+    let autoSendTime: string;
+    const { data: testerEmailsSetting } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "admin_tester_emails")
+      .maybeSingle();
+
+    const testerEmails = (testerEmailsSetting?.value || "")
+      .split(",")
+      .map((e: string) => e.trim().toLowerCase())
+      .filter((e: string) => e.length > 0);
+
+    const isAdminTester = testerEmails.includes(lead.email.toLowerCase());
+
+    if (isAdminTester) {
+      // Admin testers get preview email within ~1 minute
+      autoSendTime = new Date(Date.now() + 60 * 1000).toISOString();
+      console.log(`[CALLBACK] Admin tester detected (${lead.email}), scheduling preview for ${autoSendTime}`);
+    } else {
+      // Regular leads: 24 hours from capture for conversion optimization
+      const capturedAt = new Date(lead.captured_at);
+      autoSendTime = new Date(capturedAt.getTime() + 24 * 60 * 60 * 1000).toISOString();
+      console.log(`[CALLBACK] Regular lead, scheduling preview for ${autoSendTime}`);
+    }
 
     // Update lead with all song data
     console.log(`[CALLBACK] Updating lead ${lead.id} with final song data`);
