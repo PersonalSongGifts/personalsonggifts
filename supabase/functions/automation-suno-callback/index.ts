@@ -16,15 +16,65 @@ function generatePreviewToken(): string {
   return token;
 }
 
-// Create a 45-second preview clip from audio buffer (rough byte approximation)
+// MP3 bitrate lookup tables (MPEG1 Layer 3)
+const MPEG1_L3_BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+const MPEG2_L3_BITRATES = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
+
+// Detect MP3 bitrate by parsing frame header
+function detectMp3Bitrate(buffer: Uint8Array): number {
+  // Search first 4KB for MP3 frame sync
+  const searchLimit = Math.min(buffer.length - 4, 4096);
+  
+  for (let i = 0; i < searchLimit; i++) {
+    // Look for frame sync: 0xFF followed by 0xE* or 0xF* (11 bits set)
+    if (buffer[i] === 0xFF && (buffer[i + 1] & 0xE0) === 0xE0) {
+      // Parse 4-byte frame header
+      const b1 = buffer[i + 1];
+      const b2 = buffer[i + 2];
+      
+      // Extract version (bits 19-20 of header)
+      const versionBits = (b1 >> 3) & 0x03;
+      // Extract layer (bits 17-18)
+      const layerBits = (b1 >> 1) & 0x03;
+      // Extract bitrate index (bits 12-15)
+      const bitrateIndex = (b2 >> 4) & 0x0F;
+      
+      // Validate: layer must be Layer III (01), bitrate index must be valid
+      if (layerBits !== 0x01 || bitrateIndex === 0 || bitrateIndex === 15) {
+        continue;
+      }
+      
+      // MPEG1 = 11, MPEG2 = 10, MPEG2.5 = 00
+      const isMpeg1 = versionBits === 0x03;
+      const bitrates = isMpeg1 ? MPEG1_L3_BITRATES : MPEG2_L3_BITRATES;
+      const detectedBitrate = bitrates[bitrateIndex];
+      
+      if (detectedBitrate > 0) {
+        console.log(`[CALLBACK] Detected MP3 bitrate: ${detectedBitrate}kbps (MPEG${isMpeg1 ? '1' : '2'} Layer III)`);
+        return detectedBitrate;
+      }
+    }
+  }
+  
+  // Default to 192kbps for high-quality Suno output
+  console.log("[CALLBACK] Could not detect bitrate, defaulting to 192kbps");
+  return 192;
+}
+
+// Create a 45-second preview clip with accurate bitrate-based byte calculation
 function createPreviewClip(originalBuffer: Uint8Array, durationSeconds: number = 45): Uint8Array {
-  const estimatedBytesPerSecond = 16 * 1024; // ~128kbps
+  const bitrate = detectMp3Bitrate(originalBuffer);
+  const bytesPerSecond = (bitrate * 1024) / 8; // Convert kbps to bytes/sec
   const previewBytes = Math.min(
-    durationSeconds * estimatedBytesPerSecond,
+    Math.floor(durationSeconds * bytesPerSecond),
     originalBuffer.length
   );
   
+  console.log(`[CALLBACK] Preview clip: ${bitrate}kbps × ${durationSeconds}s = ${previewBytes} bytes (file: ${originalBuffer.length} bytes)`);
+  
+  // If preview would be 90%+ of file, return full file
   if (previewBytes >= originalBuffer.length * 0.9) {
+    console.log("[CALLBACK] Preview would be 90%+ of file, returning full audio");
     return originalBuffer;
   }
   
