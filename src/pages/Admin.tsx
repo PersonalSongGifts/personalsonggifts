@@ -102,6 +102,7 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("analytics");
   const [orderSort, setOrderSort] = useState<"latest" | "oldest">("latest");
   const [leadSort, setLeadSort] = useState<"latest" | "oldest" | "quality">("latest");
+  const [orderSearch, setOrderSearch] = useState("");
   const [reactionSort, setReactionSort] = useState<"latest" | "oldest">("latest");
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -469,7 +470,6 @@ export default function Admin() {
                   <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="delivered">Delivered</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={orderSort} onValueChange={(v) => setOrderSort(v as "latest" | "oldest")}>
@@ -481,23 +481,78 @@ export default function Admin() {
                   <SelectItem value="oldest">Oldest First</SelectItem>
                 </SelectContent>
               </Select>
+              <Input
+                placeholder="Search orders..."
+                value={orderSearch}
+                onChange={(e) => setOrderSearch(e.target.value)}
+                className="w-64"
+              />
               <span className="text-sm text-muted-foreground">
-                {orders.length} order{orders.length !== 1 ? "s" : ""}
+                {orders.filter((order) => {
+                  if (!orderSearch.trim()) return true;
+                  const searchLower = orderSearch.toLowerCase();
+                  return (
+                    order.customer_name.toLowerCase().includes(searchLower) ||
+                    order.customer_email.toLowerCase().includes(searchLower) ||
+                    order.recipient_name.toLowerCase().includes(searchLower) ||
+                    order.genre.toLowerCase().includes(searchLower) ||
+                    order.special_qualities.toLowerCase().includes(searchLower) ||
+                    order.favorite_memory.toLowerCase().includes(searchLower) ||
+                    (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
+                    (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
+                    order.occasion.toLowerCase().includes(searchLower)
+                  );
+                }).length} order{orders.filter((order) => {
+                  if (!orderSearch.trim()) return true;
+                  const searchLower = orderSearch.toLowerCase();
+                  return (
+                    order.customer_name.toLowerCase().includes(searchLower) ||
+                    order.customer_email.toLowerCase().includes(searchLower) ||
+                    order.recipient_name.toLowerCase().includes(searchLower) ||
+                    order.genre.toLowerCase().includes(searchLower) ||
+                    order.special_qualities.toLowerCase().includes(searchLower) ||
+                    order.favorite_memory.toLowerCase().includes(searchLower) ||
+                    (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
+                    (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
+                    order.occasion.toLowerCase().includes(searchLower)
+                  );
+                }).length !== 1 ? "s" : ""}
               </span>
             </div>
 
-            {orders.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No orders found</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                {[...orders].sort((a, b) => {
-                  const dateA = new Date(a.created_at).getTime();
-                  const dateB = new Date(b.created_at).getTime();
+            {(() => {
+              const filteredOrders = orders.filter((order) => {
+                if (!orderSearch.trim()) return true;
+                const searchLower = orderSearch.toLowerCase();
+                return (
+                  order.customer_name.toLowerCase().includes(searchLower) ||
+                  order.customer_email.toLowerCase().includes(searchLower) ||
+                  order.recipient_name.toLowerCase().includes(searchLower) ||
+                  order.genre.toLowerCase().includes(searchLower) ||
+                  order.special_qualities.toLowerCase().includes(searchLower) ||
+                  order.favorite_memory.toLowerCase().includes(searchLower) ||
+                  (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
+                  (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
+                  order.occasion.toLowerCase().includes(searchLower)
+                );
+              });
+              
+              if (filteredOrders.length === 0) {
+                return (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">No orders found</p>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              
+              return (
+                <div className="space-y-4">
+                  {[...filteredOrders].sort((a, b) => {
+                    const dateA = new Date(a.created_at).getTime();
+                    const dateB = new Date(b.created_at).getTime();
                   return orderSort === "latest" ? dateB - dateA : dateA - dateB;
                 }).map((order) => (
                   <Card key={order.id} className="hover:shadow-md transition-shadow">
@@ -562,7 +617,8 @@ export default function Admin() {
                   </Card>
                 ))}
               </div>
-            )}
+              );
+            })()}
           </TabsContent>
 
           <TabsContent value="reactions" className="space-y-6">
