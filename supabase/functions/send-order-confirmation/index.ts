@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">Order Confirmed</h1>
+      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">🎵 Order Confirmed!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Thank you for your order. We are excited to create a personalized song for ${recipientName}. Our team is already getting started.
+        We're thrilled! Thank you for your order. We can't wait to create a personalized song for <strong>${recipientName}</strong>. Our team is already getting started!
       </p>
       
       <div style="background-color: #F5F8FB; border-left: 4px solid #1E3A5F; padding: 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
       </div>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We will email you as soon as your song is ready. If you have any questions, just reply to this email.
+        We will email you as soon as your song is ready. If you have any questions, just reply to this email!
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
@@ -137,11 +137,11 @@ Deno.serve(async (req) => {
 </html>
     `;
 
-    const textContent = `Order Confirmed
+    const textContent = `🎵 Order Confirmed!
 
 Dear ${customerName || "Valued Customer"},
 
-Thank you for your order. We are excited to create a personalized song for ${recipientName}. Our team is already getting started.
+We're thrilled! Thank you for your order. We can't wait to create a personalized song for ${recipientName}. Our team is already getting started!
 
 Order Details:
 - Order ID: ${orderId.slice(0, 8).toUpperCase()}
@@ -152,7 +152,7 @@ Order Details:
 
 Expected Delivery: by ${deliveryDate}
 
-We will email you as soon as your song is ready. If you have any questions, just reply to this email.
+We will email you as soon as your song is ready. If you have any questions, just reply to this email!
 
 Warm regards,
 The Personal Song Gifts Team
@@ -182,7 +182,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
           name: senderName,
         },
         to: [{ email: customerEmail, name: customerName || customerEmail }],
-        subject: `Order confirmed - ${recipientName}'s song is being created`,
+        subject: `🎵 Order confirmed - ${recipientName}'s song is being created!`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
