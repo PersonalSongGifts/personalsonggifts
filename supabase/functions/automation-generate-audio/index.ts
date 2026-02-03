@@ -13,11 +13,15 @@ Deno.serve(async (req) => {
   try {
     const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
     if (!KIE_API_KEY) {
+      console.error("[AUDIO] KIE_API_KEY not configured");
       throw new Error("KIE_API_KEY not configured");
     }
 
     const { leadId } = await req.json();
+    console.log(`[AUDIO] Starting audio generation for lead ${leadId}`);
+    
     if (!leadId) {
+      console.error("[AUDIO] Missing leadId in request");
       return new Response(
         JSON.stringify({ error: "leadId required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -37,14 +41,18 @@ Deno.serve(async (req) => {
       .single();
 
     if (fetchError || !lead) {
+      console.error(`[AUDIO] Lead not found: ${leadId}`, fetchError);
       return new Response(
         JSON.stringify({ error: "Lead not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    console.log(`[AUDIO] Found lead: ${lead.recipient_name}, genre: ${lead.genre}, singer: ${lead.singer_preference}`);
+
     // Check if manual override is set
     if (lead.automation_manual_override_at) {
+      console.log(`[AUDIO] Manual override active for lead ${lead.id}, skipping`);
       return new Response(
         JSON.stringify({ error: "Manual override active, skipping automation" }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -53,11 +61,14 @@ Deno.serve(async (req) => {
 
     // Ensure we have lyrics
     if (!lead.automation_lyrics) {
+      console.error(`[AUDIO] No lyrics available for lead ${leadId}`);
       return new Response(
         JSON.stringify({ error: "No lyrics available for this lead" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`[AUDIO] Lyrics available, length: ${lead.automation_lyrics.length} chars`);
 
     // Match style based on genre and singer preference
     const genreMap: Record<string, string> = {
@@ -81,6 +92,8 @@ Deno.serve(async (req) => {
     const normalizedGenre = genreMap[lead.genre] || "pop";
     const vocalGender = lead.singer_preference?.toLowerCase() === "female" ? "female" : "male";
 
+    console.log(`[AUDIO] Looking for style: genre=${normalizedGenre}, vocal=${vocalGender}`);
+
     // Fetch matching style
     const { data: style, error: styleError } = await supabase
       .from("song_styles")
@@ -91,8 +104,11 @@ Deno.serve(async (req) => {
       .limit(1)
       .single();
 
+    let selectedStyle = style;
+
     if (styleError || !style) {
-      console.log(`No style found for ${normalizedGenre}/${vocalGender}, using fallback`);
+      console.log(`[AUDIO] No exact style match for ${normalizedGenre}/${vocalGender}, trying fallback`);
+      
       // Fallback to any active style with matching genre
       const { data: fallbackStyle } = await supabase
         .from("song_styles")
@@ -102,7 +118,10 @@ Deno.serve(async (req) => {
         .limit(1)
         .single();
       
-      if (!fallbackStyle) {
+      if (fallbackStyle) {
+        selectedStyle = fallbackStyle;
+        console.log(`[AUDIO] Using fallback style: ${fallbackStyle.label}`);
+      } else {
         // Ultimate fallback - just use pop
         const { data: popStyle } = await supabase
           .from("song_styles")
@@ -112,16 +131,21 @@ Deno.serve(async (req) => {
           .limit(1)
           .single();
         
-        if (!popStyle) {
-          return new Response(
-            JSON.stringify({ error: "No styles available in database" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+        if (popStyle) {
+          selectedStyle = popStyle;
+          console.log(`[AUDIO] Using pop fallback style: ${popStyle.label}`);
+        } else {
+          console.log(`[AUDIO] No styles in database, using default prompt`);
+          selectedStyle = { 
+            id: null, 
+            suno_prompt: "modern pop love song, warm romantic vibe, heartfelt vocal",
+            label: "Default Pop"
+          };
         }
       }
+    } else {
+      console.log(`[AUDIO] Found exact style match: ${style.label}`);
     }
-
-    const selectedStyle = style || { id: null, suno_prompt: "modern pop love song, warm romantic vibe, heartfelt vocal" };
 
     // Update lead with style selection
     await supabase
@@ -136,19 +160,23 @@ Deno.serve(async (req) => {
     if (selectedStyle.id) {
       await supabase
         .from("song_styles")
-        .update({ usage_count: (style?.usage_count || 0) + 1 })
+        .update({ usage_count: (selectedStyle.usage_count || 0) + 1 })
         .eq("id", selectedStyle.id);
     }
 
     // Build callback URL
     const callbackUrl = `${supabaseUrl}/functions/v1/automation-suno-callback`;
+    console.log(`[AUDIO] Callback URL: ${callbackUrl}`);
 
     // Use customMode for better quality: separate style, title, and lyrics
     const songTitle = lead.song_title || `Song for ${lead.recipient_name}`;
 
+    console.log(`[AUDIO] Calling Suno API via Kie.ai`);
+    console.log(`[AUDIO] Style: ${selectedStyle.suno_prompt?.substring(0, 80)}...`);
+    console.log(`[AUDIO] Title: ${songTitle}`);
+    console.log(`[AUDIO] Model: V4_5, customMode: true`);
+
     // Call Suno via Kie.ai with customMode=true and V4_5 model
-    console.log(`Calling Suno for lead ${leadId} with style: ${selectedStyle.suno_prompt?.substring(0, 50)}...`);
-    
     const sunoResponse = await fetch("https://api.kie.ai/api/v1/generate", {
       method: "POST",
       headers: {
@@ -166,46 +194,50 @@ Deno.serve(async (req) => {
       }),
     });
 
+    console.log(`[AUDIO] Suno API response status: ${sunoResponse.status}`);
+
     if (!sunoResponse.ok) {
       const errorText = await sunoResponse.text();
-      console.error("Suno API error:", sunoResponse.status, errorText);
+      console.error(`[AUDIO] Suno API error: ${sunoResponse.status}`, errorText);
       
       await supabase
         .from("leads")
         .update({
           automation_status: "failed",
-          automation_last_error: `Suno API error: ${sunoResponse.status}`,
+          automation_last_error: `[AUDIO] Suno API error: ${sunoResponse.status} - ${errorText.substring(0, 200)}`,
           automation_retry_count: (lead.automation_retry_count || 0) + 1,
         })
         .eq("id", leadId);
 
       return new Response(
-        JSON.stringify({ error: "Audio generation failed" }),
+        JSON.stringify({ error: "Audio generation failed", details: errorText }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const sunoData = await sunoResponse.json();
+    console.log(`[AUDIO] Suno response:`, JSON.stringify(sunoData).substring(0, 500));
     
     if (sunoData?.code !== 200 || !sunoData?.data?.taskId) {
-      console.error("Suno response invalid:", sunoData);
+      console.error("[AUDIO] Invalid Suno response:", sunoData);
       
       await supabase
         .from("leads")
         .update({
           automation_status: "failed",
-          automation_last_error: `Invalid Suno response: ${sunoData?.msg || "Unknown error"}`,
+          automation_last_error: `[AUDIO] Invalid Suno response: ${sunoData?.msg || "No taskId returned"}`,
           automation_retry_count: (lead.automation_retry_count || 0) + 1,
         })
         .eq("id", leadId);
 
       return new Response(
-        JSON.stringify({ error: "Invalid Suno response" }),
+        JSON.stringify({ error: "Invalid Suno response", details: sunoData }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const taskId = sunoData.data.taskId;
+    console.log(`[AUDIO] ✅ Suno task created: ${taskId}`);
 
     // Store task ID for callback matching
     await supabase
@@ -213,20 +245,22 @@ Deno.serve(async (req) => {
       .update({ automation_task_id: taskId })
       .eq("id", leadId);
 
-    console.log(`Suno task started for lead ${leadId}: ${taskId}`);
+    console.log(`[AUDIO] TaskId saved to lead ${leadId}`);
+    console.log(`[AUDIO] Waiting for callback from Suno (1-3 minutes)`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         leadId,
         taskId,
-        styleUsed: selectedStyle.suno_prompt?.substring(0, 50),
+        styleUsed: selectedStyle.label || selectedStyle.suno_prompt?.substring(0, 50),
+        callbackUrl,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Audio generation error:", error);
+    console.error("[AUDIO] Error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

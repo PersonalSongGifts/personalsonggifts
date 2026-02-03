@@ -62,19 +62,6 @@ Target a typical 3:00-3:30 song. Keep line lengths short and singable (4-10 word
 - Do NOT explain reasoning or ask questions
 - Output lyrics ONLY in the specified format`;
 
-interface LeadData {
-  id: string;
-  recipient_name: string;
-  recipient_type: string;
-  occasion: string;
-  genre: string;
-  singer_preference: string;
-  special_qualities: string;
-  favorite_memory: string;
-  special_message: string | null;
-  customer_name: string;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -83,11 +70,15 @@ Deno.serve(async (req) => {
   try {
     const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
     if (!KIE_API_KEY) {
+      console.error("[LYRICS] KIE_API_KEY not configured");
       throw new Error("KIE_API_KEY not configured");
     }
 
     const { leadId } = await req.json();
+    console.log(`[LYRICS] Starting lyrics generation for lead ${leadId}`);
+    
     if (!leadId) {
+      console.error("[LYRICS] Missing leadId in request");
       return new Response(
         JSON.stringify({ error: "leadId required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -107,14 +98,18 @@ Deno.serve(async (req) => {
       .single();
 
     if (fetchError || !lead) {
+      console.error(`[LYRICS] Lead not found: ${leadId}`, fetchError);
       return new Response(
         JSON.stringify({ error: "Lead not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    console.log(`[LYRICS] Found lead: ${lead.recipient_name} (${lead.recipient_type}), genre: ${lead.genre}`);
+
     // Check if manual override is set
     if (lead.automation_manual_override_at) {
+      console.log(`[LYRICS] Manual override active for lead ${lead.id}, skipping`);
       return new Response(
         JSON.stringify({ error: "Manual override active, skipping automation" }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -147,6 +142,8 @@ Remember:
 - Mention the RecipientName 3-7 times naturally.
 - Make it wholesome and heartfelt.`;
 
+    console.log(`[LYRICS] Calling Gemini API, prompt length: ${userPrompt.length} chars`);
+
     // Call Gemini via Kie.ai (using documented OpenAI-compatible format)
     const geminiResponse = await fetch("https://api.kie.ai/gemini-3-pro/v1/chat/completions", {
       method: "POST",
@@ -163,35 +160,40 @@ Remember:
       }),
     });
 
+    console.log(`[LYRICS] Gemini API response status: ${geminiResponse.status}`);
+
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
-      console.error("Gemini API error:", geminiResponse.status, errorText);
+      console.error(`[LYRICS] Gemini API error: ${geminiResponse.status}`, errorText);
       
       // Update lead with error
       await supabase
         .from("leads")
         .update({
           automation_status: "failed",
-          automation_last_error: `Gemini API error: ${geminiResponse.status}`,
+          automation_last_error: `[LYRICS] Gemini API error: ${geminiResponse.status} - ${errorText.substring(0, 200)}`,
           automation_retry_count: (lead.automation_retry_count || 0) + 1,
         })
         .eq("id", leadId);
 
       return new Response(
-        JSON.stringify({ error: "Lyrics generation failed" }),
+        JSON.stringify({ error: "Lyrics generation failed", details: errorText }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const geminiData = await geminiResponse.json();
+    console.log(`[LYRICS] Gemini response received, choices: ${geminiData.choices?.length}`);
+    
     const lyrics = geminiData.choices?.[0]?.message?.content;
 
     if (!lyrics) {
+      console.error("[LYRICS] No lyrics returned from Gemini");
       await supabase
         .from("leads")
         .update({
           automation_status: "failed",
-          automation_last_error: "No lyrics returned from Gemini",
+          automation_last_error: "[LYRICS] No lyrics returned from Gemini API",
           automation_retry_count: (lead.automation_retry_count || 0) + 1,
         })
         .eq("id", leadId);
@@ -201,6 +203,8 @@ Remember:
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`[LYRICS] Generated lyrics length: ${lyrics.length} chars`);
 
     // Extract title from lyrics (look for first meaningful line after [Intro])
     let songTitle = `Song for ${lead.recipient_name}`;
@@ -213,6 +217,8 @@ Remember:
       }
     }
 
+    console.log(`[LYRICS] Extracted title: "${songTitle}"`);
+
     // Update lead with lyrics
     await supabase
       .from("leads")
@@ -223,20 +229,21 @@ Remember:
       })
       .eq("id", leadId);
 
-    console.log(`Lyrics generated for lead ${leadId}: ${songTitle}`);
+    console.log(`[LYRICS] ✅ Lyrics saved for lead ${leadId}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         leadId,
         title: songTitle,
+        lyricsLength: lyrics.length,
         lyrics: lyrics.substring(0, 200) + "...",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Lyrics generation error:", error);
+    console.error("[LYRICS] Error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

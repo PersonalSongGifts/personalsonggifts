@@ -39,16 +39,23 @@ Deno.serve(async (req) => {
   try {
     const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
     if (!KIE_API_KEY) {
+      console.error("[CALLBACK] KIE_API_KEY not configured");
       throw new Error("KIE_API_KEY not configured");
     }
 
     const payload = await req.json();
-    console.log("Suno callback received:", JSON.stringify(payload).substring(0, 500));
+    console.log("[CALLBACK] Received payload:", JSON.stringify(payload).substring(0, 1000));
 
-    // Extract task ID from callback
-    const taskId = payload?.data?.taskId || payload?.data?.task_id || payload?.taskId;
+    // Extract task ID from callback - handle both formats
+    // Callback format: payload.data.task_id (snake_case)
+    // Alternative: payload.data.taskId or payload.taskId
+    const taskId = payload?.data?.task_id || payload?.data?.taskId || payload?.taskId;
+    const callbackType = payload?.data?.callbackType || "unknown";
+    
+    console.log(`[CALLBACK] TaskId: ${taskId}, callbackType: ${callbackType}`);
+    
     if (!taskId) {
-      console.error("No taskId in callback payload");
+      console.error("[CALLBACK] No taskId in callback payload:", JSON.stringify(payload));
       return new Response("Missing taskId", { status: 400, headers: corsHeaders });
     }
 
@@ -65,94 +72,108 @@ Deno.serve(async (req) => {
       .single();
 
     if (fetchError || !lead) {
-      console.error("Lead not found for taskId:", taskId);
+      console.error(`[CALLBACK] Lead not found for taskId: ${taskId}`, fetchError);
       return new Response("Lead not found", { status: 404, headers: corsHeaders });
     }
 
+    console.log(`[CALLBACK] Found lead ${lead.id} (${lead.recipient_name}) for taskId ${taskId}`);
+
     // Security: Check if manual override was set (admin took over)
     if (lead.automation_manual_override_at) {
-      console.log(`Manual override active for lead ${lead.id}, ignoring callback`);
+      console.log(`[CALLBACK] Manual override active for lead ${lead.id}, ignoring callback`);
       return new Response("Manual override active", { status: 200, headers: corsHeaders });
     }
 
     // Security: Verify status is in expected state
     if (lead.automation_status !== "audio_generating") {
-      console.log(`Unexpected status ${lead.automation_status} for lead ${lead.id}`);
+      console.log(`[CALLBACK] Unexpected status ${lead.automation_status} for lead ${lead.id}, current: ${lead.automation_status}`);
       return new Response("Unexpected status", { status: 200, headers: corsHeaders });
     }
 
-    // Fetch canonical status from Kie.ai (don't trust callback payload alone)
+    // Try to extract audio data directly from callback payload first (faster)
+    // Callback format: payload.data.data[0].audio_url (snake_case)
+    const callbackAudioData = payload?.data?.data;
+    let audioDataFromCallback = null;
+    
+    if (Array.isArray(callbackAudioData) && callbackAudioData.length > 0 && callbackAudioData[0]?.audio_url) {
+      console.log(`[CALLBACK] Found audio data directly in callback payload`);
+      audioDataFromCallback = callbackAudioData;
+    }
+
+    // Fetch canonical status from Kie.ai to verify and get complete data
+    console.log(`[CALLBACK] Fetching record-info for taskId: ${taskId}`);
     const statusUrl = `https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`;
     const statusResponse = await fetch(statusUrl, {
       headers: { "Authorization": `Bearer ${KIE_API_KEY}` },
     });
 
     if (!statusResponse.ok) {
-      console.error("Status fetch failed:", statusResponse.status);
+      console.error(`[CALLBACK] Status fetch failed: ${statusResponse.status}`);
       return new Response("Status fetch failed", { status: 500, headers: corsHeaders });
     }
 
     const statusData = await statusResponse.json();
-    console.log("Suno status:", JSON.stringify(statusData).substring(0, 500));
+    console.log("[CALLBACK] Record-info response:", JSON.stringify(statusData).substring(0, 1000));
 
     if (statusData?.code !== 200) {
-      console.error("Invalid status response:", statusData);
+      console.error("[CALLBACK] Invalid status response code:", statusData?.code, statusData?.msg);
       return new Response("Invalid status", { status: 500, headers: corsHeaders });
     }
 
     const task = statusData.data;
     const taskStatus = task?.status;
     
+    console.log(`[CALLBACK] Task status: ${taskStatus}`);
+
     // Handle all Suno status codes per documentation
     switch (taskStatus) {
       case "PENDING":
-        // Still processing, callback will come again
-        console.log(`Task ${taskId} still pending`);
+        console.log(`[CALLBACK] Task ${taskId} still pending, will receive another callback`);
         return new Response("Task pending", { status: 200, headers: corsHeaders });
 
       case "CREATE_TASK_FAILED":
-        console.error(`Task ${taskId} creation failed:`, task?.errorMessage);
+        console.error(`[CALLBACK] Task ${taskId} creation failed:`, task?.errorMessage);
         await supabase
           .from("leads")
           .update({
             automation_status: "failed",
-            automation_last_error: `Suno task creation failed: ${task?.errorMessage || "Unknown error"}`,
+            automation_last_error: `[CALLBACK] Suno task creation failed: ${task?.errorMessage || "Unknown error"}`,
             automation_retry_count: (lead.automation_retry_count || 0) + 1,
           })
           .eq("id", lead.id);
         return new Response("Task creation failed", { status: 200, headers: corsHeaders });
 
       case "GENERATE_AUDIO_FAILED":
-        console.error(`Task ${taskId} audio generation failed:`, task?.errorMessage);
+        console.error(`[CALLBACK] Task ${taskId} audio generation failed:`, task?.errorMessage);
         await supabase
           .from("leads")
           .update({
             automation_status: "failed",
-            automation_last_error: `Audio generation failed: ${task?.errorMessage || "Unknown error"}`,
+            automation_last_error: `[CALLBACK] Audio generation failed: ${task?.errorMessage || "Unknown error"}`,
             automation_retry_count: (lead.automation_retry_count || 0) + 1,
           })
           .eq("id", lead.id);
         return new Response("Audio generation failed", { status: 200, headers: corsHeaders });
 
       case "SENSITIVE_WORD_ERROR":
-        console.error(`Task ${taskId} content filtered:`, task?.errorMessage);
+        console.error(`[CALLBACK] Task ${taskId} content filtered:`, task?.errorMessage);
         await supabase
           .from("leads")
           .update({
             automation_status: "failed",
-            automation_last_error: `Content filtered by Suno: ${task?.errorMessage || "Sensitive content detected"}`,
+            automation_last_error: `[CALLBACK] Content filtered by Suno: ${task?.errorMessage || "Sensitive content detected"}`,
             automation_retry_count: (lead.automation_retry_count || 0) + 1,
           })
           .eq("id", lead.id);
         return new Response("Content filtered", { status: 200, headers: corsHeaders });
 
       case "CALLBACK_EXCEPTION":
-        console.error(`Task ${taskId} callback error:`, task?.errorMessage);
+        console.error(`[CALLBACK] Task ${taskId} callback error:`, task?.errorMessage);
         await supabase
           .from("leads")
           .update({
             automation_status: "failed",
-            automation_last_error: `Callback exception: ${task?.errorMessage || "Unknown error"}`,
+            automation_last_error: `[CALLBACK] Callback exception: ${task?.errorMessage || "Unknown error"}`,
             automation_retry_count: (lead.automation_retry_count || 0) + 1,
           })
           .eq("id", lead.id);
@@ -160,25 +181,37 @@ Deno.serve(async (req) => {
 
       case "SUCCESS":
       case "FIRST_SUCCESS":
-        // Continue with audio processing below
-        console.log(`Task ${taskId} completed with status: ${taskStatus}`);
+        console.log(`[CALLBACK] Task ${taskId} completed successfully with status: ${taskStatus}`);
         break;
 
       default:
-        console.log(`Task ${taskId} unknown status: ${taskStatus}`);
+        console.log(`[CALLBACK] Task ${taskId} unknown status: ${taskStatus}`);
         return new Response("Unknown status", { status: 200, headers: corsHeaders });
     }
 
-    // Get audio data (first song - auto-pick)
-    const sunoData = task?.response?.sunoData;
+    // Get audio data - try multiple sources:
+    // 1. record-info response: task.response.sunoData (camelCase)
+    // 2. Callback payload: payload.data.data (snake_case for URLs)
+    let sunoData = task?.response?.sunoData;
+    
+    // Fallback to callback payload if record-info doesn't have it
     if (!sunoData || !Array.isArray(sunoData) || sunoData.length === 0) {
-      console.error("No audio data in task response");
+      console.log("[CALLBACK] No sunoData in record-info response, trying callback payload");
+      sunoData = audioDataFromCallback || payload?.data?.data;
+    }
+
+    console.log(`[CALLBACK] sunoData source found: ${sunoData ? 'yes' : 'no'}, count: ${sunoData?.length || 0}`);
+
+    if (!sunoData || !Array.isArray(sunoData) || sunoData.length === 0) {
+      console.error("[CALLBACK] No audio data found in any source");
+      console.error("[CALLBACK] task.response:", JSON.stringify(task?.response));
+      console.error("[CALLBACK] payload.data:", JSON.stringify(payload?.data));
       
       await supabase
         .from("leads")
         .update({
           automation_status: "failed",
-          automation_last_error: "No audio data returned from Suno",
+          automation_last_error: "[CALLBACK] No audio data returned from Suno - check record-info and callback payload formats",
           automation_retry_count: (lead.automation_retry_count || 0) + 1,
         })
         .eq("id", lead.id);
@@ -188,18 +221,24 @@ Deno.serve(async (req) => {
 
     // Pick first song (auto-pick strategy)
     const song = sunoData[0];
+    console.log("[CALLBACK] First song data:", JSON.stringify(song).substring(0, 500));
+    
+    // Handle both camelCase (record-info) and snake_case (callback) field names
     const audioUrl = song.audioUrl || song.audio_url;
     const coverUrl = song.imageUrl || song.image_url;
     const title = song.title || lead.song_title || `Song for ${lead.recipient_name}`;
 
+    console.log(`[CALLBACK] Extracted - audioUrl: ${audioUrl ? 'present' : 'missing'}, coverUrl: ${coverUrl ? 'present' : 'missing'}, title: ${title}`);
+
     if (!audioUrl) {
-      console.error("No audio URL in song data");
+      console.error("[CALLBACK] No audio URL found in song data");
+      console.error("[CALLBACK] song keys:", Object.keys(song || {}));
       
       await supabase
         .from("leads")
         .update({
           automation_status: "failed",
-          automation_last_error: "No audio URL in Suno response",
+          automation_last_error: `[CALLBACK] No audio URL in Suno response. Keys: ${Object.keys(song || {}).join(', ')}`,
           automation_retry_count: (lead.automation_retry_count || 0) + 1,
         })
         .eq("id", lead.id);
@@ -208,12 +247,13 @@ Deno.serve(async (req) => {
     }
 
     // Download audio file (with timeout and size limits)
-    console.log(`Downloading audio from: ${audioUrl}`);
+    console.log(`[CALLBACK] Downloading audio from: ${audioUrl}`);
     const audioResponse = await fetch(audioUrl, {
       signal: AbortSignal.timeout(60000), // 60 second timeout
     });
 
     if (!audioResponse.ok) {
+      console.error(`[CALLBACK] Audio download failed: ${audioResponse.status}`);
       throw new Error(`Audio download failed: ${audioResponse.status}`);
     }
 
@@ -225,7 +265,7 @@ Deno.serve(async (req) => {
       throw new Error("Audio file too large");
     }
 
-    console.log(`Downloaded ${audioBytes.length} bytes`);
+    console.log(`[CALLBACK] Downloaded ${audioBytes.length} bytes`);
 
     // Deterministic storage path for idempotency
     const shortId = lead.id.slice(0, 8).toUpperCase();
@@ -233,6 +273,7 @@ Deno.serve(async (req) => {
     const previewStoragePath = `leads/${shortId}-preview.mp3`;
 
     // Upload full song
+    console.log(`[CALLBACK] Uploading full song to: ${fullStoragePath}`);
     const { error: fullUploadError } = await supabase.storage
       .from("songs")
       .upload(fullStoragePath, audioBytes, {
@@ -241,11 +282,12 @@ Deno.serve(async (req) => {
       });
 
     if (fullUploadError) {
-      console.error("Full song upload error:", fullUploadError);
+      console.error("[CALLBACK] Full song upload error:", fullUploadError);
       throw new Error(`Upload failed: ${fullUploadError.message}`);
     }
 
     // Create and upload preview
+    console.log(`[CALLBACK] Creating and uploading preview to: ${previewStoragePath}`);
     const previewBytes = createPreviewClip(audioBytes, 45);
     const { error: previewUploadError } = await supabase.storage
       .from("songs")
@@ -255,7 +297,7 @@ Deno.serve(async (req) => {
       });
 
     if (previewUploadError) {
-      console.error("Preview upload error:", previewUploadError);
+      console.error("[CALLBACK] Preview upload error:", previewUploadError);
       // Continue even if preview fails
     }
 
@@ -268,9 +310,43 @@ Deno.serve(async (req) => {
       .from("songs")
       .getPublicUrl(previewStoragePath);
 
-    // Try to extract cover art from MP3 or use Suno's cover
-    let coverImageUrl = coverUrl || null;
+    console.log(`[CALLBACK] Storage URLs - Full: ${fullUrlData.publicUrl}, Preview: ${previewUrlData.publicUrl}`);
+
+    // Try to download Suno's cover image if available
+    let coverImageUrl = null;
+    if (coverUrl) {
+      try {
+        console.log(`[CALLBACK] Downloading cover image from: ${coverUrl}`);
+        const coverResponse = await fetch(coverUrl, {
+          signal: AbortSignal.timeout(30000),
+        });
+        
+        if (coverResponse.ok) {
+          const coverBuffer = await coverResponse.arrayBuffer();
+          const coverBytes = new Uint8Array(coverBuffer);
+          const coverPath = `leads/${shortId}-cover.jpg`;
+          
+          const { error: coverUploadError } = await supabase.storage
+            .from("songs")
+            .upload(coverPath, coverBytes, {
+              contentType: "image/jpeg",
+              upsert: true,
+            });
+          
+          if (!coverUploadError) {
+            const { data: coverUrlData } = supabase.storage
+              .from("songs")
+              .getPublicUrl(coverPath);
+            coverImageUrl = coverUrlData.publicUrl;
+            console.log(`[CALLBACK] Cover image saved: ${coverImageUrl}`);
+          }
+        }
+      } catch (e) {
+        console.log("[CALLBACK] Cover image download/upload skipped:", e);
+      }
+    }
     
+    // Fallback: try to extract cover art from MP3
     if (!coverImageUrl) {
       try {
         const mp3tag = new MP3Tag(audioBuffer);
@@ -289,7 +365,7 @@ Deno.serve(async (req) => {
             
             const format = picture.format || "image/jpeg";
             const ext = format.includes("png") ? "png" : "jpg";
-            const coverPath = `${shortId}-cover.${ext}`;
+            const coverPath = `leads/${shortId}-cover.${ext}`;
             
             const { error: coverUploadError } = await supabase.storage
               .from("songs")
@@ -303,11 +379,12 @@ Deno.serve(async (req) => {
                 .from("songs")
                 .getPublicUrl(coverPath);
               coverImageUrl = coverUrlData.publicUrl;
+              console.log(`[CALLBACK] Cover extracted from MP3: ${coverImageUrl}`);
             }
           }
         }
       } catch (e) {
-        console.log("Cover art extraction skipped:", e);
+        console.log("[CALLBACK] MP3 cover art extraction skipped:", e);
       }
     }
 
@@ -319,6 +396,7 @@ Deno.serve(async (req) => {
     const autoSendTime = new Date(capturedAt.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
     // Update lead with all song data
+    console.log(`[CALLBACK] Updating lead ${lead.id} with final song data`);
     await supabase
       .from("leads")
       .update({
@@ -330,20 +408,22 @@ Deno.serve(async (req) => {
         status: "song_ready",
         preview_scheduled_at: autoSendTime,
         automation_status: "completed",
+        automation_last_error: null, // Clear any previous errors
       })
       .eq("id", lead.id);
 
-    console.log(`Automation complete for lead ${lead.id}: ${title}`);
-    console.log(`Full: ${fullUrlData.publicUrl}`);
-    console.log(`Preview scheduled for: ${autoSendTime}`);
+    console.log(`[CALLBACK] ✅ Automation complete for lead ${lead.id}`);
+    console.log(`[CALLBACK] Title: ${title}`);
+    console.log(`[CALLBACK] Full URL: ${fullUrlData.publicUrl}`);
+    console.log(`[CALLBACK] Preview scheduled for: ${autoSendTime}`);
 
     return new Response(
-      JSON.stringify({ success: true, leadId: lead.id }),
+      JSON.stringify({ success: true, leadId: lead.id, title, audioUrl: fullUrlData.publicUrl }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Suno callback error:", error);
+    console.error("[CALLBACK] Error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

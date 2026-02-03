@@ -13,7 +13,10 @@ Deno.serve(async (req) => {
   try {
     const { leadId, forceRun = false } = await req.json();
     
+    console.log(`[TRIGGER] Starting automation for lead ${leadId}, forceRun: ${forceRun}`);
+    
     if (!leadId) {
+      console.error("[TRIGGER] Missing leadId in request");
       return new Response(
         JSON.stringify({ error: "leadId required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -33,14 +36,18 @@ Deno.serve(async (req) => {
       .single();
 
     if (fetchError || !lead) {
+      console.error(`[TRIGGER] Lead not found: ${leadId}`, fetchError);
       return new Response(
         JSON.stringify({ error: "Lead not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    console.log(`[TRIGGER] Found lead: ${lead.recipient_name} (${lead.email})`);
+
     // Check if already has a song (skip unless forcing)
     if (lead.preview_song_url && !forceRun) {
+      console.log(`[TRIGGER] Lead ${leadId} already has a song, skipping`);
       return new Response(
         JSON.stringify({ error: "Lead already has a song", hasExisting: true }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -49,6 +56,7 @@ Deno.serve(async (req) => {
 
     // Check if automation is already running
     if (["pending", "lyrics_generating", "audio_generating"].includes(lead.automation_status) && !forceRun) {
+      console.log(`[TRIGGER] Automation already in progress for lead ${leadId}, status: ${lead.automation_status}`);
       return new Response(
         JSON.stringify({ error: "Automation already in progress", status: lead.automation_status }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -63,9 +71,11 @@ Deno.serve(async (req) => {
       .single();
 
     const qualityThreshold = parseInt(thresholdSetting?.value || "65", 10);
+    console.log(`[TRIGGER] Quality threshold: ${qualityThreshold}, lead score: ${lead.quality_score}`);
 
     // Check quality score (skip if below threshold, unless forcing)
     if (!forceRun && (lead.quality_score || 0) < qualityThreshold) {
+      console.log(`[TRIGGER] Quality score ${lead.quality_score} below threshold ${qualityThreshold}`);
       return new Response(
         JSON.stringify({ 
           error: "Quality score below threshold", 
@@ -77,6 +87,7 @@ Deno.serve(async (req) => {
     }
 
     // Mark as pending
+    console.log(`[TRIGGER] Marking lead ${leadId} as pending`);
     await supabase
       .from("leads")
       .update({
@@ -88,7 +99,7 @@ Deno.serve(async (req) => {
       .eq("id", leadId);
 
     // Step 1: Generate lyrics
-    console.log(`Starting automation for lead ${leadId}`);
+    console.log(`[TRIGGER] Step 1: Calling lyrics generation for lead ${leadId}`);
     
     const lyricsResponse = await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
       method: "POST",
@@ -101,7 +112,7 @@ Deno.serve(async (req) => {
 
     if (!lyricsResponse.ok) {
       const error = await lyricsResponse.text();
-      console.error("Lyrics generation failed:", error);
+      console.error(`[TRIGGER] Lyrics generation failed: ${lyricsResponse.status}`, error);
       return new Response(
         JSON.stringify({ error: "Lyrics generation failed", details: error }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -109,9 +120,11 @@ Deno.serve(async (req) => {
     }
 
     const lyricsResult = await lyricsResponse.json();
-    console.log("Lyrics generated:", lyricsResult);
+    console.log(`[TRIGGER] Step 1 complete - Lyrics generated: "${lyricsResult.title}"`);
 
     // Step 2: Generate audio (will trigger callback when done)
+    console.log(`[TRIGGER] Step 2: Calling audio generation for lead ${leadId}`);
+    
     const audioResponse = await fetch(`${supabaseUrl}/functions/v1/automation-generate-audio`, {
       method: "POST",
       headers: {
@@ -123,7 +136,7 @@ Deno.serve(async (req) => {
 
     if (!audioResponse.ok) {
       const error = await audioResponse.text();
-      console.error("Audio generation failed:", error);
+      console.error(`[TRIGGER] Audio generation failed: ${audioResponse.status}`, error);
       return new Response(
         JSON.stringify({ error: "Audio generation failed", details: error }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -131,7 +144,10 @@ Deno.serve(async (req) => {
     }
 
     const audioResult = await audioResponse.json();
-    console.log("Audio generation started:", audioResult);
+    console.log(`[TRIGGER] Step 2 complete - Audio generation started, taskId: ${audioResult.taskId}`);
+
+    console.log(`[TRIGGER] ✅ Pipeline started successfully for lead ${leadId}`);
+    console.log(`[TRIGGER] Lyrics: done, Audio: generating (callback will complete)`);
 
     return new Response(
       JSON.stringify({ 
@@ -139,13 +155,14 @@ Deno.serve(async (req) => {
         leadId,
         status: "audio_generating",
         taskId: audioResult.taskId,
+        lyricsTitle: lyricsResult.title,
         message: "Song generation started. Audio will be ready in 1-3 minutes.",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Automation trigger error:", error);
+    console.error("[TRIGGER] Error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
