@@ -121,6 +121,283 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Get automation status for dashboard
+      if (body?.action === "get_automation_status") {
+        // Get automation_enabled setting
+        const { data: enabledSetting } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", "automation_enabled")
+          .maybeSingle();
+
+        // Get quality threshold setting
+        const { data: thresholdSetting } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", "automation_quality_threshold")
+          .maybeSingle();
+
+        const enabled = enabledSetting?.value !== "false";
+        const qualityThreshold = parseInt(thresholdSetting?.value || "65", 10);
+
+        // Get active jobs (leads with automation_status set)
+        const { data: activeLeads } = await supabase
+          .from("leads")
+          .select("*")
+          .not("automation_status", "is", null)
+          .not("automation_status", "eq", "")
+          .order("automation_started_at", { ascending: false })
+          .limit(50);
+
+        // Get stats
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayISO = today.toISOString();
+
+        const { data: allAutomationLeads } = await supabase
+          .from("leads")
+          .select("automation_status, automation_started_at")
+          .not("automation_status", "is", null);
+
+        const stats = {
+          pending: allAutomationLeads?.filter(l => l.automation_status === "pending").length || 0,
+          generatingLyrics: allAutomationLeads?.filter(l => l.automation_status === "generating_lyrics").length || 0,
+          generatingAudio: allAutomationLeads?.filter(l => l.automation_status === "generating_audio" || l.automation_status === "lyrics_ready").length || 0,
+          completedToday: allAutomationLeads?.filter(l => 
+            l.automation_status === "completed" && 
+            l.automation_started_at && 
+            new Date(l.automation_started_at) >= today
+          ).length || 0,
+          failedToday: allAutomationLeads?.filter(l => 
+            l.automation_status === "failed" && 
+            l.automation_started_at && 
+            new Date(l.automation_started_at) >= today
+          ).length || 0,
+        };
+
+        // Map active jobs
+        const activeJobs = (activeLeads || [])
+          .filter(l => ["pending", "generating_lyrics", "lyrics_ready", "generating_audio", "completed", "failed"].includes(l.automation_status || ""))
+          .map(l => ({
+            id: l.id,
+            recipientName: l.recipient_name,
+            customerName: l.customer_name,
+            status: l.automation_status,
+            startedAt: l.automation_started_at,
+            error: l.automation_last_error,
+            lyrics: l.automation_lyrics,
+            genre: l.genre,
+            occasion: l.occasion,
+          }));
+
+        // Get eligible leads (quality >= threshold, no song, not already in automation)
+        const { data: eligibleLeads } = await supabase
+          .from("leads")
+          .select("id, recipient_name, customer_name, quality_score, genre, occasion, email")
+          .gte("quality_score", qualityThreshold)
+          .is("full_song_url", null)
+          .is("automation_status", null)
+          .is("dismissed_at", null)
+          .neq("status", "converted")
+          .order("quality_score", { ascending: false })
+          .limit(50);
+
+        return new Response(
+          JSON.stringify({
+            enabled,
+            qualityThreshold,
+            stats,
+            activeJobs,
+            eligibleLeads: (eligibleLeads || []).map(l => ({
+              id: l.id,
+              recipientName: l.recipient_name,
+              customerName: l.customer_name,
+              qualityScore: l.quality_score,
+              genre: l.genre,
+              occasion: l.occasion,
+              email: l.email,
+            })),
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Set automation enabled/disabled
+      if (body?.action === "set_automation_enabled") {
+        const enabled = body.enabled === true;
+
+        await supabase
+          .from("admin_settings")
+          .upsert({
+            key: "automation_enabled",
+            value: enabled ? "true" : "false",
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "key" });
+
+        console.log(`Automation ${enabled ? "enabled" : "disabled"}`);
+
+        return new Response(
+          JSON.stringify({ success: true, enabled }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Set quality threshold
+      if (body?.action === "set_quality_threshold") {
+        const threshold = typeof body.threshold === "number" ? body.threshold : 65;
+
+        await supabase
+          .from("admin_settings")
+          .upsert({
+            key: "automation_quality_threshold",
+            value: String(threshold),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "key" });
+
+        console.log(`Quality threshold set to ${threshold}`);
+
+        return new Response(
+          JSON.stringify({ success: true, threshold }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Batch trigger automation for multiple leads
+      if (body?.action === "batch_trigger_automation") {
+        const leadIds = Array.isArray(body.leadIds) ? body.leadIds : [];
+
+        if (leadIds.length === 0) {
+          return new Response(
+            JSON.stringify({ error: "No lead IDs provided" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        let triggered = 0;
+        let skipped = 0;
+        const errors: { leadId: string; error: string }[] = [];
+
+        for (const leadId of leadIds) {
+          try {
+            // Check if lead is eligible
+            const { data: lead, error: leadError } = await supabase
+              .from("leads")
+              .select("id, automation_status, full_song_url, status")
+              .eq("id", leadId)
+              .single();
+
+            if (leadError || !lead) {
+              errors.push({ leadId, error: "Lead not found" });
+              continue;
+            }
+
+            if (lead.status === "converted" || lead.full_song_url || lead.automation_status) {
+              skipped++;
+              continue;
+            }
+
+            // Trigger automation
+            const response = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ leadId }),
+            });
+
+            if (response.ok) {
+              triggered++;
+            } else {
+              const errText = await response.text();
+              errors.push({ leadId, error: errText });
+            }
+          } catch (err) {
+            errors.push({ leadId, error: err instanceof Error ? err.message : "Unknown error" });
+          }
+        }
+
+        console.log(`Batch automation: triggered=${triggered}, skipped=${skipped}, errors=${errors.length}`);
+
+        return new Response(
+          JSON.stringify({ triggered, skipped, errors }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Retry automation for a failed lead
+      if (body?.action === "retry_automation") {
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "Lead ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Reset automation status and trigger
+        await supabase
+          .from("leads")
+          .update({
+            automation_status: null,
+            automation_last_error: null,
+            automation_started_at: null,
+            automation_task_id: null,
+          })
+          .eq("id", leadId);
+
+        // Trigger automation
+        const response = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ leadId }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText);
+        }
+
+        console.log(`Automation retry triggered for lead ${leadId}`);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Cancel automation for a lead
+      if (body?.action === "cancel_automation") {
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "Lead ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        await supabase
+          .from("leads")
+          .update({
+            automation_status: null,
+            automation_last_error: "Cancelled by admin",
+            automation_manual_override_at: new Date().toISOString(),
+          })
+          .eq("id", leadId);
+
+        console.log(`Automation cancelled for lead ${leadId}`);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Update lead preview schedule (used by Leads UI). This must be server-side because leads are not client-updatable.
       if (body?.action === "update_lead_preview_schedule") {
         const leadId = typeof body.leadId === "string" ? body.leadId : null;

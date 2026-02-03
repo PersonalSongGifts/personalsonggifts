@@ -213,16 +213,37 @@ async function triggerAutomationIfQualified(leadId: string, qualityScore: number
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Check if automation is globally enabled
+    const { data: enabledSetting } = await supabaseClient
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "automation_enabled")
+      .maybeSingle();
+
+    const automationEnabled = (enabledSetting as { value: string } | null)?.value !== "false";
+
+    if (!automationEnabled) {
+      console.log(`[CAPTURE-LEAD] Automation disabled globally, skipping auto-trigger for lead ${leadId}`);
+      return;
+    }
     
     // Get quality threshold from admin settings (default 65)
-    const qualityThreshold = 65;
+    const { data: thresholdSetting } = await supabaseClient
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "automation_quality_threshold")
+      .maybeSingle();
+
+    const qualityThreshold = parseInt((thresholdSetting as { value: string } | null)?.value || "65", 10);
 
     if (qualityScore < qualityThreshold) {
-      console.log(`Lead ${leadId} quality ${qualityScore} below threshold ${qualityThreshold}, skipping automation`);
+      console.log(`[CAPTURE-LEAD] Lead ${leadId} quality ${qualityScore} below threshold ${qualityThreshold}, skipping automation`);
       return;
     }
 
-    console.log(`Lead ${leadId} quality ${qualityScore} >= ${qualityThreshold}, triggering automation`);
+    console.log(`[CAPTURE-LEAD] Lead ${leadId} quality ${qualityScore} >= ${qualityThreshold}, triggering automation`);
 
     const response = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
       method: "POST",
@@ -234,12 +255,12 @@ async function triggerAutomationIfQualified(leadId: string, qualityScore: number
     });
 
     if (!response.ok) {
-      console.error("Automation trigger failed:", await response.text());
+      console.error("[CAPTURE-LEAD] Automation trigger failed:", await response.text());
     } else {
-      console.log("Automation triggered for lead:", leadId);
+      console.log("[CAPTURE-LEAD] Automation triggered for lead:", leadId);
     }
   } catch (error) {
-    console.error("Automation trigger error:", error);
+    console.error("[CAPTURE-LEAD] Automation trigger error:", error);
   }
 }
 
