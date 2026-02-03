@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot } from "lucide-react";
 import { formatAdminDate } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
@@ -24,6 +24,7 @@ import { EmailTemplates } from "@/components/admin/EmailTemplates";
 import { ReactionsTable } from "@/components/admin/ReactionsTable";
 import { ScheduledDeliveryPicker } from "@/components/admin/ScheduledDeliveryPicker";
 import { SourceAnalytics } from "@/components/admin/SourceAnalytics";
+import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
 
 interface Order {
   id: string;
@@ -554,7 +555,7 @@ export default function Admin() {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-2xl grid-cols-5">
+          <TabsList className="grid w-full max-w-3xl grid-cols-6">
             <TabsTrigger value="analytics" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Analytics
@@ -570,6 +571,10 @@ export default function Admin() {
             <TabsTrigger value="leads" className="gap-2">
               <Users className="h-4 w-4" />
               Leads
+            </TabsTrigger>
+            <TabsTrigger value="automation" className="gap-2">
+              <Bot className="h-4 w-4" />
+              Automation
             </TabsTrigger>
             <TabsTrigger value="emails" className="gap-2">
               <Mail className="h-4 w-4" />
@@ -789,6 +794,10 @@ export default function Admin() {
               adminPassword={password}
               onRefresh={fetchOrders}
             />
+          </TabsContent>
+
+          <TabsContent value="automation" className="space-y-6">
+            <AutomationDashboard adminPassword={password} onRefresh={fetchOrders} />
           </TabsContent>
 
           <TabsContent value="emails" className="space-y-6">
