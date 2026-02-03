@@ -14,8 +14,34 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
+          automation_last_error: string | null
+          automation_lyrics: string | null
+          automation_manual_override_at: string | null
+          automation_retry_count: number | null
+          automation_started_at: string | null
+          automation_status: string | null
+          automation_style_id: string | null
+          automation_task_id: string | null
           captured_at: string
           converted_at: string | null
           cover_image_url: string | null
@@ -52,6 +78,14 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          automation_last_error?: string | null
+          automation_lyrics?: string | null
+          automation_manual_override_at?: string | null
+          automation_retry_count?: number | null
+          automation_started_at?: string | null
+          automation_status?: string | null
+          automation_style_id?: string | null
+          automation_task_id?: string | null
           captured_at?: string
           converted_at?: string | null
           cover_image_url?: string | null
@@ -88,6 +122,14 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          automation_last_error?: string | null
+          automation_lyrics?: string | null
+          automation_manual_override_at?: string | null
+          automation_retry_count?: number | null
+          automation_started_at?: string | null
+          automation_status?: string | null
+          automation_style_id?: string | null
+          automation_task_id?: string | null
           captured_at?: string
           converted_at?: string | null
           cover_image_url?: string | null
@@ -124,6 +166,13 @@ export type Database = {
           utm_term?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "leads_automation_style_id_fkey"
+            columns: ["automation_style_id"]
+            isOneToOne: false
+            referencedRelation: "song_styles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leads_order_id_fkey"
             columns: ["order_id"]
@@ -244,6 +293,39 @@ export type Database = {
           utm_medium?: string | null
           utm_source?: string | null
           utm_term?: string | null
+        }
+        Relationships: []
+      }
+      song_styles: {
+        Row: {
+          created_at: string
+          genre_match: string
+          id: string
+          is_active: boolean
+          label: string
+          suno_prompt: string
+          usage_count: number
+          vocal_gender: string
+        }
+        Insert: {
+          created_at?: string
+          genre_match: string
+          id?: string
+          is_active?: boolean
+          label: string
+          suno_prompt: string
+          usage_count?: number
+          vocal_gender: string
+        }
+        Update: {
+          created_at?: string
+          genre_match?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          suno_prompt?: string
+          usage_count?: number
+          vocal_gender?: string
         }
         Relationships: []
       }
