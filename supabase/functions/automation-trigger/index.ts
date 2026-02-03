@@ -1,0 +1,154 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password",
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { leadId, forceRun = false } = await req.json();
+    
+    if (!leadId) {
+      return new Response(
+        JSON.stringify({ error: "leadId required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Fetch lead
+    const { data: lead, error: fetchError } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("id", leadId)
+      .single();
+
+    if (fetchError || !lead) {
+      return new Response(
+        JSON.stringify({ error: "Lead not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if already has a song (skip unless forcing)
+    if (lead.preview_song_url && !forceRun) {
+      return new Response(
+        JSON.stringify({ error: "Lead already has a song", hasExisting: true }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if automation is already running
+    if (["pending", "lyrics_generating", "audio_generating"].includes(lead.automation_status) && !forceRun) {
+      return new Response(
+        JSON.stringify({ error: "Automation already in progress", status: lead.automation_status }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get quality threshold from admin settings
+    const { data: thresholdSetting } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "automation_quality_threshold")
+      .single();
+
+    const qualityThreshold = parseInt(thresholdSetting?.value || "65", 10);
+
+    // Check quality score (skip if below threshold, unless forcing)
+    if (!forceRun && (lead.quality_score || 0) < qualityThreshold) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Quality score below threshold", 
+          score: lead.quality_score,
+          threshold: qualityThreshold,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Mark as pending
+    await supabase
+      .from("leads")
+      .update({
+        automation_status: "pending",
+        automation_retry_count: 0,
+        automation_last_error: null,
+        automation_started_at: new Date().toISOString(),
+      })
+      .eq("id", leadId);
+
+    // Step 1: Generate lyrics
+    console.log(`Starting automation for lead ${leadId}`);
+    
+    const lyricsResponse = await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ leadId }),
+    });
+
+    if (!lyricsResponse.ok) {
+      const error = await lyricsResponse.text();
+      console.error("Lyrics generation failed:", error);
+      return new Response(
+        JSON.stringify({ error: "Lyrics generation failed", details: error }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const lyricsResult = await lyricsResponse.json();
+    console.log("Lyrics generated:", lyricsResult);
+
+    // Step 2: Generate audio (will trigger callback when done)
+    const audioResponse = await fetch(`${supabaseUrl}/functions/v1/automation-generate-audio`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ leadId }),
+    });
+
+    if (!audioResponse.ok) {
+      const error = await audioResponse.text();
+      console.error("Audio generation failed:", error);
+      return new Response(
+        JSON.stringify({ error: "Audio generation failed", details: error }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const audioResult = await audioResponse.json();
+    console.log("Audio generation started:", audioResult);
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        leadId,
+        status: "audio_generating",
+        taskId: audioResult.taskId,
+        message: "Song generation started. Audio will be ready in 1-3 minutes.",
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (error) {
+    console.error("Automation trigger error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Server error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

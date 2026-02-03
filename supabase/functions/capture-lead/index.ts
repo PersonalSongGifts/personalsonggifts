@@ -209,6 +209,40 @@ async function syncLeadToGoogleSheet(leadId: string, input: LeadInput, qualitySc
   }
 }
 
+async function triggerAutomationIfQualified(leadId: string, qualityScore: number): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Get quality threshold from admin settings (default 65)
+    const qualityThreshold = 65;
+
+    if (qualityScore < qualityThreshold) {
+      console.log(`Lead ${leadId} quality ${qualityScore} below threshold ${qualityThreshold}, skipping automation`);
+      return;
+    }
+
+    console.log(`Lead ${leadId} quality ${qualityScore} >= ${qualityThreshold}, triggering automation`);
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ leadId }),
+    });
+
+    if (!response.ok) {
+      console.error("Automation trigger failed:", await response.text());
+    } else {
+      console.log("Automation triggered for lead:", leadId);
+    }
+  } catch (error) {
+    console.error("Automation trigger error:", error);
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -347,6 +381,9 @@ Deno.serve(async (req) => {
     
     // Sync to Google Sheets (unified with orders)
     syncLeadToGoogleSheet(data.id, input, qualityScore);
+
+    // Auto-trigger song generation for high-quality leads
+    triggerAutomationIfQualified(data.id, qualityScore);
 
     console.log("Lead captured:", normalizedEmail, "Quality:", qualityScore);
     return new Response(

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search, Pencil, Save, ArrowRightCircle } from "lucide-react";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search, Pencil, Save, ArrowRightCircle, Wand2, Loader2, AlertCircle } from "lucide-react";
 import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
@@ -54,6 +54,15 @@ export interface Lead {
   utm_campaign?: string | null;
   utm_content?: string | null;
   utm_term?: string | null;
+  // Automation fields
+  automation_status?: string | null;
+  automation_task_id?: string | null;
+  automation_retry_count?: number | null;
+  automation_last_error?: string | null;
+  automation_started_at?: string | null;
+  automation_lyrics?: string | null;
+  automation_style_id?: string | null;
+  automation_manual_override_at?: string | null;
 }
 
 interface LeadsTableProps {
@@ -119,6 +128,8 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   // Convert to order state
   const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [convertPrice, setConvertPrice] = useState<number>(49);
+  // Automation state
+  const [triggeringAutomation, setTriggeringAutomation] = useState<string | null>(null);
   const [convertingLead, setConvertingLead] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -468,6 +479,80 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     return `${minutes}m`;
   };
 
+  // Automation trigger handler
+  const handleTriggerAutomation = async (lead: Lead, forceRun = false) => {
+    if (!adminPassword) return;
+
+    setTriggeringAutomation(lead.id);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/automation-trigger`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ leadId: lead.id, forceRun }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to start automation");
+      }
+
+      toast({
+        title: "Song Generation Started",
+        description: "AI is creating lyrics and audio. This takes 1-3 minutes.",
+      });
+
+      onRefresh?.();
+    } catch (error) {
+      console.error("Automation trigger error:", error);
+      toast({
+        title: "Automation Failed",
+        description: error instanceof Error ? error.message : "Failed to start song generation",
+        variant: "destructive",
+      });
+    } finally {
+      setTriggeringAutomation(null);
+    }
+  };
+
+  // Get automation status badge
+  const getAutomationBadge = (lead: Lead) => {
+    const status = lead.automation_status;
+    if (!status) return null;
+
+    switch (status) {
+      case "pending":
+      case "lyrics_generating":
+        return { label: "Generating Lyrics...", className: "bg-yellow-100 text-yellow-800", icon: Loader2, spin: true };
+      case "lyrics_ready":
+        return { label: "Lyrics Ready", className: "bg-blue-100 text-blue-800", icon: Check, spin: false };
+      case "audio_generating":
+        return { label: "Generating Audio...", className: "bg-purple-100 text-purple-800", icon: Loader2, spin: true };
+      case "completed":
+        return { label: "AI Generated", className: "bg-green-100 text-green-800", icon: Wand2, spin: false };
+      case "failed":
+        return { label: "Failed", className: "bg-red-100 text-red-800", icon: AlertCircle, spin: false };
+      case "manual":
+        return { label: "Manual", className: "bg-gray-100 text-gray-600", icon: null, spin: false };
+      default:
+        return null;
+    }
+  };
+
+  // Check if lead can trigger automation
+  const canTriggerAutomation = (lead: Lead) => {
+    // Already has a song or is converted - no need
+    if (lead.preview_song_url || lead.status === "converted") return false;
+    // Already running
+    if (["pending", "lyrics_generating", "audio_generating"].includes(lead.automation_status || "")) return false;
+    // Dismissed leads can't trigger
+    if (lead.dismissed_at) return false;
+    return true;
+  };
+
   const toggleAudioPlayback = (url: string) => {
     if (playingAudio === url) {
       audioRef.current?.pause();
@@ -794,6 +879,25 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           </Badge>
                         );
                       })()}
+                      {/* Automation Status Badge */}
+                      {!lead.dismissed_at && (() => {
+                        const automationBadge = getAutomationBadge(lead);
+                        if (!automationBadge) return null;
+                        const IconComponent = automationBadge.icon;
+                        return (
+                          <Badge className={automationBadge.className}>
+                            {IconComponent && <IconComponent className={`h-3 w-3 mr-1 ${automationBadge.spin ? 'animate-spin' : ''}`} />}
+                            {automationBadge.label}
+                          </Badge>
+                        );
+                      })()}
+                      {/* Automation Error Badge */}
+                      {lead.automation_status === "failed" && lead.automation_last_error && !lead.dismissed_at && (
+                        <Badge variant="outline" className="border-red-500 text-red-600 max-w-48 truncate" title={lead.automation_last_error}>
+                          <AlertCircle className="h-3 w-3 mr-1 flex-shrink-0" />
+                          <span className="truncate">{lead.automation_last_error}</span>
+                        </Badge>
+                      )}
                       {/* UTM Source Badge */}
                       {lead.utm_source && !lead.dismissed_at && (
                         <Badge variant="outline" className="border-blue-300 text-blue-600">
@@ -863,15 +967,49 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       </Button>
                     ) : (
                       <>
+                        {/* AI Generate Song button - show for leads that can trigger automation */}
+                        {canTriggerAutomation(lead) && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => handleTriggerAutomation(lead)}
+                            disabled={triggeringAutomation === lead.id}
+                            className="bg-purple-600 hover:bg-purple-700"
+                          >
+                            {triggeringAutomation === lead.id ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <Wand2 className="h-4 w-4 mr-2" />
+                            )}
+                            {triggeringAutomation === lead.id ? "Starting..." : "AI Generate"}
+                          </Button>
+                        )}
                         {/* Upload Song button - show for unconverted leads without a song */}
                         {lead.status === "lead" && !lead.full_song_url && (
                           <Button
                             size="sm"
-                            variant="default"
+                            variant="outline"
                             onClick={() => setSelectedLead(lead)}
                           >
                             <Upload className="h-4 w-4 mr-2" />
-                            Upload Song
+                            Manual Upload
+                          </Button>
+                        )}
+                        {/* Retry Automation button - show for failed automation */}
+                        {lead.automation_status === "failed" && !lead.preview_song_url && !lead.dismissed_at && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleTriggerAutomation(lead, true)}
+                            disabled={triggeringAutomation === lead.id}
+                            className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                          >
+                            {triggeringAutomation === lead.id ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                            )}
+                            Retry AI
                           </Button>
                         )}
                         {/* Preview audio button */}
