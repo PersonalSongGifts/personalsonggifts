@@ -1,492 +1,733 @@
 
+# Admin UI Enhancement Implementation Plan
 
-# Background-First Automation System - Complete Implementation Plan
+## Overview
 
-## Coverage Analysis: What's Already Implemented vs. Needed
-
-| Concern | Current State | Action Needed |
-|---------|---------------|---------------|
-| **Input stability window** | ❌ None - generation starts immediately | Add 5-min delay for orders |
-| **Timezone definition** | ⚠️ Implicit UTC | Document explicitly, use PST for display |
-| **Cron concurrency/locking** | ⚠️ Partial - uses optimistic locks | Add atomic status updates |
-| **Priority ordering** | ❌ None | Add priority field to queue processing |
-| **Cost/surge visibility** | ❌ None | Add daily counter + logging |
-| **Audio URL fallbacks** | ⚠️ Missing variants | Add all Suno URL fields |
-| **Raw callback storage** | ❌ None | Add `automation_raw_callback` column |
-| **Timing fields** | ❌ None | Add `earliest_generate_at`, `target_send_at` |
-| **Delivery status tracking** | ⚠️ Implicit in order status | Add explicit `delivery_status` |
-| **Rate limit handling** | ❌ None | Add `next_attempt_at` column + backoff |
+This plan implements the full admin visibility and control layer across 6 phases, with your two additional requests integrated:
+1. Surface `automation_last_error` and `delivery_last_error` directly on Needs Attention rows
+2. Persist `automation_audio_url_source` column and show it in Debug Info modal
 
 ---
 
-## Phase 1: Database Schema Updates
+## Phase 1: Database Schema Update
 
-Add all new tracking columns to both `leads` and `orders` tables:
+Add new column to track which audio URL field was used:
 
 ```sql
--- Timing fields
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS earliest_generate_at timestamptz;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS target_send_at timestamptz;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS generated_at timestamptz;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS sent_at timestamptz;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS automation_raw_callback jsonb;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS inputs_hash text;
-
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS earliest_generate_at timestamptz;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS target_send_at timestamptz;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS generated_at timestamptz;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS sent_at timestamptz;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS automation_raw_callback jsonb;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS inputs_hash text;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_status text;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_last_error text;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_retry_count int DEFAULT 0;
+-- File: supabase/migrations/20260203_add_automation_audio_url_source.sql
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS automation_audio_url_source text;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS automation_audio_url_source text;
 ```
 
 ---
 
-## Phase 2: Timing Initialization at Entity Creation
+## Phase 2: Update Callback Handler to Persist Audio URL Source
 
-### Orders (`stripe-webhook/index.ts`)
+**File:** `supabase/functions/automation-suno-callback/index.ts`
 
-```text
-Input Stability Window: 5 minutes after order creation
+Update both lead and order updates to include the new field:
 
-const now = Date.now();
-const expectedDelivery = calculateExpectedDelivery(pricingTier);
-const targetSendAt = new Date(new Date(expectedDelivery).getTime() - 12 * 60 * 60 * 1000);
-const earliestGenerateAt = new Date(now + 5 * 60 * 1000); // 5-minute stabilization
-
-// Compute inputs_hash from key fields
-const inputsHash = computeHash([
-  metadata.recipientName,
-  metadata.specialQualities,
-  metadata.favoriteMemory,
-  metadata.genre,
-  metadata.occasion,
-]);
-
-// Insert with timing fields
-{
-  earliest_generate_at: earliestGenerateAt.toISOString(),
-  target_send_at: targetSendAt.toISOString(),
-  inputs_hash: inputsHash,
-  delivery_status: 'pending',
-}
+For leads (around line 622):
+```javascript
+automation_audio_url_source: canonical.extractedFrom, // Track which URL field was used
 ```
 
-### Leads (`capture-lead/index.ts`)
-
-```text
-const now = Date.now();
-const earliestGenerateAt = new Date(now); // Leads generate immediately
-const targetSendAt = new Date(now + 24 * 60 * 60 * 1000); // Preview email 24h later
-
-// Compute inputs_hash
-const inputsHash = computeHash([
-  input.recipientName,
-  input.specialQualities,
-  input.favoriteMemory,
-  input.genre,
-  input.occasion,
-]);
-
-// Insert with timing fields
-{
-  earliest_generate_at: earliestGenerateAt.toISOString(),
-  target_send_at: targetSendAt.toISOString(),
-  inputs_hash: inputsHash,
-}
+For orders (around line 650):
+```javascript
+automation_audio_url_source: canonical.extractedFrom, // Track which URL field was used
 ```
 
 ---
 
-## Phase 3: Central Scheduler Enhancement (`process-scheduled-deliveries/index.ts`)
+## Phase 3: Add Backend Actions to admin-orders Edge Function
 
-Transform the cron job into a full orchestrator:
+**File:** `supabase/functions/admin-orders/index.ts`
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          CRON: Every Minute                             │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  1. STUCK AUDIO RECOVERY (existing)                                     │
-│     - Find audio_generating > 5 min old                                 │
-│     - Max 3 per run                                                     │
-│                                                                         │
-│  2. GENERATION QUEUE (new)                                              │
-│     Query:                                                              │
-│       WHERE earliest_generate_at <= now                                 │
-│         AND automation_status IS NULL                                   │
-│         AND (next_attempt_at IS NULL OR next_attempt_at <= now)         │
-│         AND dismissed_at IS NULL                                        │
-│         AND (for orders: status != 'cancelled')                         │
-│     Priority: Orders first (priority tier > standard), then leads       │
-│     Limit: 3 per run                                                    │
-│     Action: Call automation-trigger for each                            │
-│                                                                         │
-│  3. ORDER DELIVERY QUEUE (existing + enhanced)                          │
-│     Query:                                                              │
-│       WHERE target_send_at <= now                                       │
-│         AND automation_status = 'completed'                             │
-│         AND sent_at IS NULL                                             │
-│         AND dismissed_at IS NULL                                        │
-│     Action: Send email, set sent_at                                     │
-│                                                                         │
-│  4. LEAD PREVIEW QUEUE (existing + catch-up)                            │
-│     Query:                                                              │
-│       WHERE target_send_at <= now                                       │
-│         AND status = 'song_ready'                                       │
-│         AND preview_sent_at IS NULL                                     │
-│         AND dismissed_at IS NULL                                        │
-│     Limit: 5 per run (for catch-up)                                     │
-│     Action: Send preview email, set preview_sent_at                     │
-│                                                                         │
-│  5. SCHEDULED RESENDS (existing)                                        │
-│                                                                         │
-│  6. DAILY COST LOGGING (new)                                            │
-│     At midnight: Log total generations for the day                      │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+### 3.1 Reset Automation Action
 
-### Concurrency Protection (Atomic Status Update)
-
-When picking up entities for generation:
+Add after line ~795 (after `update_lead_fields`):
 
 ```javascript
-// Use atomic update to claim the row (prevents double-pickup)
-const { data: claimed, error } = await supabase
-  .from(tableName)
-  .update({
-    automation_status: 'queued',
-    automation_started_at: new Date().toISOString(),
-  })
-  .eq('id', entityId)
-  .is('automation_status', null)  // Only if still unclaimed
-  .select('id')
-  .single();
+// Reset automation (allows re-generation)
+if (body?.action === "reset_automation") {
+  const orderId = typeof body.orderId === "string" ? body.orderId : null;
+  const leadId = typeof body.leadId === "string" ? body.leadId : null;
+  const clearAssets = body.clearAssets === true; // For "Reset + Regenerate"
+  
+  if (!orderId && !leadId) {
+    return new Response(
+      JSON.stringify({ error: "Order ID or Lead ID required" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 
-if (!claimed) {
-  console.log(`[SCHEDULER] Entity ${entityId} already claimed, skipping`);
-  continue;
-}
-```
+  const entityType = orderId ? "orders" : "leads";
+  const entityId = orderId || leadId;
 
-### Priority Queue Logic
-
-```javascript
-// Query orders first, prioritizing priority tier
-const { data: pendingOrders } = await supabase
-  .from('orders')
-  .select('id, pricing_tier')
-  .is('automation_status', null)
-  .lte('earliest_generate_at', now)
-  .is('dismissed_at', null)
-  .neq('status', 'cancelled')
-  .order('pricing_tier', { ascending: false }) // 'priority' > 'standard' alphabetically reversed
-  .order('earliest_generate_at', { ascending: true })
-  .limit(MAX_GENERATIONS_PER_RUN);
-
-// Then leads (only if orders didn't fill the queue)
-const remainingSlots = MAX_GENERATIONS_PER_RUN - (pendingOrders?.length || 0);
-if (remainingSlots > 0) {
-  const { data: pendingLeads } = await supabase
-    .from('leads')
-    .select('id')
-    .is('automation_status', null)
-    .lte('earliest_generate_at', now)
-    .is('dismissed_at', null)
-    .order('earliest_generate_at', { ascending: true })
-    .limit(remainingSlots);
-}
-```
-
----
-
-## Phase 4: Callback Normalization + Raw Storage (`automation-suno-callback/index.ts`)
-
-### Store Raw Payload
-
-```javascript
-// Store raw callback immediately for debugging
-await supabase
-  .from(tableName)
-  .update({
-    automation_raw_callback: payload,
-  })
-  .eq('id', entityId);
-```
-
-### Normalized Audio URL Extraction
-
-```javascript
-function normalizeSunoCallback(payload: unknown): {
-  audioUrl: string | null;
-  coverUrl: string | null;
-  title: string | null;
-  duration: number | null;
-  taskId: string | null;
-} {
-  // Handle nested structures - Suno sometimes nests data differently
-  const songData = 
-    payload?.data?.data?.[0] ||     // Callback format
-    payload?.data?.response?.sunoData?.[0] ||  // Record-info format
-    payload?.sunoData?.[0] ||
-    payload?.data?.[0] ||
-    {};
-
-  // Try ALL known audio URL field variants
-  const audioUrl = 
-    songData.audioUrl || songData.audio_url ||
-    songData.sourceAudioUrl || songData.source_audio_url ||
-    songData.streamAudioUrl || songData.stream_audio_url ||
-    songData.sourceStreamAudioUrl || songData.source_stream_audio_url ||
-    null;
-
-  const coverUrl =
-    songData.imageUrl || songData.image_url ||
-    songData.sourceImageUrl || songData.source_image_url ||
-    null;
-
-  console.log(`[NORMALIZE] Audio extracted from: ${
-    songData.audioUrl ? 'audioUrl' :
-    songData.audio_url ? 'audio_url' :
-    songData.sourceAudioUrl ? 'sourceAudioUrl' :
-    songData.source_audio_url ? 'source_audio_url' :
-    songData.streamAudioUrl ? 'streamAudioUrl' :
-    songData.stream_audio_url ? 'stream_audio_url' :
-    'none found'
-  }`);
-
-  return {
-    audioUrl,
-    coverUrl,
-    title: songData.title || null,
-    duration: songData.duration || null,
-    taskId: payload?.data?.task_id || payload?.data?.taskId || payload?.taskId || null,
+  // Base reset fields (always cleared)
+  const updates: Record<string, unknown> = {
+    automation_status: null,
+    automation_task_id: null,
+    automation_lyrics: null,
+    automation_started_at: null,
+    automation_retry_count: 0,
+    automation_last_error: null,
+    automation_raw_callback: null,
+    automation_style_id: null,
+    automation_audio_url_source: null,
+    generated_at: null,
+    inputs_hash: null,
+    next_attempt_at: null,
+    automation_manual_override_at: null, // Re-enable automation
   };
+
+  // If clearAssets=true, also wipe the song
+  if (clearAssets) {
+    if (entityType === "orders") {
+      updates.song_url = null;
+      updates.song_title = null;
+      updates.cover_image_url = null;
+      updates.sent_at = null;
+      updates.delivery_status = "pending";
+      updates.status = "paid"; // Reset to paid status
+    } else {
+      updates.preview_song_url = null;
+      updates.full_song_url = null;
+      updates.song_title = null;
+      updates.cover_image_url = null;
+      updates.preview_sent_at = null;
+      updates.preview_token = null;
+      updates.status = "lead"; // Reset to initial status
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from(entityType)
+    .update(updates)
+    .eq("id", entityId);
+
+  if (updateError) {
+    console.error("Failed to reset automation:", updateError);
+    throw updateError;
+  }
+
+  console.log(`[ADMIN] Automation reset for ${entityType} ${entityId}, clearAssets=${clearAssets}`);
+
+  return new Response(
+    JSON.stringify({ success: true, mode: clearAssets ? "full_reset" : "preserve_song" }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
 }
 ```
 
-### Idempotency Guards (Enhanced)
+### 3.2 Get Alerts Summary Action
+
+Add after the reset_automation action:
 
 ```javascript
-// Guard 1: Already has song (skip callback)
-const existingSongUrl = entityType === 'order' ? entity.song_url : entity.preview_song_url;
-if (existingSongUrl && !forceReprocess) {
-  console.log(`[CALLBACK] Entity ${entityId} already has song, skipping`);
-  return new Response('Already processed', { status: 200, headers: corsHeaders });
-}
+// Get alerts summary for dashboard banner
+if (body?.action === "get_alerts_summary") {
+  const now = new Date().toISOString();
+  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-// Guard 2: Already sent (never overwrite)
-if (entity.sent_at || entity.preview_sent_at) {
-  console.log(`[CALLBACK] Entity ${entityId} already sent, ignoring callback`);
-  return new Response('Already sent', { status: 200, headers: corsHeaders });
-}
+  // Stuck orders (audio_generating > 15 min)
+  const { count: stuckOrders } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("automation_status", "audio_generating")
+    .lt("automation_started_at", fifteenMinAgo)
+    .is("dismissed_at", null);
 
-// Guard 3: Manual override active
-if (entity.automation_manual_override_at) {
-  console.log(`[CALLBACK] Manual override active for ${entityId}`);
-  return new Response('Manual override', { status: 200, headers: corsHeaders });
+  // Failed orders
+  const { count: failedOrders } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .in("automation_status", ["failed", "permanently_failed"])
+    .is("dismissed_at", null);
+
+  // Overdue orders (completed but not sent, target_send_at passed)
+  const { count: overdueOrders } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("automation_status", "completed")
+    .lte("target_send_at", now)
+    .is("sent_at", null)
+    .is("dismissed_at", null);
+
+  // Needs review orders (inputs changed or delivery issues)
+  const { count: needsReviewOrders } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("delivery_status", "needs_review")
+    .is("dismissed_at", null);
+
+  // Delivery failed orders
+  const { count: deliveryFailedOrders } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("delivery_status", "failed")
+    .is("dismissed_at", null);
+
+  // Stuck leads
+  const { count: stuckLeads } = await supabase
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("automation_status", "audio_generating")
+    .lt("automation_started_at", fifteenMinAgo)
+    .is("dismissed_at", null);
+
+  // Failed leads
+  const { count: failedLeads } = await supabase
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .in("automation_status", ["failed", "permanently_failed"])
+    .is("dismissed_at", null);
+
+  // Overdue lead previews (song_ready but not sent, target_send_at passed)
+  const { count: overdueLeads } = await supabase
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "song_ready")
+    .lte("target_send_at", now)
+    .is("preview_sent_at", null)
+    .is("dismissed_at", null);
+
+  const alerts = {
+    stuckOrders: stuckOrders || 0,
+    failedOrders: failedOrders || 0,
+    overdueOrders: overdueOrders || 0,
+    needsReviewOrders: needsReviewOrders || 0,
+    deliveryFailedOrders: deliveryFailedOrders || 0,
+    stuckLeads: stuckLeads || 0,
+    failedLeads: failedLeads || 0,
+    overdueLeads: overdueLeads || 0,
+  };
+
+  const total = Object.values(alerts).reduce((sum, count) => sum + count, 0);
+
+  return new Response(
+    JSON.stringify({ alerts, total }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
 }
 ```
 
 ---
 
-## Phase 5: Rate Limit Handling (`automation-trigger/index.ts`)
+## Phase 4: Update Admin.tsx - Order Interface and Enhanced Display
 
-### On 429 Response
+**File:** `src/pages/Admin.tsx`
 
-```javascript
-// If Kie returns 429, set backoff
-if (response.status === 429) {
-  const retryCount = (entity.automation_retry_count || 0) + 1;
-  const backoffMinutes = Math.min(5 * Math.pow(2, retryCount - 1), 60); // 5, 10, 20, 40, 60
-  const nextAttemptAt = new Date(Date.now() + backoffMinutes * 60 * 1000);
+### 4.1 Update Order Interface (lines 29-77)
 
-  await supabase
-    .from(tableName)
-    .update({
-      automation_status: 'rate_limited',
-      automation_retry_count: retryCount,
-      next_attempt_at: nextAttemptAt.toISOString(),
-      automation_last_error: `Rate limited, retry ${retryCount} at ${nextAttemptAt.toISOString()}`,
-    })
-    .eq('id', entityId);
+Add new fields to the Order interface:
 
-  return { error: 'Rate limited', nextAttempt: nextAttemptAt };
-}
-```
-
-### Permanent Failure After Max Retries
-
-```javascript
-const MAX_RETRIES = 3;
-
-if (entity.automation_retry_count >= MAX_RETRIES) {
-  await supabase
-    .from(tableName)
-    .update({
-      automation_status: 'permanently_failed',
-      automation_last_error: `Exceeded max retries (${MAX_RETRIES})`,
-    })
-    .eq('id', entityId);
-
-  return { error: 'Permanently failed' };
-}
-```
-
----
-
-## Phase 6: Delivery Time Safety (`process-scheduled-deliveries/index.ts`)
-
-### Handle Past/Invalid `target_send_at`
-
-```javascript
-// If target_send_at is in the past at creation, add a small buffer
-const targetSendAt = new Date(order.target_send_at);
-const now = new Date();
-
-if (targetSendAt < now) {
-  // Don't send immediately - add 10-minute buffer for catch-up
-  const bufferedSendAt = new Date(now.getTime() + 10 * 60 * 1000);
-  console.log(`[SCHEDULER] target_send_at is past, buffering to ${bufferedSendAt.toISOString()}`);
+```typescript
+interface Order {
+  // ... existing fields ...
   
-  // Update the record so we don't pick it up again this run
-  await supabase
-    .from('orders')
-    .update({ target_send_at: bufferedSendAt.toISOString() })
-    .eq('id', order.id);
+  // NEW: Timing fields for automation
+  earliest_generate_at: string | null;
+  target_send_at: string | null;
+  generated_at: string | null;
+  sent_at: string | null;
+  next_attempt_at: string | null;
   
-  continue; // Skip this run, pick up in next
+  // NEW: Delivery tracking
+  delivery_status: string | null;
+  delivery_last_error: string | null;
+  delivery_retry_count: number | null;
+  
+  // NEW: Raw callback for debugging
+  automation_raw_callback: unknown | null;
+  
+  // NEW: Audio URL source tracking
+  automation_audio_url_source: string | null;
+  
+  // NEW: Input change detection
+  inputs_hash: string | null;
 }
 ```
 
-### Validate Delivery Dates at Order Creation
+### 4.2 Add "Needs Attention" Filter Option (around line 701)
+
+Update the status filter Select:
+
+```jsx
+<Select value={statusFilter} onValueChange={setStatusFilter}>
+  <SelectTrigger className="w-48">
+    <SelectValue placeholder="Filter by status" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="all">All Orders</SelectItem>
+    <SelectItem value="needs_attention" className="text-red-600 font-medium">
+      ⚠️ Needs Attention
+    </SelectItem>
+    <SelectItem value="paid">Paid</SelectItem>
+    {/* ... rest of options ... */}
+  </SelectContent>
+</Select>
+```
+
+### 4.3 Add Needs Attention Filter Logic (around line 774)
+
+Update the filter logic to include needs_attention:
 
 ```javascript
-// In stripe-webhook
-if (!expectedDelivery || isNaN(new Date(expectedDelivery).getTime())) {
-  // Fall back to product SLA
-  expectedDelivery = calculateExpectedDelivery(pricingTier);
-  console.log(`[WEBHOOK] Invalid delivery date, using SLA default: ${expectedDelivery}`);
-}
+const filteredOrders = orders.filter((order) => {
+  // First apply dismissed filter
+  if (dismissedOrderFilter === "active" && order.dismissed_at) return false;
+  if (dismissedOrderFilter === "cancelled" && !order.dismissed_at) return false;
+  
+  // NEW: Needs Attention filter
+  if (statusFilter === "needs_attention") {
+    const now = new Date();
+    // Failed automation
+    if (["failed", "permanently_failed", "rate_limited"].includes(order.automation_status || "")) return true;
+    // Delivery issues
+    if (["failed", "needs_review"].includes(order.delivery_status || "")) return true;
+    // Overdue: completed but not sent and target_send_at passed
+    if (order.automation_status === "completed" && 
+        order.target_send_at && 
+        new Date(order.target_send_at) <= now && 
+        !order.sent_at) return true;
+    return false;
+  }
+  
+  // Standard status filter
+  if (statusFilter && statusFilter !== "all") {
+    return order.status === statusFilter;
+  }
+  
+  // Search filter
+  // ... existing search logic ...
+});
+```
 
-// Ensure target_send_at is in the future
-let targetSendAt = new Date(new Date(expectedDelivery).getTime() - 12 * 60 * 60 * 1000);
-if (targetSendAt <= new Date()) {
-  // If already past, send in 30 minutes minimum
-  targetSendAt = new Date(Date.now() + 30 * 60 * 1000);
-  console.log(`[WEBHOOK] target_send_at was past, adjusted to ${targetSendAt.toISOString()}`);
-}
+### 4.4 Enhance Order Card Display (around line 820)
+
+Add error display, delivery status, and retry count directly on cards:
+
+```jsx
+{/* Show delivery_status badge */}
+{order.delivery_status && order.delivery_status !== "pending" && (
+  <Badge 
+    variant="outline" 
+    className={
+      order.delivery_status === "sent" ? "border-green-300 text-green-600" :
+      order.delivery_status === "scheduled" ? "border-blue-300 text-blue-600" :
+      order.delivery_status === "needs_review" ? "border-amber-300 text-amber-600" :
+      order.delivery_status === "failed" ? "border-red-300 text-red-600" :
+      "border-gray-300"
+    }
+  >
+    <Mail className="h-3 w-3 mr-1" />
+    {order.delivery_status}
+  </Badge>
+)}
+
+{/* Retry count badge */}
+{(order.automation_retry_count || 0) > 0 && (
+  <Badge variant="outline" className="border-orange-300 text-orange-600">
+    Retry #{order.automation_retry_count}
+  </Badge>
+)}
+
+{/* Show last error directly on card if needs attention */}
+{(order.automation_last_error || order.delivery_last_error) && (
+  <div className="col-span-full mt-2 p-2 bg-red-50 rounded text-xs text-red-700 border border-red-200">
+    <AlertCircle className="h-3 w-3 inline mr-1" />
+    {order.automation_last_error || order.delivery_last_error}
+  </div>
+)}
+```
+
+### 4.5 Add Reset Automation Buttons in Order Detail Dialog
+
+Add state variables:
+
+```typescript
+const [resettingAutomation, setResettingAutomation] = useState(false);
+const [showResetConfirm, setShowResetConfirm] = useState<"soft" | "full" | null>(null);
+const [regenerateConfirmText, setRegenerateConfirmText] = useState("");
+const [showDebugInfo, setShowDebugInfo] = useState(false);
+```
+
+Add reset handler:
+
+```typescript
+const handleResetAutomation = async (clearAssets: boolean) => {
+  if (!selectedOrder || !password) return;
+  
+  setResettingAutomation(true);
+  try {
+    const { data, error } = await supabase.functions.invoke("admin-orders", {
+      method: "POST",
+      body: {
+        action: "reset_automation",
+        orderId: selectedOrder.id,
+        clearAssets,
+        adminPassword: password,
+      },
+    });
+
+    if (error) throw error;
+
+    toast({
+      title: clearAssets ? "Automation Reset + Assets Cleared" : "Automation Reset",
+      description: clearAssets 
+        ? "Song has been deleted. You can now edit inputs and regenerate."
+        : "Automation state cleared. Existing song preserved.",
+    });
+
+    setShowResetConfirm(null);
+    setRegenerateConfirmText("");
+    fetchOrders();
+  } catch (err) {
+    console.error("Reset automation error:", err);
+    toast({
+      title: "Reset Failed",
+      description: err instanceof Error ? err.message : "Unknown error",
+      variant: "destructive",
+    });
+  } finally {
+    setResettingAutomation(false);
+  }
+};
+```
+
+Add buttons in Order Detail Dialog (after Admin Notes section):
+
+```jsx
+{/* Automation Controls Section */}
+{(selectedOrder.automation_status || selectedOrder.song_url) && (
+  <div className="border-t pt-4">
+    <h4 className="font-medium mb-3 flex items-center gap-2">
+      <Bot className="h-4 w-4" />
+      Automation Controls
+    </h4>
+    <div className="space-y-3">
+      {/* Debug Info Button */}
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setShowDebugInfo(true)}
+        className="mr-2"
+      >
+        <Bug className="h-4 w-4 mr-2" />
+        Debug Info
+      </Button>
+
+      {/* Reset Automation Button */}
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setShowResetConfirm("soft")}
+        disabled={resettingAutomation}
+      >
+        <RotateCcw className="h-4 w-4 mr-2" />
+        Reset Automation
+      </Button>
+
+      {/* Reset + Regenerate Button (dangerous) */}
+      {selectedOrder.song_url && (
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setShowResetConfirm("full")}
+          disabled={resettingAutomation}
+          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Reset + Regenerate
+        </Button>
+      )}
+    </div>
+  </div>
+)}
+```
+
+### 4.6 Add Debug Info Dialog
+
+```jsx
+{/* Debug Info Dialog */}
+<Dialog open={showDebugInfo} onOpenChange={setShowDebugInfo}>
+  <DialogContent className="max-w-3xl max-h-[80vh] overflow-auto">
+    <DialogHeader>
+      <DialogTitle>Debug Information</DialogTitle>
+      <DialogDescription>
+        Order {selectedOrder?.id.slice(0, 8).toUpperCase()} - Automation Details
+      </DialogDescription>
+    </DialogHeader>
+    
+    {selectedOrder && (
+      <div className="space-y-4">
+        {/* Automation Timeline */}
+        <div>
+          <h4 className="font-medium text-sm mb-2">Automation Timeline (UTC)</h4>
+          <div className="text-xs font-mono bg-gray-50 p-3 rounded space-y-1">
+            <p>earliest_generate_at: {selectedOrder.earliest_generate_at || "N/A"}</p>
+            <p>automation_started_at: {selectedOrder.automation_started_at || "N/A"}</p>
+            <p>generated_at: {selectedOrder.generated_at || "N/A"}</p>
+            <p>target_send_at: {selectedOrder.target_send_at || "N/A"}</p>
+            <p>sent_at: {selectedOrder.sent_at || "N/A"}</p>
+          </div>
+        </div>
+
+        {/* Audio URL Source */}
+        {selectedOrder.automation_audio_url_source && (
+          <div>
+            <h4 className="font-medium text-sm mb-2">Audio URL Extraction</h4>
+            <Badge variant="outline" className="font-mono">
+              Extracted from: {selectedOrder.automation_audio_url_source}
+            </Badge>
+          </div>
+        )}
+
+        {/* Generated Lyrics */}
+        {selectedOrder.automation_lyrics && (
+          <div>
+            <h4 className="font-medium text-sm mb-2">Generated Lyrics</h4>
+            <pre className="text-xs bg-gray-100 p-4 rounded overflow-auto max-h-48 whitespace-pre-wrap">
+              {selectedOrder.automation_lyrics}
+            </pre>
+          </div>
+        )}
+
+        {/* Raw Callback Payload */}
+        {selectedOrder.automation_raw_callback && (
+          <div>
+            <h4 className="font-medium text-sm mb-2">Raw Suno Callback</h4>
+            <pre className="text-xs bg-gray-100 p-4 rounded overflow-auto max-h-64">
+              {JSON.stringify(selectedOrder.automation_raw_callback, null, 2)}
+            </pre>
+          </div>
+        )}
+
+        {/* Last Error */}
+        {(selectedOrder.automation_last_error || selectedOrder.delivery_last_error) && (
+          <div>
+            <h4 className="font-medium text-sm mb-2 text-red-600">Last Error</h4>
+            <pre className="text-xs bg-red-50 p-4 rounded overflow-auto text-red-800">
+              {selectedOrder.automation_last_error || selectedOrder.delivery_last_error}
+            </pre>
+          </div>
+        )}
+      </div>
+    )}
+  </DialogContent>
+</Dialog>
+```
+
+### 4.7 Add Reset Confirmation Dialogs
+
+```jsx
+{/* Reset Automation Confirmation */}
+<AlertDialog open={showResetConfirm === "soft"} onOpenChange={(open) => !open && setShowResetConfirm(null)}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Reset Automation</AlertDialogTitle>
+      <AlertDialogDescription>
+        This will clear automation status and allow the order to be picked up for generation again.
+        The existing song (if any) will be preserved.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancel</AlertDialogCancel>
+      <AlertDialogAction onClick={() => handleResetAutomation(false)} disabled={resettingAutomation}>
+        {resettingAutomation ? "Resetting..." : "Reset Automation"}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+
+{/* Reset + Regenerate Confirmation (Two-Step) */}
+<AlertDialog open={showResetConfirm === "full"} onOpenChange={(open) => {
+  if (!open) {
+    setShowResetConfirm(null);
+    setRegenerateConfirmText("");
+  }
+}}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle className="text-red-600">⚠️ Delete Song & Regenerate</AlertDialogTitle>
+      <AlertDialogDescription className="space-y-3">
+        <p>This will <strong>permanently delete</strong> the existing song and all generated assets.</p>
+        <p>The order will return to "paid" status and can be edited before regeneration.</p>
+        <p className="text-red-600 font-medium">This action cannot be undone.</p>
+        <div className="mt-4">
+          <Label>Type "REGENERATE" to confirm:</Label>
+          <Input 
+            value={regenerateConfirmText}
+            onChange={(e) => setRegenerateConfirmText(e.target.value)}
+            placeholder="REGENERATE"
+            className="mt-2"
+          />
+        </div>
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancel</AlertDialogCancel>
+      <AlertDialogAction 
+        onClick={() => handleResetAutomation(true)} 
+        disabled={resettingAutomation || regenerateConfirmText !== "REGENERATE"}
+        className="bg-red-600 hover:bg-red-700"
+      >
+        {resettingAutomation ? "Deleting..." : "Delete & Reset"}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
 ```
 
 ---
 
-## Phase 7: Input Change Detection
+## Phase 5: Update AutomationDashboard.tsx - Alert Banner
 
-### Hash Computation Utility
+**File:** `src/components/admin/AutomationDashboard.tsx`
 
-```javascript
-function computeInputsHash(entity: {
-  recipient_name: string;
-  special_qualities: string;
-  favorite_memory: string;
-  genre: string;
-  occasion: string;
-}): string {
-  const combined = [
-    entity.recipient_name,
-    entity.special_qualities,
-    entity.favorite_memory,
-    entity.genre,
-    entity.occasion,
-  ].join('|');
-  
-  // Simple hash using Web Crypto
-  const encoder = new TextEncoder();
-  const data = encoder.encode(combined);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-}
+### 5.1 Add Alert State and Fetch
+
+```typescript
+const [alerts, setAlerts] = useState<{
+  stuckOrders: number;
+  failedOrders: number;
+  overdueOrders: number;
+  needsReviewOrders: number;
+  deliveryFailedOrders: number;
+  stuckLeads: number;
+  failedLeads: number;
+  overdueLeads: number;
+} | null>(null);
+const [alertsTotal, setAlertsTotal] = useState(0);
+
+const fetchAlerts = async () => {
+  try {
+    const { data, error } = await supabase.functions.invoke("admin-orders", {
+      method: "POST",
+      body: {
+        action: "get_alerts_summary",
+        adminPassword,
+      },
+    });
+
+    if (error) throw error;
+    setAlerts(data.alerts);
+    setAlertsTotal(data.total);
+  } catch (err) {
+    console.error("Failed to fetch alerts:", err);
+  }
+};
+
+useEffect(() => {
+  fetchAlerts();
+}, [adminPassword]);
 ```
 
-### Check Before Sending
+### 5.2 Add Alert Banner Component (at top of return)
 
-```javascript
-// Before sending delivery email, verify inputs haven't changed
-const currentHash = computeInputsHash(order);
-if (order.inputs_hash && currentHash !== order.inputs_hash) {
-  console.log(`[DELIVERY] Inputs changed for order ${order.id}, marking needs_review`);
-  await supabase
-    .from('orders')
-    .update({
-      delivery_status: 'needs_review',
-      delivery_last_error: 'Inputs changed after generation',
-    })
-    .eq('id', order.id);
-  continue;
-}
+```jsx
+{/* Alert Banner */}
+{alertsTotal > 0 && (
+  <Card className="border-red-300 bg-red-50">
+    <CardContent className="py-4">
+      <div className="flex items-center gap-3">
+        <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="font-semibold text-red-800">
+            {alertsTotal} item{alertsTotal !== 1 ? "s" : ""} need attention
+          </p>
+          <ul className="text-sm text-red-700 mt-1 space-y-0.5">
+            {alerts?.stuckOrders > 0 && <li>• {alerts.stuckOrders} order(s) stuck in audio generation</li>}
+            {alerts?.overdueOrders > 0 && <li>• {alerts.overdueOrders} order(s) overdue for delivery</li>}
+            {alerts?.failedOrders > 0 && <li>• {alerts.failedOrders} order(s) failed</li>}
+            {alerts?.needsReviewOrders > 0 && <li>• {alerts.needsReviewOrders} order(s) need review (inputs changed)</li>}
+            {alerts?.deliveryFailedOrders > 0 && <li>• {alerts.deliveryFailedOrders} order(s) delivery failed</li>}
+            {alerts?.stuckLeads > 0 && <li>• {alerts.stuckLeads} lead(s) stuck in audio generation</li>}
+            {alerts?.overdueLeads > 0 && <li>• {alerts.overdueLeads} lead(s) overdue for preview</li>}
+            {alerts?.failedLeads > 0 && <li>• {alerts.failedLeads} lead(s) failed</li>}
+          </ul>
+        </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => {
+            // This would need to be passed up to Admin.tsx to switch tabs and set filter
+            // For now, just refresh
+            onRefresh?.();
+          }}
+          className="border-red-300 text-red-600 hover:bg-red-100"
+        >
+          Refresh
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+)}
 ```
 
 ---
 
-## Summary: Files to Modify
+## Phase 6: Update LeadsTable.tsx - Needs Attention Filter + Reset
+
+**File:** `src/components/admin/LeadsTable.tsx`
+
+### 6.1 Update Lead Interface
+
+Add new fields:
+
+```typescript
+export interface Lead {
+  // ... existing fields ...
+  
+  // NEW: Timing fields
+  earliest_generate_at?: string | null;
+  target_send_at?: string | null;
+  generated_at?: string | null;
+  sent_at?: string | null;
+  next_attempt_at?: string | null;
+  
+  // NEW: Raw callback and audio source
+  automation_raw_callback?: unknown | null;
+  automation_audio_url_source?: string | null;
+}
+```
+
+### 6.2 Add Needs Attention Filter
+
+Add to the status filter options and filter logic similar to Orders.
+
+### 6.3 Add Reset Automation Handler and Buttons
+
+Similar pattern to Orders - add reset handler and buttons to lead detail dialog.
+
+---
+
+## Files to Modify Summary
 
 | File | Changes |
 |------|---------|
-| Database migration | Add 12 new columns to leads, 15 to orders |
-| `stripe-webhook/index.ts` | Set timing fields + inputs_hash on order creation |
-| `capture-lead/index.ts` | Set timing fields + inputs_hash on lead creation |
-| `automation-suno-callback/index.ts` | Store raw payload, normalize URLs, add idempotency guards |
-| `automation-trigger/index.ts` | Handle 429 with backoff, permanent failure after retries |
-| `process-scheduled-deliveries/index.ts` | Add generation queue, priority ordering, delivery safety |
-| `admin-orders/index.ts` | Add "View Raw Callback" action |
-| `src/pages/Admin.tsx` | Display new statuses, delivery_status, raw callback viewer |
+| `supabase/migrations/...` | Add `automation_audio_url_source` column |
+| `supabase/functions/automation-suno-callback/index.ts` | Persist `automation_audio_url_source` from canonical.extractedFrom |
+| `supabase/functions/admin-orders/index.ts` | Add `reset_automation` and `get_alerts_summary` actions |
+| `src/pages/Admin.tsx` | Update Order interface, add Needs Attention filter, add error display on cards, add Debug Info dialog, add Reset buttons with confirmations |
+| `src/components/admin/AutomationDashboard.tsx` | Add alert banner with counts |
+| `src/components/admin/LeadsTable.tsx` | Update Lead interface, add Needs Attention filter, add Debug Info + Reset buttons |
 
 ---
 
-## Acceptance Criteria by Scenario
+## Your Requests Integrated
 
-### Scenario 1: Customer edits order after paying
-- ✅ 5-minute stabilization window before generation starts
-- ✅ `inputs_hash` computed at generation start
-- ✅ If hash changes before audio completes, marks `needs_review`
-
-### Scenario 2: Duplicate callback / double processing
-- ✅ Check `song_url` before processing callback
-- ✅ Check `sent_at` before sending
-- ✅ Atomic status update for row claiming
-
-### Scenario 3: Rate limiting / peak volume
-- ✅ `next_attempt_at` column for backoff tracking
-- ✅ Exponential backoff (5, 10, 20, 40, 60 min)
-- ✅ Priority orders process before leads
-- ✅ Max 3 generations per cron run
-
-### Scenario 4: Unexpected Suno URL fields
-- ✅ `normalizeSunoCallback()` tries all known field variants
-- ✅ Raw payload stored for debugging
-- ✅ Logs which field was successfully extracted
-
-### Scenario 5: Bad delivery timing
-- ✅ Invalid dates fall back to product SLA
-- ✅ Past `target_send_at` gets 10-minute buffer
-- ✅ `sent_at` prevents duplicate sends
+1. **Error visibility on cards**: `automation_last_error` and `delivery_last_error` displayed directly in a red box on Needs Attention order cards
+2. **Audio URL source tracking**: New `automation_audio_url_source` column persisted from callback normalization and shown in Debug Info modal
 
 ---
 
-## Timezone Documentation
+## Implementation Order
 
-**All timing calculations use UTC internally.**
-
-- `earliest_generate_at` - UTC timestamp when generation may begin
-- `target_send_at` - UTC timestamp when delivery email should send
-- `expected_delivery` - UTC timestamp shown to customer (in their local interpretation)
-
-**Admin display uses PST** for human readability, but storage remains UTC.
-
+1. Database migration for `automation_audio_url_source`
+2. Update `automation-suno-callback` to persist the field
+3. Add backend actions (`reset_automation`, `get_alerts_summary`)
+4. Update Admin.tsx (Order interface, filter, cards, dialogs)
+5. Update AutomationDashboard.tsx (alert banner)
+6. Update LeadsTable.tsx (Lead interface, filter, reset buttons)
