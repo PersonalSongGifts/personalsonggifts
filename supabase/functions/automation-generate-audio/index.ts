@@ -140,15 +140,13 @@ Deno.serve(async (req) => {
         .eq("id", selectedStyle.id);
     }
 
-    // Build Suno prompt: style + lyrics
-    const sunoPrompt = `${selectedStyle.suno_prompt}
-
-${lead.automation_lyrics}`;
-
     // Build callback URL
     const callbackUrl = `${supabaseUrl}/functions/v1/automation-suno-callback`;
 
-    // Call Suno via Kie.ai
+    // Use customMode for better quality: separate style, title, and lyrics
+    const songTitle = lead.song_title || `Song for ${lead.recipient_name}`;
+
+    // Call Suno via Kie.ai with customMode=true and V4_5 model
     console.log(`Calling Suno for lead ${leadId} with style: ${selectedStyle.suno_prompt?.substring(0, 50)}...`);
     
     const sunoResponse = await fetch("https://api.kie.ai/api/v1/generate", {
@@ -158,10 +156,12 @@ ${lead.automation_lyrics}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        prompt: sunoPrompt,
-        customMode: false,
+        prompt: lead.automation_lyrics,           // Lyrics only in prompt
+        style: selectedStyle.suno_prompt,         // Style prompt separately
+        title: songTitle,                         // Title separately
+        customMode: true,                         // Enable custom mode for better control
         instrumental: false,
-        model: "V3_5",
+        model: "V4_5",                            // Upgraded from V3_5 for smarter prompts
         callBackUrl: callbackUrl,
       }),
     });

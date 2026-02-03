@@ -101,11 +101,72 @@ Deno.serve(async (req) => {
     }
 
     const task = statusData.data;
+    const taskStatus = task?.status;
     
-    // Check if task is complete
-    if (!["SUCCESS", "FIRST_SUCCESS"].includes(task?.status)) {
-      console.log(`Task ${taskId} not complete yet: ${task?.status}`);
-      return new Response("Task not complete", { status: 200, headers: corsHeaders });
+    // Handle all Suno status codes per documentation
+    switch (taskStatus) {
+      case "PENDING":
+        // Still processing, callback will come again
+        console.log(`Task ${taskId} still pending`);
+        return new Response("Task pending", { status: 200, headers: corsHeaders });
+
+      case "CREATE_TASK_FAILED":
+        console.error(`Task ${taskId} creation failed:`, task?.errorMessage);
+        await supabase
+          .from("leads")
+          .update({
+            automation_status: "failed",
+            automation_last_error: `Suno task creation failed: ${task?.errorMessage || "Unknown error"}`,
+            automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          })
+          .eq("id", lead.id);
+        return new Response("Task creation failed", { status: 200, headers: corsHeaders });
+
+      case "GENERATE_AUDIO_FAILED":
+        console.error(`Task ${taskId} audio generation failed:`, task?.errorMessage);
+        await supabase
+          .from("leads")
+          .update({
+            automation_status: "failed",
+            automation_last_error: `Audio generation failed: ${task?.errorMessage || "Unknown error"}`,
+            automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          })
+          .eq("id", lead.id);
+        return new Response("Audio generation failed", { status: 200, headers: corsHeaders });
+
+      case "SENSITIVE_WORD_ERROR":
+        console.error(`Task ${taskId} content filtered:`, task?.errorMessage);
+        await supabase
+          .from("leads")
+          .update({
+            automation_status: "failed",
+            automation_last_error: `Content filtered by Suno: ${task?.errorMessage || "Sensitive content detected"}`,
+            automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          })
+          .eq("id", lead.id);
+        return new Response("Content filtered", { status: 200, headers: corsHeaders });
+
+      case "CALLBACK_EXCEPTION":
+        console.error(`Task ${taskId} callback error:`, task?.errorMessage);
+        await supabase
+          .from("leads")
+          .update({
+            automation_status: "failed",
+            automation_last_error: `Callback exception: ${task?.errorMessage || "Unknown error"}`,
+            automation_retry_count: (lead.automation_retry_count || 0) + 1,
+          })
+          .eq("id", lead.id);
+        return new Response("Callback exception", { status: 200, headers: corsHeaders });
+
+      case "SUCCESS":
+      case "FIRST_SUCCESS":
+        // Continue with audio processing below
+        console.log(`Task ${taskId} completed with status: ${taskStatus}`);
+        break;
+
+      default:
+        console.log(`Task ${taskId} unknown status: ${taskStatus}`);
+        return new Response("Unknown status", { status: 200, headers: corsHeaders });
     }
 
     // Get audio data (first song - auto-pick)

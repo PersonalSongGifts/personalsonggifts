@@ -147,7 +147,7 @@ Remember:
 - Mention the RecipientName 3-7 times naturally.
 - Make it wholesome and heartfelt.`;
 
-    // Call Gemini via Kie.ai
+    // Call Gemini via Kie.ai (using documented OpenAI-compatible format)
     const geminiResponse = await fetch("https://api.kie.ai/gemini-3-pro/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -156,10 +156,8 @@ Remember:
       },
       body: JSON.stringify({
         stream: false,
-        include_thoughts: false,
-        reasoning_effort: "high",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "developer", content: SYSTEM_PROMPT },  // Use "developer" role per Gemini 3 Pro docs
           { role: "user", content: userPrompt },
         ],
       }),
