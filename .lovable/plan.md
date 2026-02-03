@@ -1,98 +1,70 @@
 
-
-## Fix Automated Preview Clips to Be Exactly 45 Seconds
+## Enable Promo Code Field for Lead Checkout
 
 ### Problem
-The automated song generation pipeline creates preview clips that are only ~35 seconds instead of 45 seconds. This happens because the byte-slicing logic assumes 128kbps MP3 files, but Suno outputs higher bitrate audio (~165-192kbps).
+When leads try to unlock their full song, the Stripe Checkout page doesn't have a promotion code input field. If you want to send them a special discount code later (like `FULLSONG` for $5 off), they have no way to enter it.
 
 ### Solution
-Parse the MP3 file header to detect the actual bitrate, then calculate the correct number of bytes for a 45-second clip.
+Enable Stripe's built-in promotion code field on the lead checkout page by adding a single parameter to the checkout session configuration.
+
+**Good news:** Stripe promotion codes are already case-insensitive by default - entering "fullsong", "FULLSONG", or "FullSong" will all work the same.
 
 ---
 
 ## Technical Changes
 
-### File: `supabase/functions/automation-suno-callback/index.ts`
+### File: `supabase/functions/create-lead-checkout/index.ts`
 
-**Replace** the hardcoded `createPreviewClip` function with a smarter version that:
-
-1. Reads the MP3 frame header to detect actual bitrate
-2. Calculates bytes-per-second based on detected bitrate
-3. Falls back to 192kbps if detection fails (safer default for high-quality audio)
+**Add one parameter** to the `stripe.checkout.sessions.create()` call:
 
 ```text
-Current code (inaccurate):
-  const estimatedBytesPerSecond = 16 * 1024; // ~128kbps (WRONG for Suno)
+Before:
+const session = await stripe.checkout.sessions.create({
+  customer_email: lead.email,
+  line_items: [...],
+  mode: "payment",
+  ...
+});
 
-New code (accurate):
-  1. Parse first MP3 frame header to get actual bitrate
-  2. Calculate: bytesPerSecond = bitrate / 8
-  3. Slice: previewBytes = 45 * bytesPerSecond
+After:
+const session = await stripe.checkout.sessions.create({
+  customer_email: lead.email,
+  line_items: [...],
+  mode: "payment",
+  allow_promotion_codes: true,  // <-- ADD THIS LINE
+  ...
+});
 ```
 
-**MP3 Frame Header Parsing Logic:**
-- MP3 frames start with sync word `0xFF 0xFB` (or `0xFF 0xFA`, `0xFF 0xF3`, etc.)
-- Bits 12-15 contain the bitrate index
-- Map index to actual bitrate (e.g., index 9 for MPEG1 Layer3 = 128kbps, index 11 = 192kbps)
-
-**Implementation approach:**
-```typescript
-function detectMp3Bitrate(buffer: Uint8Array): number {
-  // Find frame sync (0xFF followed by 0xF* or 0xE*)
-  for (let i = 0; i < Math.min(buffer.length - 4, 4096); i++) {
-    if (buffer[i] === 0xFF && (buffer[i + 1] & 0xE0) === 0xE0) {
-      // Found sync word - parse header
-      const header = (buffer[i] << 24) | (buffer[i + 1] << 16) | (buffer[i + 2] << 8) | buffer[i + 3];
-      
-      const versionBits = (header >> 19) & 0x03;
-      const layerBits = (header >> 17) & 0x03;
-      const bitrateIndex = (header >> 12) & 0x0F;
-      
-      // Lookup bitrate from standard MP3 tables
-      // Return detected bitrate in kbps
-    }
-  }
-  return 192; // Safe default for high-quality audio
-}
-
-function createPreviewClip(buffer: Uint8Array, durationSeconds = 45): Uint8Array {
-  const bitrate = detectMp3Bitrate(buffer);
-  const bytesPerSecond = (bitrate * 1024) / 8;
-  const previewBytes = Math.min(durationSeconds * bytesPerSecond, buffer.length);
-  
-  if (previewBytes >= buffer.length * 0.9) {
-    return buffer;
-  }
-  
-  return buffer.slice(0, Math.floor(previewBytes));
-}
-```
+This enables the promotion code redemption box in Stripe's hosted checkout UI.
 
 ---
 
-## Why This Works
+## Existing Stripe Coupons Available
 
-| Suno Bitrate | Old Code (assumes 128kbps) | New Code (detects actual) |
-|--------------|---------------------------|---------------------------|
-| 128kbps | 45 sec ✅ | 45 sec ✅ |
-| 160kbps | 36 sec ❌ | 45 sec ✅ |
-| 192kbps | 30 sec ❌ | 45 sec ✅ |
-| 256kbps | 22.5 sec ❌ | 45 sec ✅ |
-| 320kbps | 18 sec ❌ | 45 sec ✅ |
+Your Stripe account already has these coupons configured:
+
+| Coupon Name | Discount | Type |
+|------------|----------|------|
+| FULLSONG | $5 off | Fixed amount |
+| VALENTINES50 | 50% off | Percentage |
+| WELCOME50 | 50% off | Percentage |
+| HyperdriveFREE2026 | 100% off | Percentage |
+| HyperdriveFREE2026! | 100% off | Percentage |
+
+To use these in the checkout field, each coupon needs a **promotion code** (customer-facing code) attached to it. The `FULLSONG` coupon exists, but I'll need to verify/create its promotion code so customers can actually type "FULLSONG" in the box.
+
+---
+
+## What Customers Will See
+
+After this change, the lead checkout page will show a "Add promotion code" link that expands to a text input field. Customers can enter any valid promo code (case-insensitive), and Stripe will automatically apply the discount and show the updated total.
 
 ---
 
 ## Deployment
 
-1. Update `supabase/functions/automation-suno-callback/index.ts` with the bitrate-aware clipping function
-2. Deploy edge function
-3. Test with a new automated lead generation
-
----
-
-## Verification
-
-After deployment, create a new test lead through automation and verify:
-- The preview clip plays for exactly 45 seconds (or full song length if shorter)
-- The preview URL works in the song preview page
-
+1. Update `create-lead-checkout/index.ts` with `allow_promotion_codes: true`
+2. Deploy the edge function
+3. Create promotion codes for any coupons that don't have them yet
+4. Test with a lead preview to verify the promo code field appears
