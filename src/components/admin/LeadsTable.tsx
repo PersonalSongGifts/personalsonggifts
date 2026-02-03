@@ -972,7 +972,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           <Button
                             size="sm"
                             variant="default"
-                            onClick={() => handleTriggerAutomation(lead)}
+                             onClick={() => handleTriggerAutomation(lead, true)}
                             disabled={triggeringAutomation === lead.id}
                             className="bg-purple-600 hover:bg-purple-700"
                           >
