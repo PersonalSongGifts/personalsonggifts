@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">A reminder about ${lead.recipient_name}'s song</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Don't Forget ${lead.recipient_name}'s Song! 💝</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -109,27 +109,27 @@ Deno.serve(async (req) => {
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We noticed you listened to your preview but have not completed your order yet. We understand - sometimes it takes a little time to decide.
+        We noticed you listened to your preview but haven't completed your order yet. We understand - sometimes it takes a little time to decide!
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Here is a special code to help: <strong>Use FULLSONG to save an extra $5</strong> on your order.
+        Here's a special code to help: <strong>Use FULLSONG to save an extra $5!</strong>
       </p>
       
       <div style="background-color: #FFF3E0; border: 2px dashed #FF9800; padding: 20px; margin: 30px 0; border-radius: 8px; text-align: center;">
-        <p style="color: #E65100; margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Your Code</p>
+        <p style="color: #E65100; margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">🎵 Limited Time Offer!</p>
         <p style="color: #E65100; margin: 10px 0 0 0; font-size: 32px; font-weight: bold; letter-spacing: 3px;">FULLSONG</p>
-        <p style="color: #795548; margin: 10px 0 0 0; font-size: 14px;">Saves you $5</p>
+        <p style="color: #795548; margin: 10px 0 0 0; font-size: 14px;">Saves you $5 on top of any other discounts!</p>
       </div>
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          Listen Again and Complete Order
+          🎵 Listen Again & Complete Order
         </a>
       </div>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Your personalized ${lead.occasion} song for <strong>${lead.recipient_name}</strong> is waiting for you.
+        Your personalized ${lead.occasion} song for <strong>${lead.recipient_name}</strong> is waiting for you!
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
@@ -153,20 +153,21 @@ Deno.serve(async (req) => {
 </html>
     `;
 
-    const textContent = `A reminder about ${lead.recipient_name}'s song
+    const textContent = `Don't Forget ${lead.recipient_name}'s Song!
 
 Hi ${lead.customer_name},
 
-We noticed you listened to your preview but have not completed your order yet. We understand - sometimes it takes a little time to decide.
+We noticed you listened to your preview but haven't completed your order yet. We understand - sometimes it takes a little time to decide!
 
-Here is a special code to help: Use FULLSONG to save an extra $5 on your order.
+Here's a special code to help: Use FULLSONG to save an extra $5!
 
+Limited Time Offer!
 Your Code: FULLSONG
-Saves you $5
+Saves you $5 on top of any other discounts!
 
 Listen again and complete your order: ${previewUrl}
 
-Your personalized ${lead.occasion} song for ${lead.recipient_name} is waiting for you.
+Your personalized ${lead.occasion} song for ${lead.recipient_name} is waiting for you!
 
 Warm regards,
 The Personal Song Gifts Team
@@ -190,7 +191,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         sender: { name: senderName, email: senderEmail },
         replyTo: { email: senderEmail, name: senderName },
         to: [{ email: lead.email, name: lead.customer_name }],
-        subject: `A reminder about ${lead.recipient_name}'s song`,
+        subject: `💝 Don't forget ${lead.recipient_name}'s song!`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {

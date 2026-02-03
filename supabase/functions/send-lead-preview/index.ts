@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Your Song for ${lead.recipient_name} is Ready</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">We're Thrilled! Your Song is Ready 💝</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Great news! We have created a personalized ${lead.occasion} song for <strong>${lead.recipient_name}</strong>.
+        We're thrilled to share a personalized ${lead.occasion} song we created for <strong>${lead.recipient_name}</strong>!
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
@@ -118,13 +118,13 @@ Deno.serve(async (req) => {
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          Listen to Your Preview
+          🎵 Listen to Your Preview
         </a>
       </div>
       
       <div style="background-color: #FFF8E7; border-left: 4px solid #FFA000; padding: 15px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
         <p style="color: #5D4E37; margin: 0; font-size: 15px;">
-          <strong>Special Offer:</strong> Complete your order today and save on the full song.
+          <strong>🎵 50% Off Today Only!</strong> Complete your order now and get the full song at half price.
         </p>
       </div>
       
@@ -153,17 +153,17 @@ Deno.serve(async (req) => {
 </html>
     `;
 
-    const textContent = `Your Song for ${lead.recipient_name} is Ready
+    const textContent = `We're Thrilled! Your Song for ${lead.recipient_name} is Ready
 
 Hi ${lead.customer_name},
 
-Great news! We have created a personalized ${lead.occasion} song for ${lead.recipient_name}.
+We're thrilled to share a personalized ${lead.occasion} song we created for ${lead.recipient_name}!
 
 This is a short preview so you can hear a sample of the full song. Once you complete your purchase, you will receive the complete version.
 
 Listen to your preview here: ${previewUrl}
 
-Special Offer: Complete your order today and save on the full song.
+50% Off Today Only! Complete your order now and get the full song at half price.
 
 This personalized song will make your gift truly memorable. We hope you love it!
 
@@ -189,7 +189,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         sender: { name: senderName, email: senderEmail },
         replyTo: { email: senderEmail, name: senderName },
         to: [{ email: lead.email, name: lead.customer_name }],
-        subject: `Your song for ${lead.recipient_name} is ready to preview`,
+        subject: `💝 Your song for ${lead.recipient_name} is ready!`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
