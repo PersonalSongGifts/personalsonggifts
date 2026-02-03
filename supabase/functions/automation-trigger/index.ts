@@ -5,6 +5,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password",
 };
 
+// Retry policy constants
+const MAX_RETRIES = 3;
+const BACKOFF_BASE_MINUTES = 5; // 5, 10, 20, 40, 60 minutes
+
+// Calculate exponential backoff
+function calculateBackoffMs(retryCount: number): number {
+  const minutes = Math.min(BACKOFF_BASE_MINUTES * Math.pow(2, retryCount), 60);
+  return minutes * 60 * 1000;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -85,10 +95,48 @@ Deno.serve(async (req) => {
     }
 
     // Check if automation is already running
-    if (["pending", "lyrics_generating", "audio_generating"].includes(entity.automation_status) && !forceRun) {
+    if (["pending", "lyrics_generating", "audio_generating", "queued"].includes(entity.automation_status) && !forceRun) {
       console.log(`[TRIGGER] Automation already in progress for ${entityType} ${entityId}, status: ${entity.automation_status}`);
       return new Response(
         JSON.stringify({ error: "Automation already in progress", status: entity.automation_status }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check for permanently failed status - require forceRun to retry
+    if (entity.automation_status === "permanently_failed" && !forceRun) {
+      console.log(`[TRIGGER] ${entityType} ${entityId} permanently failed, requires manual retry`);
+      return new Response(
+        JSON.stringify({ error: "Permanently failed - requires manual retry", status: entity.automation_status }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check for rate limiting - respect next_attempt_at unless forcing
+    if (entity.automation_status === "rate_limited" && entity.next_attempt_at && !forceRun) {
+      const nextAttempt = new Date(entity.next_attempt_at);
+      if (nextAttempt > new Date()) {
+        console.log(`[TRIGGER] ${entityType} ${entityId} rate limited until ${entity.next_attempt_at}`);
+        return new Response(
+          JSON.stringify({ error: "Rate limited", nextAttempt: entity.next_attempt_at }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Check max retries for permanent failure (unless forcing)
+    if ((entity.automation_retry_count || 0) >= MAX_RETRIES && !forceRun) {
+      console.log(`[TRIGGER] ${entityType} ${entityId} exceeded max retries (${MAX_RETRIES}), marking permanently failed`);
+      await supabase
+        .from(tableName)
+        .update({
+          automation_status: "permanently_failed",
+          automation_last_error: `Exceeded max retries (${MAX_RETRIES})`,
+        })
+        .eq("id", entityId);
+      
+      return new Response(
+        JSON.stringify({ error: "Permanently failed - exceeded max retries" }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

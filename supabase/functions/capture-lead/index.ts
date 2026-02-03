@@ -7,6 +7,9 @@ const corsHeaders = {
 
 const LEAD_ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25040439/ult7k26/";
 
+// Timing constants for lead automation
+const HOURS_UNTIL_PREVIEW_SEND = 24; // Send preview email 24h after capture
+
 interface LeadInput {
   email: string;
   phone?: string;
@@ -26,6 +29,32 @@ interface LeadInput {
   utmCampaign?: string;
   utmContent?: string;
   utmTerm?: string;
+}
+
+// Compute hash of key input fields for change detection
+async function computeInputsHash(fields: string[]): Promise<string> {
+  const combined = fields.join('|');
+  const encoder = new TextEncoder();
+  const data = encoder.encode(combined);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+}
+
+// Compute timing fields for lead automation
+function computeLeadTiming(): {
+  earliestGenerateAt: string;
+  targetSendAt: string;
+} {
+  const now = Date.now();
+  
+  // Leads generate immediately
+  const earliestGenerateAt = new Date(now).toISOString();
+  
+  // Preview email 24h after capture
+  const targetSendAt = new Date(now + HOURS_UNTIL_PREVIEW_SEND * 60 * 60 * 1000).toISOString();
+  
+  return { earliestGenerateAt, targetSendAt };
 }
 
 function validateEmail(email: string): boolean {
@@ -402,7 +431,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Insert new lead
+    // Compute timing for background automation
+    const timing = computeLeadTiming();
+    console.log(`[CAPTURE-LEAD] Timing: generate now, send preview at ${timing.targetSendAt}`);
+    
+    // Compute inputs hash for change detection
+    const inputsHash = await computeInputsHash([
+      input.recipientName.trim(),
+      input.specialQualities.trim(),
+      input.favoriteMemory.trim(),
+      input.genre,
+      input.occasion,
+    ]);
+
+    // Insert new lead with timing fields
     const { data, error } = await supabase
       .from("leads")
       .insert({
@@ -419,6 +461,10 @@ Deno.serve(async (req) => {
         special_message: input.specialMessage?.trim() || null,
         status: "lead",
         quality_score: qualityScore,
+        // Background automation timing fields
+        earliest_generate_at: timing.earliestGenerateAt,
+        target_send_at: timing.targetSendAt,
+        inputs_hash: inputsHash,
         // UTM tracking fields
         utm_source: input.utmSource || null,
         utm_medium: input.utmMedium || null,

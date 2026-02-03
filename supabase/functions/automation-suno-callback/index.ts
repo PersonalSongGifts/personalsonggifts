@@ -16,6 +16,90 @@ function generatePreviewToken(): string {
   return token;
 }
 
+// ======= CANONICAL CALLBACK NORMALIZATION =======
+// Suno returns data in varying formats - this normalizes to a canonical shape
+interface CanonicalSunoResponse {
+  audioUrl: string | null;
+  coverUrl: string | null;
+  title: string | null;
+  duration: number | null;
+  taskId: string | null;
+  extractedFrom: string; // For debugging which field was used
+}
+
+function normalizeSunoCallback(payload: unknown): CanonicalSunoResponse {
+  // Try to extract song data from multiple possible locations
+  const p = payload as Record<string, unknown>;
+  
+  // Handle nested structures - Suno sometimes nests data differently
+  const dataObj = p?.data as Record<string, unknown> | undefined;
+  const responseObj = dataObj?.response as Record<string, unknown> | undefined;
+  
+  // Try all known locations for song array
+  const songArrayCandidates = [
+    responseObj?.sunoData,         // Record-info format
+    dataObj?.data,                 // Callback format
+    p?.sunoData,                   // Direct format
+    dataObj?.sunoData,             // Alternative nesting
+  ];
+  
+  let songData: Record<string, unknown> | null = null;
+  for (const candidate of songArrayCandidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      songData = candidate[0] as Record<string, unknown>;
+      break;
+    }
+  }
+  
+  if (!songData) songData = {};
+
+  // Try ALL known audio URL field variants
+  const audioUrlCandidates: Array<{ key: string; value: unknown }> = [
+    { key: 'audioUrl', value: songData.audioUrl },
+    { key: 'audio_url', value: songData.audio_url },
+    { key: 'sourceAudioUrl', value: songData.sourceAudioUrl },
+    { key: 'source_audio_url', value: songData.source_audio_url },
+    { key: 'streamAudioUrl', value: songData.streamAudioUrl },
+    { key: 'stream_audio_url', value: songData.stream_audio_url },
+    { key: 'sourceStreamAudioUrl', value: songData.sourceStreamAudioUrl },
+    { key: 'source_stream_audio_url', value: songData.source_stream_audio_url },
+  ];
+  
+  let audioUrl: string | null = null;
+  let extractedFrom = 'none';
+  
+  for (const candidate of audioUrlCandidates) {
+    if (typeof candidate.value === 'string' && candidate.value.length > 0) {
+      audioUrl = candidate.value;
+      extractedFrom = candidate.key;
+      break;
+    }
+  }
+
+  // Try ALL known cover URL field variants
+  const coverUrl = 
+    (songData.imageUrl as string) || (songData.image_url as string) ||
+    (songData.sourceImageUrl as string) || (songData.source_image_url as string) ||
+    null;
+
+  // Extract taskId from various locations
+  const taskId = 
+    (dataObj?.task_id as string) || (dataObj?.taskId as string) || 
+    (p?.taskId as string) || (p?.task_id as string) || null;
+
+  console.log(`[NORMALIZE] Audio URL extracted from field: ${extractedFrom}`);
+  console.log(`[NORMALIZE] Audio candidates checked: ${audioUrlCandidates.map(c => `${c.key}=${c.value ? 'present' : 'empty'}`).join(', ')}`);
+
+  return {
+    audioUrl,
+    coverUrl,
+    title: (songData.title as string) || null,
+    duration: (songData.duration as number) || null,
+    taskId,
+    extractedFrom,
+  };
+}
+
 // MP3 bitrate lookup tables (MPEG1 Layer 3)
 const MPEG1_L3_BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
 const MPEG2_L3_BITRATES = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
@@ -156,13 +240,37 @@ Deno.serve(async (req) => {
 
     const { type: entityType, table: tableName, id: entityId, entity } = entityInfo;
 
-    // Security: Check if manual override was set (admin took over)
+    // ======= STORE RAW CALLBACK IMMEDIATELY FOR DEBUGGING =======
+    console.log(`[CALLBACK] Storing raw callback payload for ${entityType} ${entityId}`);
+    await supabase
+      .from(tableName)
+      .update({
+        automation_raw_callback: payload,
+      })
+      .eq("id", entityId);
+
+    // ======= IDEMPOTENCY GUARDS =======
+    
+    // Guard 1: Already has song URL (skip unless force reprocess)
+    const existingSongUrl = entityType === "order" ? entity.song_url : entity.preview_song_url;
+    if (existingSongUrl) {
+      console.log(`[CALLBACK] Entity ${entityId} already has song URL, skipping (idempotent)`);
+      return new Response("Already processed", { status: 200, headers: corsHeaders });
+    }
+
+    // Guard 2: Already sent (never overwrite after delivery)
+    if (entity.sent_at || entity.preview_sent_at) {
+      console.log(`[CALLBACK] Entity ${entityId} already sent, ignoring callback (idempotent)`);
+      return new Response("Already sent", { status: 200, headers: corsHeaders });
+    }
+
+    // Guard 3: Manual override active (admin took over)
     if (entity.automation_manual_override_at) {
       console.log(`[CALLBACK] Manual override active for ${entityType} ${entityId}, ignoring callback`);
       return new Response("Manual override active", { status: 200, headers: corsHeaders });
     }
 
-    // Security: Verify status is in expected state
+    // Guard 4: Verify status is in expected state
     if (entity.automation_status !== "audio_generating") {
       console.log(`[CALLBACK] Unexpected status ${entity.automation_status} for ${entityType} ${entityId}`);
       return new Response("Unexpected status", { status: 200, headers: corsHeaders });
@@ -291,25 +399,37 @@ Deno.serve(async (req) => {
       return new Response("No audio data", { status: 200, headers: corsHeaders });
     }
 
-    // Pick first song (auto-pick strategy)
-    const song = sunoData[0];
-    console.log("[CALLBACK] First song data:", JSON.stringify(song).substring(0, 500));
+    // ======= USE CANONICAL NORMALIZATION FOR ALL AUDIO DATA =======
+    const canonical = normalizeSunoCallback(statusData);
+    console.log(`[CALLBACK] Canonical extraction: audioUrl=${canonical.audioUrl ? 'present' : 'missing'}, from=${canonical.extractedFrom}`);
     
-    // Handle both camelCase (record-info) and snake_case (callback) field names
-    const audioUrl = song.audioUrl || song.audio_url;
-    const coverUrl = song.imageUrl || song.image_url;
-    const title = song.title || (entity.song_title as string) || `Song for ${entity.recipient_name}`;
+    // If canonical extraction failed, try the legacy fallback
+    let audioUrl = canonical.audioUrl;
+    let coverUrl = canonical.coverUrl;
+    const title = canonical.title || (entity.song_title as string) || `Song for ${entity.recipient_name}`;
+    
+    // Fallback: try direct from record-info sunoData if canonical failed
+    if (!audioUrl && sunoData && Array.isArray(sunoData) && sunoData.length > 0) {
+      const song = sunoData[0];
+      audioUrl = song.audioUrl || song.audio_url ||
+                 song.sourceAudioUrl || song.source_audio_url ||
+                 song.streamAudioUrl || song.stream_audio_url ||
+                 song.sourceStreamAudioUrl || song.source_stream_audio_url;
+      coverUrl = coverUrl || song.imageUrl || song.image_url;
+      console.log(`[CALLBACK] Fallback extraction: audioUrl=${audioUrl ? 'present' : 'missing'}`);
+    }
 
-    console.log(`[CALLBACK] Extracted - audioUrl: ${audioUrl ? 'present' : 'missing'}, coverUrl: ${coverUrl ? 'present' : 'missing'}, title: ${title}`);
+    console.log(`[CALLBACK] Final extraction - audioUrl: ${audioUrl ? 'present' : 'missing'}, coverUrl: ${coverUrl ? 'present' : 'missing'}, title: ${title}`);
 
     if (!audioUrl) {
-      console.error("[CALLBACK] No audio URL found in song data");
+      console.error("[CALLBACK] No audio URL found after all extraction attempts");
+      console.error(`[CALLBACK] Canonical extractedFrom: ${canonical.extractedFrom}`);
       
       await supabase
         .from(tableName)
         .update({
           automation_status: "failed",
-          automation_last_error: `[CALLBACK] No audio URL in Suno response. Keys: ${Object.keys(song || {}).join(', ')}`,
+          automation_last_error: `[CALLBACK] No audio URL in Suno response. Extraction tried: ${canonical.extractedFrom}. Raw payload stored for debugging.`,
           automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
         })
         .eq("id", entityId);
@@ -495,7 +615,7 @@ Deno.serve(async (req) => {
         console.log(`[CALLBACK] Regular lead, scheduling preview for ${autoSendTime}`);
       }
 
-      // Update lead with all song data
+      // Update lead with all song data + generated_at timestamp
       console.log(`[CALLBACK] Updating lead ${entityId} with final song data`);
       await supabase
         .from("leads")
@@ -509,6 +629,7 @@ Deno.serve(async (req) => {
           preview_scheduled_at: autoSendTime,
           automation_status: "completed",
           automation_last_error: null,
+          generated_at: new Date().toISOString(), // Track when generation completed
         })
         .eq("id", entityId);
 
@@ -516,7 +637,7 @@ Deno.serve(async (req) => {
       console.log(`[CALLBACK] Preview scheduled for: ${autoSendTime}`);
 
     } else {
-      // Update order with song data
+      // Update order with song data + generated_at timestamp
       console.log(`[CALLBACK] Updating order ${entityId} with final song data`);
       await supabase
         .from("orders")
@@ -524,9 +645,11 @@ Deno.serve(async (req) => {
           song_url: fullUrlData.publicUrl,
           song_title: title,
           cover_image_url: coverImageUrl,
-          status: "completed", // Mark order as completed (ready for delivery)
+          status: "ready", // Mark order as ready for delivery (not completed - that's delivery_status)
           automation_status: "completed",
           automation_last_error: null,
+          generated_at: new Date().toISOString(), // Track when generation completed
+          delivery_status: "scheduled", // Ready for scheduled delivery
         })
         .eq("id", entityId);
 
