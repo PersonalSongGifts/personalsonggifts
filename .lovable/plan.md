@@ -1,149 +1,72 @@
 
-# Fix Song Link After Purchase & Email Deliverability
+# Add Google Tag Manager (GTM)
 
-## Problem Summary
+## Will This Break Anything?
 
-Two issues with lead-to-order conversion:
+**No, this is completely safe.** GTM is designed to work alongside existing tracking (GA4, Meta Pixel) without conflicts. In fact:
 
-1. **Broken Link After Purchase**: When Maya refreshed the preview page after buying, she saw "Check your email" instead of her song. The preview endpoint blocks converted leads entirely.
+- GTM uses the same `dataLayer` array that GA4 already uses (line 22)
+- GTM loads asynchronously, so it won't slow down your page
+- Your existing GA4 and Meta Pixel will continue working independently
 
-2. **Email Going to Spam**: The song delivery email landed in Gmail spam folder.
+## What GTM Does
 
----
-
-## Technical Analysis
-
-### Issue 1: Preview Page Blocks Converted Leads
-
-Current flow:
-```text
-User on /preview/[token] → Purchases → Still on /preview/[token]
-                                       ↓ (refresh)
-                       get-lead-preview returns 410 "already purchased"
-                                       ↓
-                       Shows error: "Check your email for the full song"
-```
-
-The `get-lead-preview` function (line 44-48) returns an error when `lead.status === "converted"`, leaving the user stranded.
-
-### Issue 2: Email Deliverability
-
-The email has proper headers (Message-ID, List-Unsubscribe) but may trigger spam filters due to:
-- New sender domain reputation
-- Emoji in subject line (minor factor)
-- "We're thrilled" marketing language
+GTM acts as a "container" that lets you manage all your marketing tags (Google Ads, remarketing, conversions) from one dashboard without editing code. Google Ads works better with GTM because it can fire conversion events more reliably.
 
 ---
 
-## Solution
+## Implementation
 
-### Fix 1: Redirect Converted Leads to Full Song Page
+### Change 1: Add GTM Script to `<head>`
 
-Update `SongPreview.tsx` to detect the "already converted" response and automatically redirect to the song player page.
+**File:** `index.html`
 
-**Changes to `src/pages/SongPreview.tsx`:**
-- Detect the `converted: true` response from `get-lead-preview`
-- Query the lead's associated `order_id` to get the song link
-- Redirect the user to `/song/[orderId]` instead of showing an error
+Insert the GTM script right after the opening `<head>` tag (before the meta tags):
 
-**Changes to `supabase/functions/get-lead-preview/index.ts`:**
-- When lead is converted, return the `orderId` in the response so the frontend can redirect
-
-### Fix 2: Improve Email Deliverability
-
-Update `send-song-delivery/index.ts` with:
-- Add `Precedence: bulk` header to indicate transactional email
-- Add `X-Priority: 1` to mark as high priority
-- Ensure plain text version matches HTML content exactly
-- Keep emojis (they're brand identity) but tone down marketing language slightly
-
----
-
-## Implementation Details
-
-### File 1: `supabase/functions/get-lead-preview/index.ts`
-
-Return `orderId` when lead is converted so frontend can redirect:
-
-```typescript
-// Line 44-48: Update the converted response
-if (lead.status === "converted") {
-  // Get the order_id so the frontend can redirect
-  const { data: leadWithOrder } = await supabase
-    .from("leads")
-    .select("order_id")
-    .eq("id", lead.id)
-    .single();
+```html
+<head>
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-NB4XCWS7');</script>
+  <!-- End Google Tag Manager -->
   
-  return new Response(
-    JSON.stringify({ 
-      error: "This song has already been purchased", 
-      converted: true,
-      orderId: leadWithOrder?.order_id 
-    }),
-    { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-}
+  <meta charset="UTF-8" />
+  ...
 ```
 
-### File 2: `src/pages/SongPreview.tsx`
+### Change 2: Add GTM Noscript to `<body>`
 
-Redirect to song page when converted:
+**File:** `index.html`
 
-```typescript
-// In fetchPreview function, update the converted handling (around line 49-54)
-if (!response.ok) {
-  const data = await response.json();
-  if (data.converted && data.orderId) {
-    // Redirect to the full song page
-    window.location.href = `/song/${data.orderId.slice(0, 8)}`;
-    return;
-  } else if (data.converted) {
-    setError("This song has been purchased! Check your email for the full song link.");
-  } else {
-    setError(data.error || "Preview not found");
-  }
-  setLoading(false);
-  return;
-}
+Insert the noscript fallback right after the opening `<body>` tag:
+
+```html
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NB4XCWS7"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+  
+  <!-- Meta Pixel noscript fallback -->
+  ...
 ```
-
-### File 3: `supabase/functions/send-song-delivery/index.ts`
-
-Improve email headers for deliverability:
-
-```typescript
-// Update headers object (around line 165-170)
-headers: {
-  "Message-ID": messageId,
-  "X-Entity-Ref-ID": orderId,
-  "X-Priority": "1",
-  "Precedence": "transactional",
-  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
-  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
-}
-```
-
-Optionally soften the marketing language slightly:
-- Change "We're thrilled to deliver" → "Your personalized song is ready"
-- Keep emojis in subject (brand identity)
 
 ---
 
-## Additional Recommendations for Email Deliverability
+## Technical Notes
 
-| Action | Priority | Notes |
-|--------|----------|-------|
-| Verify Brevo DKIM/SPF/DMARC | High | Check Brevo dashboard for domain authentication status |
-| Send from subdomain | Medium | Consider `mail.personalsonggifts.com` to protect main domain reputation |
-| Warm up sender | Medium | Start with low volume and gradually increase |
-| Add customers to safe sender | User action | Include "Add us to contacts" in email footer |
+| Aspect | Status |
+|--------|--------|
+| Conflicts with GA4? | No - GTM uses the same `dataLayer` |
+| Conflicts with Meta Pixel? | No - they operate independently |
+| Performance impact? | Minimal - loads asynchronously |
+| Container ID | GTM-NB4XCWS7 |
 
 ---
 
-## Summary
+## After Implementation
 
-| Issue | Root Cause | Fix |
-|-------|------------|-----|
-| Song link broken after refresh | Preview endpoint blocks converted leads | Return orderId in response, redirect to `/song/[orderId]` in frontend |
-| Email going to spam | New sender + transactional headers missing | Add X-Priority, Precedence headers; soften marketing language |
+Once GTM is live, you can configure Google Ads conversion tracking directly in the GTM dashboard (tagmanager.google.com) without needing to touch code again.
