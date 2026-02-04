@@ -27,12 +27,16 @@ import { ReactionsTable } from "@/components/admin/ReactionsTable";
 import { ScheduledDeliveryPicker } from "@/components/admin/ScheduledDeliveryPicker";
 import { SourceAnalytics } from "@/components/admin/SourceAnalytics";
 import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
+import { genreOptions, singerOptions, occasionOptions } from "@/components/admin/adminDropdownOptions";
 
 interface Order {
   id: string;
   customer_name: string;
   customer_email: string;
   customer_phone: string | null;
+  customer_email_override: string | null;
+  customer_email_cc: string | null;
+  sent_to_emails: string[] | null;
   recipient_name: string;
   recipient_type: string;
   recipient_name_pronunciation: string | null;
@@ -508,8 +512,13 @@ export default function Admin() {
       customer_name: selectedOrder.customer_name,
       customer_email: selectedOrder.customer_email,
       customer_phone: selectedOrder.customer_phone || "",
+      customer_email_override: selectedOrder.customer_email_override || "",
+      customer_email_cc: selectedOrder.customer_email_cc || "",
       recipient_name: selectedOrder.recipient_name,
       recipient_name_pronunciation: selectedOrder.recipient_name_pronunciation || "",
+      occasion: selectedOrder.occasion,
+      genre: selectedOrder.genre,
+      singer_preference: selectedOrder.singer_preference,
       special_qualities: selectedOrder.special_qualities,
       favorite_memory: selectedOrder.favorite_memory,
       special_message: selectedOrder.special_message || "",
@@ -1291,11 +1300,29 @@ export default function Admin() {
                           />
                         </div>
                         <div>
-                          <Label className="text-xs">Email</Label>
+                          <Label className="text-xs">Original Email (read-only)</Label>
+                          <Input
+                            value={selectedOrder.customer_email}
+                            disabled
+                            className="bg-muted"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Delivery Email Override</Label>
                           <Input
                             type="email"
-                            value={editedOrder.customer_email || ""}
-                            onChange={(e) => setEditedOrder({ ...editedOrder, customer_email: e.target.value })}
+                            value={editedOrder.customer_email_override || ""}
+                            onChange={(e) => setEditedOrder({ ...editedOrder, customer_email_override: e.target.value })}
+                            placeholder="Leave empty to use original email"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">CC Email (Optional)</Label>
+                          <Input
+                            type="email"
+                            value={editedOrder.customer_email_cc || ""}
+                            onChange={(e) => setEditedOrder({ ...editedOrder, customer_email_cc: e.target.value })}
+                            placeholder="Add additional recipient"
                           />
                         </div>
                         <div>
@@ -1309,7 +1336,17 @@ export default function Admin() {
                     ) : (
                       <>
                         <p>{selectedOrder.customer_name}</p>
-                        <p className="text-sm text-muted-foreground">{selectedOrder.customer_email}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedOrder.customer_email_override || selectedOrder.customer_email}
+                          {selectedOrder.customer_email_override && (
+                            <span className="text-xs text-orange-600 ml-1">(overridden)</span>
+                          )}
+                        </p>
+                        {selectedOrder.customer_email_cc && (
+                          <p className="text-sm text-muted-foreground">
+                            CC: {selectedOrder.customer_email_cc}
+                          </p>
+                        )}
                         {selectedOrder.customer_phone && (
                           <p className="text-sm text-muted-foreground">{selectedOrder.customer_phone}</p>
                         )}
@@ -1358,14 +1395,60 @@ export default function Admin() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Occasion</h4>
-                    <p>{selectedOrder.occasion}</p>
+                    {isEditingOrder ? (
+                      <Select
+                        value={editedOrder.occasion || selectedOrder.occasion}
+                        onValueChange={(val) => setEditedOrder({ ...editedOrder, occasion: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {occasionOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{selectedOrder.occasion}</p>
+                    )}
                   </div>
                   <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Music</h4>
-                    <p>{selectedOrder.genre} • {selectedOrder.singer_preference}</p>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Genre</h4>
+                    {isEditingOrder ? (
+                      <Select
+                        value={editedOrder.genre || selectedOrder.genre}
+                        onValueChange={(val) => setEditedOrder({ ...editedOrder, genre: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {genreOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{selectedOrder.genre}</p>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Singer</h4>
+                    {isEditingOrder ? (
+                      <Select
+                        value={editedOrder.singer_preference || selectedOrder.singer_preference}
+                        onValueChange={(val) => setEditedOrder({ ...editedOrder, singer_preference: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {singerOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{selectedOrder.singer_preference}</p>
+                    )}
                   </div>
                 </div>
 

@@ -178,6 +178,14 @@ https://personalsonggifts.lovable.app
 To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}
 `;
 
+    // Compute effective email recipients
+    const effectiveEmail = (lead.lead_email_override?.trim() || lead.email).toLowerCase();
+    const ccEmail = lead.lead_email_cc?.trim()?.toLowerCase();
+    const recipients = [effectiveEmail];
+    if (ccEmail && ccEmail !== effectiveEmail) {
+      recipients.push(ccEmail);
+    }
+
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
@@ -188,14 +196,15 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       body: JSON.stringify({
         sender: { name: senderName, email: senderEmail },
         replyTo: { email: senderEmail, name: senderName },
-        to: [{ email: lead.email, name: lead.customer_name }],
+        to: [{ email: effectiveEmail, name: lead.customer_name }],
+        ...(ccEmail && ccEmail !== effectiveEmail ? { cc: [{ email: ccEmail }] } : {}),
         subject: `💝 Your song for ${lead.recipient_name} is ready!`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": lead.id,
-          "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
+          "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }
       }),
@@ -207,17 +216,21 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       throw new Error(`Failed to send email: ${response.status}`);
     }
 
-    // Update lead with preview_sent_at
+    // Update lead with preview_sent_at and track sent recipients
+    const existingSentTo = (lead.preview_sent_to_emails as string[] | null) || [];
+    const newSentTo = [...new Set([...existingSentTo, ...recipients])];
+    
     await supabase
       .from("leads")
       .update({
         status: "preview_sent",
         preview_sent_at: new Date().toISOString(),
+        preview_sent_to_emails: newSentTo,
       })
       .eq("id", leadId);
 
     const result = await response.json();
-    console.log(`Preview email sent to ${lead.email}:`, result);
+    console.log(`Preview email sent to ${recipients.join(", ")}:`, result);
 
     return new Response(
       JSON.stringify({ success: true, messageId: result.messageId }),

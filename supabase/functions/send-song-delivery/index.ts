@@ -10,6 +10,7 @@ interface SongDeliveryRequest {
   recipientName: string;
   occasion: string;
   songUrl: string;
+  ccEmail?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -33,6 +34,7 @@ Deno.serve(async (req) => {
       recipientName,
       occasion,
       songUrl,
+      ccEmail,
     }: SongDeliveryRequest = await req.json();
 
     if (!customerEmail || !orderId || !songUrl) {
@@ -159,6 +161,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
           name: senderName,
         },
         to: [{ email: customerEmail, name: customerName || customerEmail }],
+        ...(ccEmail ? { cc: [{ email: ccEmail }] } : {}),
         subject: `🎵 ${recipientName}'s song is complete!`,
         htmlContent: emailHtml,
         textContent: textContent,

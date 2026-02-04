@@ -686,8 +686,10 @@ Deno.serve(async (req) => {
         const allowedFields = [
           "customer_name", "customer_email", "customer_phone",
           "recipient_name", "recipient_name_pronunciation",
+          "occasion", "genre", "singer_preference",
           "special_qualities", "favorite_memory",
-          "special_message", "notes"
+          "special_message", "notes",
+          "customer_email_override", "customer_email_cc"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
@@ -749,8 +751,10 @@ Deno.serve(async (req) => {
         const allowedFields = [
           "customer_name", "email", "phone",
           "recipient_name", "recipient_name_pronunciation",
+          "occasion", "genre", "singer_preference",
           "special_qualities", "favorite_memory",
-          "special_message"
+          "special_message",
+          "lead_email_override", "lead_email_cc"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
@@ -924,6 +928,14 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Compute effective email recipients
+        const effectiveEmail = (order.customer_email_override?.trim() || order.customer_email).toLowerCase();
+        const ccEmail = order.customer_email_cc?.trim()?.toLowerCase();
+        const recipients = [effectiveEmail];
+        if (ccEmail && ccEmail !== effectiveEmail) {
+          recipients.push(ccEmail);
+        }
+
         // Send the delivery email
         try {
           const emailResponse = await fetch(
@@ -936,11 +948,12 @@ Deno.serve(async (req) => {
               },
               body: JSON.stringify({
                 orderId: order.id,
-                customerEmail: order.customer_email,
+                customerEmail: effectiveEmail,
                 customerName: order.customer_name,
                 recipientName: order.recipient_name,
                 occasion: order.occasion,
                 songUrl: order.song_url,
+                ccEmail: ccEmail !== effectiveEmail ? ccEmail : null,
               }),
             }
           );
@@ -951,8 +964,16 @@ Deno.serve(async (req) => {
             throw new Error("Failed to send email");
           }
 
+          // Update sent_to_emails for idempotency tracking
+          const existingSentTo = (order.sent_to_emails as string[] | null) || [];
+          const newSentTo = [...new Set([...existingSentTo, ...recipients])];
+          await supabase
+            .from("orders")
+            .update({ sent_to_emails: newSentTo })
+            .eq("id", orderId);
+
           return new Response(
-            JSON.stringify({ success: true, message: "Delivery email resent successfully" }),
+            JSON.stringify({ success: true, message: `Delivery email resent to ${recipients.join(", ")}` }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         } catch (emailError) {
