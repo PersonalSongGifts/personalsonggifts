@@ -58,6 +58,8 @@ export type Database = {
           genre: string
           id: string
           inputs_hash: string | null
+          lead_email_cc: string | null
+          lead_email_override: string | null
           next_attempt_at: string | null
           occasion: string
           order_id: string | null
@@ -67,6 +69,7 @@ export type Database = {
           preview_played_at: string | null
           preview_scheduled_at: string | null
           preview_sent_at: string | null
+          preview_sent_to_emails: Json | null
           preview_song_url: string | null
           preview_token: string | null
           quality_score: number | null
@@ -111,6 +114,8 @@ export type Database = {
           genre: string
           id?: string
           inputs_hash?: string | null
+          lead_email_cc?: string | null
+          lead_email_override?: string | null
           next_attempt_at?: string | null
           occasion: string
           order_id?: string | null
@@ -120,6 +125,7 @@ export type Database = {
           preview_played_at?: string | null
           preview_scheduled_at?: string | null
           preview_sent_at?: string | null
+          preview_sent_to_emails?: Json | null
           preview_song_url?: string | null
           preview_token?: string | null
           quality_score?: number | null
@@ -164,6 +170,8 @@ export type Database = {
           genre?: string
           id?: string
           inputs_hash?: string | null
+          lead_email_cc?: string | null
+          lead_email_override?: string | null
           next_attempt_at?: string | null
           occasion?: string
           order_id?: string | null
@@ -173,6 +181,7 @@ export type Database = {
           preview_played_at?: string | null
           preview_scheduled_at?: string | null
           preview_sent_at?: string | null
+          preview_sent_to_emails?: Json | null
           preview_song_url?: string | null
           preview_token?: string | null
           quality_score?: number | null
@@ -224,6 +233,8 @@ export type Database = {
           cover_image_url: string | null
           created_at: string
           customer_email: string
+          customer_email_cc: string | null
+          customer_email_override: string | null
           customer_name: string
           customer_phone: string | null
           delivered_at: string | null
@@ -252,6 +263,7 @@ export type Database = {
           resend_scheduled_at: string | null
           scheduled_delivery_at: string | null
           sent_at: string | null
+          sent_to_emails: Json | null
           singer_preference: string
           song_download_count: number | null
           song_downloaded_at: string | null
@@ -283,6 +295,8 @@ export type Database = {
           cover_image_url?: string | null
           created_at?: string
           customer_email: string
+          customer_email_cc?: string | null
+          customer_email_override?: string | null
           customer_name: string
           customer_phone?: string | null
           delivered_at?: string | null
@@ -311,6 +325,7 @@ export type Database = {
           resend_scheduled_at?: string | null
           scheduled_delivery_at?: string | null
           sent_at?: string | null
+          sent_to_emails?: Json | null
           singer_preference: string
           song_download_count?: number | null
           song_downloaded_at?: string | null
@@ -342,6 +357,8 @@ export type Database = {
           cover_image_url?: string | null
           created_at?: string
           customer_email?: string
+          customer_email_cc?: string | null
+          customer_email_override?: string | null
           customer_name?: string
           customer_phone?: string | null
           delivered_at?: string | null
@@ -370,6 +387,7 @@ export type Database = {
           resend_scheduled_at?: string | null
           scheduled_delivery_at?: string | null
           sent_at?: string | null
+          sent_to_emails?: Json | null
           singer_preference?: string
           song_download_count?: number | null
           song_downloaded_at?: string | null

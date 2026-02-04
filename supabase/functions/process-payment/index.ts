@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
     const timing = computeOrderTiming(expectedDelivery);
     console.log(`[PROCESS-PAYMENT] Order timing: generate after ${timing.earliestGenerateAt}, send at ${timing.targetSendAt}`);
     
-    // Compute inputs hash for change detection
+    // Compute inputs hash for change detection (includes all creative fields)
     const inputsHash = await computeInputsHash([
       metadata.recipientName || "",
       metadata.recipientNamePronunciation || "",
@@ -145,6 +145,7 @@ Deno.serve(async (req) => {
       metadata.favoriteMemory || "",
       metadata.genre || "",
       metadata.occasion || "",
+      metadata.singerPreference || "",
     ]);
 
     const { data: newOrder, error: insertError } = await supabase

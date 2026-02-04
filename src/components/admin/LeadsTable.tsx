@@ -16,11 +16,15 @@ import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
 import { createAudioPreview } from "@/lib/audioClipper";
+import { genreOptions, singerOptions, occasionOptions } from "@/components/admin/adminDropdownOptions";
 
 export interface Lead {
   id: string;
   email: string;
   phone: string | null;
+  lead_email_override?: string | null;
+  lead_email_cc?: string | null;
+  preview_sent_to_emails?: string[] | null;
   customer_name: string;
   recipient_name: string;
   recipient_type: string;
@@ -737,8 +741,13 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       customer_name: selectedLead.customer_name,
       email: selectedLead.email,
       phone: selectedLead.phone || "",
+      lead_email_override: selectedLead.lead_email_override || "",
+      lead_email_cc: selectedLead.lead_email_cc || "",
       recipient_name: selectedLead.recipient_name,
       recipient_name_pronunciation: selectedLead.recipient_name_pronunciation || "",
+      occasion: selectedLead.occasion,
+      genre: selectedLead.genre,
+      singer_preference: selectedLead.singer_preference,
       special_qualities: selectedLead.special_qualities,
       favorite_memory: selectedLead.favorite_memory,
       special_message: selectedLead.special_message || "",
@@ -1298,11 +1307,29 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           />
                         </div>
                         <div>
-                          <Label className="text-xs">Email</Label>
+                          <Label className="text-xs">Original Email (read-only)</Label>
+                          <Input
+                            value={selectedLead.email}
+                            disabled
+                            className="bg-muted"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Preview Email Override</Label>
                           <Input
                             type="email"
-                            value={editedLead.email || ""}
-                            onChange={(e) => setEditedLead({ ...editedLead, email: e.target.value })}
+                            value={editedLead.lead_email_override || ""}
+                            onChange={(e) => setEditedLead({ ...editedLead, lead_email_override: e.target.value })}
+                            placeholder="Leave empty to use original email"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">CC Email (Optional)</Label>
+                          <Input
+                            type="email"
+                            value={editedLead.lead_email_cc || ""}
+                            onChange={(e) => setEditedLead({ ...editedLead, lead_email_cc: e.target.value })}
+                            placeholder="Add additional recipient"
                           />
                         </div>
                         <div>
@@ -1316,7 +1343,17 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     ) : (
                       <>
                         <p>{selectedLead.customer_name}</p>
-                        <p className="text-sm text-muted-foreground"><strong>Email:</strong> {selectedLead.email}</p>
+                        <p className="text-sm text-muted-foreground">
+                          <strong>Email:</strong> {selectedLead.lead_email_override || selectedLead.email}
+                          {selectedLead.lead_email_override && (
+                            <span className="text-xs text-orange-600 ml-1">(overridden)</span>
+                          )}
+                        </p>
+                        {selectedLead.lead_email_cc && (
+                          <p className="text-sm text-muted-foreground">
+                            <strong>CC:</strong> {selectedLead.lead_email_cc}
+                          </p>
+                        )}
                         {selectedLead.phone && (
                           <p className="text-sm text-muted-foreground"><strong>Phone:</strong> {selectedLead.phone}</p>
                         )}
@@ -1361,14 +1398,60 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Occasion</h4>
-                    <p>{selectedLead.occasion}</p>
+                    {isEditingLead ? (
+                      <Select
+                        value={editedLead.occasion || selectedLead.occasion}
+                        onValueChange={(val) => setEditedLead({ ...editedLead, occasion: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {occasionOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{selectedLead.occasion}</p>
+                    )}
                   </div>
                   <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Music</h4>
-                    <p>{selectedLead.genre} • {selectedLead.singer_preference}</p>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Genre</h4>
+                    {isEditingLead ? (
+                      <Select
+                        value={editedLead.genre || selectedLead.genre}
+                        onValueChange={(val) => setEditedLead({ ...editedLead, genre: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {genreOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{selectedLead.genre}</p>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Singer</h4>
+                    {isEditingLead ? (
+                      <Select
+                        value={editedLead.singer_preference || selectedLead.singer_preference}
+                        onValueChange={(val) => setEditedLead({ ...editedLead, singer_preference: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {singerOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{selectedLead.singer_preference}</p>
+                    )}
                   </div>
                 </div>
 
