@@ -59,6 +59,17 @@ Deno.serve(async (req) => {
 
     console.log("Admin auth ok");
 
+    // Log request intent (avoid logging adminPassword or full body)
+    if (req.method === "POST") {
+      const action = typeof body?.action === "string" ? (body.action as string) : null;
+      const orderId = typeof body?.orderId === "string" ? (body.orderId as string) : null;
+      const leadId = typeof body?.leadId === "string" ? (body.leadId as string) : null;
+      console.log(
+        "[ADMIN] POST",
+        JSON.stringify({ action, orderId, leadId })
+      );
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -1215,6 +1226,15 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (fetchError) {
+        // PGRST116 is the common "0 rows" response from single-object coercion.
+        // Treat it as not-found instead of a 500.
+        if ((fetchError as { code?: string })?.code === "PGRST116") {
+          return new Response(
+            JSON.stringify({ error: "Order/Lead not found", entityType, entityId }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         console.error("Fetch entity error:", fetchError);
         throw fetchError;
       }
@@ -1479,9 +1499,17 @@ Deno.serve(async (req) => {
     );
   } catch (error: unknown) {
     console.error("Admin orders error:", error);
-    const message = error instanceof Error ? error.message : "Server error";
+
+    // Improve error payload for debugging (without leaking secrets)
+    const errObj = (error && typeof error === "object") ? (error as Record<string, unknown>) : null;
+    const message = error instanceof Error
+      ? error.message
+      : (typeof errObj?.message === "string" ? (errObj.message as string) : "Server error");
+
+    const code = typeof errObj?.code === "string" ? (errObj.code as string) : undefined;
+    const details = typeof errObj?.details === "string" ? (errObj.details as string) : undefined;
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: message, ...(code ? { code } : {}), ...(details ? { details } : {}) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
