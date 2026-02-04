@@ -1,107 +1,100 @@
 
-# Show Scheduled Send Time for Automated Deliveries
+# Fix "Scheduled" Orders Missing Auto-Send Times
 
-## Summary
+## The Problem
 
-You want to see **when** items will be automatically sent when filtering by "scheduled" status. Currently, the admin panel shows the "scheduled" badge but doesn't display the actual scheduled send time for the new automation system.
+You're seeing many orders with the "scheduled" badge, but when you filter by "Auto-Scheduled," only a few appear. This is because:
 
----
+1. **40 orders** have `delivery_status = "scheduled"` (the green badge you see)
+2. But **only 5 of those** actually have a `target_send_at` timestamp saved
+3. The other **35 orders** are missing this timestamp, so the automation system doesn't know when to send them
 
-## What This Change Will Do
+These 35 orders are essentially stuck - they show "scheduled" but **will never auto-send** because the system doesn't have a send time.
 
-1. **Add a "Scheduled" filter option** in the Orders tab that shows only items waiting to be auto-sent
-2. **Display the scheduled send time** (`target_send_at`) on order cards with a countdown indicator
-3. **Show time-until-send** (e.g., "Sending in 3h 15m" or "Overdue by 2h")
+## Why This Happened
 
----
+The automatic timing fields (`earliest_generate_at`, `target_send_at`) were added in a recent update. Orders created before that update, or orders where the Stripe webhook didn't complete properly, don't have these fields populated.
 
-## Changes
+## The Fix (Two Parts)
 
-### File 1: `src/pages/Admin.tsx`
+### Part 1: Backfill Existing Orders
 
-**Add "Scheduled" filter option** (around line 786-796):
-- Add a new SelectItem: `<SelectItem value="scheduled">📅 Scheduled Delivery</SelectItem>`
-- This filter will show orders where `automation_status === "completed"` and `target_send_at` is set but `sent_at` is null
+Run a database update to calculate and set `target_send_at` for all orders that:
+- Have `automation_status = 'completed'`
+- Are missing `target_send_at`
+- Haven't been sent yet (`sent_at IS NULL`)
+- Aren't cancelled or dismissed
 
-**Display scheduled send time on order cards** (around line 1025-1036):
-- Show `target_send_at` for orders with `automation_status === "completed"` and `delivery_status === "scheduled"` 
-- Add a countdown/overdue indicator using relative time (e.g., "Auto-sending in 2h 30m" or "⚠️ Overdue by 1h")
-- Format: `📬 Auto-Send: Wed, Feb 5, 2:00 PM PST (in 3h 15m)`
+The timing will be:
+- **12 hours before expected delivery** (standard approach)
+- If that time has already passed, schedule for **30 minutes from now**
 
-**Update filter logic** to handle "scheduled" status:
-- Filter orders where `automation_status === "completed"`, `sent_at` is null, and `target_send_at` is set
+### Part 2: Fix the Fallback Payment Processor
 
----
-
-## Visual Example
-
-Current card:
-```
-Jeff    ready  Standard  ✓ completed  ✉ scheduled
-Song for: Corri. Core-ee (wife)
-Order ID: B074E510
-Order Date/Time: Mon, Feb 2, 9:56 AM PST
-Expected Delivery: Wed, Feb 4, 9:56 AM PST
-```
-
-After change:
-```
-Jeff    ready  Standard  ✓ completed  ✉ scheduled
-Song for: Corri. Core-ee (wife)
-Order ID: B074E510
-Order Date/Time: Mon, Feb 2, 9:56 AM PST
-Expected Delivery: Wed, Feb 4, 9:56 AM PST
-📬 Auto-Send: Tue, Feb 4, 6:00 PM PST (in 2h 15m)
-```
+Update the `process-payment` edge function to also set timing fields. Currently only `stripe-webhook` sets them. This ensures orders created via the polling fallback (when webhooks are delayed) also get proper timing.
 
 ---
 
 ## Technical Details
 
-### Helper Function for Countdown Display
+### Database Backfill Query
 
-Add a helper function to format the time until send:
+This will be run via the insert tool (data operation, not schema change):
 
-```typescript
-const formatTimeUntilSend = (targetSendAt: string) => {
-  const now = new Date();
-  const target = new Date(targetSendAt);
-  const diffMs = target.getTime() - now.getTime();
-  const diffMins = Math.abs(Math.floor(diffMs / (1000 * 60)));
-  const hours = Math.floor(diffMins / 60);
-  const mins = diffMins % 60;
-  
-  if (diffMs > 0) {
-    return hours > 0 ? `in ${hours}h ${mins}m` : `in ${mins}m`;
-  } else {
-    return hours > 0 ? `⚠️ overdue by ${hours}h ${mins}m` : `⚠️ overdue by ${mins}m`;
-  }
-};
+```sql
+UPDATE orders
+SET 
+  earliest_generate_at = COALESCE(earliest_generate_at, created_at + INTERVAL '5 minutes'),
+  target_send_at = CASE
+    WHEN expected_delivery - INTERVAL '12 hours' > NOW() 
+    THEN expected_delivery - INTERVAL '12 hours'
+    ELSE NOW() + INTERVAL '30 minutes'
+  END,
+  delivery_status = COALESCE(delivery_status, 'pending')
+WHERE 
+  automation_status = 'completed'
+  AND target_send_at IS NULL
+  AND sent_at IS NULL
+  AND dismissed_at IS NULL
+  AND status <> 'cancelled';
 ```
 
-### Filter Logic
+### Edge Function Update
+
+**File:** `supabase/functions/process-payment/index.ts`
+
+Add the same timing calculation that `stripe-webhook` uses:
 
 ```typescript
-if (statusFilter === "scheduled") {
-  return order.automation_status === "completed" 
-    && order.target_send_at 
-    && !order.sent_at
-    && !order.dismissed_at;
-}
+// Compute timing fields for background automation
+const timing = computeOrderTiming(expectedDelivery);
+const inputsHash = await computeInputsHash([...]);
+
+// Include in insert:
+earliest_generate_at: timing.earliestGenerateAt,
+target_send_at: timing.targetSendAt,
+inputs_hash: inputsHash,
+delivery_status: "pending",
 ```
+
+---
+
+## Expected Results
+
+After this fix:
+
+| Before | After |
+|--------|-------|
+| 40 orders show "scheduled" badge | Same |
+| Only 5 appear in Auto-Scheduled filter | All 40 appear |
+| 35 orders will never auto-send | All orders have send times |
+| Cron job skips orders missing `target_send_at` | Cron job processes all scheduled orders |
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/pages/Admin.tsx` | Add "Scheduled" filter, display `target_send_at` with countdown on cards |
-
----
-
-## Impact
-
-- **No database changes needed** - uses existing `target_send_at` field
-- **Non-breaking** - just adds visibility to existing automation
-- **Helpful for ops** - you can see at a glance when each song will auto-send
+| File | Change |
+|------|--------|
+| Database (via insert tool) | Backfill `target_send_at` for 35 existing orders |
+| `supabase/functions/process-payment/index.ts` | Add timing field computation for future orders |
