@@ -127,7 +127,7 @@ export default function Admin() {
   const [updating, setUpdating] = useState(false);
   const [resendingDelivery, setResendingDelivery] = useState(false);
   const [activeTab, setActiveTab] = useState("analytics");
-  const [orderSort, setOrderSort] = useState<"latest" | "oldest">("latest");
+  const [orderSort, setOrderSort] = useState<"latest" | "oldest" | "delivery_soonest">("latest");
   const [leadSort, setLeadSort] = useState<"latest" | "oldest" | "quality">("latest");
   const [orderSearch, setOrderSearch] = useState("");
   const [reactionSort, setReactionSort] = useState<"latest" | "oldest">("latest");
@@ -794,13 +794,14 @@ export default function Admin() {
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={orderSort} onValueChange={(v) => setOrderSort(v as "latest" | "oldest")}>
-                <SelectTrigger className="w-36">
+              <Select value={orderSort} onValueChange={(v) => setOrderSort(v as "latest" | "oldest" | "delivery_soonest")}>
+                <SelectTrigger className="w-44">
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="latest">Latest First</SelectItem>
                   <SelectItem value="oldest">Oldest First</SelectItem>
+                  <SelectItem value="delivery_soonest">Delivery Soonest</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={dismissedOrderFilter} onValueChange={(v) => setDismissedOrderFilter(v as "active" | "cancelled" | "all")}>
@@ -898,10 +899,16 @@ export default function Admin() {
               return (
                 <div className="space-y-4">
                   {[...filteredOrders].sort((a, b) => {
+                    if (orderSort === "delivery_soonest") {
+                      // Sort by expected_delivery, nulls last
+                      const dateA = a.expected_delivery ? new Date(a.expected_delivery).getTime() : Infinity;
+                      const dateB = b.expected_delivery ? new Date(b.expected_delivery).getTime() : Infinity;
+                      return dateA - dateB;
+                    }
                     const dateA = new Date(a.created_at).getTime();
                     const dateB = new Date(b.created_at).getTime();
-                  return orderSort === "latest" ? dateB - dateA : dateA - dateB;
-                }).map((order) => (
+                    return orderSort === "latest" ? dateB - dateA : dateA - dateB;
+                  }).map((order) => (
                   <Card 
                     key={order.id} 
                     className={`hover:shadow-md transition-shadow ${order.dismissed_at ? "opacity-60 bg-muted/50" : ""}`}
@@ -1109,7 +1116,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="automation" className="space-y-6">
-            <AutomationDashboard adminPassword={password} onRefresh={fetchOrders} />
+            <AutomationDashboard adminPassword={password} onRefresh={fetchOrders} orders={allOrders} />
           </TabsContent>
 
           <TabsContent value="emails" className="space-y-6">

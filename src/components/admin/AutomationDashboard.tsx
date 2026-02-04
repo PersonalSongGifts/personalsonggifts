@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,8 @@ import {
   ShoppingCart,
   AlertTriangle
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format, addDays, setHours, setMinutes, setSeconds, setMilliseconds } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -44,6 +45,13 @@ interface AutomationStats {
   generatingAudio: number;
   completedToday: number;
   failedToday: number;
+}
+
+interface SongsToBuildStats {
+  todayCount: number;
+  tomorrowCount: number;
+  totalCount: number;
+  deadline: string; // 3pm tomorrow PST
 }
 
 interface ActiveJob {
@@ -68,14 +76,24 @@ interface EligibleLead {
   email: string;
 }
 
+interface Order {
+  id: string;
+  status: string;
+  expected_delivery: string | null;
+  song_url: string | null;
+  automation_status: string | null;
+  dismissed_at: string | null;
+}
+
 interface AutomationDashboardProps {
   adminPassword: string;
   onRefresh?: () => void;
+  orders?: Order[];
 }
 
 type AutomationTarget = "leads" | "orders" | "both";
 
-export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDashboardProps) {
+export function AutomationDashboard({ adminPassword, onRefresh, orders = [] }: AutomationDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(true);
   const [automationTarget, setAutomationTarget] = useState<AutomationTarget>("leads");
@@ -159,6 +177,46 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
     fetchAutomationStatus();
     fetchAlerts();
   }, [adminPassword]);
+
+  // Calculate "Songs to Build" - orders that need songs before 3pm tomorrow PST
+  const songsToBuild = useMemo(() => {
+    const now = new Date();
+    
+    // Get 3pm tomorrow PST
+    // Create date in PST timezone
+    const pstNow = toZonedTime(now, "America/Los_Angeles");
+    const endOfTodayPST = setMilliseconds(setSeconds(setMinutes(setHours(pstNow, 23), 59), 59), 999);
+    const tomorrowPST = addDays(pstNow, 1);
+    const threePMTomorrowPST = setMilliseconds(setSeconds(setMinutes(setHours(tomorrowPST, 15), 0), 0), 0);
+    
+    // Filter orders that need songs built
+    const needsSong = orders.filter(order => {
+      // Only active, paid orders without a song
+      if (order.dismissed_at) return false;
+      if (order.status !== "paid") return false;
+      if (order.song_url) return false;
+      if (!order.expected_delivery) return false;
+      
+      const deliveryDate = new Date(order.expected_delivery);
+      // Check if delivery is before or at 3pm tomorrow PST
+      return deliveryDate <= threePMTomorrowPST;
+    });
+    
+    // Count by today vs tomorrow
+    const todayCount = needsSong.filter(order => {
+      const deliveryDate = new Date(order.expected_delivery!);
+      return deliveryDate <= endOfTodayPST;
+    }).length;
+    
+    const tomorrowCount = needsSong.length - todayCount;
+    
+    return {
+      todayCount,
+      tomorrowCount,
+      totalCount: needsSong.length,
+      deadline: format(threePMTomorrowPST, "MMM d, h:mm a") + " PST"
+    };
+  }, [orders]);
 
   const handleToggleAutomation = async (newEnabled: boolean) => {
     try {
@@ -487,6 +545,48 @@ export function AutomationDashboard({ adminPassword, onRefresh }: AutomationDash
           </CardContent>
         </Card>
       )}
+
+      {/* Songs to Build Widget */}
+      <Card className={songsToBuild.totalCount > 0 ? "border-amber-300 bg-amber-50" : ""}>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Music className="h-5 w-5" />
+            Songs to Build
+          </CardTitle>
+          <CardDescription>
+            Orders needing songs by {songsToBuild.deadline}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="space-y-1">
+              <p className={`text-3xl font-bold ${songsToBuild.todayCount > 0 ? "text-red-600" : "text-muted-foreground"}`}>
+                {songsToBuild.todayCount}
+              </p>
+              <p className="text-xs text-muted-foreground">Due Today</p>
+            </div>
+            <div className="space-y-1">
+              <p className={`text-3xl font-bold ${songsToBuild.tomorrowCount > 0 ? "text-amber-600" : "text-muted-foreground"}`}>
+                {songsToBuild.tomorrowCount}
+              </p>
+              <p className="text-xs text-muted-foreground">Due Tomorrow (by 3pm)</p>
+            </div>
+            <div className="space-y-1">
+              <p className={`text-3xl font-bold ${songsToBuild.totalCount > 0 ? "text-blue-600" : "text-green-600"}`}>
+                {songsToBuild.totalCount}
+              </p>
+              <p className="text-xs text-muted-foreground">Total</p>
+            </div>
+          </div>
+          {songsToBuild.totalCount === 0 && (
+            <p className="text-center text-sm text-green-600 mt-4">
+              <CheckCircle2 className="h-4 w-4 inline mr-1" />
+              All caught up! No urgent songs to build.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Header Controls */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Automation Status Card */}
