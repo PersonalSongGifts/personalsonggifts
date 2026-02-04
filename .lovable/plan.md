@@ -1,301 +1,138 @@
 
-# Admin Support Controls - Implementation Plan
+## What’s actually happening (root cause)
 
-## Current Status
+Your `regenerate_song` request **never reaches** the `if (body?.action === "regenerate_song") { ... }` handler.
 
-Based on my exploration, here's what's already done vs. what needs to be implemented:
+In `supabase/functions/admin-orders/index.ts`, there’s a **legacy “update order” fallback block** that runs for *any* POST request that includes an `orderId` **even when `action` is present**. That block is located **before** the `regenerate_song` handler and ends with:
 
-| Feature | Status |
-|---------|--------|
-| Name pronunciation override (database + UI + lyrics) | Done |
-| Regenerate Song action with send timing | Done |
-| Creative field dropdowns (genre, occasion, vocal) | Needs work |
-| Email override + CC system | Not started |
-| Resend Email without regeneration | Not started |
-| Change detection for creative fields | Needs work |
+- `.update(updateData)` where `updateData` is often `{}` for regenerate requests
+- `.select().single()` which throws **PGRST116** when 0 rows come back
 
----
+This exactly matches what we see in the backend logs:
+- We see `[ADMIN] POST {"action":"regenerate_song"...}`
+- We **do not** see any of the `[REGENERATE] ...` logs (meaning the regenerate handler never ran)
+- We immediately see `Admin orders error: PGRST116 ...`
 
-## Part 1: Admin Editable Creative Fields (Dropdowns)
-
-### What This Adds
-
-Admins will be able to change the song's genre, singer preference (vocal gender), and occasion using dropdowns that match the customer-facing options.
-
-### Changes Required
-
-**Backend - admin-orders/index.ts:**
-- Add `genre`, `singer_preference`, `occasion` to the allowed fields whitelist for both `update_order_fields` and `update_lead_fields` actions
-
-**Frontend - Admin.tsx (Order Edit):**
-Add three dropdowns in edit mode:
-
-| Field | Options |
-|-------|---------|
-| Genre | Pop, Country, Rock, R&B, Jazz, Acoustic, Rap/Hip-Hop, Indie, Latin, K-Pop, EDM/Dance |
-| Singer | Male, Female |
-| Occasion | Valentine's Day, Wedding, Anniversary, Baby Lullaby, Memorial Tribute, Pet Celebration, Pet Memorial, Milestone, Birthday, Graduation, Retirement, Mother's Day, Father's Day, Proposal, Friendship, Thank You, Custom |
-
-**Frontend - LeadsTable.tsx (Lead Edit):**
-Same three dropdowns added to the lead edit form.
+So this is a **routing/handler ordering bug**, not a missing order row, not scheduling, not Suno, not credits.
 
 ---
 
-## Part 2: Email Override + CC System
+## Goals of the fix
 
-### What This Adds
-
-Admins can correct the delivery email address and optionally add a CC recipient, without triggering automatic resends.
-
-### Database Changes
-
-**Orders table:**
-```text
-customer_email_override (text, nullable)
-customer_email_cc (text, nullable)  
-sent_to_emails (jsonb, nullable) - array of recipients used in previous sends
-```
-
-**Leads table:**
-```text
-lead_email_override (text, nullable)
-lead_email_cc (text, nullable)
-preview_sent_to_emails (jsonb, nullable)
-```
-
-### Admin UI Changes
-
-In order edit dialog, show:
-- **Original Email** (read-only): Shows the original `customer_email`
-- **Delivery Email Override**: Editable field for corrected email
-- **CC Email (Optional)**: Additional recipient
-
-Same pattern for lead edit.
-
-### Email Sending Logic
-
-Update both `send-song-delivery` and `send-lead-preview` to:
-
-1. Compute effective email: `override ?? original`
-2. Add CC if present and different from effective email
-3. After successful send, append recipients to `sent_to_emails` / `preview_sent_to_emails` array
-
-### Backend Whitelist Update
-
-Add these fields to allowed updates:
-- Orders: `customer_email_override`, `customer_email_cc`
-- Leads: `lead_email_override`, `lead_email_cc`
+1. Ensure `action:"regenerate_song"` requests always hit the regenerate handler.
+2. Ensure the legacy “update order” fallback only runs when **no `action` is provided** (backward compatibility for existing calls like `updateOrder()` in `Admin.tsx`).
+3. Eliminate accidental `.single()` failures in the fallback path (and return clearer errors).
+4. Add the precise debug logging + “debug echo” style responses you requested for fast isolation (env + table + id).
 
 ---
 
-## Part 3: Change Detection for Creative Fields
+## Implementation plan (code changes)
 
-### What This Adds
+### 1) Gate the legacy update-order fallback so it only runs when `action` is missing
+**File:** `supabase/functions/admin-orders/index.ts`
 
-Changing genre, occasion, or singer_preference after a song exists will flag the item for admin review.
+- Near the top of the POST handler, compute:
+  - `const action = typeof body?.action === "string" ? body.action : null;`
+- Wrap the legacy block that starts around:
+  ```ts
+  const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = ...
+  ```
+  so it runs only when:
+  ```ts
+  if (!action) { ... legacy update behavior ... }
+  ```
+- If `action` exists but doesn’t match any known handler, return a clean:
+  - `400 { error: "Unknown action", action }`
+  instead of falling into legacy update logic.
 
-### Implementation
-
-**Update inputs_hash calculation** in `stripe-webhook/index.ts` and `process-payment/index.ts` to include:
-- `genre`
-- `singer_preference` (vocal gender)
-- `occasion`
-
-**Update admin-orders `update_order_fields`/`update_lead_fields` actions:**
-When updating creative fields, if a song already exists:
-1. Recompute inputs_hash
-2. If changed, set `delivery_status = 'needs_review'` (orders) or equivalent for leads
-3. Item appears in "Needs Attention" filter
-
-**Email edits do NOT trigger needs_review** - they only require a resend action.
-
----
-
-## Part 4: Resend Email Without Regeneration
-
-### What This Adds
-
-A dedicated button to resend the existing song to corrected emails, without regenerating audio.
-
-### Admin UI
-
-**Orders:** Add "Resend Delivery Email" button
-- Visible when: `song_url` exists AND `sent_at` is set
-- Shows dialog with send options: "Send Now" or "Schedule Send"
-
-**Leads:** Add "Resend Preview Email" button  
-- Visible when: `preview_song_url` exists AND `preview_sent_at` is set
-- Same dialog options
-
-### Backend Action
-
-Add new action `resend_email` in admin-orders:
-
-```text
-action: "resend_email"
-orderId / leadId
-sendOption: "immediate" | "scheduled"
-scheduledAt: ISO string (if scheduled)
-```
-
-Behavior:
-1. Call appropriate send function with current effective email + CC
-2. Record recipients in sent_to_emails array
-3. Update sent_at / preview_sent_at timestamp
-4. Do NOT modify any generation artifacts
+**Why:** This is the direct cause of regenerate being intercepted and triggering `.single()`.
 
 ---
 
-## Files to Modify
+### 2) Make the legacy fallback safer (stop `.single()` from throwing unhelpful 500s)
+**File:** `supabase/functions/admin-orders/index.ts`
 
-### Database
-| File | Change |
-|------|--------|
-| New migration | Add email override, CC, and sent_to columns to orders and leads |
+Inside the `if (!action) { ... }` legacy block:
 
-### Frontend
-| File | Change |
-|------|--------|
-| `src/pages/Admin.tsx` | Add creative field dropdowns, email override fields, Resend button |
-| `src/components/admin/LeadsTable.tsx` | Add creative field dropdowns, email override fields, Resend button |
+- Add a guard:
+  - If no meaningful updates are provided (`updateData` is empty AND not delivering AND not scheduling), return:
+    - `400 { error: "No update fields provided" }`
+- Replace the legacy `.single()` with `.maybeSingle()` and handle not found:
+  - If result is null → `404 { error: "Order not found", orderId }`
 
-### Edge Functions
-| File | Change |
-|------|--------|
-| `supabase/functions/admin-orders/index.ts` | Whitelist creative + email fields, add change detection, add resend_email action |
-| `supabase/functions/send-song-delivery/index.ts` | Accept email override + CC, record sent_to_emails |
-| `supabase/functions/send-lead-preview/index.ts` | Accept email override + CC, record preview_sent_to_emails |
-| `supabase/functions/stripe-webhook/index.ts` | Include genre, occasion, singer_preference in inputs_hash |
-| `supabase/functions/process-payment/index.ts` | Include genre, occasion, singer_preference in inputs_hash |
+This prevents the same PGRST116 class of error from happening again in other edge cases.
 
 ---
 
-## Technical Details
+### 3) Improve regenerate debug logging exactly as requested
+**File:** `supabase/functions/admin-orders/index.ts` in the `regenerate_song` handler (already exists)
 
-### Dropdown Options (Matching Customer Flow)
+Add/ensure logs at the very top of the regenerate handler *before DB calls*:
 
-**Genre Options:**
-```typescript
-const genres = [
-  { id: "pop", label: "Pop" },
-  { id: "country", label: "Country" },
-  { id: "rock", label: "Rock" },
-  { id: "rnb", label: "R&B" },
-  { id: "jazz", label: "Jazz" },
-  { id: "acoustic", label: "Acoustic" },
-  { id: "rap-hip-hop", label: "Rap / Hip-Hop" },
-  { id: "indie", label: "Indie" },
-  { id: "latin", label: "Latin" },
-  { id: "kpop", label: "K-Pop" },
-  { id: "edm-dance", label: "EDM / Dance" },
-];
-```
+- `action`
+- `orderId` / `leadId` exactly received
+- `entityType` chosen
+- explicit query intent like: `table=orders where id=<...>`
 
-**Singer Options:**
-```typescript
-const singerOptions = [
-  { id: "male", label: "Male" },
-  { id: "female", label: "Female" },
-];
-```
+Even though we already log `[ADMIN] POST {action, orderId, leadId}`, we’ll also log inside the handler so we can prove it is reached.
 
-**Occasion Options:**
-```typescript
-const occasions = [
-  { id: "valentines", label: "Valentine's Day" },
-  { id: "wedding", label: "Wedding" },
-  { id: "anniversary", label: "Anniversary" },
-  { id: "baby", label: "Baby Lullaby" },
-  { id: "memorial", label: "Memorial Tribute" },
-  { id: "pet-celebration", label: "Pet Celebration" },
-  { id: "pet-memorial", label: "Pet Memorial" },
-  { id: "milestone", label: "Milestone" },
-  { id: "birthday", label: "Birthday" },
-  { id: "graduation", label: "Graduation" },
-  { id: "retirement", label: "Retirement" },
-  { id: "mothers-day", label: "Mother's Day" },
-  { id: "fathers-day", label: "Father's Day" },
-  { id: "proposal", label: "Proposal" },
-  { id: "friendship", label: "Friendship" },
-  { id: "thank-you", label: "Thank You" },
-  { id: "custom", label: "Custom" },
-];
-```
+---
 
-### Effective Email Logic
+### 4) Add “env” to 404/debug echo without leaking backend identifiers
+**File:** `supabase/functions/admin-orders/index.ts`
 
-```typescript
-function getEffectiveEmail(order: Order): string {
-  return order.customer_email_override?.trim() || order.customer_email;
-}
+- Derive a safe environment label from request headers:
+  - Use `Origin` or `Referer` and classify:
+    - `"preview"` if it includes `id-preview--`
+    - otherwise `"published"` (or `"unknown"`)
+- Include `env` in:
+  - the “not found” response
+  - the “must provide exactly one of orderId/leadId” response
+  - any debug echo response
 
-function getEmailRecipients(order: Order): string[] {
-  const effective = getEffectiveEmail(order);
-  const cc = order.customer_email_cc?.trim();
-  
-  const recipients = [effective];
-  if (cc && cc !== effective) {
-    recipients.push(cc);
-  }
-  return recipients;
+Example response shape:
+```json
+{
+  "error": "Order not found",
+  "env": "preview",
+  "entityType": "orders",
+  "entityId": "..."
 }
 ```
 
-### Change Detection Logic
-
-```typescript
-// In update_order_fields / update_lead_fields action:
-if (hasCreativeFieldChange && entityHasSong) {
-  // Recompute hash
-  const newHash = await computeInputsHash([...]);
-  
-  if (newHash !== entity.inputs_hash) {
-    updates.delivery_status = "needs_review";
-    updates.inputs_hash = newHash;
-  }
-}
-```
-
-### Resend Email Flow
-
-```text
-Admin clicks "Resend Delivery Email"
-        │
-        ▼
-Dialog: "Send Now" or "Schedule"
-        │
-        ▼
-resend_email action:
-  1. Get current effective email + CC
-  2. Call send-song-delivery with these recipients
-  3. Append to sent_to_emails array
-  4. Update sent_at
-        │
-        ▼
-Email sent to corrected addresses
-(No song regeneration)
-```
+This satisfies the “env mismatch” debugging requirement while respecting the rule to not expose internal project refs/URLs.
 
 ---
 
-## Safety Guarantees
+## How we’ll verify (fast checks)
 
-| Protection | Implementation |
-|------------|----------------|
-| No accidental auto-sends after email edit | Cron only sends when sent_at is NULL; email edit alone doesn't clear sent_at |
-| Email validation | Basic regex check on override and CC fields |
-| CC duplicate prevention | CC ignored if equals effective email |
-| Idempotency tracking | sent_to_emails records all recipients used |
-| Creative changes flagged | needs_review status surfaces in Needs Attention |
+### A) Confirm the regenerate handler is now reached
+1. In Preview Admin UI, click **Regenerate Song → Send now**
+2. Backend logs should show lines like:
+   - `[REGENERATE] Received request ...`
+3. UI should show:
+   - “Regeneration Started” (200)  
+   OR a clean 4xx with JSON details (not a 500)
+
+### B) Confirm legacy updates still work
+- Use an action that previously relied on the legacy path (no `action` field), e.g.:
+  - updating order status/song_url/deliver/schedule delivery
+- Ensure those still succeed.
+
+### C) Confirm the automation pipeline starts
+- After regeneration success:
+  - Order should have updated `earliest_generate_at` / `target_send_at`
+  - Automation should pick it up shortly (or trigger immediately if `automation-trigger` succeeds)
 
 ---
 
-## Order of Implementation
+## Files involved
+- `supabase/functions/admin-orders/index.ts` (primary fix: routing + legacy gating + logging)
+- `src/pages/Admin.tsx` (likely no change needed for this specific fix, since it already sends `action:"regenerate_song"` correctly; we’ll only adjust if we want to surface extra debug fields in the toast later)
 
-1. **Database migration**: Add email columns
-2. **Backend whitelist**: Add creative fields + email fields  
-3. **Admin UI dropdowns**: Genre, singer, occasion
-4. **Admin UI email fields**: Override, CC, read-only original
-5. **Change detection**: inputs_hash update + needs_review logic
-6. **Email sending updates**: Accept recipients array, record sent_to
-7. **Resend action**: New admin action + UI button
+---
+
+## Expected outcome after fix
+Clicking **Regenerate Song** in Preview will no longer hit the legacy update block, so:
+- No more `500 — PGRST116` from `.single()` interception
+- You’ll either get a success toast or a clean, actionable 4xx/404 message with `env/entityType/entityId` for debugging.
