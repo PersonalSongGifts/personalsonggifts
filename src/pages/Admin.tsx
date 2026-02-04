@@ -570,6 +570,9 @@ export default function Admin() {
           : undefined;
 
         if (ctx) {
+          // Prefer JSON error payload, but fall back to raw text.
+          const statusPrefix = `${ctx.status}${ctx.statusText ? ` ${ctx.statusText}` : ""}`;
+
           const payload = await ctx.clone().json().catch(() => null as unknown);
           if (payload && typeof payload === "object") {
             const p = payload as Record<string, unknown>;
@@ -578,7 +581,13 @@ export default function Admin() {
               typeof p.code === "string" ? `(${p.code})` : null,
               typeof p.details === "string" ? p.details : null,
             ].filter(Boolean);
-            if (parts.length) description = parts.join(" ");
+            if (parts.length) {
+              description = `${statusPrefix} — ${parts.join(" ")}`;
+            }
+          } else {
+            const text = await ctx.clone().text().catch(() => "");
+            if (text) description = `${statusPrefix} — ${text.slice(0, 300)}`;
+            else description = statusPrefix;
           }
         }
       } catch {
