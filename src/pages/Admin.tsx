@@ -290,15 +290,15 @@ export default function Admin() {
 
     setLoading(true);
     try {
-      const { data, error } = await listOrders(statusFilter);
+      // Always fetch all orders - filtering is done client-side to support
+      // client-only filters like "auto_scheduled" and "needs_attention"
+      const { data, error } = await listOrders("all");
 
       if (error) throw error;
       setOrders(data.orders || []);
+      setAllOrders(data.orders || []);
       // Always update leads regardless of filter (fixes stale UI bug)
       setLeads(data.leads || []);
-      if (statusFilter === "all") {
-        setAllOrders(data.orders || []);
-      }
     } catch {
       toast({
         title: "Error",
@@ -665,7 +665,9 @@ export default function Admin() {
     if (isAuthenticated) {
       fetchOrders();
     }
-  }, [isAuthenticated, statusFilter]);
+  // Only refetch on auth change - statusFilter is handled client-side
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
   if (!isAuthenticated) {
     return (
