@@ -684,8 +684,9 @@ const BATCH_LIMIT = 9;
                 min={0}
                 max={100}
                 step={5}
+                onValueChange={(v) => setQualityThreshold(v[0])}
                 onValueCommit={(v) => handleUpdateThreshold(v[0])}
-                className="w-full"
+                className="w-full cursor-pointer"
               />
               <p className="text-xs text-muted-foreground">
                 Only leads with quality ≥ {qualityThreshold} will auto-trigger
