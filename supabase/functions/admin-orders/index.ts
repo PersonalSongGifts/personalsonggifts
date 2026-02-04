@@ -685,7 +685,8 @@ Deno.serve(async (req) => {
         // Whitelist allowed fields
         const allowedFields = [
           "customer_name", "customer_email", "customer_phone",
-          "recipient_name", "special_qualities", "favorite_memory",
+          "recipient_name", "recipient_name_pronunciation",
+          "special_qualities", "favorite_memory",
           "special_message", "notes"
         ];
 
@@ -747,7 +748,8 @@ Deno.serve(async (req) => {
         // Whitelist allowed fields
         const allowedFields = [
           "customer_name", "email", "phone",
-          "recipient_name", "special_qualities", "favorite_memory",
+          "recipient_name", "recipient_name_pronunciation",
+          "special_qualities", "favorite_memory",
           "special_message"
         ];
 
@@ -1159,6 +1161,127 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ order }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Regenerate song for orders or leads (pronunciation fixes)
+    if (body?.action === "regenerate_song") {
+      const orderId = typeof body.orderId === "string" ? body.orderId : null;
+      const leadId = typeof body.leadId === "string" ? body.leadId : null;
+      const sendOption = typeof body.sendOption === "string" ? body.sendOption : "auto";
+      const scheduledAt = typeof body.scheduledAt === "string" ? body.scheduledAt : null;
+
+      if (!orderId && !leadId) {
+        return new Response(
+          JSON.stringify({ error: "Order ID or Lead ID required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const entityType = orderId ? "orders" : "leads";
+      const entityId = orderId || leadId;
+
+      // Fetch entity to verify it exists
+      const { data: entity, error: fetchError } = await supabase
+        .from(entityType)
+        .select("*")
+        .eq("id", entityId)
+        .single();
+
+      if (fetchError || !entity) {
+        return new Response(
+          JSON.stringify({ error: `${entityType === "orders" ? "Order" : "Lead"} not found` }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Clear generation artifacts but preserve identity and inputs
+      const clearUpdates: Record<string, unknown> = {
+        automation_status: null,
+        automation_task_id: null,
+        automation_lyrics: null,
+        automation_started_at: null,
+        automation_retry_count: 0,
+        automation_last_error: null,
+        automation_raw_callback: null,
+        automation_style_id: null,
+        automation_audio_url_source: null,
+        generated_at: null,
+        inputs_hash: null,
+        next_attempt_at: null,
+        automation_manual_override_at: null,
+      };
+
+      // Entity-specific clears
+      if (entityType === "orders") {
+        clearUpdates.song_url = null;
+        clearUpdates.song_title = null;
+        clearUpdates.cover_image_url = null;
+        clearUpdates.sent_at = null;
+        clearUpdates.delivery_status = "pending";
+      } else {
+        clearUpdates.preview_song_url = null;
+        clearUpdates.full_song_url = null;
+        clearUpdates.song_title = null;
+        clearUpdates.cover_image_url = null;
+        clearUpdates.preview_sent_at = null;
+        clearUpdates.preview_token = null;
+      }
+
+      // Compute target_send_at based on sendOption
+      const now = Date.now();
+      let targetSendAt: string;
+
+      switch (sendOption) {
+        case "immediate":
+          targetSendAt = new Date(now + 5 * 60 * 1000).toISOString();
+          break;
+        case "scheduled":
+          targetSendAt = scheduledAt || new Date(now + 12 * 60 * 60 * 1000).toISOString();
+          break;
+        case "auto":
+        default:
+          targetSendAt = new Date(now + 12 * 60 * 60 * 1000).toISOString();
+      }
+
+      clearUpdates.target_send_at = targetSendAt;
+      clearUpdates.earliest_generate_at = new Date(now + 1 * 60 * 1000).toISOString(); // 1 min from now
+
+      // Update entity
+      const { error: updateError } = await supabase
+        .from(entityType)
+        .update(clearUpdates)
+        .eq("id", entityId);
+
+      if (updateError) {
+        console.error("Failed to clear entity for regeneration:", updateError);
+        throw updateError;
+      }
+
+      console.log(`[ADMIN] Regenerate song initiated for ${entityType} ${entityId}, sendOption=${sendOption}, targetSendAt=${targetSendAt}`);
+
+      // Trigger automation with forceRun=true
+      try {
+        const triggerBody = orderId 
+          ? { orderId, forceRun: true }
+          : { leadId, forceRun: true };
+
+        await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify(triggerBody),
+        });
+      } catch (triggerError) {
+        console.error("Failed to trigger automation:", triggerError);
+        // Don't fail the request - the cron job will pick it up
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, targetSendAt }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
