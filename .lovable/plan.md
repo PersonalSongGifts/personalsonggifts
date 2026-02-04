@@ -1,265 +1,148 @@
 
-# Name Pronunciation Control + Safe Regeneration Flow
+# Admin Support Controls - Implementation Plan
 
-## Overview
+## Current Status
 
-This feature addresses your #1 customer complaint: incorrect pronunciation of recipient names in AI-generated songs. The solution provides admins with both **preventative** (pre-generation pronunciation override) and **corrective** (safe regeneration flow) controls.
+Based on my exploration, here's what's already done vs. what needs to be implemented:
 
----
-
-## Summary of Changes
-
-| Area | What Changes |
-|------|--------------|
-| Database | Add `recipient_name_pronunciation` column to `orders` and `leads` tables |
-| Admin UI - Orders | Add "Pronunciation Override" field in edit mode |
-| Admin UI - Leads | Add "Pronunciation Override" field in edit mode |
-| Admin UI - Both | Add "Regenerate Song" button with send-timing dialog |
-| Lyrics Generation | Use pronunciation value instead of display name when present |
-| Change Detection | Include pronunciation in `inputs_hash` calculation |
-| Backend Action | New `regenerate_song` action in admin-orders |
+| Feature | Status |
+|---------|--------|
+| Name pronunciation override (database + UI + lyrics) | Done |
+| Regenerate Song action with send timing | Done |
+| Creative field dropdowns (genre, occasion, vocal) | Needs work |
+| Email override + CC system | Not started |
+| Resend Email without regeneration | Not started |
+| Change detection for creative fields | Needs work |
 
 ---
 
-## Feature 1: Pronunciation Override Field
+## Part 1: Admin Editable Creative Fields (Dropdowns)
 
-### Database Migration
+### What This Adds
 
-Add a new nullable text column to both tables:
+Admins will be able to change the song's genre, singer preference (vocal gender), and occasion using dropdowns that match the customer-facing options.
 
+### Changes Required
+
+**Backend - admin-orders/index.ts:**
+- Add `genre`, `singer_preference`, `occasion` to the allowed fields whitelist for both `update_order_fields` and `update_lead_fields` actions
+
+**Frontend - Admin.tsx (Order Edit):**
+Add three dropdowns in edit mode:
+
+| Field | Options |
+|-------|---------|
+| Genre | Pop, Country, Rock, R&B, Jazz, Acoustic, Rap/Hip-Hop, Indie, Latin, K-Pop, EDM/Dance |
+| Singer | Male, Female |
+| Occasion | Valentine's Day, Wedding, Anniversary, Baby Lullaby, Memorial Tribute, Pet Celebration, Pet Memorial, Milestone, Birthday, Graduation, Retirement, Mother's Day, Father's Day, Proposal, Friendship, Thank You, Custom |
+
+**Frontend - LeadsTable.tsx (Lead Edit):**
+Same three dropdowns added to the lead edit form.
+
+---
+
+## Part 2: Email Override + CC System
+
+### What This Adds
+
+Admins can correct the delivery email address and optionally add a CC recipient, without triggering automatic resends.
+
+### Database Changes
+
+**Orders table:**
 ```text
-orders.recipient_name_pronunciation (text, nullable)
-leads.recipient_name_pronunciation (text, nullable)
+customer_email_override (text, nullable)
+customer_email_cc (text, nullable)  
+sent_to_emails (jsonb, nullable) - array of recipients used in previous sends
 ```
 
-### Admin UI - Order Edit Dialog
-
-In the "Recipient" section of the order edit form (around line 1270-1290 in Admin.tsx), add:
-
+**Leads table:**
 ```text
-┌─────────────────────────────────────────┐
-│ Recipient                               │
-├─────────────────────────────────────────┤
-│ Name: [Corey________________]           │
-│                                         │
-│ Pronunciation Override                  │
-│ [coreee___________________]             │
-│ Spell the name how you want it sung.    │
-│ Avoid dashes or symbols. Use stretched  │
-│ vowels if needed.                       │
-│ Examples: koree, corree, jhanay         │
-└─────────────────────────────────────────┘
+lead_email_override (text, nullable)
+lead_email_cc (text, nullable)
+preview_sent_to_emails (jsonb, nullable)
 ```
 
-This field is:
-- Only visible when editing (not in read-only view)
-- Saved to `recipient_name_pronunciation` column
-- Never shown in any customer-facing UI
+### Admin UI Changes
 
-### Admin UI - Lead Edit Dialog
+In order edit dialog, show:
+- **Original Email** (read-only): Shows the original `customer_email`
+- **Delivery Email Override**: Editable field for corrected email
+- **CC Email (Optional)**: Additional recipient
 
-Same field added to the lead edit form in LeadsTable.tsx (around line 730-745).
+Same pattern for lead edit.
+
+### Email Sending Logic
+
+Update both `send-song-delivery` and `send-lead-preview` to:
+
+1. Compute effective email: `override ?? original`
+2. Add CC if present and different from effective email
+3. After successful send, append recipients to `sent_to_emails` / `preview_sent_to_emails` array
 
 ### Backend Whitelist Update
 
-In `admin-orders/index.ts`:
-- Add `recipient_name_pronunciation` to the allowed fields list for `update_order_fields` action (line 686-689)
-- Add `recipient_name_pronunciation` to the allowed fields list for `update_lead_fields` action (line 748-752)
+Add these fields to allowed updates:
+- Orders: `customer_email_override`, `customer_email_cc`
+- Leads: `lead_email_override`, `lead_email_cc`
 
 ---
 
-## Feature 2: Lyrics Generation Integration
+## Part 3: Change Detection for Creative Fields
 
-### automation-generate-lyrics/index.ts Changes
+### What This Adds
 
-Update the `normalizeEntityData` function to include:
-```typescript
-recipient_name_pronunciation: entity.recipient_name_pronunciation as string | null,
-```
+Changing genre, occasion, or singer_preference after a song exists will flag the item for admin review.
 
-Update the user prompt to use pronunciation when present:
+### Implementation
+
+**Update inputs_hash calculation** in `stripe-webhook/index.ts` and `process-payment/index.ts` to include:
+- `genre`
+- `singer_preference` (vocal gender)
+- `occasion`
+
+**Update admin-orders `update_order_fields`/`update_lead_fields` actions:**
+When updating creative fields, if a song already exists:
+1. Recompute inputs_hash
+2. If changed, set `delivery_status = 'needs_review'` (orders) or equivalent for leads
+3. Item appears in "Needs Attention" filter
+
+**Email edits do NOT trigger needs_review** - they only require a resend action.
+
+---
+
+## Part 4: Resend Email Without Regeneration
+
+### What This Adds
+
+A dedicated button to resend the existing song to corrected emails, without regenerating audio.
+
+### Admin UI
+
+**Orders:** Add "Resend Delivery Email" button
+- Visible when: `song_url` exists AND `sent_at` is set
+- Shows dialog with send options: "Send Now" or "Schedule Send"
+
+**Leads:** Add "Resend Preview Email" button  
+- Visible when: `preview_song_url` exists AND `preview_sent_at` is set
+- Same dialog options
+
+### Backend Action
+
+Add new action `resend_email` in admin-orders:
 
 ```text
-// If pronunciation override exists, use it ONLY
-RecipientName: ${entity.recipient_name_pronunciation || entity.recipient_name}
-
-// Add explicit pronunciation instruction when override is set
-${entity.recipient_name_pronunciation ? `
-IMPORTANT PRONUNCIATION:
-When singing the recipient's name, use exactly: "${entity.recipient_name_pronunciation}"
-This spelling is intentional for correct pronunciation and must be followed.
-` : ""}
+action: "resend_email"
+orderId / leadId
+sendOption: "immediate" | "scheduled"
+scheduledAt: ISO string (if scheduled)
 ```
 
-The display name (`recipient_name`) is never included when a pronunciation override exists. Only the phonetic spelling enters the AI model.
-
----
-
-## Feature 3: Change Detection
-
-### Update inputs_hash Calculation
-
-In both `stripe-webhook/index.ts` and `process-payment/index.ts`, update the `computeInputsHash` function call to include the pronunciation field:
-
-```typescript
-const inputsHash = await computeInputsHash([
-  metadata.recipientName || "",
-  metadata.recipientNamePronunciation || "", // NEW
-  metadata.specialQualities || "",
-  metadata.favoriteMemory || "",
-  metadata.genre || "",
-  metadata.occasion || "",
-]);
-```
-
-### Behavior When Pronunciation Changes
-
-When an admin updates `recipient_name_pronunciation` on an order/lead that already has a song:
-
-1. If `song_url` (orders) or `preview_song_url` (leads) exists
-2. And `inputs_hash` changes
-3. Set `delivery_status = 'needs_review'`
-4. Item appears in "Needs Attention" filter
-5. No auto-regeneration without admin intent
-
-This logic will be handled in the `update_order_fields` and `update_lead_fields` actions.
-
----
-
-## Feature 4: Regenerate Song Action
-
-### New Admin Button
-
-Add a "Regenerate Song" button visible when:
-- Orders have `song_url`
-- Leads have `preview_song_url`
-
-This is a **secondary action** (not destructive red like "Reset + Regenerate").
-
-### Regeneration Dialog UI
-
-```text
-┌────────────────────────────────────────────────┐
-│         🔄 Regenerate Song                     │
-├────────────────────────────────────────────────┤
-│                                                │
-│  This will generate a new song using the       │
-│  current details, including any pronunciation  │
-│  overrides.                                    │
-│                                                │
-│  The existing song will be replaced.           │
-│                                                │
-│  After generation, how should we send?         │
-│                                                │
-│  ○ Send immediately (5 min)                    │
-│  ○ Schedule send (pick date & time)            │
-│  ○ Default auto-send (12 hours later)          │
-│                                                │
-│  [DateTime Picker - if "Schedule" selected]    │
-│                                                │
-│            [Cancel]    [Regenerate Song]       │
-│                                                │
-└────────────────────────────────────────────────┘
-```
-
-### New Backend Action: regenerate_song
-
-Add to `admin-orders/index.ts`:
-
-```typescript
-if (body?.action === "regenerate_song") {
-  const orderId = typeof body.orderId === "string" ? body.orderId : null;
-  const leadId = typeof body.leadId === "string" ? body.leadId : null;
-  const sendOption = body.sendOption as string; // "immediate" | "scheduled" | "auto"
-  const scheduledAt = body.scheduledAt as string | null;
-  
-  // Validate entity exists
-  // ...
-  
-  // Clear generation artifacts
-  const clearUpdates = {
-    automation_status: null,
-    automation_task_id: null,
-    automation_lyrics: null,
-    automation_started_at: null,
-    automation_retry_count: 0,
-    automation_last_error: null,
-    automation_raw_callback: null,
-    automation_style_id: null,
-    automation_audio_url_source: null,
-    generated_at: null,
-    inputs_hash: null,
-    next_attempt_at: null,
-    automation_manual_override_at: null,
-    sent_at: null,
-    delivery_status: "pending",
-  };
-  
-  // Entity-specific clears
-  if (orderId) {
-    clearUpdates.song_url = null;
-    clearUpdates.song_title = null;
-    clearUpdates.cover_image_url = null;
-  } else {
-    clearUpdates.preview_song_url = null;
-    clearUpdates.full_song_url = null;
-    clearUpdates.song_title = null;
-    clearUpdates.cover_image_url = null;
-    clearUpdates.preview_token = null;
-    clearUpdates.preview_sent_at = null;
-  }
-  
-  // Compute target_send_at based on sendOption
-  const now = Date.now();
-  let targetSendAt: string;
-  
-  switch (sendOption) {
-    case "immediate":
-      targetSendAt = new Date(now + 5 * 60 * 1000).toISOString();
-      break;
-    case "scheduled":
-      targetSendAt = scheduledAt!;
-      break;
-    case "auto":
-    default:
-      targetSendAt = new Date(now + 12 * 60 * 60 * 1000).toISOString();
-  }
-  
-  clearUpdates.target_send_at = targetSendAt;
-  clearUpdates.earliest_generate_at = new Date(now + 5 * 60 * 1000).toISOString();
-  
-  // Update entity
-  await supabase.from(tableName).update(clearUpdates).eq("id", entityId);
-  
-  // Trigger automation with forceRun=true
-  await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseServiceKey}` },
-    body: JSON.stringify(orderId ? { orderId, forceRun: true } : { leadId, forceRun: true }),
-  });
-  
-  return { success: true, targetSendAt };
-}
-```
-
-### Lead vs Order Enforcement
-
-The automation-trigger and downstream functions already handle this correctly:
-- **Leads**: Generate 45-second preview via `createAudioPreview`, use preview email
-- **Orders**: Generate full-length song, use delivery email
-
-No changes needed - the entity type determines behavior automatically.
-
----
-
-## Safety Guarantees
-
-| Protection | How It Works |
-|------------|--------------|
-| Rate limiting | Respects existing retry counters (max 3 attempts) |
-| Failed regenerations | Surface in "Needs Attention" filter via `automation_status = "failed"` |
-| No duplicate emails | `sent_at` cleared on regeneration; cron only sends when `automation_status = completed` AND `sent_at IS NULL` |
-| Admin visibility | Regenerating items show "Generating..." status badge |
+Behavior:
+1. Call appropriate send function with current effective email + CC
+2. Record recipients in sent_to_emails array
+3. Update sent_at / preview_sent_at timestamp
+4. Do NOT modify any generation artifacts
 
 ---
 
@@ -268,104 +151,151 @@ No changes needed - the entity type determines behavior automatically.
 ### Database
 | File | Change |
 |------|--------|
-| New migration | Add `recipient_name_pronunciation` to `orders` and `leads` tables |
+| New migration | Add email override, CC, and sent_to columns to orders and leads |
 
 ### Frontend
 | File | Change |
 |------|--------|
-| `src/pages/Admin.tsx` | Add pronunciation field to order edit form, add Regenerate button with dialog, new state variables |
-| `src/components/admin/LeadsTable.tsx` | Add pronunciation field to lead edit form, add Regenerate button with dialog |
+| `src/pages/Admin.tsx` | Add creative field dropdowns, email override fields, Resend button |
+| `src/components/admin/LeadsTable.tsx` | Add creative field dropdowns, email override fields, Resend button |
 
 ### Edge Functions
 | File | Change |
 |------|--------|
-| `supabase/functions/admin-orders/index.ts` | Add `recipient_name_pronunciation` to allowed fields, add `regenerate_song` action, add change detection logic |
-| `supabase/functions/automation-generate-lyrics/index.ts` | Use pronunciation override in prompt when present |
-| `supabase/functions/stripe-webhook/index.ts` | Include pronunciation in `inputs_hash` calculation |
-| `supabase/functions/process-payment/index.ts` | Include pronunciation in `inputs_hash` calculation |
+| `supabase/functions/admin-orders/index.ts` | Whitelist creative + email fields, add change detection, add resend_email action |
+| `supabase/functions/send-song-delivery/index.ts` | Accept email override + CC, record sent_to_emails |
+| `supabase/functions/send-lead-preview/index.ts` | Accept email override + CC, record preview_sent_to_emails |
+| `supabase/functions/stripe-webhook/index.ts` | Include genre, occasion, singer_preference in inputs_hash |
+| `supabase/functions/process-payment/index.ts` | Include genre, occasion, singer_preference in inputs_hash |
 
 ---
 
 ## Technical Details
 
-### Pronunciation in Lyrics Prompt
+### Dropdown Options (Matching Customer Flow)
 
-When `recipient_name_pronunciation` is set (e.g., "coreee"):
+**Genre Options:**
+```typescript
+const genres = [
+  { id: "pop", label: "Pop" },
+  { id: "country", label: "Country" },
+  { id: "rock", label: "Rock" },
+  { id: "rnb", label: "R&B" },
+  { id: "jazz", label: "Jazz" },
+  { id: "acoustic", label: "Acoustic" },
+  { id: "rap-hip-hop", label: "Rap / Hip-Hop" },
+  { id: "indie", label: "Indie" },
+  { id: "latin", label: "Latin" },
+  { id: "kpop", label: "K-Pop" },
+  { id: "edm-dance", label: "EDM / Dance" },
+];
+```
+
+**Singer Options:**
+```typescript
+const singerOptions = [
+  { id: "male", label: "Male" },
+  { id: "female", label: "Female" },
+];
+```
+
+**Occasion Options:**
+```typescript
+const occasions = [
+  { id: "valentines", label: "Valentine's Day" },
+  { id: "wedding", label: "Wedding" },
+  { id: "anniversary", label: "Anniversary" },
+  { id: "baby", label: "Baby Lullaby" },
+  { id: "memorial", label: "Memorial Tribute" },
+  { id: "pet-celebration", label: "Pet Celebration" },
+  { id: "pet-memorial", label: "Pet Memorial" },
+  { id: "milestone", label: "Milestone" },
+  { id: "birthday", label: "Birthday" },
+  { id: "graduation", label: "Graduation" },
+  { id: "retirement", label: "Retirement" },
+  { id: "mothers-day", label: "Mother's Day" },
+  { id: "fathers-day", label: "Father's Day" },
+  { id: "proposal", label: "Proposal" },
+  { id: "friendship", label: "Friendship" },
+  { id: "thank-you", label: "Thank You" },
+  { id: "custom", label: "Custom" },
+];
+```
+
+### Effective Email Logic
+
+```typescript
+function getEffectiveEmail(order: Order): string {
+  return order.customer_email_override?.trim() || order.customer_email;
+}
+
+function getEmailRecipients(order: Order): string[] {
+  const effective = getEffectiveEmail(order);
+  const cc = order.customer_email_cc?.trim();
+  
+  const recipients = [effective];
+  if (cc && cc !== effective) {
+    recipients.push(cc);
+  }
+  return recipients;
+}
+```
+
+### Change Detection Logic
+
+```typescript
+// In update_order_fields / update_lead_fields action:
+if (hasCreativeFieldChange && entityHasSong) {
+  // Recompute hash
+  const newHash = await computeInputsHash([...]);
+  
+  if (newHash !== entity.inputs_hash) {
+    updates.delivery_status = "needs_review";
+    updates.inputs_hash = newHash;
+  }
+}
+```
+
+### Resend Email Flow
 
 ```text
-RecipientName: coreee
-
-IMPORTANT PRONUNCIATION:
-When singing the recipient's name, use exactly: "coreee"
-This spelling is intentional for correct pronunciation and must be followed.
-```
-
-The display name "Corey" is **never** included in the prompt when a pronunciation override exists.
-
-### Updated Order Interface
-
-Add to the Order interface in Admin.tsx:
-```typescript
-recipient_name_pronunciation: string | null;
-```
-
-Add to the Lead interface in LeadsTable.tsx:
-```typescript
-recipient_name_pronunciation?: string | null;
-```
-
-### State Management for Regeneration Dialog
-
-```typescript
-// New state in Admin.tsx
-const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
-const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
-const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
-const [regenerating, setRegenerating] = useState(false);
-
-// Similar state in LeadsTable.tsx
-```
-
-### Regeneration Flow Diagram
-
-```text
-Admin clicks "Regenerate Song"
+Admin clicks "Resend Delivery Email"
         │
         ▼
-Dialog opens → selects send option
+Dialog: "Send Now" or "Schedule"
         │
         ▼
-regenerate_song action:
-  1. Clear all generation artifacts
-  2. Clear song_url / preview_song_url
-  3. Set target_send_at based on selection
-  4. Call automation-trigger (forceRun=true)
+resend_email action:
+  1. Get current effective email + CC
+  2. Call send-song-delivery with these recipients
+  3. Append to sent_to_emails array
+  4. Update sent_at
         │
         ▼
-automation-trigger:
-  1. Generate lyrics (uses pronunciation if set)
-  2. Generate audio
-        │
-        ▼
-automation-suno-callback:
-  1. Save new song_url
-  2. Set automation_status = completed
-  3. Set delivery_status = scheduled
-        │
-        ▼
-process-scheduled-deliveries cron:
-  1. When target_send_at reached
-  2. Send email (correct type for lead vs order)
-  3. Set sent_at
+Email sent to corrected addresses
+(No song regeneration)
 ```
 
 ---
 
-## Validation Checklist
+## Safety Guarantees
 
-| Requirement | Implementation |
-|-------------|----------------|
-| Pronunciation uses respelled phonetics only (no dashes) | UI helper text guides admins; no technical enforcement needed |
-| Pronunciation is generation-only, never customer-visible | Field excluded from all email templates, song pages, and external syncs |
-| Regeneration respects lead vs order delivery rules | Entity type determined at trigger time, uses appropriate song length and email template |
-| Default behavior auto-sends after 12 hours | "auto" option (default) sets `target_send_at = now + 12 hours` |
+| Protection | Implementation |
+|------------|----------------|
+| No accidental auto-sends after email edit | Cron only sends when sent_at is NULL; email edit alone doesn't clear sent_at |
+| Email validation | Basic regex check on override and CC fields |
+| CC duplicate prevention | CC ignored if equals effective email |
+| Idempotency tracking | sent_to_emails records all recipients used |
+| Creative changes flagged | needs_review status surfaces in Needs Attention |
+
+---
+
+## Order of Implementation
+
+1. **Database migration**: Add email columns
+2. **Backend whitelist**: Add creative fields + email fields  
+3. **Admin UI dropdowns**: Genre, singer, occasion
+4. **Admin UI email fields**: Override, CC, read-only original
+5. **Change detection**: inputs_hash update + needs_review logic
+6. **Email sending updates**: Accept recipients array, record sent_to
+7. **Resend action**: New admin action + UI button
