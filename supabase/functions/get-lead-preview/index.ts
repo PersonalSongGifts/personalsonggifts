@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     // Find lead by preview token
     const { data: lead, error } = await supabase
       .from("leads")
-      .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at")
+      .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at, order_id")
       .eq("preview_token", previewToken)
       .single();
 
@@ -40,10 +40,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if lead has been converted - if so, don't show preview page
+    // Check if lead has been converted - redirect to full song page
     if (lead.status === "converted") {
       return new Response(
-        JSON.stringify({ error: "This song has already been purchased", converted: true }),
+        JSON.stringify({ 
+          error: "This song has already been purchased", 
+          converted: true,
+          orderId: lead.order_id 
+        }),
         { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

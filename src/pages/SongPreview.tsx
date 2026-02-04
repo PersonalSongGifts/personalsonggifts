@@ -47,7 +47,11 @@ export default function SongPreview() {
 
         if (!response.ok) {
           const data = await response.json();
-          if (data.converted) {
+          if (data.converted && data.orderId) {
+            // Redirect to the full song page
+            window.location.href = `/song/${data.orderId.slice(0, 8)}`;
+            return;
+          } else if (data.converted) {
             setError("This song has already been purchased! Check your email for the full song.");
           } else {
             setError(data.error || "Preview not found");

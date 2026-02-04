@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
       </p>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We're thrilled to deliver your personalized ${occasion} song for <strong>${recipientName}</strong>! It's ready to share and make memories.
+        Your personalized ${occasion} song for <strong>${recipientName}</strong> is ready! It's time to share and make memories.
       </p>
       
       <div style="text-align: center; margin: 40px 0;">
@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
 
 Dear ${customerName || "Valued Customer"},
 
-We're thrilled to deliver your personalized ${occasion} song for ${recipientName}! It's ready to share and make memories.
+Your personalized ${occasion} song for ${recipientName} is ready! It's time to share and make memories.
 
 Listen to your song here: https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}
 
@@ -165,6 +165,8 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": orderId,
+          "X-Priority": "1",
+          "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }
