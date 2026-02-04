@@ -1204,13 +1204,43 @@ Deno.serve(async (req) => {
       const sendOption = typeof body.sendOption === "string" ? body.sendOption : "auto";
       const scheduledAt = typeof body.scheduledAt === "string" ? body.scheduledAt : null;
 
-      console.log(`[REGENERATE] Received request - orderId: ${orderId}, leadId: ${leadId}, sendOption: ${sendOption}`);
+      console.log(
+        "[REGENERATE] Received request",
+        JSON.stringify({
+          orderId,
+          leadId,
+          sendOption,
+          hasScheduledAt: !!scheduledAt,
+        })
+      );
 
-      if (!orderId && !leadId) {
+      // Must provide exactly one of orderId or leadId.
+      if ((!!orderId && !!leadId) || (!orderId && !leadId)) {
         return new Response(
-          JSON.stringify({ error: "Order ID or Lead ID required" }),
+          JSON.stringify({
+            error: "Must provide exactly one of orderId or leadId",
+            orderId,
+            leadId,
+          }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      }
+
+      // Validate scheduledAt when explicitly scheduling.
+      if (sendOption === "scheduled") {
+        if (!scheduledAt) {
+          return new Response(
+            JSON.stringify({ error: "scheduledAt is required when sendOption is 'scheduled'" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        const ms = Date.parse(scheduledAt);
+        if (Number.isNaN(ms)) {
+          return new Response(
+            JSON.stringify({ error: "scheduledAt must be a valid ISO timestamp", scheduledAt }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
 
       const entityType = orderId ? "orders" : "leads";
@@ -1317,7 +1347,7 @@ Deno.serve(async (req) => {
           ? { orderId, forceRun: true }
           : { leadId, forceRun: true };
 
-        await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+        const triggerRes = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1325,6 +1355,15 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify(triggerBody),
         });
+
+        if (!triggerRes.ok) {
+          const text = await triggerRes.text().catch(() => "");
+          console.error(
+            "[REGENERATE] automation-trigger returned non-2xx",
+            JSON.stringify({ status: triggerRes.status, body: text?.slice(0, 2000) })
+          );
+          // Don't fail the request - the cron job will pick it up via earliest_generate_at.
+        }
       } catch (triggerError) {
         console.error("Failed to trigger automation:", triggerError);
         // Don't fail the request - the cron job will pick it up
