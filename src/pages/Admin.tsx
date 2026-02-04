@@ -787,6 +787,9 @@ export default function Admin() {
                   <SelectItem value="needs_attention" className="text-red-600 font-medium">
                     ⚠️ Needs Attention ({orders.filter(orderNeedsAttention).length})
                   </SelectItem>
+                  <SelectItem value="auto_scheduled" className="text-blue-600 font-medium">
+                    📬 Auto-Scheduled ({orders.filter(o => o.automation_status === "completed" && o.target_send_at && !o.sent_at && !o.dismissed_at).length})
+                  </SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="in_progress">In Progress</SelectItem>
                   <SelectItem value="ready">Ready (Scheduled)</SelectItem>
@@ -855,6 +858,22 @@ export default function Admin() {
             </div>
 
             {(() => {
+              // Helper to format time until auto-send
+              const formatTimeUntilSend = (targetSendAt: string) => {
+                const now = new Date();
+                const target = new Date(targetSendAt);
+                const diffMs = target.getTime() - now.getTime();
+                const diffMins = Math.abs(Math.floor(diffMs / (1000 * 60)));
+                const hours = Math.floor(diffMins / 60);
+                const mins = diffMins % 60;
+                
+                if (diffMs > 0) {
+                  return hours > 0 ? `in ${hours}h ${mins}m` : `in ${mins}m`;
+                } else {
+                  return hours > 0 ? `⚠️ overdue by ${hours}h ${mins}m` : `⚠️ overdue by ${mins}m`;
+                }
+              };
+
               const filteredOrders = orders.filter((order) => {
                 // First apply dismissed filter
                 if (dismissedOrderFilter === "active" && order.dismissed_at) return false;
@@ -863,6 +882,14 @@ export default function Admin() {
                 // Needs Attention filter
                 if (statusFilter === "needs_attention") {
                   return orderNeedsAttention(order);
+                }
+                
+                // Auto-Scheduled filter - shows orders waiting for automatic delivery
+                if (statusFilter === "auto_scheduled") {
+                  return order.automation_status === "completed" 
+                    && order.target_send_at 
+                    && !order.sent_at
+                    && !order.dismissed_at;
                 }
                 
                 // Standard status filter
@@ -1032,6 +1059,13 @@ export default function Admin() {
                             <p className="text-sm text-amber-600">
                               <strong>📅 Scheduled Send:</strong>{" "}
                               {formatAdminDate(order.scheduled_delivery_at)}
+                            </p>
+                          )}
+                          {/* Show auto-send time for automated deliveries */}
+                          {order.automation_status === "completed" && order.target_send_at && !order.sent_at && (
+                            <p className="text-sm text-blue-600 font-medium">
+                              <strong>📬 Auto-Send:</strong>{" "}
+                              {formatAdminDate(order.target_send_at)} ({formatTimeUntilSend(order.target_send_at)})
                             </p>
                           )}
                         </div>
