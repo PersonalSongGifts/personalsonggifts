@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Bot, 
   Play, 
@@ -422,10 +423,19 @@ export function AutomationDashboard({ adminPassword, onRefresh, orders = [] }: A
       const elapsedMs = Date.now() - new Date(job.startedAt!).getTime();
       const elapsedMin = Math.floor(elapsedMs / 60000);
       return (
-        <Badge className="gap-1 bg-red-500 animate-pulse">
-          <AlertCircle className="h-3 w-3" />
-          STUCK ({elapsedMin}m)
-        </Badge>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge className="gap-1 bg-red-500 animate-pulse cursor-help">
+              <AlertCircle className="h-3 w-3" />
+              STUCK ({elapsedMin}m)
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <p className="font-semibold">Audio Provider Callback Delayed</p>
+            <p className="text-xs mt-1">Kie.ai hasn't sent the completion webhook.</p>
+            <p className="text-xs mt-1 text-green-600">System auto-retries every minute. Click "Recover Audio" to retry now.</p>
+          </TooltipContent>
+        </Tooltip>
       );
     }
 

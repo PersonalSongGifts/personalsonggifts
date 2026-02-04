@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
@@ -934,21 +935,48 @@ export default function Admin() {
                               {order.pricing_tier === "priority" ? "Priority" : "Standard"}
                             </Badge>
                             {/* Automation status badge */}
-                            {order.automation_status && (
-                              <Badge 
-                                variant="outline" 
-                                className={
-                                  order.automation_status === "completed" 
-                                    ? "border-green-300 text-green-600" 
-                                    : order.automation_status === "failed" 
-                                      ? "border-red-300 text-red-600" 
-                                      : "border-purple-300 text-purple-600"
-                                }
-                              >
-                                <Bot className="h-3 w-3 mr-1" />
-                                {order.automation_status}
-                              </Badge>
-                            )}
+                            {order.automation_status && (() => {
+                              // Check if order is stuck (audio_generating for >5 min)
+                              const isStuck = order.automation_status === "audio_generating" && 
+                                order.automation_started_at && 
+                                (Date.now() - new Date(order.automation_started_at).getTime()) > 5 * 60 * 1000;
+                              
+                              if (isStuck) {
+                                const elapsedMs = Date.now() - new Date(order.automation_started_at!).getTime();
+                                const elapsedMin = Math.floor(elapsedMs / 60000);
+                                return (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge className="bg-red-500 text-white animate-pulse cursor-help">
+                                        <AlertCircle className="h-3 w-3 mr-1" />
+                                        STUCK ({elapsedMin}m)
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p className="font-semibold">Audio Provider Callback Delayed</p>
+                                      <p className="text-xs mt-1">Kie.ai hasn't sent the completion webhook.</p>
+                                      <p className="text-xs mt-1 text-green-600">System auto-retries every minute.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                );
+                              }
+                              
+                              return (
+                                <Badge 
+                                  variant="outline" 
+                                  className={
+                                    order.automation_status === "completed" 
+                                      ? "border-green-300 text-green-600" 
+                                      : order.automation_status === "failed" 
+                                        ? "border-red-300 text-red-600" 
+                                        : "border-purple-300 text-purple-600"
+                                  }
+                                >
+                                  <Bot className="h-3 w-3 mr-1" />
+                                  {order.automation_status}
+                                </Badge>
+                              );
+                            })()}
                             {order.utm_source && (
                               <Badge variant="outline" className="border-blue-300 text-blue-600">
                                 {order.utm_source}{order.utm_medium ? ` / ${order.utm_medium}` : ""}

@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search, Pencil, Save, ArrowRightCircle, Wand2, Loader2, AlertCircle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search, Pencil, Save, ArrowRightCircle, Wand2, Loader2, AlertCircle, Bot } from "lucide-react";
 import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
@@ -937,6 +938,26 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         const automationBadge = getAutomationBadge(lead);
                         if (!automationBadge) return null;
                         const IconComponent = automationBadge.icon;
+                        
+                        // For stuck items, wrap in tooltip
+                        if (automationBadge.isStuck) {
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge className={`${automationBadge.className} cursor-help`}>
+                                  {IconComponent && <IconComponent className="h-3 w-3 mr-1" />}
+                                  {automationBadge.label}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p className="font-semibold">Audio Provider Callback Delayed</p>
+                                <p className="text-xs mt-1">The audio provider hasn't responded yet.</p>
+                                <p className="text-xs mt-1 text-green-600">System will auto-retry every minute.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        }
+                        
                         return (
                           <Badge className={automationBadge.className}>
                             {IconComponent && <IconComponent className={`h-3 w-3 mr-1 ${automationBadge.spin ? 'animate-spin' : ''}`} />}
@@ -1411,6 +1432,41 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           )}
                         </div>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Automation Status Section */}
+                {selectedLead.automation_status && (
+                  <div className="border-t pt-4 mt-4">
+                    <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+                      <Bot className="h-4 w-4" />
+                      Automation Status
+                    </h4>
+                    <div className="text-sm space-y-2">
+                      <p><strong>Status:</strong> {selectedLead.automation_status}</p>
+                      {selectedLead.automation_started_at && (
+                        <p><strong>Started:</strong> {formatAdminDate(selectedLead.automation_started_at)}</p>
+                      )}
+                      {selectedLead.automation_last_error && (
+                        <p className="text-red-600"><strong>Last Error:</strong> {selectedLead.automation_last_error}</p>
+                      )}
+                      
+                      {/* Stuck explanation */}
+                      {selectedLead.automation_status === "audio_generating" && 
+                       selectedLead.automation_started_at &&
+                       (Date.now() - new Date(selectedLead.automation_started_at).getTime()) > 5 * 60 * 1000 && (
+                        <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-2">
+                          <p className="font-medium text-amber-800">Why is this stuck?</p>
+                          <p className="text-xs text-amber-700 mt-1">
+                            The audio provider (Kie.ai) hasn't sent the completion callback yet.
+                            This can happen if their webhook delivery fails.
+                          </p>
+                          <p className="text-xs text-green-700 mt-2 font-medium">
+                            What the system will do: Auto-retry every minute by polling the provider for status.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
