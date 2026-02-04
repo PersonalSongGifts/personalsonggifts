@@ -24,6 +24,7 @@ export interface Lead {
   customer_name: string;
   recipient_name: string;
   recipient_type: string;
+  recipient_name_pronunciation?: string | null;
   occasion: string;
   genre: string;
   singer_preference: string;
@@ -135,6 +136,11 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  // Regenerate song state
+  const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+  const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
+  const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
   // Filter by status, quality, dismissed state, and search query
   const filteredLeads = leads
     .filter((lead) => {
@@ -732,6 +738,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       email: selectedLead.email,
       phone: selectedLead.phone || "",
       recipient_name: selectedLead.recipient_name,
+      recipient_name_pronunciation: selectedLead.recipient_name_pronunciation || "",
       special_qualities: selectedLead.special_qualities,
       favorite_memory: selectedLead.favorite_memory,
       special_message: selectedLead.special_message || "",
@@ -742,6 +749,53 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const cancelEditingLead = () => {
     setIsEditingLead(false);
     setEditedLead({});
+  };
+
+  // Handler for regenerating lead song
+  const handleRegenerateLeadSong = async () => {
+    if (!selectedLead || !adminPassword) return;
+    
+    setRegenerating(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "regenerate_song",
+          leadId: selectedLead.id,
+          sendOption: regenerateSendOption,
+          scheduledAt: regenerateSendOption === "scheduled" && regenerateScheduledAt 
+            ? regenerateScheduledAt.toISOString() 
+            : null,
+          adminPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to regenerate song");
+      }
+
+      toast({
+        title: "Regeneration Started",
+        description: `Preview for ${selectedLead.recipient_name} is being regenerated. This will take 1-3 minutes.`,
+      });
+
+      setShowRegenerateDialog(false);
+      setRegenerateSendOption("auto");
+      setRegenerateScheduledAt(null);
+      setSelectedLead(null);
+      onRefresh?.();
+    } catch (err) {
+      console.error("Regenerate lead song error:", err);
+      toast({
+        title: "Regeneration Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   const handleConvertToOrder = async () => {
@@ -1272,17 +1326,35 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Recipient</h4>
                     {isEditingLead ? (
-                      <div>
-                        <Label className="text-xs">Name</Label>
-                        <Input
-                          value={editedLead.recipient_name || ""}
-                          onChange={(e) => setEditedLead({ ...editedLead, recipient_name: e.target.value })}
-                        />
-                        <p className="text-sm text-muted-foreground mt-1">{selectedLead.recipient_type}</p>
+                      <div className="space-y-2">
+                        <div>
+                          <Label className="text-xs">Name</Label>
+                          <Input
+                            value={editedLead.recipient_name || ""}
+                            onChange={(e) => setEditedLead({ ...editedLead, recipient_name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Pronunciation Override</Label>
+                          <Input
+                            value={editedLead.recipient_name_pronunciation || ""}
+                            onChange={(e) => setEditedLead({ ...editedLead, recipient_name_pronunciation: e.target.value })}
+                            placeholder="e.g. koree, jhanay, ahleesa"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Spell the name how you want it sung. Avoid dashes or symbols.
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{selectedLead.recipient_type}</p>
                       </div>
                     ) : (
                       <>
                         <p>{selectedLead.recipient_name}</p>
+                        {selectedLead.recipient_name_pronunciation && (
+                          <p className="text-sm text-purple-600">
+                            <span className="text-muted-foreground">Sung as:</span> {selectedLead.recipient_name_pronunciation}
+                          </p>
+                        )}
                         <p className="text-sm text-muted-foreground">{selectedLead.recipient_type}</p>
                       </>
                     )}
@@ -1430,6 +1502,32 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                               </p>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Regenerate Song Button - for leads with existing song */}
+                {selectedLead.preview_song_url && selectedLead.status !== "converted" && (
+                  <div className="border-t pt-4">
+                    <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <Wand2 className="h-5 w-5 text-purple-600 mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="font-medium text-purple-800 dark:text-purple-200">Regenerate Song</h4>
+                          <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
+                            Use when pronunciation needs fixing. This will generate a new preview using current details including any pronunciation override.
+                          </p>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-3 border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-900/50"
+                            onClick={() => setShowRegenerateDialog(true)}
+                          >
+                            <Wand2 className="h-4 w-4 mr-2" />
+                            Regenerate Song
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -1874,6 +1972,116 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Regenerate Song Dialog */}
+      <Dialog open={showRegenerateDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowRegenerateDialog(false);
+          setRegenerateSendOption("auto");
+          setRegenerateScheduledAt(null);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="h-5 w-5 text-purple-600" />
+              Regenerate Preview Song
+            </DialogTitle>
+            <DialogDescription>
+              This will generate a new 45-second preview using the current lead details, including any pronunciation overrides. The existing song will be replaced.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-3">
+              <Label className="font-medium">After generation, how should we send it?</Label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <input
+                    type="radio"
+                    name="leadSendOption"
+                    value="immediate"
+                    checked={regenerateSendOption === "immediate"}
+                    onChange={() => setRegenerateSendOption("immediate")}
+                    className="h-4 w-4"
+                  />
+                  <div>
+                    <p className="font-medium">Send immediately</p>
+                    <p className="text-sm text-muted-foreground">Email sent ~5 minutes after generation</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <input
+                    type="radio"
+                    name="leadSendOption"
+                    value="scheduled"
+                    checked={regenerateSendOption === "scheduled"}
+                    onChange={() => setRegenerateSendOption("scheduled")}
+                    className="h-4 w-4"
+                  />
+                  <div className="flex-1">
+                    <p className="font-medium">Schedule send</p>
+                    <p className="text-sm text-muted-foreground">Pick a specific date & time</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <input
+                    type="radio"
+                    name="leadSendOption"
+                    value="auto"
+                    checked={regenerateSendOption === "auto"}
+                    onChange={() => setRegenerateSendOption("auto")}
+                    className="h-4 w-4"
+                  />
+                  <div>
+                    <p className="font-medium">Default auto-send</p>
+                    <p className="text-sm text-muted-foreground">Email sent 12 hours after generation</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {regenerateSendOption === "scheduled" && (
+              <div className="pt-2">
+                <LeadPreviewTimingPicker
+                  mode={previewTimingMode}
+                  scheduledAt={regenerateScheduledAt}
+                  onModeChange={(mode) => {
+                    setPreviewTimingMode(mode);
+                    if (mode === "auto_24h") {
+                      setRegenerateScheduledAt(new Date(Date.now() + 24 * 60 * 60 * 1000));
+                    }
+                  }}
+                  onScheduledAtChange={setRegenerateScheduledAt}
+                />
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRegenerateDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleRegenerateLeadSong} 
+              disabled={regenerating || (regenerateSendOption === "scheduled" && !regenerateScheduledAt)}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {regenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Regenerate Song
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -71,6 +71,7 @@ export type Database = {
           preview_token: string | null
           quality_score: number | null
           recipient_name: string
+          recipient_name_pronunciation: string | null
           recipient_type: string
           sent_at: string | null
           singer_preference: string
@@ -123,6 +124,7 @@ export type Database = {
           preview_token?: string | null
           quality_score?: number | null
           recipient_name: string
+          recipient_name_pronunciation?: string | null
           recipient_type: string
           sent_at?: string | null
           singer_preference: string
@@ -175,6 +177,7 @@ export type Database = {
           preview_token?: string | null
           quality_score?: number | null
           recipient_name?: string
+          recipient_name_pronunciation?: string | null
           recipient_type?: string
           sent_at?: string | null
           singer_preference?: string
@@ -244,6 +247,7 @@ export type Database = {
           reaction_submitted_at: string | null
           reaction_video_url: string | null
           recipient_name: string
+          recipient_name_pronunciation: string | null
           recipient_type: string
           resend_scheduled_at: string | null
           scheduled_delivery_at: string | null
@@ -302,6 +306,7 @@ export type Database = {
           reaction_submitted_at?: string | null
           reaction_video_url?: string | null
           recipient_name: string
+          recipient_name_pronunciation?: string | null
           recipient_type: string
           resend_scheduled_at?: string | null
           scheduled_delivery_at?: string | null
@@ -360,6 +365,7 @@ export type Database = {
           reaction_submitted_at?: string | null
           reaction_video_url?: string | null
           recipient_name?: string
+          recipient_name_pronunciation?: string | null
           recipient_type?: string
           resend_scheduled_at?: string | null
           scheduled_delivery_at?: string | null

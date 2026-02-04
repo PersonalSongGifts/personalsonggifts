@@ -140,6 +140,7 @@ Deno.serve(async (req) => {
     // Compute inputs hash for change detection
     const inputsHash = await computeInputsHash([
       metadata.recipientName || "",
+      metadata.recipientNamePronunciation || "",
       metadata.specialQualities || "",
       metadata.favoriteMemory || "",
       metadata.genre || "",

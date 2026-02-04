@@ -67,6 +67,7 @@ interface EntityData {
   id: string;
   recipient_type: string;
   recipient_name: string;
+  recipient_name_pronunciation: string | null;
   occasion: string;
   genre: string;
   singer_preference: string;
@@ -82,6 +83,7 @@ function normalizeEntityData(entity: Record<string, unknown>, entityType: "lead"
     id: entity.id as string,
     recipient_type: entity.recipient_type as string,
     recipient_name: entity.recipient_name as string,
+    recipient_name_pronunciation: entity.recipient_name_pronunciation as string | null,
     occasion: entity.occasion as string,
     genre: entity.genre as string,
     singer_preference: entity.singer_preference as string,
@@ -164,16 +166,26 @@ Deno.serve(async (req) => {
       .eq("id", entityId);
 
     // Build user prompt with entity data
+    // If pronunciation override exists, use it ONLY (display name never enters the prompt)
+    const recipientNameForLyrics = entity.recipient_name_pronunciation || entity.recipient_name;
+    
+    const pronunciationInstruction = entity.recipient_name_pronunciation 
+      ? `\n\nIMPORTANT PRONUNCIATION:
+When singing the recipient's name, use exactly: "${entity.recipient_name_pronunciation}"
+This spelling is intentional for correct pronunciation and must be followed.`
+      : "";
+
     const userPrompt = `Write Suno-ready song lyrics only, no explanations.
 
 RecipientType: ${entity.recipient_type}
-RecipientName: ${entity.recipient_name}
+RecipientName: ${recipientNameForLyrics}
 Occasion: ${entity.occasion}
 Genre: ${entity.genre}
 SingerPreference: ${entity.singer_preference}
 SpecialQualities: "${entity.special_qualities}"
 FavoriteMemory: "${entity.favorite_memory}"
 SpecialMessage: "${entity.special_message || ""}"
+${pronunciationInstruction}
 
 Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.

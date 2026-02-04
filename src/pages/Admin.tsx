@@ -35,6 +35,7 @@ interface Order {
   customer_phone: string | null;
   recipient_name: string;
   recipient_type: string;
+  recipient_name_pronunciation: string | null;
   occasion: string;
   genre: string;
   singer_preference: string;
@@ -152,6 +153,11 @@ export default function Admin() {
   const [showResetConfirm, setShowResetConfirm] = useState<"soft" | "full" | null>(null);
   const [regenerateConfirmText, setRegenerateConfirmText] = useState("");
   const [showDebugInfo, setShowDebugInfo] = useState(false);
+  // Regenerate song state
+  const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+  const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
+  const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -503,12 +509,56 @@ export default function Admin() {
       customer_email: selectedOrder.customer_email,
       customer_phone: selectedOrder.customer_phone || "",
       recipient_name: selectedOrder.recipient_name,
+      recipient_name_pronunciation: selectedOrder.recipient_name_pronunciation || "",
       special_qualities: selectedOrder.special_qualities,
       favorite_memory: selectedOrder.favorite_memory,
       special_message: selectedOrder.special_message || "",
       notes: selectedOrder.notes || "",
     });
     setIsEditingOrder(true);
+  };
+
+  // Handler for regenerating song
+  const handleRegenerateSong = async () => {
+    if (!selectedOrder || !password) return;
+    
+    setRegenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "regenerate_song",
+          orderId: selectedOrder.id,
+          sendOption: regenerateSendOption,
+          scheduledAt: regenerateSendOption === "scheduled" && regenerateScheduledAt 
+            ? regenerateScheduledAt.toISOString() 
+            : null,
+          adminPassword: password,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Regeneration Started",
+        description: `Song for ${selectedOrder.recipient_name} is being regenerated. This will take 1-3 minutes.`,
+      });
+
+      setShowRegenerateDialog(false);
+      setRegenerateSendOption("auto");
+      setRegenerateScheduledAt(null);
+      setSelectedOrder(null);
+      fetchOrders();
+    } catch (err) {
+      console.error("Regenerate song error:", err);
+      toast({
+        title: "Regeneration Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   const cancelEditingOrder = () => {
@@ -1269,19 +1319,37 @@ export default function Admin() {
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Recipient</h4>
                     {isEditingOrder ? (
-                      <div>
-                        <Label className="text-xs">Name</Label>
-                        <Input
-                          value={editedOrder.recipient_name || ""}
-                          onChange={(e) => setEditedOrder({ ...editedOrder, recipient_name: e.target.value })}
-                        />
-                        <p className="text-sm text-muted-foreground mt-1">
+                      <div className="space-y-2">
+                        <div>
+                          <Label className="text-xs">Name</Label>
+                          <Input
+                            value={editedOrder.recipient_name || ""}
+                            onChange={(e) => setEditedOrder({ ...editedOrder, recipient_name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Pronunciation Override</Label>
+                          <Input
+                            value={editedOrder.recipient_name_pronunciation || ""}
+                            onChange={(e) => setEditedOrder({ ...editedOrder, recipient_name_pronunciation: e.target.value })}
+                            placeholder="e.g. koree, jhanay, ahleesa"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Spell the name how you want it sung. Avoid dashes or symbols. Use stretched vowels if needed.
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
                           {selectedOrder.recipient_type} • {selectedOrder.relationship}
                         </p>
                       </div>
                     ) : (
                       <>
                         <p>{selectedOrder.recipient_name}</p>
+                        {selectedOrder.recipient_name_pronunciation && (
+                          <p className="text-sm text-purple-600">
+                            <span className="text-muted-foreground">Sung as:</span> {selectedOrder.recipient_name_pronunciation}
+                          </p>
+                        )}
                         <p className="text-sm text-muted-foreground">
                           {selectedOrder.recipient_type} • {selectedOrder.relationship}
                         </p>
@@ -1403,6 +1471,20 @@ export default function Admin() {
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Reset + Regenerate
+                        </Button>
+                      )}
+
+                      {/* Regenerate Song Button (safe - for pronunciation fixes) */}
+                      {selectedOrder.song_url && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => setShowRegenerateDialog(true)}
+                          disabled={regenerating}
+                          className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                        >
+                          <Wand2 className="h-4 w-4 mr-2" />
+                          Regenerate Song
                         </Button>
                       )}
                     </div>
@@ -1835,6 +1917,110 @@ export default function Admin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Regenerate Song Dialog */}
+      <Dialog open={showRegenerateDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowRegenerateDialog(false);
+          setRegenerateSendOption("auto");
+          setRegenerateScheduledAt(null);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="h-5 w-5 text-purple-600" />
+              Regenerate Song
+            </DialogTitle>
+            <DialogDescription>
+              This will generate a new song using the current order details, including any pronunciation overrides. The existing song will be replaced.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-3">
+              <Label className="font-medium">After generation, how should we send it?</Label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <input
+                    type="radio"
+                    name="sendOption"
+                    value="immediate"
+                    checked={regenerateSendOption === "immediate"}
+                    onChange={() => setRegenerateSendOption("immediate")}
+                    className="h-4 w-4"
+                  />
+                  <div>
+                    <p className="font-medium">Send immediately</p>
+                    <p className="text-sm text-muted-foreground">Email sent ~5 minutes after generation</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <input
+                    type="radio"
+                    name="sendOption"
+                    value="scheduled"
+                    checked={regenerateSendOption === "scheduled"}
+                    onChange={() => setRegenerateSendOption("scheduled")}
+                    className="h-4 w-4"
+                  />
+                  <div className="flex-1">
+                    <p className="font-medium">Schedule send</p>
+                    <p className="text-sm text-muted-foreground">Pick a specific date & time</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <input
+                    type="radio"
+                    name="sendOption"
+                    value="auto"
+                    checked={regenerateSendOption === "auto"}
+                    onChange={() => setRegenerateSendOption("auto")}
+                    className="h-4 w-4"
+                  />
+                  <div>
+                    <p className="font-medium">Default auto-send</p>
+                    <p className="text-sm text-muted-foreground">Email sent 12 hours after generation</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {regenerateSendOption === "scheduled" && (
+              <div className="pt-2">
+                <ScheduledDeliveryPicker
+                  expectedDelivery={selectedOrder?.expected_delivery}
+                  value={regenerateScheduledAt}
+                  onChange={setRegenerateScheduledAt}
+                />
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRegenerateDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleRegenerateSong} 
+              disabled={regenerating || (regenerateSendOption === "scheduled" && !regenerateScheduledAt)}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {regenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Regenerate Song
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
