@@ -560,9 +560,34 @@ export default function Admin() {
       fetchOrders();
     } catch (err) {
       console.error("Regenerate song error:", err);
+
+      // Try to extract the underlying response body from Supabase Functions errors
+      // so the toast shows the real backend error (not just "non-2xx").
+      let description = err instanceof Error ? err.message : "Unknown error";
+      try {
+        const ctx = (err && typeof err === "object" && "context" in err)
+          ? (err as { context?: Response }).context
+          : undefined;
+
+        if (ctx) {
+          const payload = await ctx.clone().json().catch(() => null as unknown);
+          if (payload && typeof payload === "object") {
+            const p = payload as Record<string, unknown>;
+            const parts = [
+              typeof p.error === "string" ? p.error : null,
+              typeof p.code === "string" ? `(${p.code})` : null,
+              typeof p.details === "string" ? p.details : null,
+            ].filter(Boolean);
+            if (parts.length) description = parts.join(" ");
+          }
+        }
+      } catch {
+        // ignore parsing errors
+      }
+
       toast({
         title: "Regeneration Failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        description,
         variant: "destructive",
       });
     } finally {
