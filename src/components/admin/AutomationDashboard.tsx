@@ -487,21 +487,38 @@ export function AutomationDashboard({ adminPassword, onRefresh, orders = [] }: A
     }
   };
 
+const BATCH_LIMIT = 9;
+
   const toggleLeadSelection = (leadId: string) => {
     const newSelected = new Set(selectedLeads);
     if (newSelected.has(leadId)) {
       newSelected.delete(leadId);
     } else {
+      if (newSelected.size >= BATCH_LIMIT) {
+        toast({
+          title: "Batch Limit Reached",
+          description: `Maximum ${BATCH_LIMIT} items can be generated at once to avoid rate limits.`,
+          variant: "destructive",
+        });
+        return;
+      }
       newSelected.add(leadId);
     }
     setSelectedLeads(newSelected);
   };
 
   const selectAllLeads = () => {
-    if (selectedLeads.size === eligibleLeads.length) {
+    if (selectedLeads.size === eligibleLeads.length || selectedLeads.size >= BATCH_LIMIT) {
       setSelectedLeads(new Set());
     } else {
-      setSelectedLeads(new Set(eligibleLeads.map(l => l.id)));
+      const limited = eligibleLeads.slice(0, BATCH_LIMIT).map(l => l.id);
+      if (eligibleLeads.length > BATCH_LIMIT) {
+        toast({
+          title: "Selection Limited",
+          description: `Only first ${BATCH_LIMIT} leads selected. Generate in batches to avoid rate limits.`,
+        });
+      }
+      setSelectedLeads(new Set(limited));
     }
   };
 
@@ -830,11 +847,14 @@ export function AutomationDashboard({ adminPassword, onRefresh, orders = [] }: A
             <div className="space-y-3">
               <div className="flex items-center gap-2 pb-2 border-b">
                 <Checkbox
-                  checked={selectedLeads.size === eligibleLeads.length}
+                  checked={selectedLeads.size > 0 && (selectedLeads.size === eligibleLeads.length || selectedLeads.size === BATCH_LIMIT)}
                   onCheckedChange={selectAllLeads}
                 />
                 <span className="text-sm text-muted-foreground">
-                  {selectedLeads.size} of {eligibleLeads.length} selected
+                  {selectedLeads.size} of {Math.min(eligibleLeads.length, BATCH_LIMIT)} selected
+                  {eligibleLeads.length > BATCH_LIMIT && (
+                    <span className="text-amber-600 ml-1">(max {BATCH_LIMIT})</span>
+                  )}
                 </span>
                 {selectedLeads.size > 0 && (
                   <Button
