@@ -1193,6 +1193,8 @@ Deno.serve(async (req) => {
       const sendOption = typeof body.sendOption === "string" ? body.sendOption : "auto";
       const scheduledAt = typeof body.scheduledAt === "string" ? body.scheduledAt : null;
 
+      console.log(`[REGENERATE] Received request - orderId: ${orderId}, leadId: ${leadId}, sendOption: ${sendOption}`);
+
       if (!orderId && !leadId) {
         return new Response(
           JSON.stringify({ error: "Order ID or Lead ID required" }),
@@ -1202,17 +1204,24 @@ Deno.serve(async (req) => {
 
       const entityType = orderId ? "orders" : "leads";
       const entityId = orderId || leadId;
+      
+      console.log(`[REGENERATE] Looking up ${entityType} with id: ${entityId}`);
 
       // Fetch entity to verify it exists
       const { data: entity, error: fetchError } = await supabase
         .from(entityType)
         .select("*")
         .eq("id", entityId)
-        .single();
+        .maybeSingle();
 
-      if (fetchError || !entity) {
+      if (fetchError) {
+        console.error("Fetch entity error:", fetchError);
+        throw fetchError;
+      }
+
+      if (!entity) {
         return new Response(
-          JSON.stringify({ error: `${entityType === "orders" ? "Order" : "Lead"} not found` }),
+          JSON.stringify({ error: `${entityType === "orders" ? "Order" : "Lead"} not found`, entityId }),
           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
