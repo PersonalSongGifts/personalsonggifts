@@ -104,51 +104,106 @@ function normalizeSunoCallback(payload: unknown): CanonicalSunoResponse {
 const MPEG1_L3_BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
 const MPEG2_L3_BITRATES = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
 
-// Detect MP3 bitrate by parsing frame header
+// Calculate expected frame size for validation
+function calculateMp3FrameSize(bitrate: number, sampleRate: number, padding: boolean, isMpeg1: boolean): number {
+  const samplesPerFrame = isMpeg1 ? 1152 : 576;
+  return Math.floor((samplesPerFrame * bitrate * 1000 / 8) / sampleRate) + (padding ? 1 : 0);
+}
+
+// Sample rate lookup tables
+const MPEG1_SAMPLE_RATES = [44100, 48000, 32000, 0];
+const MPEG2_SAMPLE_RATES = [22050, 24000, 16000, 0];
+
+// Detect MP3 bitrate by parsing frame headers with validation
 function detectMp3Bitrate(buffer: Uint8Array): number {
-  // Search first 4KB for MP3 frame sync
-  const searchLimit = Math.min(buffer.length - 4, 4096);
+  // Search first 8KB for MP3 frame sync (skip potential ID3 tags)
+  const searchLimit = Math.min(buffer.length - 4, 8192);
   
-  for (let i = 0; i < searchLimit; i++) {
+  // Collect multiple valid frame detections for consensus
+  const detectedBitrates: number[] = [];
+  
+  for (let i = 0; i < searchLimit && detectedBitrates.length < 5; i++) {
     // Look for frame sync: 0xFF followed by 0xE* or 0xF* (11 bits set)
     if (buffer[i] === 0xFF && (buffer[i + 1] & 0xE0) === 0xE0) {
-      // Parse 4-byte frame header
       const b1 = buffer[i + 1];
       const b2 = buffer[i + 2];
+      const b3 = buffer[i + 3];
       
-      // Extract version (bits 19-20 of header)
+      // Extract header fields
       const versionBits = (b1 >> 3) & 0x03;
-      // Extract layer (bits 17-18)
       const layerBits = (b1 >> 1) & 0x03;
-      // Extract bitrate index (bits 12-15)
       const bitrateIndex = (b2 >> 4) & 0x0F;
+      const sampleRateIndex = (b2 >> 2) & 0x03;
+      const padding = ((b2 >> 1) & 0x01) === 1;
       
-      // Validate: layer must be Layer III (01), bitrate index must be valid
-      if (layerBits !== 0x01 || bitrateIndex === 0 || bitrateIndex === 15) {
+      // Validate: Layer III (01), valid bitrate index, valid sample rate
+      if (layerBits !== 0x01 || bitrateIndex === 0 || bitrateIndex === 15 || sampleRateIndex === 3) {
         continue;
       }
       
-      // MPEG1 = 11, MPEG2 = 10, MPEG2.5 = 00
       const isMpeg1 = versionBits === 0x03;
       const bitrates = isMpeg1 ? MPEG1_L3_BITRATES : MPEG2_L3_BITRATES;
+      const sampleRates = isMpeg1 ? MPEG1_SAMPLE_RATES : MPEG2_SAMPLE_RATES;
       const detectedBitrate = bitrates[bitrateIndex];
+      const sampleRate = sampleRates[sampleRateIndex];
       
-      if (detectedBitrate > 0) {
-        console.log(`[CALLBACK] Detected MP3 bitrate: ${detectedBitrate}kbps (MPEG${isMpeg1 ? '1' : '2'} Layer III)`);
-        return detectedBitrate;
+      if (detectedBitrate > 0 && sampleRate > 0) {
+        // Calculate expected frame size and validate next frame exists
+        const frameSize = calculateMp3FrameSize(detectedBitrate, sampleRate, padding, isMpeg1);
+        const nextFramePos = i + frameSize;
+        
+        // Validate by checking if next frame also has sync word
+        if (nextFramePos + 2 < buffer.length) {
+          if (buffer[nextFramePos] === 0xFF && (buffer[nextFramePos + 1] & 0xE0) === 0xE0) {
+            detectedBitrates.push(detectedBitrate);
+            console.log(`[CALLBACK] Valid frame at ${i}: ${detectedBitrate}kbps, ${sampleRate}Hz, frameSize=${frameSize}`);
+            i = nextFramePos - 1; // Skip to next frame
+          }
+        }
       }
     }
   }
   
-  // Default to 192kbps for high-quality Suno output
-  console.log("[CALLBACK] Could not detect bitrate, defaulting to 192kbps");
-  return 192;
+  if (detectedBitrates.length > 0) {
+    // Use the most common bitrate (handles VBR approximation)
+    const bitrateCount = new Map<number, number>();
+    detectedBitrates.forEach(br => bitrateCount.set(br, (bitrateCount.get(br) || 0) + 1));
+    let maxCount = 0;
+    let bestBitrate = 192;
+    bitrateCount.forEach((count, br) => {
+      if (count > maxCount) {
+        maxCount = count;
+        bestBitrate = br;
+      }
+    });
+    
+    console.log(`[CALLBACK] Detected MP3 bitrate: ${bestBitrate}kbps (from ${detectedBitrates.length} valid frames)`);
+    
+    // Suno outputs high-quality audio - if detected bitrate is suspiciously low, use file-size estimation
+    if (bestBitrate < 128) {
+      console.log(`[CALLBACK] Detected bitrate ${bestBitrate}kbps seems too low for Suno, using file-size estimation`);
+      // Estimate from file size assuming ~3min song
+      const estimatedBitrate = Math.round((buffer.length * 8) / (180 * 1000));
+      if (estimatedBitrate >= 128 && estimatedBitrate <= 320) {
+        console.log(`[CALLBACK] File-size estimated bitrate: ${estimatedBitrate}kbps`);
+        return estimatedBitrate;
+      }
+      console.log(`[CALLBACK] File-size estimate ${estimatedBitrate}kbps out of range, defaulting to 256kbps`);
+      return 256;
+    }
+    
+    return bestBitrate;
+  }
+  
+  // Default to 256kbps for high-quality Suno output (Suno uses high bitrates)
+  console.log("[CALLBACK] Could not detect bitrate, defaulting to 256kbps for Suno");
+  return 256;
 }
 
 // Create a 45-second preview clip with accurate bitrate-based byte calculation
 function createPreviewClip(originalBuffer: Uint8Array, durationSeconds: number = 45): Uint8Array {
   const bitrate = detectMp3Bitrate(originalBuffer);
-  const bytesPerSecond = (bitrate * 1024) / 8; // Convert kbps to bytes/sec
+  const bytesPerSecond = (bitrate * 1000) / 8; // Convert kbps to bytes/sec (1000 not 1024!)
   const previewBytes = Math.min(
     Math.floor(durationSeconds * bytesPerSecond),
     originalBuffer.length
