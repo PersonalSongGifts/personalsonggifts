@@ -1,79 +1,89 @@
 
-# Track Converted Lead Orders
+
+# Update Stats Cards for True Lead Recovery Metrics
 
 ## Summary
 
-Add a dedicated `source` column to the orders table and update the Admin dashboard to filter and display orders by their origin (direct checkout vs lead conversion). This will let you easily identify and analyze which purchases came from the lead recovery funnel.
+Replace the current "Lead Conversions" card (which includes same-session conversions) with **true lead recovery metrics** - only counting orders where a preview was actually sent to the lead before purchase.
 
 ---
 
 ## Current State
 
-Right now, converted leads are identified by parsing the `notes` field:
-- `lead_session:${sessionId}` - automatic conversions
-- `Manual conversion from lead` - manual conversions
+The `StatsCards` component currently shows:
+- **Lead Conversions**: Uses `orders.filter(o => o.source === "lead_conversion")` 
+- This includes ~100 orders where the user simply completed checkout in the same session
 
-This is fragile and not filterable in the UI. You have **8 orders from leads** and **110 direct orders**.
+**What we actually want to track:**
+- True recoveries: leads who received a preview email (`preview_sent_at` is set) AND then converted
 
 ---
 
 ## Solution
 
-### 1. Database: Add `source` Column
+### Update Lead Interface
 
-Add a new column to track order origin:
+Add `preview_sent_at` to the Lead interface in StatsCards to enable filtering:
 
-| Column | Type | Default | Values |
-|--------|------|---------|--------|
-| `source` | text | `'direct'` | `'direct'`, `'lead_conversion'` |
-
-A migration will also backfill existing orders by analyzing the `notes` field.
-
-### 2. Backend: Tag Lead Conversions
-
-Update the functions that create orders from leads:
-
-**Files:**
-- `supabase/functions/process-lead-payment/index.ts` - Set `source: 'lead_conversion'`
-- `supabase/functions/admin-orders/index.ts` (manual conversion) - Set `source: 'lead_conversion'`
-
-### 3. Admin Dashboard: Filter by Source
-
-**File:** `src/pages/Admin.tsx`
-
-Add a new filter dropdown for order source:
-
-```text
-┌───────────────────┐
-│ Source: All       ▼│
-├───────────────────┤
-│ All Orders        │
-│ 🎯 Direct         │ ← From checkout page
-│ 🔄 Converted Leads│ ← From lead recovery
-└───────────────────┘
+```typescript
+interface Lead {
+  id: string;
+  status: string;
+  captured_at: string;
+  preview_played_at?: string | null;
+  preview_play_count?: number | null;
+  preview_sent_at?: string | null;  // NEW
+  order_id?: string | null;          // NEW - to link to orders
+}
 ```
 
-### 4. Stats Cards: Show Breakdown
+### Calculate True Recovery Metrics
 
-**File:** `src/components/admin/StatsCards.tsx`
+```typescript
+// Leads who received a preview email
+const previewsSent = leads.filter((l) => l.preview_sent_at).length;
 
-Add a stat card showing the source breakdown:
+// True recoveries: preview was sent AND lead converted
+const trueRecoveries = leads.filter(
+  (l) => l.preview_sent_at && l.status === "converted"
+);
+const trueRecoveryCount = trueRecoveries.length;
 
-| Card | Display |
-|------|---------|
-| Lead Conversions | `8` (with revenue amount) |
+// Calculate revenue from true recoveries by matching order_ids
+const trueRecoveryOrderIds = new Set(
+  trueRecoveries.map((l) => l.order_id).filter(Boolean)
+);
+const trueRecoveryRevenue = orders
+  .filter((o) => trueRecoveryOrderIds.has(o.id) && o.status !== "cancelled")
+  .reduce((sum, o) => sum + o.price, 0);
 
-### 5. Visual Badge on Order Cards
+// Recovery rate: % of previews sent that converted
+const recoveryRate = previewsSent > 0 
+  ? Math.round((trueRecoveryCount / previewsSent) * 100) 
+  : 0;
 
-Show a "CONVERTED LEAD" badge on order cards for quick identification:
-
-```text
-┌──────────────────────────────────────┐
-│ 🎵 Song for Mom                      │
-│ John Smith • Mother's Day            │
-│ [DELIVERED] [CONVERTED LEAD]         │ ← New badge
-└──────────────────────────────────────┘
+// Play-to-buy rate: of those who played, how many bought
+const leadsWhoPlayedAndConverted = leads.filter(
+  (l) => l.preview_sent_at && l.preview_played_at && l.status === "converted"
+).length;
+const leadsWhoPlayedPreview = leads.filter(
+  (l) => l.preview_sent_at && l.preview_played_at
+).length;
+const playToBuyRate = leadsWhoPlayedPreview > 0 
+  ? Math.round((leadsWhoPlayedAndConverted / leadsWhoPlayedPreview) * 100) 
+  : 0;
 ```
+
+### Updated Stats Cards
+
+Replace/update these cards:
+
+| Card | Value | Description |
+|------|-------|-------------|
+| **Previews Sent** | `62` | Total recovery emails sent |
+| **True Recoveries** | `4` | `$196 revenue` |
+| **Recovery Rate** | `6%` | `4 of 62 previews` |
+| **Play → Buy** | `27%` | `4 of 15 who played` |
 
 ---
 
@@ -81,46 +91,30 @@ Show a "CONVERTED LEAD" badge on order cards for quick identification:
 
 | File | Changes |
 |------|---------|
-| Database migration | Add `source` column, backfill existing orders |
-| `supabase/functions/process-lead-payment/index.ts` | Set `source: 'lead_conversion'` on insert |
-| `supabase/functions/admin-orders/index.ts` | Set `source: 'lead_conversion'` for manual conversions |
-| `src/pages/Admin.tsx` | Add source filter, add badge display |
-| `src/components/admin/StatsCards.tsx` | Add converted leads stat card |
+| `src/components/admin/StatsCards.tsx` | Add `preview_sent_at` and `order_id` to Lead interface, update calculations and cards |
 
 ---
 
-## Technical Details
+## Visual Changes
 
-### Migration SQL
-
-```sql
--- Add source column
-ALTER TABLE orders ADD COLUMN source TEXT DEFAULT 'direct';
-
--- Backfill existing lead conversions
-UPDATE orders 
-SET source = 'lead_conversion' 
-WHERE notes LIKE 'lead_session:%' 
-   OR notes LIKE '%Manual conversion from lead%';
+### Before
+```text
+[Lead Conversions: 8 | $399 revenue]
 ```
 
-### Filter Logic
-
-```typescript
-// New state
-const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
-
-// In filter logic
-if (sourceFilter !== "all" && order.source !== sourceFilter) return false;
+### After
+```text
+[Previews Sent: 62 | of 688 leads]
+[True Recoveries: 4 | $196 revenue]
+[Recovery Rate: 6% | 4 of 62 sent]
+[Play → Buy: 27% | 4 of 15 played]
 ```
 
 ---
 
-## Expected Outcome
+## Technical Notes
 
-After implementation:
-- New dropdown to filter orders by source (Direct vs Converted Leads)
-- Visual badge on converted lead orders
-- Stats card showing conversion revenue
-- Proper tracking for future lead conversions via dedicated column
-- Backfill ensures existing data is correctly categorized
+- The `preview_sent_at` field is already returned by the admin-orders endpoint (visible in LeadsTable interface)
+- The `order_id` field links converted leads to their orders for revenue calculation
+- This approach cleanly separates "marketing recovery funnel" metrics from "same-session checkout" metrics
+
