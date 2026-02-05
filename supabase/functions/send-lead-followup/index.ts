@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Don't Forget ${lead.recipient_name}'s Song! 💝</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Don't Forget ${lead.recipient_name}'s Song!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -124,8 +124,14 @@ Deno.serve(async (req) => {
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          🎵 Listen Again & Complete Order
+          Listen Again & Complete Order
         </a>
+        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
+          <strong>Can't see the button?</strong> Copy this link:<br>
+          <a href="${previewUrl}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
+            ${previewUrl}
+          </a>
+        </p>
       </div>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
@@ -191,12 +197,14 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         sender: { name: senderName, email: senderEmail },
         replyTo: { email: senderEmail, name: senderName },
         to: [{ email: lead.email, name: lead.customer_name }],
-        subject: `💝 Don't forget ${lead.recipient_name}'s song!`,
+        subject: `Don't forget ${lead.recipient_name}'s song - extra $5 off inside`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": lead.id,
+          "X-Priority": "1",
+          "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }

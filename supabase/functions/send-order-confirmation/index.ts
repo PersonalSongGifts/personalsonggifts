@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">🎵 Order Confirmed!</h1>
+      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">Order Confirmed!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
 </html>
     `;
 
-    const textContent = `🎵 Order Confirmed!
+const textContent = `Order Confirmed!
 
 Dear ${customerName || "Valued Customer"},
 
@@ -182,12 +182,14 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
           name: senderName,
         },
         to: [{ email: customerEmail, name: customerName || customerEmail }],
-        subject: `🎵 Order confirmed - ${recipientName}'s song is being created!`,
+        subject: `Order confirmed - ${recipientName}'s song is being created`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": orderId,
+          "X-Priority": "1",
+          "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }
