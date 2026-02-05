@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
       <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">We're Thrilled! Your Song is Ready 💝</h1>
+      <p style="color: #E0E0E0; margin: 10px 0 0 0; font-size: 16px;">A personalized song for ${lead.recipient_name}</p>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -118,13 +119,19 @@ Deno.serve(async (req) => {
       
       <div style="text-align: center; margin: 40px 0;">
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          🎵 Listen to Your Preview
+          Listen to Your Preview
         </a>
+        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
+          <strong>Can't see the button?</strong> Copy this link:<br>
+          <a href="${previewUrl}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
+            ${previewUrl}
+          </a>
+        </p>
       </div>
       
       <div style="background-color: #FFF8E7; border-left: 4px solid #FFA000; padding: 15px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
         <p style="color: #5D4E37; margin: 0; font-size: 15px;">
-          <strong>🎵 50% Off Today Only!</strong> Complete your order now and get the full song at half price.
+          <strong>50% Off Today Only!</strong> Complete your order now and get the full song at half price.
         </p>
       </div>
       
@@ -198,12 +205,14 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         replyTo: { email: senderEmail, name: senderName },
         to: [{ email: effectiveEmail, name: lead.customer_name }],
         ...(ccEmail && ccEmail !== effectiveEmail ? { cc: [{ email: ccEmail }] } : {}),
-        subject: `💝 Your song for ${lead.recipient_name} is ready!`,
+        subject: `Your song for ${lead.recipient_name} is ready`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": lead.id,
+          "X-Priority": "1",
+          "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }

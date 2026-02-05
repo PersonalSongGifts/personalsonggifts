@@ -51,6 +51,12 @@ function getLeadPreviewHtml(previewUrl: string, email: string) {
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
           Listen to Your Preview
         </a>
+        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
+          <strong>Can't see the button?</strong> Copy this link:<br>
+          <a href="${previewUrl}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
+            ${previewUrl}
+          </a>
+        </p>
       </div>
       
       <div style="background-color: #FFF8E7; border-left: 4px solid #FFA000; padding: 15px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
@@ -128,7 +134,7 @@ function getLeadFollowupHtml(previewUrl: string, email: string) {
 <body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">A special offer for ${sampleData.recipientName}'s song</h1>
+      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Don't Forget ${sampleData.recipientName}'s Song!</h1>
     </div>
     
     <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -153,6 +159,12 @@ function getLeadFollowupHtml(previewUrl: string, email: string) {
         <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
           Listen Again & Complete Order
         </a>
+        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
+          <strong>Can't see the button?</strong> Copy this link:<br>
+          <a href="${previewUrl}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
+            ${previewUrl}
+          </a>
+        </p>
       </div>
       
       <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
@@ -366,6 +378,12 @@ function getSongDeliveryHtml(email: string) {
         <a href="${sampleData.songUrl}" style="display: inline-block; background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); color: #FDF8F3; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(30, 58, 95, 0.3);">
           Listen to Your Song
         </a>
+        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
+          <strong>Can't see the button?</strong> Copy this link:<br>
+          <a href="${sampleData.songUrl}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
+            ${sampleData.songUrl}
+          </a>
+        </p>
       </div>
       
       <div style="background-color: #F5F8FB; border-radius: 8px; padding: 20px; margin: 30px 0;">
@@ -539,6 +557,8 @@ Deno.serve(async (req) => {
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
+          "X-Priority": "1",
+          "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:unsubscribe@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }
