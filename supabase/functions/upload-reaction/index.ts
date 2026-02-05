@@ -168,24 +168,66 @@ Deno.serve(async (req) => {
         .from("reactions")
         .getPublicUrl(fileName);
 
-      // Update order with reaction info
-      const { error: updateError } = await supabase
+      // Update order with reaction info - use .select() to verify the update succeeded
+      const { data: updatedOrder, error: updateError } = await supabase
         .from("orders")
         .update({
           reaction_video_url: publicUrl,
           reaction_submitted_at: new Date().toISOString(),
         })
-        .eq("id", orderId);
+        .eq("id", orderId)
+        .select("id, reaction_video_url")
+        .single();
 
-      if (updateError) {
-        console.error("Update error:", updateError);
+      // Verify the update actually happened
+      if (updateError || !updatedOrder || !updatedOrder.reaction_video_url) {
+        console.error(JSON.stringify({
+          event: "reaction_db_update_failed",
+          orderId,
+          fileName,
+          updateError: updateError?.message || "No error but update returned empty",
+          updatedOrder,
+          timestamp: new Date().toISOString(),
+        }));
+        
+        // Rollback: Delete the uploaded file since DB update failed
+        const { error: deleteError } = await supabase.storage
+          .from("reactions")
+          .remove([fileName]);
+        
+        if (deleteError) {
+          console.error(JSON.stringify({
+            event: "reaction_rollback_failed",
+            orderId,
+            fileName,
+            deleteError: deleteError.message,
+            timestamp: new Date().toISOString(),
+          }));
+        } else {
+          console.log(JSON.stringify({
+            event: "reaction_rollback_success",
+            orderId,
+            fileName,
+            timestamp: new Date().toISOString(),
+          }));
+        }
+        
         return new Response(
-          JSON.stringify({ error: "Failed to save reaction info" }),
+          JSON.stringify({ error: "Failed to save reaction - please try again" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      console.log(`Reaction video uploaded for order ${orderId}: ${publicUrl}`);
+      // Success - log structured event
+      console.log(JSON.stringify({
+        event: "reaction_uploaded",
+        orderId,
+        fileName,
+        videoUrl: publicUrl,
+        fileSize: video.size,
+        isResubmission: !!order.reaction_submitted_at,
+        timestamp: new Date().toISOString(),
+      }));
 
       return new Response(
         JSON.stringify({ success: true, videoUrl: publicUrl }),
