@@ -865,6 +865,7 @@ Deno.serve(async (req) => {
           pricing_tier: price >= 79 ? "priority" : "standard",
           status: lead.full_song_url ? "completed" : "paid",
           notes: "Manual conversion from lead (webhook failure)",
+         source: "lead_conversion",
           device_type: "Manual Conversion",
           utm_source: lead.utm_source,
           utm_medium: lead.utm_medium,

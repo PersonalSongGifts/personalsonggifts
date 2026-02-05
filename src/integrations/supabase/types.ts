@@ -271,6 +271,7 @@ export type Database = {
           song_played_at: string | null
           song_title: string | null
           song_url: string | null
+          source: string | null
           special_message: string | null
           special_qualities: string
           status: string
@@ -333,6 +334,7 @@ export type Database = {
           song_played_at?: string | null
           song_title?: string | null
           song_url?: string | null
+          source?: string | null
           special_message?: string | null
           special_qualities: string
           status?: string
@@ -395,6 +397,7 @@ export type Database = {
           song_played_at?: string | null
           song_title?: string | null
           song_url?: string | null
+          source?: string | null
           special_message?: string | null
           special_qualities?: string
           status?: string

@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp } from "lucide-react";
+import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw } from "lucide-react";
 
 interface Order {
   id: string;
@@ -11,6 +11,7 @@ interface Order {
   song_play_count?: number | null;
   song_downloaded_at?: string | null;
   song_download_count?: number | null;
+   source?: string | null;
 }
 
 interface Lead {
@@ -64,6 +65,14 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
   const deliveredOrders = orders.filter((o) => o.status === "delivered");
   const songsPlayed = orders.filter((o) => o.song_played_at).length;
   const songsDownloaded = orders.filter((o) => o.song_downloaded_at).length;
+
+ // Lead conversion stats
+ const convertedLeadOrders = orders.filter((o) => o.source === "lead_conversion");
+ const convertedLeadCount = convertedLeadOrders.length;
+ const convertedLeadRevenue = convertedLeadOrders.reduce((sum, o) => {
+   if (o.status !== "cancelled") return sum + o.price;
+   return sum;
+ }, 0);
 
   const stats = [
     {
@@ -138,10 +147,18 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
       color: "text-rose-600",
       bgColor: "bg-rose-100",
     },
+   {
+     title: "Lead Conversions",
+     value: convertedLeadCount.toString(),
+     description: `$${convertedLeadRevenue.toLocaleString()} revenue`,
+     icon: RefreshCw,
+     color: "text-indigo-600",
+     bgColor: "bg-indigo-100",
+   },
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-4 mb-8">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10 gap-4 mb-8">
       {stats.map((stat) => (
         <Card key={stat.title}>
           <CardContent className="p-4">

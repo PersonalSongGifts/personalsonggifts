@@ -121,6 +121,7 @@ Deno.serve(async (req) => {
         song_url: lead.full_song_url, // Copy the full song URL from lead
         song_title: lead.song_title,
         cover_image_url: lead.cover_image_url,
+       source: "lead_conversion",
         device_type: "Web",
         notes: `lead_session:${sessionId}`,
         status: "delivered", // Immediate delivery since song already exists
