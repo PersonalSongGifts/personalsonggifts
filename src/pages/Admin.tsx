@@ -265,9 +265,58 @@ export default function Admin() {
     setLoading(true);
 
     try {
+      // Step 1: Check if backend functions are deployed via health endpoint
+      try {
+        const healthResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/health`
+        );
+        
+        if (!healthResponse.ok) {
+          const healthStatus = healthResponse.status;
+          if (healthStatus === 404) {
+            toast({
+              title: "Backend Not Deployed",
+              description: "Edge functions are not deployed yet. Please wait a few minutes and try again.",
+              variant: "destructive",
+            });
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (healthErr) {
+        console.warn("Health check failed (might be deploying):", healthErr);
+        // Continue anyway - the health endpoint might not be deployed yet
+      }
+
+      // Step 2: Try actual login
       const { data, error } = await listOrders("all");
 
-      if (error) throw error;
+      if (error) {
+        // Check for specific error types
+        const errorMessage = error.message || String(error);
+        
+        if (errorMessage.includes("404") || errorMessage.includes("not found") || errorMessage.includes("NOT_FOUND")) {
+          toast({
+            title: "Backend Functions Not Deployed",
+            description: "The admin-orders function is not deployed. Please wait a few minutes for deployment to complete.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+        
+        if (errorMessage.includes("Failed to send") || errorMessage.includes("fetch")) {
+          toast({
+            title: "Backend Unavailable",
+            description: "Could not reach backend functions. They may be deploying. Try again in 2-3 minutes.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+        
+        throw error;
+      }
       
       setIsAuthenticated(true);
       setOrders(data.orders || []);
@@ -285,11 +334,20 @@ export default function Admin() {
             ? err
             : "Request failed";
 
-      toast({
-        title: "Authentication Failed",
-        description: `${message} (check password + try hard refresh)`,
-        variant: "destructive",
-      });
+      // Check if it's a 401 (actual wrong password) vs other errors
+      if (message.includes("401") || message.includes("Unauthorized")) {
+        toast({
+          title: "Wrong Password",
+          description: "The admin password is incorrect. Please try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Login Failed",
+          description: `${message} (check console for details)`,
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }

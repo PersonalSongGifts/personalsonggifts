@@ -59,3 +59,6 @@ verify_jwt = false
 
 [functions.automation-get-settings]
 verify_jwt = false
+
+[functions.health]
+verify_jwt = false
