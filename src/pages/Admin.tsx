@@ -57,6 +57,7 @@ interface Order {
   delivered_at: string | null;
   created_at: string;
   notes: string | null;
+   source: string | null;
   reaction_video_url: string | null;
   reaction_submitted_at: string | null;
   scheduled_delivery_at: string | null;
@@ -162,6 +163,8 @@ export default function Admin() {
   const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
   const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+ // Source filter for direct vs lead conversion orders
+ const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -913,6 +916,16 @@ export default function Admin() {
                   <SelectItem value="all">All</SelectItem>
                 </SelectContent>
               </Select>
+             <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as "all" | "direct" | "lead_conversion")}>
+               <SelectTrigger className="w-44">
+                 <SelectValue placeholder="Source" />
+               </SelectTrigger>
+               <SelectContent>
+                 <SelectItem value="all">All Sources</SelectItem>
+                 <SelectItem value="direct">🎯 Direct</SelectItem>
+                 <SelectItem value="lead_conversion">🔄 Converted Leads</SelectItem>
+               </SelectContent>
+             </Select>
               <Input
                 placeholder="Search orders..."
                 value={orderSearch}
@@ -992,6 +1005,12 @@ export default function Admin() {
                   if (order.status !== statusFilter) return false;
                 }
                 
+               // Source filter
+               if (sourceFilter !== "all") {
+                 const orderSource = order.source || "direct";
+                 if (orderSource !== sourceFilter) return false;
+               }
+               
                 // Then apply search filter
                 if (!orderSearch.trim()) return true;
                 const searchLower = orderSearch.toLowerCase();
@@ -1056,6 +1075,12 @@ export default function Admin() {
                             <Badge variant="outline">
                               {order.pricing_tier === "priority" ? "Priority" : "Standard"}
                             </Badge>
+                           {/* Lead conversion badge */}
+                           {order.source === "lead_conversion" && (
+                             <Badge variant="outline" className="border-indigo-300 text-indigo-600">
+                               🔄 Converted Lead
+                             </Badge>
+                           )}
                             {/* Automation status badge */}
                             {order.automation_status && (() => {
                               // Check if order is stuck (audio_generating for >5 min)
