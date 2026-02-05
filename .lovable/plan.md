@@ -1,120 +1,121 @@
 
 
-# Update Stats Cards for True Lead Recovery Metrics
+# Fix Reaction Video & Improve Upload Function
 
 ## Summary
 
-Replace the current "Lead Conversions" card (which includes same-session conversions) with **true lead recovery metrics** - only counting orders where a preview was actually sent to the lead before purchase.
+Fix the existing test video by updating the database record for order `046b88ff-7409-4518-a951-27dd7aad085f`, then improve the upload-reaction edge function to verify database updates succeed before returning success.
 
 ---
 
-## Current State
+## Part 1: Fix Existing Test Video
 
-The `StatsCards` component currently shows:
-- **Lead Conversions**: Uses `orders.filter(o => o.source === "lead_conversion")` 
-- This includes ~100 orders where the user simply completed checkout in the same session
+Run a database update to link the orphaned video file to its order:
 
-**What we actually want to track:**
-- True recoveries: leads who received a preview email (`preview_sent_at` is set) AND then converted
-
----
-
-## Solution
-
-### Update Lead Interface
-
-Add `preview_sent_at` to the Lead interface in StatsCards to enable filtering:
-
-```typescript
-interface Lead {
-  id: string;
-  status: string;
-  captured_at: string;
-  preview_played_at?: string | null;
-  preview_play_count?: number | null;
-  preview_sent_at?: string | null;  // NEW
-  order_id?: string | null;          // NEW - to link to orders
-}
+```sql
+UPDATE orders 
+SET 
+  reaction_video_url = 'https://kjyhxodusvodkknmgmra.supabase.co/storage/v1/object/public/reactions/046b88ff-7409-4518-a951-27dd7aad085f-reaction.mp4',
+  reaction_submitted_at = '2025-01-30T00:00:00Z'
+WHERE id = '046b88ff-7409-4518-a951-27dd7aad085f';
 ```
 
-### Calculate True Recovery Metrics
+---
 
-```typescript
-// Leads who received a preview email
-const previewsSent = leads.filter((l) => l.preview_sent_at).length;
+## Part 2: Improve Edge Function
 
-// True recoveries: preview was sent AND lead converted
-const trueRecoveries = leads.filter(
-  (l) => l.preview_sent_at && l.status === "converted"
-);
-const trueRecoveryCount = trueRecoveries.length;
+### Current Issues
 
-// Calculate revenue from true recoveries by matching order_ids
-const trueRecoveryOrderIds = new Set(
-  trueRecoveries.map((l) => l.order_id).filter(Boolean)
-);
-const trueRecoveryRevenue = orders
-  .filter((o) => trueRecoveryOrderIds.has(o.id) && o.status !== "cancelled")
-  .reduce((sum, o) => sum + o.price, 0);
+1. **No verification after update** - Function returns success without confirming the database update worked
+2. **Silent failures** - If RLS or permissions block the update, user sees success but data isn't saved
+3. **Orphaned files** - Upload succeeds but database can fail, leaving files without records
 
-// Recovery rate: % of previews sent that converted
-const recoveryRate = previewsSent > 0 
-  ? Math.round((trueRecoveryCount / previewsSent) * 100) 
-  : 0;
+### Improvements
 
-// Play-to-buy rate: of those who played, how many bought
-const leadsWhoPlayedAndConverted = leads.filter(
-  (l) => l.preview_sent_at && l.preview_played_at && l.status === "converted"
-).length;
-const leadsWhoPlayedPreview = leads.filter(
-  (l) => l.preview_sent_at && l.preview_played_at
-).length;
-const playToBuyRate = leadsWhoPlayedPreview > 0 
-  ? Math.round((leadsWhoPlayedAndConverted / leadsWhoPlayedPreview) * 100) 
-  : 0;
+| Change | Before | After |
+|--------|--------|-------|
+| Update verification | No check | Verify rows affected > 0 |
+| Error detail | Generic message | Include actual error context in logs |
+| Rollback on failure | None | Delete uploaded file if DB update fails |
+| Logging | Basic | Detailed structured logging |
+
+### Updated Code Flow
+
+```text
+1. Validate input & security checks
+2. Verify order ownership
+3. Upload video to storage
+4. Update order record
+5. ✅ VERIFY update succeeded (check data returned)
+6. ❌ If update failed → Delete uploaded file → Return error
+7. Return success with URL
 ```
-
-### Updated Stats Cards
-
-Replace/update these cards:
-
-| Card | Value | Description |
-|------|-------|-------------|
-| **Previews Sent** | `62` | Total recovery emails sent |
-| **True Recoveries** | `4` | `$196 revenue` |
-| **Recovery Rate** | `6%` | `4 of 62 previews` |
-| **Play → Buy** | `27%` | `4 of 15 who played` |
 
 ---
 
-## Files to Modify
+## File Changes
 
 | File | Changes |
 |------|---------|
-| `src/components/admin/StatsCards.tsx` | Add `preview_sent_at` and `order_id` to Lead interface, update calculations and cards |
+| Database | INSERT statement to fix existing order |
+| `supabase/functions/upload-reaction/index.ts` | Add update verification, rollback logic, improved logging |
 
 ---
 
-## Visual Changes
+## Technical Details
 
-### Before
-```text
-[Lead Conversions: 8 | $399 revenue]
+### Verification Logic
+
+```typescript
+// Update order with reaction info - use .select() to verify
+const { data: updatedOrder, error: updateError } = await supabase
+  .from("orders")
+  .update({
+    reaction_video_url: publicUrl,
+    reaction_submitted_at: new Date().toISOString(),
+  })
+  .eq("id", orderId)
+  .select("id, reaction_video_url")
+  .single();
+
+// Verify the update actually happened
+if (updateError || !updatedOrder || !updatedOrder.reaction_video_url) {
+  console.error("Database update failed:", { 
+    orderId, 
+    updateError, 
+    updatedOrder 
+  });
+  
+  // Rollback: Delete the uploaded file since DB update failed
+  await supabase.storage.from("reactions").remove([fileName]);
+  console.log(`Rolled back uploaded file: ${fileName}`);
+  
+  return new Response(
+    JSON.stringify({ error: "Failed to save reaction - please try again" }),
+    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
 ```
 
-### After
-```text
-[Previews Sent: 62 | of 688 leads]
-[True Recoveries: 4 | $196 revenue]
-[Recovery Rate: 6% | 4 of 62 sent]
-[Play → Buy: 27% | 4 of 15 played]
+### Structured Logging
+
+```typescript
+console.log(JSON.stringify({
+  event: "reaction_uploaded",
+  orderId,
+  fileName,
+  videoUrl: publicUrl,
+  fileSize: video.size,
+  timestamp: new Date().toISOString(),
+}));
 ```
 
 ---
 
-## Technical Notes
+## Expected Outcome
 
-- The `preview_sent_at` field is already returned by the admin-orders endpoint (visible in LeadsTable interface)
-- The `order_id` field links converted leads to their orders for revenue calculation
-- This approach cleanly separates "marketing recovery funnel" metrics from "same-session checkout" metrics
+- ✅ Existing test video linked to order and visible in admin
+- ✅ Future uploads verified before returning success
+- ✅ Failed database updates trigger file cleanup
+- ✅ Better error messages and logging for debugging
 
