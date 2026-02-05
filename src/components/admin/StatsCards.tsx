@@ -20,6 +20,8 @@ interface Lead {
   captured_at: string;
   preview_played_at?: string | null;
   preview_play_count?: number | null;
+  preview_sent_at?: string | null;
+  order_id?: string | null;
 }
 
 interface StatsCardsProps {
@@ -49,30 +51,49 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
     ["paid", "in_progress"].includes(o.status)
   ).length;
 
-  // Lead stats
+  // Lead stats (basic counts)
   const totalLeads = leads.length;
   const unconvertedLeads = leads.filter((l) => l.status === "lead").length;
   const convertedLeads = leads.filter((l) => l.status === "converted").length;
 
-  // Engagement stats
-  const leadsWhoPlayed = leads.filter((l) => l.preview_played_at).length;
-  const playedLeadsWhoConverted = leads.filter((l) => l.preview_played_at && l.status === "converted").length;
-  const playToConvertRate = leadsWhoPlayed > 0 
-    ? Math.round((playedLeadsWhoConverted / leadsWhoPlayed) * 100) 
+  // TRUE LEAD RECOVERY METRICS
+  // Leads who received a preview email (recovery funnel)
+  const previewsSent = leads.filter((l) => l.preview_sent_at).length;
+
+  // True recoveries: preview was sent AND lead converted
+  const trueRecoveries = leads.filter(
+    (l) => l.preview_sent_at && l.status === "converted"
+  );
+  const trueRecoveryCount = trueRecoveries.length;
+
+  // Calculate revenue from true recoveries by matching order_ids
+  const trueRecoveryOrderIds = new Set(
+    trueRecoveries.map((l) => l.order_id).filter(Boolean)
+  );
+  const trueRecoveryRevenue = orders
+    .filter((o) => trueRecoveryOrderIds.has(o.id) && o.status !== "cancelled")
+    .reduce((sum, o) => sum + o.price, 0);
+
+  // Recovery rate: % of previews sent that converted
+  const recoveryRate = previewsSent > 0 
+    ? Math.round((trueRecoveryCount / previewsSent) * 100) 
+    : 0;
+
+  // Play-to-buy rate: of those who played the preview, how many bought
+  const leadsWhoPlayedAndConverted = leads.filter(
+    (l) => l.preview_sent_at && l.preview_played_at && l.status === "converted"
+  ).length;
+  const leadsWhoPlayedPreview = leads.filter(
+    (l) => l.preview_sent_at && l.preview_played_at
+  ).length;
+  const playToBuyRate = leadsWhoPlayedPreview > 0 
+    ? Math.round((leadsWhoPlayedAndConverted / leadsWhoPlayedPreview) * 100) 
     : 0;
 
   // Order engagement
   const deliveredOrders = orders.filter((o) => o.status === "delivered");
   const songsPlayed = orders.filter((o) => o.song_played_at).length;
   const songsDownloaded = orders.filter((o) => o.song_downloaded_at).length;
-
- // Lead conversion stats
- const convertedLeadOrders = orders.filter((o) => o.source === "lead_conversion");
- const convertedLeadCount = convertedLeadOrders.length;
- const convertedLeadRevenue = convertedLeadOrders.reduce((sum, o) => {
-   if (o.status !== "cancelled") return sum + o.price;
-   return sum;
- }, 0);
 
   const stats = [
     {
@@ -116,20 +137,36 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
       bgColor: "bg-amber-100",
     },
     {
-      title: "Previews Played",
-      value: leadsWhoPlayed.toString(),
-      description: `${leadsWhoPlayed} of ${totalLeads} leads`,
-      icon: Play,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
+      title: "Previews Sent",
+      value: previewsSent.toString(),
+      description: `of ${totalLeads} leads`,
+      icon: Users,
+      color: "text-violet-600",
+      bgColor: "bg-violet-100",
     },
     {
-      title: "Play → Convert",
-      value: `${playToConvertRate}%`,
-      description: `${playedLeadsWhoConverted} of ${leadsWhoPlayed} who played`,
+      title: "True Recoveries",
+      value: trueRecoveryCount.toString(),
+      description: `$${trueRecoveryRevenue.toLocaleString()} revenue`,
       icon: TrendingUp,
       color: "text-emerald-600",
       bgColor: "bg-emerald-100",
+    },
+    {
+      title: "Recovery Rate",
+      value: `${recoveryRate}%`,
+      description: `${trueRecoveryCount} of ${previewsSent} sent`,
+      icon: RefreshCw,
+      color: "text-teal-600",
+      bgColor: "bg-teal-100",
+    },
+    {
+      title: "Play → Buy",
+      value: `${playToBuyRate}%`,
+      description: `${leadsWhoPlayedAndConverted} of ${leadsWhoPlayedPreview} played`,
+      icon: Play,
+      color: "text-purple-600",
+      bgColor: "bg-purple-100",
     },
     {
       title: "Songs Played",
@@ -147,14 +184,6 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
       color: "text-rose-600",
       bgColor: "bg-rose-100",
     },
-   {
-     title: "Lead Conversions",
-     value: convertedLeadCount.toString(),
-     description: `$${convertedLeadRevenue.toLocaleString()} revenue`,
-     icon: RefreshCw,
-     color: "text-indigo-600",
-     bgColor: "bg-indigo-100",
-   },
   ];
 
   return (
