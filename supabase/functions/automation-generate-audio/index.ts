@@ -104,33 +104,50 @@ Deno.serve(async (req) => {
 
     // Match style based on genre and singer preference
     const genreMap: Record<string, string> = {
-      "Pop": "pop",
-      "Country": "country",
-      "Rock": "rock",
-      "R&B": "r&b",
-      "Jazz": "jazz",
-      "Acoustic": "acoustic",
-      "Rap / Hip-Hop": "hip-hop",
-      "Hip-Hop": "hip-hop",
-      "Indie": "indie-folk",
-      "Indie Folk": "indie-folk",
-      "Latin": "latin-pop",
-      "Latin Pop": "latin-pop",
-      "K-Pop": "k-pop",
-      "EDM / Dance": "edm",
-      "EDM": "edm",
+       // Database slug format (primary)
+       "pop": "pop",
+       "country": "country",
+       "rock": "rock",
+       "rnb": "r&b",
+       "jazz": "jazz",
+       "acoustic": "acoustic",
+       "rap-hip-hop": "hip-hop",
+       "indie": "indie-folk",
+       "latin": "latin-pop",
+       "kpop": "k-pop",
+       "edm-dance": "edm",
+       // Display label format (backward compatibility)
+       "Pop": "pop",
+       "Country": "country",
+       "Rock": "rock",
+       "R&B": "r&b",
+       "Jazz": "jazz",
+       "Acoustic": "acoustic",
+       "Rap / Hip-Hop": "hip-hop",
+       "Hip-Hop": "hip-hop",
+       "Indie": "indie-folk",
+       "Indie Folk": "indie-folk",
+       "Latin": "latin-pop",
+       "Latin Pop": "latin-pop",
+       "K-Pop": "k-pop",
+       "EDM / Dance": "edm",
+       "EDM": "edm",
     };
 
-    const normalizedGenre = genreMap[entity.genre] || "pop";
+     const normalizedGenre = genreMap[entity.genre];
+     if (!normalizedGenre) {
+       console.warn(`[AUDIO] Unknown genre "${entity.genre}", falling back to pop`);
+     }
+     const finalGenre = normalizedGenre || "pop";
     const vocalGender = entity.singer_preference?.toLowerCase() === "female" ? "female" : "male";
 
-    console.log(`[AUDIO] Looking for style: genre=${normalizedGenre}, vocal=${vocalGender}`);
+     console.log(`[AUDIO] Looking for style: genre=${finalGenre}, vocal=${vocalGender}`);
 
     // Fetch matching style
     const { data: style, error: styleError } = await supabase
       .from("song_styles")
       .select("*")
-      .eq("genre_match", normalizedGenre)
+       .eq("genre_match", finalGenre)
       .eq("vocal_gender", vocalGender)
       .eq("is_active", true)
       .limit(1)
@@ -139,13 +156,13 @@ Deno.serve(async (req) => {
     let selectedStyle = style;
 
     if (styleError || !style) {
-      console.log(`[AUDIO] No exact style match for ${normalizedGenre}/${vocalGender}, trying fallback`);
+       console.log(`[AUDIO] No exact style match for ${finalGenre}/${vocalGender}, trying fallback`);
       
       // Fallback to any active style with matching genre
       const { data: fallbackStyle } = await supabase
         .from("song_styles")
         .select("*")
-        .eq("genre_match", normalizedGenre)
+         .eq("genre_match", finalGenre)
         .eq("is_active", true)
         .limit(1)
         .single();
