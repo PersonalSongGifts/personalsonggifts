@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Play, Pause, Music, Lock, Check } from "lucide-react";
+import { Play, Pause, Music, Lock, Check, Loader2, AlertCircle, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface PreviewData {
@@ -28,6 +28,9 @@ export default function SongPreview() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(45);
   const [purchasing, setPurchasing] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const hasTrackedPlay = useRef(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
@@ -73,9 +76,42 @@ export default function SongPreview() {
     fetchPreview();
   }, [token]);
 
+  // Track playback error for diagnostics
+  const trackPlaybackError = (errorName: string, errorMessage: string) => {
+    if (!token || !previewData?.previewUrl) return;
+    
+    let songUrlHost = "";
+    try {
+      songUrlHost = new URL(previewData.previewUrl).host;
+    } catch {
+      songUrlHost = "invalid-url";
+    }
+    
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "lead",
+        action: "error",
+        token,
+        errorDetails: {
+          errorName,
+          errorMessage,
+          userAgent: navigator.userAgent,
+          online: navigator.onLine,
+          songUrlHost,
+        },
+      }),
+    }).catch(console.error);
+  };
+
   useEffect(() => {
     if (previewData?.previewUrl) {
       audioRef.current = new Audio(previewData.previewUrl);
+      
+      // Required for iOS Safari
+      audioRef.current.setAttribute("playsinline", "true");
+      audioRef.current.crossOrigin = "anonymous";
       
       audioRef.current.addEventListener("loadedmetadata", () => {
         setDuration(audioRef.current?.duration || 45);
@@ -87,7 +123,57 @@ export default function SongPreview() {
 
       audioRef.current.addEventListener("ended", () => {
         setIsPlaying(false);
+        setIsBuffering(false);
         setCurrentTime(0);
+      });
+      
+      audioRef.current.addEventListener("playing", () => {
+        setIsPlaying(true);
+        setIsBuffering(false);
+      });
+      
+      audioRef.current.addEventListener("pause", () => {
+        setIsPlaying(false);
+        setIsBuffering(false);
+      });
+      
+      audioRef.current.addEventListener("waiting", () => {
+        setIsBuffering(true);
+      });
+      
+      audioRef.current.addEventListener("canplay", () => {
+        setIsBuffering(false);
+      });
+      
+      audioRef.current.addEventListener("error", (e) => {
+        const audio = e.target as HTMLAudioElement;
+        const error = audio.error;
+        
+        let message = "Failed to load preview";
+        let errorCode = "UNKNOWN";
+        
+        if (error) {
+          switch (error.code) {
+            case MediaError.MEDIA_ERR_NETWORK:
+              message = "Network error loading audio";
+              errorCode = "MEDIA_ERR_NETWORK";
+              break;
+            case MediaError.MEDIA_ERR_DECODE:
+              message = "Audio file is corrupted";
+              errorCode = "MEDIA_ERR_DECODE";
+              break;
+            case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+              message = "Audio format not supported";
+              errorCode = "MEDIA_ERR_SRC_NOT_SUPPORTED";
+              break;
+            default:
+              errorCode = `MEDIA_ERR_${error.code}`;
+          }
+        }
+        
+        setAudioError(message);
+        setIsBuffering(false);
+        trackPlaybackError("MediaError", `${errorCode}: ${message}`);
       });
 
       return () => {
@@ -97,23 +183,59 @@ export default function SongPreview() {
     }
   }, [previewData?.previewUrl]);
 
-  const togglePlayback = () => {
+  const togglePlayback = async () => {
     if (!audioRef.current) return;
 
     if (isPlaying) {
       audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-      // Track play event (fire-and-forget)
-      if (token) {
+      return; // State will update via event listener
+    }
+    
+    setIsBuffering(true);
+    setAudioError(null);
+    
+    try {
+      await audioRef.current.play();
+      // Track play event only once per session (fire-and-forget)
+      if (token && !hasTrackedPlay.current) {
+        hasTrackedPlay.current = true;
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "lead", action: "play", token }),
         }).catch((err) => console.error("Failed to track play:", err));
       }
+    } catch (error) {
+      const err = error as Error;
+      console.error("Playback failed:", err);
+      
+      // Track the error for diagnostics
+      trackPlaybackError(err.name || "UnknownError", err.message || "Unknown playback error");
+      
+      // User-friendly messages
+      if (err.name === "NotAllowedError") {
+        toast({
+          title: "Tap again",
+          description: "Tap the play button to start playback",
+        });
+      } else if (err.name === "NotSupportedError") {
+        toast({
+          title: "Format not supported",
+          description: "This audio format is not supported on your device",
+          variant: "destructive",
+        });
+        setAudioError("Audio format not supported on your device");
+      } else {
+        toast({
+          title: "Playback failed",
+          description: "Unable to play the preview. Please try again.",
+          variant: "destructive",
+        });
+        setAudioError("Playback failed. Please try again.");
+      }
+      
+      setIsBuffering(false);
     }
-    setIsPlaying(!isPlaying);
   };
 
   const formatTime = (seconds: number) => {
@@ -230,13 +352,24 @@ export default function SongPreview() {
 
             {/* Playback Controls */}
             <div className="space-y-4">
+              {/* Audio Error Fallback */}
+              {audioError && (
+                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-center">
+                  <AlertCircle className="h-5 w-5 text-destructive mx-auto mb-1" />
+                  <p className="text-sm text-destructive">{audioError}</p>
+                </div>
+              )}
+
               <div className="flex items-center justify-center gap-4">
                 <Button
                   size="lg"
                   onClick={togglePlayback}
                   className="h-16 w-16 rounded-full"
+                  disabled={isBuffering}
                 >
-                  {isPlaying ? (
+                  {isBuffering ? (
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  ) : isPlaying ? (
                     <Pause className="h-8 w-8" />
                   ) : (
                     <Play className="h-8 w-8 ml-1" />

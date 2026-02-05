@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube } from "lucide-react";
+import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,6 +49,9 @@ const SongPlayer = () => {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const hasTrackedPlay = useRef(false);
 
   useEffect(() => {
     const fetchSongData = async () => {
@@ -76,6 +79,67 @@ const SongPlayer = () => {
     fetchSongData();
   }, [orderId]);
 
+  // Track playback error for diagnostics
+  const trackPlaybackError = (errorName: string, errorMessage: string) => {
+    if (!orderId || !songData?.song_url) return;
+    
+    let songUrlHost = "";
+    try {
+      songUrlHost = new URL(songData.song_url).host;
+    } catch {
+      songUrlHost = "invalid-url";
+    }
+    
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "order",
+        action: "error",
+        orderId,
+        errorDetails: {
+          errorName,
+          errorMessage,
+          userAgent: navigator.userAgent,
+          online: navigator.onLine,
+          songUrlHost,
+        },
+      }),
+    }).catch(console.error);
+  };
+
+  // Handle audio element errors
+  const handleAudioError = (e: Event) => {
+    const audio = e.target as HTMLAudioElement;
+    const error = audio.error;
+    
+    let message = "Failed to load audio";
+    let errorCode = "UNKNOWN";
+    
+    if (error) {
+      switch (error.code) {
+        case MediaError.MEDIA_ERR_NETWORK:
+          message = "Network error loading audio";
+          errorCode = "MEDIA_ERR_NETWORK";
+          break;
+        case MediaError.MEDIA_ERR_DECODE:
+          message = "Audio file is corrupted";
+          errorCode = "MEDIA_ERR_DECODE";
+          break;
+        case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          message = "Audio format not supported";
+          errorCode = "MEDIA_ERR_SRC_NOT_SUPPORTED";
+          break;
+        default:
+          errorCode = `MEDIA_ERR_${error.code}`;
+      }
+    }
+    
+    setAudioError(message);
+    setIsBuffering(false);
+    trackPlaybackError("MediaError", `${errorCode}: ${message}`);
+  };
+
   // Audio event handlers
   useEffect(() => {
     const audio = audioRef.current;
@@ -83,35 +147,84 @@ const SongPlayer = () => {
 
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
     const handleLoadedMetadata = () => setDuration(audio.duration);
-    const handleEnded = () => setIsPlaying(false);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setIsBuffering(false);
+    };
+    const handlePlaying = () => {
+      setIsPlaying(true);
+      setIsBuffering(false);
+    };
+    const handlePause = () => {
+      setIsPlaying(false);
+      setIsBuffering(false);
+    };
+    const handleWaiting = () => setIsBuffering(true);
+    const handleCanPlay = () => setIsBuffering(false);
 
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
     audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("waiting", handleWaiting);
+    audio.addEventListener("canplay", handleCanPlay);
+    audio.addEventListener("error", handleAudioError);
 
     return () => {
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("waiting", handleWaiting);
+      audio.removeEventListener("canplay", handleCanPlay);
+      audio.removeEventListener("error", handleAudioError);
     };
   }, [songData]);
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     if (!audioRef.current) return;
+    
     if (isPlaying) {
       audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-      // Track play event (fire-and-forget)
-      if (orderId) {
+      return; // State will update via event listener
+    }
+    
+    setIsBuffering(true);
+    setAudioError(null);
+    
+    try {
+      await audioRef.current.play();
+      // Track play event only once per session (fire-and-forget)
+      if (orderId && !hasTrackedPlay.current) {
+        hasTrackedPlay.current = true;
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "order", action: "play", orderId }),
         }).catch((err) => console.error("Failed to track play:", err));
       }
+    } catch (error) {
+      const err = error as Error;
+      console.error("Playback failed:", err);
+      
+      // Track the error for diagnostics
+      trackPlaybackError(err.name || "UnknownError", err.message || "Unknown playback error");
+      
+      // User-friendly messages
+      if (err.name === "NotAllowedError") {
+        toast.error("Tap the play button to start playback");
+      } else if (err.name === "NotSupportedError") {
+        toast.error("Audio format not supported. Try downloading instead.");
+        setAudioError("Audio format not supported on your device");
+      } else {
+        toast.error("Playback failed. Try downloading the song.");
+        setAudioError("Playback failed. Try downloading the song.");
+      }
+      
+      setIsBuffering(false);
     }
-    setIsPlaying(!isPlaying);
   };
 
   const handleSeek = (value: number[]) => {
@@ -261,9 +374,27 @@ const SongPlayer = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
       {/* Hidden audio element */}
-      <audio ref={audioRef} src={songData.song_url} preload="metadata" />
+      <audio 
+        ref={audioRef} 
+        src={songData.song_url} 
+        preload="metadata"
+        playsInline
+        crossOrigin="anonymous"
+      />
 
       <div className="container max-w-2xl mx-auto px-4 py-8 md:py-16">
+        {/* Audio Error Fallback */}
+        {audioError && (
+          <div className="max-w-md mx-auto mb-6 bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-center">
+            <AlertCircle className="h-6 w-6 text-destructive mx-auto mb-2" />
+            <p className="text-sm text-destructive mb-3">{audioError}</p>
+            <Button onClick={downloadSong} className="gap-2">
+              <Download className="h-4 w-4" />
+              Download Song Instead
+            </Button>
+          </div>
+        )}
+
         {/* Album Art */}
         <div className="relative aspect-square max-w-md mx-auto mb-8 rounded-2xl overflow-hidden shadow-2xl">
           <img
@@ -326,8 +457,11 @@ const SongPlayer = () => {
                 size="lg"
                 onClick={togglePlay}
                 className="w-16 h-16 rounded-full"
+                disabled={isBuffering}
               >
-                {isPlaying ? (
+                {isBuffering ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : isPlaying ? (
                   <Pause className="h-6 w-6" />
                 ) : (
                   <Play className="h-6 w-6 ml-1" />
