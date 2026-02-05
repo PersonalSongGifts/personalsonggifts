@@ -1,75 +1,78 @@
 
-# Fix Genre Mapping Mismatch in Audio Generation
+# Track Converted Lead Orders
 
-## Problem Identified
+## Summary
 
-The Jazz song for order AE6625B2 used a **Pop style** instead of Jazz because:
-
-1. Database stores genres as lowercase slugs: `jazz`, `rnb`, `rap-hip-hop`, `edm-dance`
-2. The `genreMap` in `automation-generate-audio` expects display labels: `Jazz`, `R&B`, `Rap / Hip-Hop`
-3. When lookup fails, code falls back to `pop` style
-
-This affects **most genres** - only `Pop`, `Country`, `Rock`, and `Acoustic` work correctly because their slug equals their display label (case-insensitive).
+Add a dedicated `source` column to the orders table and update the Admin dashboard to filter and display orders by their origin (direct checkout vs lead conversion). This will let you easily identify and analyze which purchases came from the lead recovery funnel.
 
 ---
 
-## Root Cause
+## Current State
 
-**File:** `supabase/functions/automation-generate-audio/index.ts` (lines 106-122)
+Right now, converted leads are identified by parsing the `notes` field:
+- `lead_session:${sessionId}` - automatic conversions
+- `Manual conversion from lead` - manual conversions
 
-```typescript
-// CURRENT - Expects display labels
-const genreMap: Record<string, string> = {
-  "Pop": "pop",
-  "Jazz": "jazz",        // ❌ DB has "jazz", not "Jazz"
-  "R&B": "r&b",          // ❌ DB has "rnb", not "R&B"
-  "Rap / Hip-Hop": "hip-hop",  // ❌ DB has "rap-hip-hop"
-  "EDM / Dance": "edm",  // ❌ DB has "edm-dance"
-  "K-Pop": "k-pop",      // ❌ DB has "kpop"
-  // ...
-};
-
-const normalizedGenre = genreMap[entity.genre] || "pop";  // Falls back to pop!
-```
+This is fragile and not filterable in the UI. You have **8 orders from leads** and **110 direct orders**.
 
 ---
 
 ## Solution
 
-Update the `genreMap` to handle **both** the database slug format AND display labels (for backward compatibility):
+### 1. Database: Add `source` Column
 
-```typescript
-const genreMap: Record<string, string> = {
-  // Database slug format (primary)
-  "pop": "pop",
-  "country": "country",
-  "rock": "rock",
-  "rnb": "r&b",
-  "jazz": "jazz",
-  "acoustic": "acoustic",
-  "rap-hip-hop": "hip-hop",
-  "indie": "indie-folk",
-  "latin": "latin-pop",
-  "kpop": "k-pop",
-  "edm-dance": "edm",
-  
-  // Display label format (backward compatibility)
-  "Pop": "pop",
-  "Country": "country",
-  "Rock": "rock",
-  "R&B": "r&b",
-  "Jazz": "jazz",
-  "Acoustic": "acoustic",
-  "Rap / Hip-Hop": "hip-hop",
-  "Hip-Hop": "hip-hop",
-  "Indie": "indie-folk",
-  "Indie Folk": "indie-folk",
-  "Latin": "latin-pop",
-  "Latin Pop": "latin-pop",
-  "K-Pop": "k-pop",
-  "EDM / Dance": "edm",
-  "EDM": "edm",
-};
+Add a new column to track order origin:
+
+| Column | Type | Default | Values |
+|--------|------|---------|--------|
+| `source` | text | `'direct'` | `'direct'`, `'lead_conversion'` |
+
+A migration will also backfill existing orders by analyzing the `notes` field.
+
+### 2. Backend: Tag Lead Conversions
+
+Update the functions that create orders from leads:
+
+**Files:**
+- `supabase/functions/process-lead-payment/index.ts` - Set `source: 'lead_conversion'`
+- `supabase/functions/admin-orders/index.ts` (manual conversion) - Set `source: 'lead_conversion'`
+
+### 3. Admin Dashboard: Filter by Source
+
+**File:** `src/pages/Admin.tsx`
+
+Add a new filter dropdown for order source:
+
+```text
+┌───────────────────┐
+│ Source: All       ▼│
+├───────────────────┤
+│ All Orders        │
+│ 🎯 Direct         │ ← From checkout page
+│ 🔄 Converted Leads│ ← From lead recovery
+└───────────────────┘
+```
+
+### 4. Stats Cards: Show Breakdown
+
+**File:** `src/components/admin/StatsCards.tsx`
+
+Add a stat card showing the source breakdown:
+
+| Card | Display |
+|------|---------|
+| Lead Conversions | `8` (with revenue amount) |
+
+### 5. Visual Badge on Order Cards
+
+Show a "CONVERTED LEAD" badge on order cards for quick identification:
+
+```text
+┌──────────────────────────────────────┐
+│ 🎵 Song for Mom                      │
+│ John Smith • Mother's Day            │
+│ [DELIVERED] [CONVERTED LEAD]         │ ← New badge
+└──────────────────────────────────────┘
 ```
 
 ---
@@ -78,48 +81,46 @@ const genreMap: Record<string, string> = {
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/automation-generate-audio/index.ts` | Update genreMap to include database slug format |
+| Database migration | Add `source` column, backfill existing orders |
+| `supabase/functions/process-lead-payment/index.ts` | Set `source: 'lead_conversion'` on insert |
+| `supabase/functions/admin-orders/index.ts` | Set `source: 'lead_conversion'` for manual conversions |
+| `src/pages/Admin.tsx` | Add source filter, add badge display |
+| `src/components/admin/StatsCards.tsx` | Add converted leads stat card |
 
 ---
 
-## Verification
+## Technical Details
 
-After the fix, here's the complete mapping that will work:
+### Migration SQL
 
-| Admin Dropdown ID | song_styles.genre_match | Status |
-|-------------------|------------------------|--------|
-| `pop` | `pop` | ✅ |
-| `country` | `country` | ✅ |
-| `rock` | `rock` | ✅ |
-| `rnb` | `r&b` | ✅ (fixed) |
-| `jazz` | `jazz` | ✅ (fixed) |
-| `acoustic` | `acoustic` | ✅ |
-| `rap-hip-hop` | `hip-hop` | ✅ (fixed) |
-| `indie` | `indie-folk` | ✅ (fixed) |
-| `latin` | `latin-pop` | ✅ (fixed) |
-| `kpop` | `k-pop` | ✅ (fixed) |
-| `edm-dance` | `edm` | ✅ (fixed) |
+```sql
+-- Add source column
+ALTER TABLE orders ADD COLUMN source TEXT DEFAULT 'direct';
 
----
+-- Backfill existing lead conversions
+UPDATE orders 
+SET source = 'lead_conversion' 
+WHERE notes LIKE 'lead_session:%' 
+   OR notes LIKE '%Manual conversion from lead%';
+```
 
-## Additional Logging
-
-Add a warning log when falling back to pop so we can catch future mismatches:
+### Filter Logic
 
 ```typescript
-const normalizedGenre = genreMap[entity.genre];
-if (!normalizedGenre) {
-  console.warn(`[AUDIO] Unknown genre "${entity.genre}", falling back to pop`);
-}
-const finalGenre = normalizedGenre || "pop";
+// New state
+const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
+
+// In filter logic
+if (sourceFilter !== "all" && order.source !== sourceFilter) return false;
 ```
 
 ---
 
 ## Expected Outcome
 
-After this fix:
-- Jazz songs will use the Jazz style prompt
-- R&B songs will use the R&B style prompt
-- All other genres will correctly match their respective style prompts
-- No more silent fallbacks to Pop
+After implementation:
+- New dropdown to filter orders by source (Direct vs Converted Leads)
+- Visual badge on converted lead orders
+- Stats card showing conversion revenue
+- Proper tracking for future lead conversions via dedicated column
+- Backfill ensures existing data is correctly categorized
