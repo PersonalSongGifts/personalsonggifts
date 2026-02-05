@@ -415,6 +415,42 @@ export type Database = {
           },
         ]
       }
+      playback_errors: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          error_message: string | null
+          error_name: string
+          id: string
+          is_online: boolean | null
+          song_url_host: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          error_message?: string | null
+          error_name: string
+          id?: string
+          is_online?: boolean | null
+          song_url_host?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          error_message?: string | null
+          error_name?: string
+          id?: string
+          is_online?: boolean | null
+          song_url_host?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       song_styles: {
         Row: {
           created_at: string

@@ -7,9 +7,16 @@ const corsHeaders = {
 
 interface TrackRequest {
   type: "lead" | "order";
-  action: "play" | "download";
+  action: "play" | "download" | "error";
   token?: string; // For leads
   orderId?: string; // For orders
+  errorDetails?: {
+    errorName: string;
+    errorMessage: string;
+    userAgent: string;
+    online: boolean;
+    songUrlHost: string;
+  };
 }
 
 Deno.serve(async (req) => {
@@ -76,6 +83,26 @@ Deno.serve(async (req) => {
         }
 
         console.log(`Lead ${lead.id} play tracked (count: ${updates.preview_play_count})`);
+      } else if (action === "error") {
+        // Log playback error for diagnostics
+        const { errorDetails } = body;
+        
+        const { error: insertError } = await supabase.from("playback_errors").insert({
+          entity_type: "lead",
+          entity_id: lead.id,
+          error_name: errorDetails?.errorName || "Unknown",
+          error_message: errorDetails?.errorMessage || null,
+          user_agent: errorDetails?.userAgent || null,
+          is_online: errorDetails?.online ?? null,
+          song_url_host: errorDetails?.songUrlHost || null,
+        });
+
+        if (insertError) {
+          console.error("Failed to insert playback error:", insertError);
+          // Don't throw - error tracking should not fail the request
+        } else {
+          console.log(`Lead ${lead.id} playback error tracked: ${errorDetails?.errorName}`);
+        }
       }
 
       return new Response(
@@ -123,16 +150,44 @@ Deno.serve(async (req) => {
           updates.song_downloaded_at = new Date().toISOString();
         }
         console.log(`Order ${order.id} download tracked (count: ${updates.song_download_count})`);
+      } else if (action === "error") {
+        // Log playback error for diagnostics
+        const { errorDetails } = body;
+        
+        const { error: insertError } = await supabase.from("playback_errors").insert({
+          entity_type: "order",
+          entity_id: order.id,
+          error_name: errorDetails?.errorName || "Unknown",
+          error_message: errorDetails?.errorMessage || null,
+          user_agent: errorDetails?.userAgent || null,
+          is_online: errorDetails?.online ?? null,
+          song_url_host: errorDetails?.songUrlHost || null,
+        });
+
+        if (insertError) {
+          console.error("Failed to insert playback error:", insertError);
+          // Don't throw - error tracking should not fail the request
+        } else {
+          console.log(`Order ${order.id} playback error tracked: ${errorDetails?.errorName}`);
+        }
+        
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
-      const { error: updateError } = await supabase
-        .from("orders")
-        .update(updates)
-        .eq("id", order.id);
+      // Only update if we have updates (play or download actions)
+      if (Object.keys(updates).length > 0) {
+        const { error: updateError } = await supabase
+          .from("orders")
+          .update(updates)
+          .eq("id", order.id);
 
-      if (updateError) {
-        console.error("Failed to update order tracking:", updateError);
-        throw updateError;
+        if (updateError) {
+          console.error("Failed to update order tracking:", updateError);
+          throw updateError;
+        }
       }
 
       return new Response(

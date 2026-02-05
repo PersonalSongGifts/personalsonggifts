@@ -209,6 +209,50 @@ Deno.serve(async (req) => {
       const cacheBuster = Date.now();
       const publicUrl = `${urlData.publicUrl}?v=${cacheBuster}`;
 
+      // Verify the uploaded file is accessible via HEAD request
+      const verifyUrl = urlData.publicUrl; // Without cache buster for verification
+      let verification = {
+        status: 0,
+        contentType: null as string | null,
+        contentLength: 0,
+        supportsRanges: false,
+      };
+      
+      try {
+        const headResponse = await fetch(verifyUrl, { method: "HEAD" });
+        
+        const contentType = headResponse.headers.get("content-type");
+        const contentLength = headResponse.headers.get("content-length");
+        const acceptRanges = headResponse.headers.get("accept-ranges");
+        
+        verification = {
+          status: headResponse.status,
+          contentType,
+          contentLength: parseInt(contentLength || "0"),
+          supportsRanges: acceptRanges === "bytes",
+        };
+        
+        console.log(`Verification: status=${headResponse.status}, type=${contentType}, size=${contentLength}, ranges=${acceptRanges}`);
+        
+        if (!headResponse.ok) {
+          console.error(`Upload verification failed: ${headResponse.status}`);
+          throw new Error("Upload verification failed - file not accessible");
+        }
+        
+        // Warn if content type is wrong (but don't fail)
+        if (contentType && !contentType.includes("audio/")) {
+          console.warn(`Unexpected content type: ${contentType}`);
+        }
+        
+        // Minimum size check (at least 10KB for a real audio file)
+        if (contentLength && parseInt(contentLength) < 10000) {
+          console.warn(`Unusually small file: ${contentLength} bytes`);
+        }
+      } catch (verifyError) {
+        console.error("Verification check failed:", verifyError);
+        // Don't throw - the file might still be accessible, just verification failed
+      }
+
       // Update the order with song URL, title, and cover (if extracted)
       const updateData: Record<string, string | null> = {
         song_url: publicUrl,
@@ -244,7 +288,8 @@ Deno.serve(async (req) => {
           fileName: storagePath,
           songTitle: songTitle,
           coverImageUrl: coverImageUrl,
-          type: "order"
+          type: "order",
+          verification
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
