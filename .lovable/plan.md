@@ -1,44 +1,67 @@
 
-# Fix Admin Dashboard: Readability, Revenue Today, and Song Play Tracking Bug
 
-## Problems Found
+# Add "Prayer" Genre to the Song Creation Pipeline
 
-1. **Stats cards still too small and truncated** -- titles like "Total R...", "Previe...", "Recov..." are cut off because the grid is too dense
-2. **Revenue Today not visible** -- code exists but may not have deployed; needs to be prominently placed
-3. **Songs Played showing 0 is a real bug** -- the song player page receives a short 8-character order ID from the URL (e.g., `027e8965`), but the tracking function tries to match it as a full UUID (`027e8965-042f-4817-bfc0-ba388d7f3c55`). The query `.eq("id", orderId)` returns nothing, so plays are never recorded. Lead tracking works fine because it uses preview tokens, not UUIDs.
-4. **"Conversion Rate by Source" chart is unclear** -- needs a subtitle explaining what it measures
+## Overview
+
+Add a new "Prayer" music genre positioned after Country and before Rock. This is a clean additive change across 5 files (3 frontend, 2 backend) plus 2 new rows in the database. Nothing breaks -- all existing orders, leads, and automation logic are string-agnostic and will continue working.
 
 ## Changes
 
-### 1. Fix Stats Cards Layout (StatsCards.tsx)
+### 1. Customer-Facing Song Form
+**File: `src/components/create/MusicStyleStep.tsx`**
+- Insert `{ id: "prayer", label: "Prayer" }` into the `genres` array after Country (position 2)
 
-- Reduce max columns from 5 to **4 per row** on large screens (`lg:grid-cols-4`) and **2 on medium** (`sm:grid-cols-2`)
-- Increase card padding for breathing room
-- Make section headers slightly more prominent
-- Ensure "Revenue Today" card is the **first card** in the Revenue section so it's immediately visible with today's dollar amount and order count
+### 2. Admin Dropdown Options
+**File: `src/components/admin/adminDropdownOptions.ts`**
+- Insert `{ id: "prayer", label: "Prayer" }` into `genreOptions` after Country (position 2)
 
-### 2. Fix Song Play Tracking Bug (track-song-engagement edge function)
+### 3. Genre Chart Colors
+**File: `src/components/admin/GenreChart.tsx`**
+- Add `"Prayer": "#7C3AED"` (a reverent purple) to the `GENRE_COLORS` map
 
-The root cause: emails link to `/song/027e8965` (first 8 chars of UUID). The SongPlayer page passes this short ID directly to the tracking function, which does:
-```
-.eq("id", orderId)  // fails -- "027e8965" != full UUID
-```
+### 4. Audio Generation -- Genre Mapping
+**File: `supabase/functions/automation-generate-audio/index.ts`**
+- Add `"prayer": "worship"` to the `genreMap` (slug format)
+- Add `"Prayer": "worship"` to the `genreMap` (display label backward-compat)
+- This maps the "prayer" database slug to `genre_match: "worship"` in the `song_styles` table
 
-**Fix:** Add short-ID resolution logic (same pattern already used in `get-song-page`):
-- If orderId is 8 characters, query all orders and filter by UUID prefix match
-- If orderId is a full UUID, use direct `.eq()` lookup
-- This matches how `get-song-page` already handles it successfully
+### 5. Lyrics Generation -- Genre Vibes
+**File: `supabase/functions/automation-generate-lyrics/index.ts`**
+- Add a new line to the "Genre Vibes" section in `SYSTEM_PROMPT`:
+  `- Prayer/Worship: Reverent, intimate conversation with God, gratitude and trust, congregational chorus hook`
 
-### 3. Clarify "Conversion Rate by Source" (SourceAnalytics.tsx)
+### 6. Database: Insert 2 Song Styles
+Insert two new rows into the `song_styles` table with `genre_match: "worship"`:
 
-- Add a subtitle under the chart title: "Percentage of leads from each source that resulted in a purchase"
-- This makes it clear that 35% YouTube means 35% of YouTube leads became paying customers
+**Male:**
+- label: `Worship Male`
+- genre_match: `worship`
+- vocal_gender: `male`
+- suno_prompt: `Modern worship ballad, slow to mid-tempo (70-90 BPM), gentle piano and ambient pads with warm bass and soft drums, intimate church-worship atmosphere, heartfelt male vocal pouring out a personal prayer to God, simple repeated chorus that feels like a congregational worship hook, verses that tell a story of struggle, grace, and gratitude, bridge that builds into a powerful declaration of faith, spacious reverb-rich production, overall reverent, hopeful, and deeply comforting energy, solo male singer only, no duet, no featured artists, no secondary vocals`
 
-## Technical Details
+**Female:**
+- label: `Worship Female`
+- genre_match: `worship`
+- vocal_gender: `female`
+- suno_prompt: `Modern worship song, slow to mid-tempo (70-90 BPM), gentle piano and acoustic guitar with warm pads and soft drums, intimate prayerful atmosphere, expressive female vocal that feels like a personal conversation with God, simple chorus with a repeated worship phrase that a congregation could easily sing, verses that share gratitude, surrender, and trust in the middle of real-life struggles, bridge that lifts into a strong declaration of hope and God's faithfulness, spacious reverb-rich production, overall tender, reverent, uplifting energy, solo female singer only, no duet, no featured artists, no secondary vocals`
 
-**Files to modify:**
-- `src/components/admin/StatsCards.tsx` -- layout and card sizing
-- `supabase/functions/track-song-engagement/index.ts` -- fix short ID resolution for order plays/downloads
-- `src/components/admin/SourceAnalytics.tsx` -- add explanatory subtitle
+## What Will NOT Break
 
-**No database changes needed.** The tracking columns (`song_played_at`, `song_play_count`) already exist and work -- the data just was never being written due to the ID mismatch bug. Once fixed, new plays will start tracking immediately. Historical plays cannot be recovered.
+- **Validation/payment/checkout**: These flows are genre-agnostic (just pass through whatever string is selected)
+- **Lead capture**: Stores whatever genre string is provided
+- **Existing orders**: Unaffected -- they already have their genre value stored
+- **Order creation edge function**: Passes genre through as-is
+- **Song delivery emails**: Genre-agnostic
+
+## Summary of Files
+
+| File | Change |
+|------|--------|
+| `src/components/create/MusicStyleStep.tsx` | Add "Prayer" to genres array |
+| `src/components/admin/adminDropdownOptions.ts` | Add "Prayer" to genreOptions |
+| `src/components/admin/GenreChart.tsx` | Add purple color for Prayer |
+| `supabase/functions/automation-generate-audio/index.ts` | Map "prayer" to "worship" |
+| `supabase/functions/automation-generate-lyrics/index.ts` | Add Prayer/Worship genre vibes |
+| Database migration | Insert 2 song_styles rows (worship male + female) |
+
