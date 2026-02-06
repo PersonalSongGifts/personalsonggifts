@@ -12,20 +12,45 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// Occasion-based fallback images
+// Occasion fallback images – ES module imports so Vite bundles them correctly
+import birthdayImg from "@/assets/occasions/birthday.jpg";
+import anniversaryImg from "@/assets/occasions/anniversary.jpg";
+import weddingImg from "@/assets/occasions/wedding.jpg";
+import valentinesImg from "@/assets/occasions/valentines.jpg";
+import mothersDayImg from "@/assets/occasions/mothers-day.jpg";
+import fathersDayImg from "@/assets/occasions/fathers-day.jpg";
+import graduationImg from "@/assets/occasions/graduation.jpg";
+import memorialImg from "@/assets/occasions/memorial.jpg";
+import retirementImg from "@/assets/occasions/retirement.jpg";
+import babyImg from "@/assets/occasions/baby.jpg";
+import proposalImg from "@/assets/occasions/proposal.jpg";
+import justBecauseImg from "@/assets/occasions/just-because.jpg";
+import familyImg from "@/assets/occasions/family.jpg";
+import petCelebrationImg from "@/assets/occasions/pet-celebration.jpg";
+import petMemorialImg from "@/assets/occasions/pet-memorial.jpg";
+
 const occasionImages: Record<string, string> = {
-  birthday: "/src/assets/occasions/birthday.jpg",
-  anniversary: "/src/assets/occasions/anniversary.jpg",
-  wedding: "/src/assets/occasions/wedding.jpg",
-  valentines: "/src/assets/occasions/valentines.jpg",
-  "mother's day": "/src/assets/occasions/mothers-day.jpg",
-  "father's day": "/src/assets/occasions/fathers-day.jpg",
-  graduation: "/src/assets/occasions/graduation.jpg",
-  memorial: "/src/assets/occasions/memorial.jpg",
-  retirement: "/src/assets/occasions/retirement.jpg",
-  baby: "/src/assets/occasions/baby.jpg",
-  proposal: "/src/assets/occasions/proposal.jpg",
-  "just because": "/src/assets/occasions/just-because.jpg",
+  birthday: birthdayImg,
+  anniversary: anniversaryImg,
+  wedding: weddingImg,
+  valentines: valentinesImg,
+  "valentine's day": valentinesImg,
+  "mother's day": mothersDayImg,
+  "father's day": fathersDayImg,
+  graduation: graduationImg,
+  memorial: memorialImg,
+  "memorial tribute": memorialImg,
+  retirement: retirementImg,
+  baby: babyImg,
+  "baby lullaby": babyImg,
+  proposal: proposalImg,
+  "just because": justBecauseImg,
+  family: familyImg,
+  "pet celebration": petCelebrationImg,
+  "pet-celebration": petCelebrationImg,
+  "pet memorial": petMemorialImg,
+  "pet-memorial": petMemorialImg,
+  custom: justBecauseImg,
 };
 
 interface SongData {
