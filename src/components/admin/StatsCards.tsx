@@ -143,25 +143,25 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
     <div className="space-y-6 mb-8">
       {sections.map((section) => (
         <div key={section.label}>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
             {section.label}
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {section.stats.map((stat) => (
               <Card key={stat.title}>
-                <CardContent className="p-4">
+                <CardContent className="p-5">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-muted-foreground">
+                      <p className="text-sm font-medium text-muted-foreground">
                         {stat.title}
                       </p>
-                      <p className="text-xl font-bold mt-1">{stat.value}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                      <p className="text-sm text-muted-foreground mt-1">
                         {stat.description}
                       </p>
                     </div>
-                    <div className={`p-1.5 rounded-lg ${stat.bgColor} shrink-0 ml-2`}>
-                      <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                    <div className={`p-2 rounded-lg ${stat.bgColor} shrink-0 ml-3`}>
+                      <stat.icon className={`h-5 w-5 ${stat.color}`} />
                     </div>
                   </div>
                 </CardContent>
