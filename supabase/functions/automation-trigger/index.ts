@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
     }
 
     // Check if automation is already running
-    if (["pending", "lyrics_generating", "audio_generating", "queued"].includes(entity.automation_status) && !forceRun) {
+    if (["pending", "lyrics_generating", "audio_generating"].includes(entity.automation_status) && !forceRun) {
       console.log(`[TRIGGER] Automation already in progress for ${entityType} ${entityId}, status: ${entity.automation_status}`);
       return new Response(
         JSON.stringify({ error: "Automation already in progress", status: entity.automation_status }),
