@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { computeInputsHash } from "../_shared/hash-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,15 +12,6 @@ const MAX_LEAD_PREVIEWS_PER_RUN = 5; // Catch-up: max 5 overdue lead previews
 const AUDIO_RECOVERY_AFTER_MINUTES = 5; // Recover stuck audio jobs after 5 min
 const MAX_AUDIO_RECOVERIES_PER_RUN = 3;
 
-// Compute hash of key input fields for change detection
-async function computeInputsHash(fields: string[]): Promise<string> {
-  const combined = fields.join('|');
-  const encoder = new TextEncoder();
-  const data = encoder.encode(combined);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -244,10 +236,13 @@ Deno.serve(async (req) => {
           // Input hash validation - check if inputs changed after generation
           const currentHash = await computeInputsHash([
             order.recipient_name || "",
+            order.recipient_name_pronunciation || "",
             order.special_qualities || "",
             order.favorite_memory || "",
             order.genre || "",
             order.occasion || "",
+            order.singer_preference || "",
+            order.lyrics_language_code || "en",
           ]);
           
           if (order.inputs_hash && currentHash !== order.inputs_hash) {
