@@ -1,61 +1,80 @@
 
 
-# Fix False-Positive "Needs Review" Orders and Prevent Recurrence
+# Fix Background Automation: Orders + Leads Not Processing
 
-## Problem
+## The Problem
 
-16 paid orders (created Feb 4) are stuck in `needs_review` and NOT being delivered. The songs are generated and ready, but the automated delivery system thinks the inputs changed after generation. This is a **false positive** caused by the hash formula gaining new fields (`recipient_name_pronunciation`, `lyrics_language_code`) after these orders were created with the old formula.
+When you have automation enabled with target set to "Both", **nothing gets processed automatically**. You have **224 leads stuck in "queued" status** that never moved forward, and new orders/leads aren't being picked up either.
 
-15 of these customers have not received their songs and are overdue.
+## Root Cause: Two Bugs Working Together
 
-## Fix (Two Parts)
+**Bug 1: The cron job and the trigger function fight each other**
 
-### Part 1: Unblock the 16 stuck orders (immediate)
+The per-minute cron job (`process-scheduled-deliveries`) picks up eligible items and marks them as `queued`, then calls `automation-trigger` to process them. But `automation-trigger` has a safety check that blocks any item already in `queued` status -- it thinks it's "already running." So items get marked as queued and then immediately rejected. They're stuck forever.
 
-Write a SQL migration that:
-1. Recomputes the `inputs_hash` for all 16 affected orders using the current 8-field formula
-2. Resets `delivery_status` from `needs_review` back to `pending`
-3. Clears `delivery_last_error`
+**Bug 2: No quality filter in the cron pickup**
 
-This will allow the next cron run (within 1 minute) to pick them up and deliver the songs.
+The quality threshold check only happens inside `automation-trigger` (which runs after the item is already set to "queued"). If a lead fails the quality check, it stays stuck in "queued" status permanently because nothing ever resets it.
 
-**Migration SQL (using a PL/pgSQL block)**:
+**Also missing:**
+- No global concurrency cap (you want max 9 total in-flight at any time)
+- Leads are sorted by quality score instead of oldest-first as you want
+- No way to know how many are actively being processed across both tables
 
-For each order where `delivery_status = 'needs_review'` and `delivery_last_error = 'Inputs changed after generation'` and `dismissed_at IS NULL`:
-- Compute the SHA-256 hash of the same 8 fields (pipe-delimited, trimmed) that `process-scheduled-deliveries` uses
-- Update `inputs_hash` to the new value
-- Set `delivery_status = 'pending'`
-- Clear `delivery_last_error`
+## The Fix (3 Parts)
 
-### Part 2: Prevent recurrence
+### Part 1: Fix automation-trigger to accept "queued" status
 
-Update `process-scheduled-deliveries` to handle the case where `inputs_hash` is stale gracefully. Specifically: if the hash doesn't match but the order has `automation_status = 'completed'` and was never manually edited (`automation_manual_override_at IS NULL`), recompute and store the new hash instead of blocking delivery. This ensures future field additions to the hash formula don't cause false positives.
+Remove `"queued"` from the list of statuses that block processing. The cron legitimately sets items to "queued" as a claim mechanism before calling the trigger. The trigger should accept "queued" as a valid starting state.
 
-The logic change in `process-scheduled-deliveries/index.ts` (around lines 238-260):
+**File:** `supabase/functions/automation-trigger/index.ts`
+- Change the blocking check from `["pending", "lyrics_generating", "audio_generating", "queued"]` to `["pending", "lyrics_generating", "audio_generating"]`
+
+### Part 2: Add concurrency cap + quality filter + oldest-first ordering to the cron
+
+Update `process-scheduled-deliveries` (the cron job) to:
+
+1. **Count active jobs first**: Before picking up new items, count how many are currently in-flight (`queued`, `pending`, `lyrics_generating`, `audio_generating`) across BOTH orders and leads tables combined
+2. **Cap at 9 total**: Only pick up enough new items to reach 9 total in-flight (e.g., if 6 are already running, only pick up 3 more)
+3. **Apply quality threshold in the cron query**: Filter leads by quality score at pickup time so low-quality leads never get claimed
+4. **Order leads oldest-first**: Change from `quality_score DESC` to `captured_at ASC` so the oldest eligible lead gets processed first
+5. **Orders still get priority**: Process orders first, then fill remaining slots with leads
+
+**File:** `supabase/functions/process-scheduled-deliveries/index.ts`
+- Replace `MAX_GENERATIONS_PER_RUN = 3` with `MAX_CONCURRENT_GENERATIONS = 9`
+- Add concurrency counting logic before the pickup queries
+- Add `.gte("quality_score", qualityThreshold)` to the leads query
+- Change lead ordering to `captured_at ASC`
+
+### Part 3: Unstick the 224 queued leads
+
+SQL migration to reset all leads stuck in `queued` status back to `automation_status = NULL` so the fixed cron can re-evaluate and pick them up properly.
+
+## How It Will Work After the Fix
 
 ```text
-Current behavior:
-  if hash mismatch -> mark needs_review, skip delivery
-
-New behavior:
-  if hash mismatch:
-    if manual_override_at is set -> mark needs_review (real admin edit, keep safety)
-    else -> recompute + update hash, proceed with delivery (likely formula change)
+Every minute, the cron runs:
+  1. Count active jobs (orders + leads in queued/pending/generating states)
+  2. Calculate remaining slots: 9 - active_count
+  3. If slots available:
+     a. Pick up ORDERS first (priority tier first, then by generate time)
+     b. With remaining slots, pick up LEADS (oldest first, quality >= threshold)
+  4. For each picked item: set to "queued", call automation-trigger
+  5. Trigger accepts "queued" status, proceeds to generate lyrics + audio
 ```
-
-This preserves the safety net for genuine input changes (admin edits) while being resilient to hash formula evolution.
 
 ## File Changes
 
 | File | Action | Description |
 |------|--------|-------------|
-| Database migration | CREATE | Recompute hashes and unblock 16 orders |
-| `supabase/functions/process-scheduled-deliveries/index.ts` | EDIT | Make hash check tolerant of formula changes (only block if manual override detected) |
+| `supabase/functions/automation-trigger/index.ts` | EDIT | Remove "queued" from blocking check |
+| `supabase/functions/process-scheduled-deliveries/index.ts` | EDIT | Add concurrency cap of 9, quality filter, oldest-first ordering |
+| Database migration | CREATE | Reset 224 stuck "queued" leads to null |
 
-## What Happens After the Fix
+## What Happens Immediately After Deploy
 
-- The 15 unsent orders will have `delivery_status = 'pending'`
-- The next cron run (within 60 seconds) will pick them up and send the delivery emails
-- Customers will receive their songs
-- Future hash formula changes will not cause false positives
+- The 224 stuck leads reset to eligible status
+- Next cron run (within 60 seconds) counts active jobs, picks up to 9 items
+- Orders get processed first, then leads fill remaining slots
+- System continuously processes the backlog at up to 9 concurrent, prioritizing orders
 
