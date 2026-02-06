@@ -233,7 +233,7 @@ const Checkout = () => {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 mb-6">
+          <div className="grid md:grid-cols-2 gap-6 mb-3">
             {/* Standard tier */}
             <Card 
               onClick={() => setSelectedTier("standard")}
@@ -333,7 +333,7 @@ const Checkout = () => {
           </div>
 
           {/* Valentine's delivery urgency notice */}
-          <div className="mb-6">
+          <div className="mb-8">
             <ValentineDeliveryNotice />
           </div>
 
