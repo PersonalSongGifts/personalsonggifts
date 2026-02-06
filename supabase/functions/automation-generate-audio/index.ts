@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { getLanguageLabel } from "../_shared/language-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +16,8 @@ interface EntityData {
   automation_lyrics?: string | null;
   automation_retry_count?: number | null;
   song_title?: string | null;
+  lyrics_language_code: string;
+  pricing_tier?: string | null;
 }
 
 function normalizeEntityData(entity: Record<string, unknown>): EntityData {
@@ -27,6 +30,8 @@ function normalizeEntityData(entity: Record<string, unknown>): EntityData {
     automation_lyrics: entity.automation_lyrics as string | null,
     automation_retry_count: entity.automation_retry_count as number | null,
     song_title: entity.song_title as string | null,
+    lyrics_language_code: (entity.lyrics_language_code as string) || "en",
+    pricing_tier: entity.pricing_tier as string | null,
   };
 }
 
@@ -80,7 +85,10 @@ Deno.serve(async (req) => {
     }
 
     const entity = normalizeEntityData(rawEntity);
-    console.log(`[AUDIO] Found ${entityType}: ${entity.recipient_name}, genre: ${entity.genre}, singer: ${entity.singer_preference}`);
+    const languageCode = entity.lyrics_language_code;
+    const languageLabel = getLanguageLabel(languageCode);
+    
+    console.log(`[AUDIO] Found ${entityType}: ${entity.recipient_name}, genre: ${entity.genre}, singer: ${entity.singer_preference}, language: ${languageLabel}`);
 
     // Check if manual override is set
     if (entity.automation_manual_override_at) {
@@ -101,6 +109,38 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[AUDIO] Lyrics available, length: ${entity.automation_lyrics.length} chars`);
+
+    // ========== FETCH SUNO MODEL SETTINGS ==========
+    const { data: modelSetting } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "suno_model")
+      .maybeSingle();
+
+    const { data: v5EnabledSetting } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "suno_model_v5_enabled")
+      .maybeSingle();
+
+    const { data: v5PriorityOnlySetting } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "suno_model_v5_priority_only")
+      .maybeSingle();
+
+    // Determine which model to use
+    const defaultModel = (modelSetting as { value: string } | null)?.value || "V4_5";
+    const v5Enabled = (v5EnabledSetting as { value: string } | null)?.value === "true";
+    const v5PriorityOnly = (v5PriorityOnlySetting as { value: string } | null)?.value !== "false"; // Default true
+    const isPriority = entityType === "order" && entity.pricing_tier === "priority";
+
+    let model = defaultModel;
+    if (v5Enabled && (!v5PriorityOnly || isPriority)) {
+      model = "V4_5PLUS"; // V5 identifier
+    }
+
+    console.log(`[AUDIO] Model used: ${model} (v5_enabled=${v5Enabled}, v5_priority_only=${v5PriorityOnly}, is_priority=${isPriority})`);
 
     // Match style based on genre and singer preference
     const genreMap: Record<string, string> = {
@@ -196,6 +236,13 @@ Deno.serve(async (req) => {
       console.log(`[AUDIO] Found exact style match: ${style.label}`);
     }
 
+    // Build style string with language diction note
+    let styleString = selectedStyle.suno_prompt;
+    if (languageCode !== "en") {
+      styleString += `. Vocals in ${languageLabel}. Clear diction.`;
+      console.log(`[AUDIO] Added language diction note for ${languageLabel}`);
+    }
+
     // Update entity with style selection and reset timer for accurate STUCK detection
     await supabase
       .from(tableName)
@@ -222,11 +269,11 @@ Deno.serve(async (req) => {
     const songTitle = entity.song_title || `Song for ${entity.recipient_name}`;
 
     console.log(`[AUDIO] Calling Suno API via Kie.ai`);
-    console.log(`[AUDIO] Style: ${selectedStyle.suno_prompt?.substring(0, 80)}...`);
+    console.log(`[AUDIO] Style: ${styleString.substring(0, 80)}...`);
     console.log(`[AUDIO] Title: ${songTitle}`);
-    console.log(`[AUDIO] Model: V4_5, customMode: true`);
+    console.log(`[AUDIO] Model: ${model}, customMode: true, language: ${languageCode}`);
 
-    // Call Suno via Kie.ai with customMode=true and V4_5 model
+    // Call Suno via Kie.ai with customMode=true
     const sunoResponse = await fetch("https://api.kie.ai/api/v1/generate", {
       method: "POST",
       headers: {
@@ -235,11 +282,11 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         prompt: entity.automation_lyrics,           // Lyrics only in prompt
-        style: selectedStyle.suno_prompt,           // Style prompt separately
+        style: styleString,                         // Style prompt with language diction
         title: songTitle,                           // Title separately
         customMode: true,                           // Enable custom mode for better control
         instrumental: false,
-        model: "V4_5",                              // Upgraded from V3_5 for smarter prompts
+        model: model,                               // Configurable model
         callBackUrl: callbackUrl,
       }),
     });
@@ -304,6 +351,8 @@ Deno.serve(async (req) => {
         entityType,
         entityId,
         taskId,
+        model,
+        language: languageCode,
         styleUsed: selectedStyle.label || selectedStyle.suno_prompt?.substring(0, 50),
         callbackUrl,
       }),

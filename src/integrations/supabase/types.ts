@@ -60,6 +60,10 @@ export type Database = {
           inputs_hash: string | null
           lead_email_cc: string | null
           lead_email_override: string | null
+          lyrics_language_code: string
+          lyrics_language_qa: Json | null
+          lyrics_raw_attempt_1: string | null
+          lyrics_raw_attempt_2: string | null
           next_attempt_at: string | null
           occasion: string
           order_id: string | null
@@ -116,6 +120,10 @@ export type Database = {
           inputs_hash?: string | null
           lead_email_cc?: string | null
           lead_email_override?: string | null
+          lyrics_language_code?: string
+          lyrics_language_qa?: Json | null
+          lyrics_raw_attempt_1?: string | null
+          lyrics_raw_attempt_2?: string | null
           next_attempt_at?: string | null
           occasion: string
           order_id?: string | null
@@ -172,6 +180,10 @@ export type Database = {
           inputs_hash?: string | null
           lead_email_cc?: string | null
           lead_email_override?: string | null
+          lyrics_language_code?: string
+          lyrics_language_qa?: Json | null
+          lyrics_raw_attempt_1?: string | null
+          lyrics_raw_attempt_2?: string | null
           next_attempt_at?: string | null
           occasion?: string
           order_id?: string | null
@@ -250,6 +262,10 @@ export type Database = {
           genre: string
           id: string
           inputs_hash: string | null
+          lyrics_language_code: string
+          lyrics_language_qa: Json | null
+          lyrics_raw_attempt_1: string | null
+          lyrics_raw_attempt_2: string | null
           next_attempt_at: string | null
           notes: string | null
           occasion: string
@@ -313,6 +329,10 @@ export type Database = {
           genre: string
           id?: string
           inputs_hash?: string | null
+          lyrics_language_code?: string
+          lyrics_language_qa?: Json | null
+          lyrics_raw_attempt_1?: string | null
+          lyrics_raw_attempt_2?: string | null
           next_attempt_at?: string | null
           notes?: string | null
           occasion: string
@@ -376,6 +396,10 @@ export type Database = {
           genre?: string
           id?: string
           inputs_hash?: string | null
+          lyrics_language_code?: string
+          lyrics_language_qa?: Json | null
+          lyrics_raw_attempt_1?: string | null
+          lyrics_raw_attempt_2?: string | null
           next_attempt_at?: string | null
           notes?: string | null
           occasion?: string

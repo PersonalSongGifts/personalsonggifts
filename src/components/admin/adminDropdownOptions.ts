@@ -40,6 +40,19 @@ export const occasionOptions = [
   { id: "custom", label: "Custom" },
 ];
 
+export const languageOptions = [
+  { id: "en", label: "English" },
+  { id: "es", label: "Spanish" },
+  { id: "fr", label: "French" },
+  { id: "de", label: "German" },
+  { id: "it", label: "Italian" },
+  { id: "pt-BR", label: "Portuguese (Brazil)" },
+  { id: "ja", label: "Japanese" },
+  { id: "ko", label: "Korean" },
+  { id: "sr", label: "Serbian" },
+  { id: "hr", label: "Croatian" },
+];
+
 // Helper to get label from ID
 export function getLabelForOption(
   options: { id: string; label: string }[],
@@ -48,4 +61,8 @@ export function getLabelForOption(
   if (!id) return "";
   const found = options.find((opt) => opt.id.toLowerCase() === id.toLowerCase());
   return found?.label || id;
+}
+
+export function getLanguageLabel(code: string): string {
+  return getLabelForOption(languageOptions, code);
 }

@@ -20,6 +20,7 @@ interface CheckoutInput {
     yourName: string;
     yourEmail: string;
     phoneNumber?: string;
+    lyricsLanguageCode?: string; // NEW: Language for lyrics
   };
   // UTM tracking fields
   utmSource?: string;
@@ -132,6 +133,10 @@ Deno.serve(async (req) => {
     }
     if (formData.phoneNumber) {
       metadata.customerPhone = formData.phoneNumber;
+    }
+    // Add language to metadata
+    if (formData.lyricsLanguageCode) {
+      metadata.lyricsLanguageCode = formData.lyricsLanguageCode;
     }
     // Add UTM fields to metadata
     if (utmSource) {

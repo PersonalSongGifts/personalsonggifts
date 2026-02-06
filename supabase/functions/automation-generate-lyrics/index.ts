@@ -1,4 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import {
+  getLanguageLabel,
+  buildLanguagePromptBlock,
+  buildRetryLanguagePromptBlock,
+  runBasicQA,
+  truncateForStorage,
+  type LanguageQAResult,
+} from "../_shared/language-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,9 +84,10 @@ interface EntityData {
   special_message?: string | null;
   automation_manual_override_at?: string | null;
   automation_retry_count?: number | null;
+  lyrics_language_code: string;
 }
 
-function normalizeEntityData(entity: Record<string, unknown>, entityType: "lead" | "order"): EntityData {
+function normalizeEntityData(entity: Record<string, unknown>): EntityData {
   return {
     id: entity.id as string,
     recipient_type: entity.recipient_type as string,
@@ -92,7 +101,44 @@ function normalizeEntityData(entity: Record<string, unknown>, entityType: "lead"
     special_message: entity.special_message as string | null,
     automation_manual_override_at: entity.automation_manual_override_at as string | null,
     automation_retry_count: entity.automation_retry_count as number | null,
+    lyrics_language_code: (entity.lyrics_language_code as string) || "en",
   };
+}
+
+async function generateLyrics(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ lyrics: string | null; error: string | null }> {
+  const geminiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      stream: false,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!geminiResponse.ok) {
+    const errorText = await geminiResponse.text();
+    return { lyrics: null, error: `Gemini API error: ${geminiResponse.status} - ${errorText.substring(0, 200)}` };
+  }
+
+  const geminiData = await geminiResponse.json();
+  const lyrics = geminiData.choices?.[0]?.message?.content;
+
+  if (!lyrics) {
+    return { lyrics: null, error: "No lyrics returned from Gemini API" };
+  }
+
+  return { lyrics, error: null };
 }
 
 Deno.serve(async (req) => {
@@ -144,8 +190,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    const entity = normalizeEntityData(rawEntity, entityType);
-    console.log(`[LYRICS] Found ${entityType}: ${entity.recipient_name} (${entity.recipient_type}), genre: ${entity.genre}`);
+    const entity = normalizeEntityData(rawEntity);
+    const languageCode = entity.lyrics_language_code;
+    const languageLabel = getLanguageLabel(languageCode);
+    
+    console.log(`[LYRICS] Found ${entityType}: ${entity.recipient_name} (${entity.recipient_type}), genre: ${entity.genre}, language: ${languageLabel}`);
 
     // Check if manual override is set
     if (entity.automation_manual_override_at) {
@@ -175,6 +224,9 @@ When singing the recipient's name, use exactly: "${entity.recipient_name_pronunc
 This spelling is intentional for correct pronunciation and must be followed.`
       : "";
 
+    // Add language-specific prompt block
+    const languagePromptBlock = buildLanguagePromptBlock(languageCode);
+
     const userPrompt = `Write Suno-ready song lyrics only, no explanations.
 
 RecipientType: ${entity.recipient_type}
@@ -186,83 +238,157 @@ SpecialQualities: "${entity.special_qualities}"
 FavoriteMemory: "${entity.favorite_memory}"
 SpecialMessage: "${entity.special_message || ""}"
 ${pronunciationInstruction}
+${languagePromptBlock}
 
 Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
 - Mention the RecipientName 3-7 times naturally.
 - Make it wholesome and heartfelt.`;
 
-    console.log(`[LYRICS] Calling Gemini API, prompt length: ${userPrompt.length} chars`);
+    console.log(`[LYRICS] Calling Gemini API, prompt length: ${userPrompt.length} chars, language: ${languageCode}`);
 
-    // Call Gemini via Lovable AI Gateway (standard OpenAI-compatible format)
-    const geminiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        stream: false,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
-
-    console.log(`[LYRICS] Gemini API response status: ${geminiResponse.status}`);
-
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error(`[LYRICS] Gemini API error: ${geminiResponse.status}`, errorText);
-      
-      // Update entity with error
-      await supabase
-        .from(tableName)
-        .update({
-          automation_status: "failed",
-          automation_last_error: `[LYRICS] Gemini API error: ${geminiResponse.status} - ${errorText.substring(0, 200)}`,
-          automation_retry_count: (entity.automation_retry_count || 0) + 1,
-        })
-        .eq("id", entityId);
-
-      return new Response(
-        JSON.stringify({ error: "Lyrics generation failed", details: errorText }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const geminiData = await geminiResponse.json();
-    console.log(`[LYRICS] Gemini response received, choices: ${geminiData.choices?.length}`);
+    // ========== ATTEMPT 1 ==========
+    const attempt1Result = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, userPrompt);
     
-    const lyrics = geminiData.choices?.[0]?.message?.content;
-
-    if (!lyrics) {
-      console.error("[LYRICS] No lyrics returned. Response structure:", JSON.stringify(geminiData).substring(0, 500));
+    if (attempt1Result.error) {
+      console.error(`[LYRICS] Attempt 1 failed: ${attempt1Result.error}`);
+      
       await supabase
         .from(tableName)
         .update({
           automation_status: "failed",
-          automation_last_error: "[LYRICS] No lyrics returned from Gemini API",
+          automation_last_error: `[LYRICS] ${attempt1Result.error}`,
           automation_retry_count: (entity.automation_retry_count || 0) + 1,
         })
         .eq("id", entityId);
 
       return new Response(
-        JSON.stringify({ error: "No lyrics generated" }),
+        JSON.stringify({ error: "Lyrics generation failed", details: attempt1Result.error }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[LYRICS] Generated lyrics length: ${lyrics.length} chars`);
+    const lyrics1 = attempt1Result.lyrics!;
+    console.log(`[LYRICS] Attempt 1 generated, length: ${lyrics1.length} chars`);
+
+    // Run QA on attempt 1
+    const qa1 = runBasicQA(lyrics1, languageCode, 1);
+    console.log(`[LYRICS] QA Attempt 1: passed=${qa1.passed}, issues=${qa1.issues.join("; ")}`);
+
+    let finalLyrics = lyrics1;
+    let finalQA: LanguageQAResult = qa1;
+    let lyrics2: string | null = null;
+    let qa2: LanguageQAResult | null = null;
+
+    // If QA failed and language is not English, retry with stronger prompt
+    if (!qa1.passed && languageCode !== "en") {
+      console.log(`[LYRICS] Attempt 1 QA failed, retrying with stronger language prompt`);
+      
+      // Store attempt 1
+      await supabase
+        .from(tableName)
+        .update({
+          lyrics_raw_attempt_1: truncateForStorage(lyrics1),
+        })
+        .eq("id", entityId);
+
+      // Build retry prompt with issues
+      const retryLanguageBlock = buildRetryLanguagePromptBlock(languageCode, qa1.issues);
+      
+      const retryUserPrompt = `Write Suno-ready song lyrics only, no explanations.
+
+RecipientType: ${entity.recipient_type}
+RecipientName: ${recipientNameForLyrics}
+Occasion: ${entity.occasion}
+Genre: ${entity.genre}
+SingerPreference: ${entity.singer_preference}
+SpecialQualities: "${entity.special_qualities}"
+FavoriteMemory: "${entity.favorite_memory}"
+SpecialMessage: "${entity.special_message || ""}"
+${pronunciationInstruction}
+${retryLanguageBlock}
+
+Remember:
+- Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
+- Mention the RecipientName 3-7 times naturally.
+- Make it wholesome and heartfelt.`;
+
+      const attempt2Result = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, retryUserPrompt);
+      
+      if (attempt2Result.error) {
+        console.error(`[LYRICS] Attempt 2 failed: ${attempt2Result.error}`);
+        // Continue with attempt 1 lyrics even though QA failed
+      } else {
+        lyrics2 = attempt2Result.lyrics!;
+        console.log(`[LYRICS] Attempt 2 generated, length: ${lyrics2.length} chars`);
+        
+        // Run QA on attempt 2
+        qa2 = runBasicQA(lyrics2, languageCode, 2);
+        console.log(`[LYRICS] QA Attempt 2: passed=${qa2.passed}, issues=${qa2.issues.join("; ")}`);
+        
+        // Use attempt 2 if it passed, or if it's better than attempt 1
+        if (qa2.passed) {
+          finalLyrics = lyrics2;
+          finalQA = qa2;
+        }
+      }
+    }
+
+    // Store raw attempts and QA results
+    const qaResultToStore = {
+      attempt1: {
+        passed: qa1.passed,
+        detection: qa1.detection,
+        mixed_language_check: qa1.mixed_language_check,
+        issues: qa1.issues,
+      },
+      attempt2: qa2 ? {
+        passed: qa2.passed,
+        detection: qa2.detection,
+        mixed_language_check: qa2.mixed_language_check,
+        issues: qa2.issues,
+      } : null,
+      final_passed: finalQA.passed,
+      detection_sample: finalQA.detection.detection_sample,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Check if both attempts failed (for non-English)
+    const bothFailed = !qa1.passed && (!qa2 || !qa2.passed) && languageCode !== "en";
+    
+    if (bothFailed) {
+      console.log(`[LYRICS] ❌ Both attempts failed QA for ${languageCode}, marking needs_review`);
+      
+      await supabase
+        .from(tableName)
+        .update({
+          automation_status: "needs_review",
+          automation_last_error: `Language QA failed: ${finalQA.issues.join("; ")}`,
+          lyrics_raw_attempt_1: truncateForStorage(lyrics1),
+          lyrics_raw_attempt_2: truncateForStorage(lyrics2),
+          lyrics_language_qa: qaResultToStore,
+        })
+        .eq("id", entityId);
+
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          entityType,
+          entityId,
+          status: "needs_review",
+          reason: "Language QA failed",
+          issues: finalQA.issues,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Extract title from lyrics (look for first meaningful line after [Intro])
     let songTitle = `Song for ${entity.recipient_name}`;
-    const lines = lyrics.split('\n').filter((l: string) => l.trim() && !l.startsWith('['));
+    const lines = finalLyrics.split('\n').filter((l: string) => l.trim() && !l.startsWith('['));
     if (lines.length > 0) {
       // Use first line of chorus or verse as title inspiration
-      const chorusMatch = lyrics.match(/\[Chorus\]\n([^\n]+)/);
+      const chorusMatch = finalLyrics.match(/\[Chorus\]\n([^\n]+)/);
       if (chorusMatch) {
         songTitle = chorusMatch[1].replace(/[,!?]/g, '').trim().substring(0, 50);
       }
@@ -270,17 +396,20 @@ Remember:
 
     console.log(`[LYRICS] Extracted title: "${songTitle}"`);
 
-    // Update entity with lyrics
+    // Update entity with lyrics and QA results
     await supabase
       .from(tableName)
       .update({
         automation_status: "lyrics_ready",
-        automation_lyrics: lyrics,
+        automation_lyrics: finalLyrics,
         song_title: songTitle,
+        lyrics_raw_attempt_1: truncateForStorage(lyrics1),
+        lyrics_raw_attempt_2: truncateForStorage(lyrics2),
+        lyrics_language_qa: qaResultToStore,
       })
       .eq("id", entityId);
 
-    console.log(`[LYRICS] ✅ Lyrics saved for ${entityType} ${entityId}`);
+    console.log(`[LYRICS] ✅ Lyrics saved for ${entityType} ${entityId} (language: ${languageLabel}, QA: ${finalQA.passed ? "passed" : "passed with warnings"})`);
 
     return new Response(
       JSON.stringify({ 
@@ -288,8 +417,11 @@ Remember:
         entityType,
         entityId,
         title: songTitle,
-        lyricsLength: lyrics.length,
-        lyrics: lyrics.substring(0, 200) + "...",
+        language: languageCode,
+        languageLabel,
+        lyricsLength: finalLyrics.length,
+        qaPassed: finalQA.passed,
+        lyrics: finalLyrics.substring(0, 200) + "...",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
