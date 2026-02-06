@@ -702,7 +702,8 @@ Deno.serve(async (req) => {
           "special_qualities", "favorite_memory",
           "special_message", "notes",
           "customer_email_override", "customer_email_cc",
-          "lyrics_language_code"
+          "lyrics_language_code",
+          "sms_opt_in"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
@@ -911,6 +912,121 @@ Deno.serve(async (req) => {
           JSON.stringify({ lead }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      }
+
+      // Resend SMS for an order or lead
+      if (body?.action === "resend_sms") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+
+        if (!orderId && !leadId) {
+          return new Response(
+            JSON.stringify({ error: "Order ID or Lead ID required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Dynamic import of SMS helper
+        const { sendSms } = await import("../_shared/brevo-sms.ts");
+
+        if (orderId) {
+          const { data: order, error: orderErr } = await supabase
+            .from("orders")
+            .select("id, phone_e164, sms_opt_in, timezone, song_url, recipient_name")
+            .eq("id", orderId)
+            .single();
+
+          if (orderErr || !order) {
+            return new Response(
+              JSON.stringify({ error: "Order not found" }),
+              { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          if (!order.sms_opt_in || !order.phone_e164) {
+            return new Response(
+              JSON.stringify({ error: "SMS not opted in or no phone number" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const shortId = order.id.slice(0, 8);
+          const songLink = `https://personalsonggifts.lovable.app/song/${shortId}`;
+          const smsResult = await sendSms({
+            to: order.phone_e164,
+            text: `Your custom song is ready!\nListen here: ${songLink}\nReply STOP to opt out.`,
+            tag: "order_delivery",
+            timezone: order.timezone || undefined,
+          });
+
+          const smsUpdate: Record<string, unknown> = {};
+          if (smsResult.sent) {
+            smsUpdate.sms_status = "sent";
+            smsUpdate.sms_sent_at = new Date().toISOString();
+            smsUpdate.sms_scheduled_for = null;
+          } else if (smsResult.scheduled) {
+            smsUpdate.sms_status = "scheduled";
+            smsUpdate.sms_scheduled_for = smsResult.scheduledFor;
+          } else {
+            smsUpdate.sms_status = "failed";
+            smsUpdate.sms_last_error = smsResult.error?.substring(0, 500);
+          }
+          await supabase.from("orders").update(smsUpdate).eq("id", orderId);
+
+          return new Response(
+            JSON.stringify({ success: true, sms: smsResult }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (leadId) {
+          const { data: lead, error: leadErr } = await supabase
+            .from("leads")
+            .select("id, phone_e164, sms_opt_in, timezone, preview_token")
+            .eq("id", leadId)
+            .single();
+
+          if (leadErr || !lead) {
+            return new Response(
+              JSON.stringify({ error: "Lead not found" }),
+              { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          if (!lead.sms_opt_in || !lead.phone_e164) {
+            return new Response(
+              JSON.stringify({ error: "SMS not opted in or no phone number" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const previewLink = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}`;
+          const smsResult = await sendSms({
+            to: lead.phone_e164,
+            text: `We made your song preview!\nListen here: ${previewLink}\nReply STOP to opt out.`,
+            tag: "lead_preview",
+            timezone: lead.timezone || undefined,
+          });
+
+          const smsUpdate: Record<string, unknown> = {};
+          if (smsResult.sent) {
+            smsUpdate.sms_status = "sent";
+            smsUpdate.sms_sent_at = new Date().toISOString();
+            smsUpdate.sms_scheduled_for = null;
+          } else if (smsResult.scheduled) {
+            smsUpdate.sms_status = "scheduled";
+            smsUpdate.sms_scheduled_for = smsResult.scheduledFor;
+          } else {
+            smsUpdate.sms_status = "failed";
+            smsUpdate.sms_last_error = smsResult.error?.substring(0, 500);
+          }
+          await supabase.from("leads").update(smsUpdate).eq("id", leadId);
+
+          return new Response(
+            JSON.stringify({ success: true, sms: smsResult }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
 
       // Convert lead to order (for failed webhook cases)

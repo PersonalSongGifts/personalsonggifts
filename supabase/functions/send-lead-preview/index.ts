@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
-
+import { sendSms } from "../_shared/brevo-sms.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password",
@@ -240,6 +240,47 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
     const result = await response.json();
     console.log(`Preview email sent to ${recipients.join(", ")}:`, result);
+
+    // === SMS DELIVERY (after email success) ===
+    try {
+      if (lead.sms_opt_in === true && lead.phone_e164 && lead.sms_status !== "sent") {
+        const previewSmsLink = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}`;
+        
+        // ASSERTION: Lead SMS must contain /preview/ path, never /song/
+        const smsText = `We made your song preview!\nListen here: ${previewSmsLink}\nReply STOP to opt out.`;
+        if (smsText.includes("/song/")) {
+          console.error("[SMS] ASSERTION FAILED: Lead SMS contains /song/ link!");
+        } else {
+          const smsResult = await sendSms({
+            to: lead.phone_e164,
+            text: smsText,
+            tag: "lead_preview",
+            timezone: lead.timezone || undefined,
+          });
+          console.log("[SMS] Lead preview SMS result:", JSON.stringify(smsResult));
+
+          // Update lead SMS status
+          const smsUpdate: Record<string, unknown> = {};
+          if (smsResult.sent) {
+            smsUpdate.sms_status = "sent";
+            smsUpdate.sms_sent_at = new Date().toISOString();
+          } else if (smsResult.scheduled) {
+            smsUpdate.sms_status = "scheduled";
+            smsUpdate.sms_scheduled_for = smsResult.scheduledFor;
+          } else if (smsResult.error) {
+            smsUpdate.sms_status = "failed";
+            smsUpdate.sms_last_error = smsResult.error.substring(0, 500);
+          }
+
+          if (Object.keys(smsUpdate).length > 0) {
+            await supabase.from("leads").update(smsUpdate).eq("id", leadId);
+          }
+        }
+      }
+    } catch (smsError) {
+      // SMS errors must NEVER block the response
+      console.error("[SMS] Lead preview SMS error (non-blocking):", smsError);
+    }
 
     return new Response(
       JSON.stringify({ success: true, messageId: result.messageId }),
