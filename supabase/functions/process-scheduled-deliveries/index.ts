@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { computeInputsHash } from "../_shared/hash-utils.ts";
+import { sendSms } from "../_shared/brevo-sms.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -272,7 +273,7 @@ Deno.serve(async (req) => {
 
           if (updateError) throw updateError;
 
-          // Send delivery email
+          // Send delivery email (with SMS fields)
           const emailResponse = await fetch(
             `${supabaseUrl}/functions/v1/send-song-delivery`,
             {
@@ -288,6 +289,11 @@ Deno.serve(async (req) => {
                 recipientName: order.recipient_name,
                 occasion: order.occasion,
                 songUrl: order.song_url,
+                // SMS fields
+                phoneE164: order.phone_e164,
+                smsOptIn: order.sms_opt_in,
+                timezone: order.timezone,
+                smsStatus: order.sms_status,
               }),
             }
           );
@@ -297,6 +303,26 @@ Deno.serve(async (req) => {
             console.error(`[DELIVERY] Email failed for order ${order.id}:`, errorText);
             orderDeliveryResults.push({ orderId: order.id, success: true, error: `Email failed: ${errorText}` });
           } else {
+            // Parse SMS result from response and update order
+            try {
+              const deliveryResult = await emailResponse.json();
+              if (deliveryResult.sms) {
+                const smsUpdate: Record<string, unknown> = {};
+                if (deliveryResult.sms.sent) {
+                  smsUpdate.sms_status = "sent";
+                  smsUpdate.sms_sent_at = now;
+                } else if (deliveryResult.sms.scheduled) {
+                  smsUpdate.sms_status = "scheduled";
+                  smsUpdate.sms_scheduled_for = deliveryResult.sms.scheduledFor;
+                } else if (deliveryResult.sms.error) {
+                  smsUpdate.sms_status = "failed";
+                  smsUpdate.sms_last_error = deliveryResult.sms.error.substring(0, 500);
+                }
+                if (Object.keys(smsUpdate).length > 0) {
+                  await supabase.from("orders").update(smsUpdate).eq("id", order.id);
+                }
+              }
+            } catch { /* non-blocking */ }
             console.log(`[DELIVERY] ✅ Order ${order.id} delivered`);
             orderDeliveryResults.push({ orderId: order.id, success: true });
           }
@@ -406,6 +432,11 @@ Deno.serve(async (req) => {
               recipientName: order.recipient_name,
               occasion: order.occasion,
               songUrl: order.song_url,
+              // SMS fields for resend
+              phoneE164: order.phone_e164,
+              smsOptIn: order.sms_opt_in,
+              timezone: order.timezone,
+              smsStatus: null, // Allow SMS to re-fire on resend
             }),
           });
 
@@ -606,6 +637,118 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     }
     
     results.leadPreviews = leadPreviewResults;
+
+    // ======= 7. SCHEDULED SMS QUEUE =======
+    // Process SMS that were queued during quiet hours
+    const scheduledSmsResults: Array<{ id: string; type: string; success: boolean; error?: string }> = [];
+    
+    try {
+      // Process orders with scheduled SMS
+      const { data: smsOrders } = await supabase
+        .from("orders")
+        .select("id, phone_e164, sms_opt_in, timezone, song_url, recipient_name")
+        .eq("sms_status", "scheduled")
+        .not("sms_scheduled_for", "is", null)
+        .lte("sms_scheduled_for", now)
+        .limit(10);
+
+      for (const order of smsOrders || []) {
+        try {
+          if (!order.phone_e164 || !order.sms_opt_in || !order.song_url) continue;
+          
+          const shortId = order.id.slice(0, 8);
+          const songLink = `https://personalsonggifts.lovable.app/song/${shortId}`;
+          const smsText = `Your custom song is ready!\nListen here: ${songLink}\nReply STOP to opt out.`;
+          
+          const smsResult = await sendSms({
+            to: order.phone_e164,
+            text: smsText,
+            tag: "order_delivery",
+            timezone: order.timezone || undefined,
+          });
+
+          if (smsResult.sent) {
+            await supabase.from("orders").update({
+              sms_status: "sent",
+              sms_sent_at: now,
+              sms_scheduled_for: null,
+            }).eq("id", order.id);
+            scheduledSmsResults.push({ id: order.id, type: "order", success: true });
+          } else if (smsResult.scheduled) {
+            // Still in quiet hours, update scheduled time
+            await supabase.from("orders").update({
+              sms_scheduled_for: smsResult.scheduledFor,
+            }).eq("id", order.id);
+            scheduledSmsResults.push({ id: order.id, type: "order", success: false, error: "Still in quiet hours" });
+          } else {
+            await supabase.from("orders").update({
+              sms_status: "failed",
+              sms_last_error: smsResult.error?.substring(0, 500),
+              sms_scheduled_for: null,
+            }).eq("id", order.id);
+            scheduledSmsResults.push({ id: order.id, type: "order", success: false, error: smsResult.error });
+          }
+        } catch (e) {
+          console.error(`[SMS-QUEUE] Order ${order.id} error:`, e);
+        }
+      }
+
+      // Process leads with scheduled SMS
+      const { data: smsLeads } = await supabase
+        .from("leads")
+        .select("id, phone_e164, sms_opt_in, timezone, preview_token")
+        .eq("sms_status", "scheduled")
+        .not("sms_scheduled_for", "is", null)
+        .lte("sms_scheduled_for", now)
+        .limit(10);
+
+      for (const lead of smsLeads || []) {
+        try {
+          if (!lead.phone_e164 || !lead.sms_opt_in || !lead.preview_token) continue;
+          
+          const previewLink = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}`;
+          const smsText = `We made your song preview!\nListen here: ${previewLink}\nReply STOP to opt out.`;
+          
+          const smsResult = await sendSms({
+            to: lead.phone_e164,
+            text: smsText,
+            tag: "lead_preview",
+            timezone: lead.timezone || undefined,
+          });
+
+          if (smsResult.sent) {
+            await supabase.from("leads").update({
+              sms_status: "sent",
+              sms_sent_at: now,
+              sms_scheduled_for: null,
+            }).eq("id", lead.id);
+            scheduledSmsResults.push({ id: lead.id, type: "lead", success: true });
+          } else if (smsResult.scheduled) {
+            await supabase.from("leads").update({
+              sms_scheduled_for: smsResult.scheduledFor,
+            }).eq("id", lead.id);
+            scheduledSmsResults.push({ id: lead.id, type: "lead", success: false, error: "Still in quiet hours" });
+          } else {
+            await supabase.from("leads").update({
+              sms_status: "failed",
+              sms_last_error: smsResult.error?.substring(0, 500),
+              sms_scheduled_for: null,
+            }).eq("id", lead.id);
+            scheduledSmsResults.push({ id: lead.id, type: "lead", success: false, error: smsResult.error });
+          }
+        } catch (e) {
+          console.error(`[SMS-QUEUE] Lead ${lead.id} error:`, e);
+        }
+      }
+
+      if (scheduledSmsResults.length > 0) {
+        console.log(`[SMS-QUEUE] Processed ${scheduledSmsResults.length} scheduled SMS`);
+      }
+    } catch (e) {
+      console.error("[SMS-QUEUE] Scheduled SMS queue error:", e);
+    }
+
+    results.scheduledSms = scheduledSmsResults;
 
     return new Response(JSON.stringify(results), {
       status: 200,

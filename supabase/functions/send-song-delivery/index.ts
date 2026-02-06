@@ -1,3 +1,5 @@
+import { sendSms } from "../_shared/brevo-sms.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -11,6 +13,11 @@ interface SongDeliveryRequest {
   occasion: string;
   songUrl: string;
   ccEmail?: string | null;
+  // SMS fields
+  phoneE164?: string | null;
+  smsOptIn?: boolean;
+  timezone?: string | null;
+  smsStatus?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -35,6 +42,10 @@ Deno.serve(async (req) => {
       occasion,
       songUrl,
       ccEmail,
+      phoneE164,
+      smsOptIn,
+      timezone,
+      smsStatus,
     }: SongDeliveryRequest = await req.json();
 
     if (!customerEmail || !orderId || !songUrl) {
@@ -191,8 +202,29 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     const result = await response.json();
     console.log("Song delivery email sent:", result);
 
+    // === SMS DELIVERY (after email success) ===
+    let smsResult = null;
+    if (smsOptIn === true && phoneE164 && smsStatus !== "sent") {
+      const shortId = orderId.slice(0, 8);
+      const songLink = `https://personalsonggifts.lovable.app/song/${shortId}`;
+      
+      // ASSERTION: Order SMS must contain /song/ path, never /preview/
+      const smsText = `Your custom song is ready!\nListen here: ${songLink}\nReply STOP to opt out.`;
+      if (smsText.includes("/preview/")) {
+        console.error("[SMS] ASSERTION FAILED: Order SMS contains /preview/ link!");
+      } else {
+        smsResult = await sendSms({
+          to: phoneE164,
+          text: smsText,
+          tag: "order_delivery",
+          timezone: timezone || undefined,
+        });
+        console.log("[SMS] Order delivery SMS result:", JSON.stringify(smsResult));
+      }
+    }
+
     return new Response(
-      JSON.stringify({ success: true, messageId: result.messageId }),
+      JSON.stringify({ success: true, messageId: result.messageId, sms: smsResult }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {

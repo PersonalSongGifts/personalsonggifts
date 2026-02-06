@@ -137,6 +137,12 @@ const CreateSong = () => {
       // Get stored UTM parameters
       const utmParams = getStoredUtmParams();
 
+      // Auto-detect timezone for SMS quiet hours
+      let timezone = "America/New_York";
+      try {
+        timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      } catch { /* fallback */ }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-lead`,
         {
@@ -158,6 +164,7 @@ const CreateSong = () => {
             favoriteMemory: data.favoriteMemory,
             specialMessage: data.specialMessage || undefined,
             lyricsLanguageCode: data.lyricsLanguageCode || "en",
+            timezone,
             deviceType,
             // Include UTM parameters
             utmSource: utmParams.utm_source || undefined,

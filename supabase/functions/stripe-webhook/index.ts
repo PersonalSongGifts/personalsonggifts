@@ -194,6 +194,10 @@ Deno.serve(async (req) => {
           status: "paid",
           // Language setting
           lyrics_language_code: metadata.lyricsLanguageCode || "en",
+          // SMS fields
+          phone_e164: metadata.phoneE164 || null,
+          sms_opt_in: metadata.smsOptIn === "true",
+          timezone: metadata.timezone || null,
           // Background automation timing fields
           earliest_generate_at: timing.earliestGenerateAt,
           target_send_at: timing.targetSendAt,

@@ -20,7 +20,11 @@ interface CheckoutInput {
     yourName: string;
     yourEmail: string;
     phoneNumber?: string;
-    lyricsLanguageCode?: string; // NEW: Language for lyrics
+    lyricsLanguageCode?: string;
+    // SMS fields
+    smsOptIn?: boolean;
+    phoneE164?: string;
+    timezone?: string;
   };
   // UTM tracking fields
   utmSource?: string;
@@ -137,6 +141,16 @@ Deno.serve(async (req) => {
     // Add language to metadata
     if (formData.lyricsLanguageCode) {
       metadata.lyricsLanguageCode = formData.lyricsLanguageCode;
+    }
+    // Add SMS fields to metadata
+    if (formData.smsOptIn) {
+      metadata.smsOptIn = "true";
+    }
+    if (formData.phoneE164) {
+      metadata.phoneE164 = formData.phoneE164;
+    }
+    if (formData.timezone) {
+      metadata.timezone = formData.timezone;
     }
     // Add UTM fields to metadata
     if (utmSource) {

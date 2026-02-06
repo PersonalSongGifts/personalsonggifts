@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw } from "lucide-react";
+import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare } from "lucide-react";
 
 interface Order {
   id: string;
@@ -11,7 +11,9 @@ interface Order {
   song_play_count?: number | null;
   song_downloaded_at?: string | null;
   song_download_count?: number | null;
-   source?: string | null;
+  source?: string | null;
+  sms_opt_in?: boolean;
+  sms_status?: string | null;
 }
 
 interface Lead {
@@ -22,6 +24,8 @@ interface Lead {
   preview_play_count?: number | null;
   preview_sent_at?: string | null;
   order_id?: string | null;
+  sms_opt_in?: boolean;
+  sms_status?: string | null;
 }
 
 interface StatsCardsProps {
@@ -94,6 +98,12 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
   const deliveredOrders = orders.filter((o) => o.status === "delivered");
   const songsPlayed = orders.filter((o) => o.song_played_at).length;
   const songsDownloaded = orders.filter((o) => o.song_downloaded_at).length;
+
+  // SMS KPIs
+  const allEntities = [...orders, ...leads];
+  const smsOptedIn = allEntities.filter((e) => e.sms_opt_in).length;
+  const smsSent = allEntities.filter((e) => e.sms_status === "sent").length;
+  const smsFailed = allEntities.filter((e) => e.sms_status === "failed").length;
 
   const stats = [
     {
@@ -183,6 +193,22 @@ export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
       icon: Download,
       color: "text-rose-600",
       bgColor: "bg-rose-100",
+    },
+    {
+      title: "SMS Sent",
+      value: smsSent.toString(),
+      description: `of ${smsOptedIn} opted in`,
+      icon: MessageSquare,
+      color: "text-sky-600",
+      bgColor: "bg-sky-100",
+    },
+    {
+      title: "SMS Failed",
+      value: smsFailed.toString(),
+      description: `${smsFailed} errors`,
+      icon: MessageSquare,
+      color: "text-orange-600",
+      bgColor: "bg-orange-100",
     },
   ];
 

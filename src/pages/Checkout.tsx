@@ -1,9 +1,10 @@
 import { useLocation, useNavigate, Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Check, 
   Clock, 
@@ -22,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { getStoredUtmParams } from "@/hooks/useUtmCapture";
+import { normalizeToE164 } from "@/lib/phoneUtils";
 
 type PricingTier = "standard" | "priority";
 
@@ -49,6 +51,19 @@ const Checkout = () => {
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState<{ code: string; discount: number } | null>(null);
   const [promoError, setPromoError] = useState("");
+  const [smsOptIn, setSmsOptIn] = useState(false);
+  
+  // Auto-detect user timezone
+  const userTimezone = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return "America/New_York";
+    }
+  }, []);
+  
+  // Normalize phone to E.164
+  const phoneE164 = useMemo(() => normalizeToE164(formData?.phoneNumber), [formData?.phoneNumber]);
   
   const activePromo = getActivePromo();
   
@@ -168,7 +183,12 @@ const Checkout = () => {
           },
           body: JSON.stringify({
             pricingTier: selectedTier,
-            formData,
+            formData: {
+              ...formData,
+              smsOptIn: smsOptIn && !!phoneE164,
+              phoneE164: phoneE164 || undefined,
+              timezone: userTimezone,
+            },
             promoCode: promoApplied?.code || prices.promoCode,
             // Include UTM parameters
             utmSource: utmParams.utm_source || undefined,
@@ -436,6 +456,28 @@ const Checkout = () => {
               <span>Support: support@personalsonggifts.com</span>
             </div>
           </div>
+
+          {/* SMS Opt-In (only shown if phone number exists) */}
+          {formData.phoneNumber && (
+            <div className="mb-6">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="sms-opt-in"
+                  checked={smsOptIn}
+                  onCheckedChange={(checked) => setSmsOptIn(checked === true)}
+                  className="mt-0.5"
+                />
+                <div>
+                  <label htmlFor="sms-opt-in" className="text-sm font-medium text-foreground cursor-pointer">
+                    Text me my song link (optional)
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Msg & data rates may apply.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Checkout button */}
           <Button 

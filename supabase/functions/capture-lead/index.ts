@@ -24,7 +24,8 @@ interface LeadInput {
   favoriteMemory: string;
   specialMessage?: string;
   deviceType?: string;
-  lyricsLanguageCode?: string; // NEW: Language for lyrics (default 'en')
+  lyricsLanguageCode?: string;
+  timezone?: string; // IANA timezone for SMS quiet hours
   // UTM tracking fields
   utmSource?: string;
   utmMedium?: string;
@@ -393,6 +394,8 @@ Deno.serve(async (req) => {
             special_message: input.specialMessage?.trim() || null,
             captured_at: new Date().toISOString(),
             quality_score: qualityScore,
+            // Update timezone if provided
+            ...(input.timezone && { timezone: input.timezone }),
             // Update UTM fields if provided (don't overwrite existing with null)
             ...(input.utmSource && { utm_source: input.utmSource }),
             ...(input.utmMedium && { utm_medium: input.utmMedium }),
@@ -457,6 +460,8 @@ Deno.serve(async (req) => {
         quality_score: qualityScore,
         // Language setting
         lyrics_language_code: input.lyricsLanguageCode || "en",
+        // Timezone for SMS quiet hours
+        timezone: input.timezone || null,
         // Background automation timing fields
         earliest_generate_at: timing.earliestGenerateAt,
         target_send_at: timing.targetSendAt,

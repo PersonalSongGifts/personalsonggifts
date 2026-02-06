@@ -99,6 +99,14 @@ interface Order {
   dismissed_at: string | null;
   // Language
   lyrics_language_code?: string;
+  // SMS fields
+  phone_e164?: string | null;
+  sms_opt_in?: boolean;
+  sms_status?: string | null;
+  sms_last_error?: string | null;
+  sms_sent_at?: string | null;
+  sms_scheduled_for?: string | null;
+  timezone?: string | null;
 }
 
 const statusColors: Record<string, string> = {

@@ -68,6 +68,7 @@ export type Database = {
           occasion: string
           order_id: string | null
           phone: string | null
+          phone_e164: string | null
           preview_opened_at: string | null
           preview_play_count: number | null
           preview_played_at: string | null
@@ -82,11 +83,17 @@ export type Database = {
           recipient_type: string
           sent_at: string | null
           singer_preference: string
+          sms_last_error: string | null
+          sms_opt_in: boolean
+          sms_scheduled_for: string | null
+          sms_sent_at: string | null
+          sms_status: string | null
           song_title: string | null
           special_message: string | null
           special_qualities: string
           status: string
           target_send_at: string | null
+          timezone: string | null
           utm_campaign: string | null
           utm_content: string | null
           utm_medium: string | null
@@ -128,6 +135,7 @@ export type Database = {
           occasion: string
           order_id?: string | null
           phone?: string | null
+          phone_e164?: string | null
           preview_opened_at?: string | null
           preview_play_count?: number | null
           preview_played_at?: string | null
@@ -142,11 +150,17 @@ export type Database = {
           recipient_type: string
           sent_at?: string | null
           singer_preference: string
+          sms_last_error?: string | null
+          sms_opt_in?: boolean
+          sms_scheduled_for?: string | null
+          sms_sent_at?: string | null
+          sms_status?: string | null
           song_title?: string | null
           special_message?: string | null
           special_qualities: string
           status?: string
           target_send_at?: string | null
+          timezone?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -188,6 +202,7 @@ export type Database = {
           occasion?: string
           order_id?: string | null
           phone?: string | null
+          phone_e164?: string | null
           preview_opened_at?: string | null
           preview_play_count?: number | null
           preview_played_at?: string | null
@@ -202,11 +217,17 @@ export type Database = {
           recipient_type?: string
           sent_at?: string | null
           singer_preference?: string
+          sms_last_error?: string | null
+          sms_opt_in?: boolean
+          sms_scheduled_for?: string | null
+          sms_sent_at?: string | null
+          sms_status?: string | null
           song_title?: string | null
           special_message?: string | null
           special_qualities?: string
           status?: string
           target_send_at?: string | null
+          timezone?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -269,6 +290,7 @@ export type Database = {
           next_attempt_at: string | null
           notes: string | null
           occasion: string
+          phone_e164: string | null
           price: number
           pricing_tier: string
           reaction_submitted_at: string | null
@@ -281,6 +303,11 @@ export type Database = {
           sent_at: string | null
           sent_to_emails: Json | null
           singer_preference: string
+          sms_last_error: string | null
+          sms_opt_in: boolean
+          sms_scheduled_for: string | null
+          sms_sent_at: string | null
+          sms_status: string | null
           song_download_count: number | null
           song_downloaded_at: string | null
           song_play_count: number | null
@@ -292,6 +319,7 @@ export type Database = {
           special_qualities: string
           status: string
           target_send_at: string | null
+          timezone: string | null
           utm_campaign: string | null
           utm_content: string | null
           utm_medium: string | null
@@ -336,6 +364,7 @@ export type Database = {
           next_attempt_at?: string | null
           notes?: string | null
           occasion: string
+          phone_e164?: string | null
           price: number
           pricing_tier: string
           reaction_submitted_at?: string | null
@@ -348,6 +377,11 @@ export type Database = {
           sent_at?: string | null
           sent_to_emails?: Json | null
           singer_preference: string
+          sms_last_error?: string | null
+          sms_opt_in?: boolean
+          sms_scheduled_for?: string | null
+          sms_sent_at?: string | null
+          sms_status?: string | null
           song_download_count?: number | null
           song_downloaded_at?: string | null
           song_play_count?: number | null
@@ -359,6 +393,7 @@ export type Database = {
           special_qualities: string
           status?: string
           target_send_at?: string | null
+          timezone?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -403,6 +438,7 @@ export type Database = {
           next_attempt_at?: string | null
           notes?: string | null
           occasion?: string
+          phone_e164?: string | null
           price?: number
           pricing_tier?: string
           reaction_submitted_at?: string | null
@@ -415,6 +451,11 @@ export type Database = {
           sent_at?: string | null
           sent_to_emails?: Json | null
           singer_preference?: string
+          sms_last_error?: string | null
+          sms_opt_in?: boolean
+          sms_scheduled_for?: string | null
+          sms_sent_at?: string | null
+          sms_status?: string | null
           song_download_count?: number | null
           song_downloaded_at?: string | null
           song_play_count?: number | null
@@ -426,6 +467,7 @@ export type Database = {
           special_qualities?: string
           status?: string
           target_send_at?: string | null
+          timezone?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
