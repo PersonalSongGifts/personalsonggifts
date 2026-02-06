@@ -1,51 +1,66 @@
 
 
-# Fix: Cron Not Picking Up "Scheduled" Orders for Delivery
+# Fix: Auto-Retry Failed Leads + Unblock 52 Stuck Leads
 
-## Root Cause
+## Immediate Problem
 
-When a song finishes generating, the `automation-suno-callback` function sets `delivery_status = "scheduled"`. However, the cron job (`process-scheduled-deliveries`) only picks up orders where `delivery_status IS NULL` or `delivery_status = 'failed'`. The `"scheduled"` status is never matched, so these orders sit indefinitely with a passed `target_send_at` and never get delivered.
+52 leads are stuck with `automation_status = 'failed'` because they hit a 402 "Not enough credits" error. Credits have been replenished, but the cron never retries failed leads -- it only picks up leads where `automation_status IS NULL`.
 
-## The 4 Affected Orders
+## Part 1: Unblock the 52 Stuck Leads (Database Update)
 
-| Customer | Order ID | delivery_status | sent_to_emails | Actually Sent? |
-|----------|----------|----------------|----------------|----------------|
-| Anna Schwarz | 110D097F | scheduled | (none) | No |
-| Luis Agosttini | E0CB547B | scheduled | (none) | No |
-| Thomas Sims | 03D3D065 | scheduled | (none) | No |
-| John | C33AA8CF | scheduled | medellin109@gmail.com | Yes (emergency resend), status not updated |
+Reset all 52 failed leads back to `automation_status = NULL` so the cron picks them up automatically:
 
-## Fix (2 Parts)
-
-### Part 1: Fix the cron pickup filter
-
-In `supabase/functions/process-scheduled-deliveries/index.ts`, update the delivery query filter (line 275) from:
-
-```
-.or("delivery_status.is.null,delivery_status.eq.failed")
+```sql
+UPDATE leads
+SET automation_status = NULL,
+    automation_last_error = NULL,
+    automation_started_at = NULL,
+    automation_task_id = NULL
+WHERE automation_status = 'failed'
+  AND automation_last_error LIKE '%402%';
 ```
 
-to:
+This only resets leads that failed due to the credits issue (402 errors), not any that failed for other reasons.
 
+The cron runs every minute and processes up to 9 at a time, so all 52 will be processed within roughly 6 minutes.
+
+## Part 2: Add Auto-Retry Logic to the Cron
+
+In `supabase/functions/process-scheduled-deliveries/index.ts`, add a new section (after the generation queue) that automatically resets `failed` leads for retry, with safeguards:
+
+- Only retry leads that have been in `failed` for at least **10 minutes** (backoff)
+- Only retry leads with **3 or fewer** previous retry attempts (prevents infinite loops)
+- Reset up to **5 per run** to avoid overwhelming the pipeline
+- Reset `automation_status` to `NULL`, clear error fields, and increment `automation_retry_count`
+- The existing generation queue will then pick them up naturally on the next cron cycle
+
+```text
++------------------+     +-------------------+     +------------------+
+| Lead fails       | --> | Stays in 'failed' | --> | Cron auto-resets  |
+| (402 / timeout)  |     | for 10 min        |     | after backoff     |
++------------------+     +-------------------+     +------------------+
+                                                          |
+                                                          v
+                                                   +------------------+
+                                                   | Generation queue  |
+                                                   | picks it up next  |
+                                                   +------------------+
 ```
-.or("delivery_status.is.null,delivery_status.eq.scheduled,delivery_status.eq.failed")
-```
 
-This allows the cron to pick up orders in the `"scheduled"` state once their `target_send_at` has passed. The existing `.lte("target_send_at", now)` filter ensures orders aren't delivered early.
+This same logic will apply to failed **orders** as well, not just leads.
 
-The same fix applies to the **resend delivery query** and the **lead preview delivery query** sections of the same function, if they have the same pattern.
-
-### Part 2: Fix data for the 4 orders
-
-- **John (C33AA8CF)**: Already sent -- update `delivery_status` to `"sent"` and set `sent_at` to match `delivered_at` so it no longer shows as needing attention.
-- **Anna, Luis, Thomas**: Reset `delivery_status` to `NULL` so the cron picks them up immediately on the next run (within 1 minute). Alternatively, since the fix adds `"scheduled"` to the filter, they'll be picked up as-is.
-
-### File Changes
+## File Changes
 
 | File | Change |
 |------|--------|
-| `supabase/functions/process-scheduled-deliveries/index.ts` | Add `delivery_status.eq.scheduled` to the delivery pickup filter |
-| Database | Fix John's order status; the other 3 will auto-deliver after the cron fix |
+| `supabase/functions/process-scheduled-deliveries/index.ts` | Add auto-retry section (~40 lines) after the generation queue |
+| Database | One-time reset of 52 stuck leads |
 
-After redeploying the function, the next cron run (within 1 minute) will pick up and deliver Anna's, Luis's, and Thomas's songs automatically.
+## Safeguards
+
+- Max 3 retries per lead/order prevents infinite loops
+- 10-minute backoff prevents rapid re-failing
+- 5-per-run cap prevents flooding the generation queue
+- Only resets transient failures; `needs_review` status is never touched
+- Manual override still takes priority
 
