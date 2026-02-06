@@ -957,6 +957,7 @@ Deno.serve(async (req) => {
             text: `Your custom song is ready!\nListen here: ${songLink}\nReply STOP to opt out.`,
             tag: "order_delivery",
             timezone: order.timezone || undefined,
+            force: true, // Admin action — bypass quiet hours
           });
 
           const smsUpdate: Record<string, unknown> = {};
@@ -1006,6 +1007,7 @@ Deno.serve(async (req) => {
             text: `We made your song preview!\nListen here: ${previewLink}\nReply STOP to opt out.`,
             tag: "lead_preview",
             timezone: lead.timezone || undefined,
+            force: true, // Admin action — bypass quiet hours
           });
 
           const smsUpdate: Record<string, unknown> = {};
