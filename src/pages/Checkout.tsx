@@ -17,6 +17,7 @@ import {
   X
 } from "lucide-react";
 import { FormData } from "@/pages/CreateSong";
+import ValentineDeliveryNotice from "@/components/checkout/ValentineDeliveryNotice";
 import { useToast } from "@/hooks/use-toast";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
@@ -431,11 +432,14 @@ const Checkout = () => {
             </div>
           </div>
 
+          {/* Valentine's delivery urgency notice */}
+          <ValentineDeliveryNotice />
+
           {/* Checkout button */}
           <Button 
             onClick={handleCheckout}
             size="lg" 
-            className="w-full text-lg py-6 font-semibold gap-2"
+            className="w-full text-lg py-6 font-semibold gap-2 mt-4"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
