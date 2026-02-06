@@ -247,6 +247,7 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Conversion Rate by Source</CardTitle>
+            <p className="text-sm text-muted-foreground">Percentage of leads from each source that resulted in a purchase</p>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>

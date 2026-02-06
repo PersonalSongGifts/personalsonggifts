@@ -119,20 +119,55 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Find order
-      const { data: order, error: orderError } = await supabase
-        .from("orders")
-        .select("id, song_played_at, song_play_count, song_downloaded_at, song_download_count")
-        .eq("id", orderId)
-        .single();
+      // Resolve short ID (8 chars) or full UUID
+      const isShortId = orderId.length === 8;
+      const isFullUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
 
-      if (orderError || !order) {
+      if (!isShortId && !isFullUUID) {
+        return new Response(
+          JSON.stringify({ error: "Invalid order ID format" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      let order: { id: string; song_played_at: string | null; song_play_count: number | null; song_downloaded_at: string | null; song_download_count: number | null } | null = null;
+
+      if (isShortId) {
+        // Short ID: fetch and filter by UUID prefix (same pattern as get-song-page)
+        const { data: orders, error: fetchError } = await supabase
+          .from("orders")
+          .select("id, song_played_at, song_play_count, song_downloaded_at, song_download_count");
+
+        if (fetchError) {
+          console.error("Failed to fetch orders for short ID resolution:", fetchError);
+          throw fetchError;
+        }
+
+        order = orders?.find(o => o.id.toLowerCase().startsWith(orderId.toLowerCase())) || null;
+      } else {
+        // Full UUID: direct lookup
+        const { data, error: fetchError } = await supabase
+          .from("orders")
+          .select("id, song_played_at, song_play_count, song_downloaded_at, song_download_count")
+          .eq("id", orderId)
+          .maybeSingle();
+
+        if (fetchError) {
+          console.error("Failed to fetch order:", fetchError);
+          throw fetchError;
+        }
+        order = data;
+      }
+
+      if (!order) {
         console.error("Order not found:", orderId);
         return new Response(
           JSON.stringify({ error: "Order not found" }),
           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+
+      console.log(`Resolved order ID: ${orderId} -> ${order.id}`);
 
       const updates: Record<string, unknown> = {};
 
