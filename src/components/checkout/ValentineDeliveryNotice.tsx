@@ -40,7 +40,7 @@ export default function ValentineDeliveryNotice() {
         <span className="font-semibold">7 of 40</span> remain for Valentine's Day delivery.
       </p>
       <p className="text-xs text-muted-foreground">
-        We review each order before sending.
+        Our team works around the clock to make every song just right.
       </p>
     </div>
   );
