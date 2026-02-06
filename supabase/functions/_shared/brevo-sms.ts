@@ -14,6 +14,7 @@ export interface SmsRequest {
   text: string;        // SMS body (must include STOP language)
   tag: string;         // "order_delivery" | "lead_preview"
   timezone?: string;   // IANA timezone (e.g. "America/New_York")
+  force?: boolean;     // Admin override: bypass quiet hours
 }
 
 export interface SmsResult {
@@ -152,11 +153,14 @@ export async function sendSms(req: SmsRequest): Promise<SmsResult> {
     // Determine timezone: explicit > infer from phone > default
     const effectiveTimezone = req.timezone || inferTimezoneFromPhone(req.to);
 
-    // Check quiet hours
-    if (isQuietHours(effectiveTimezone)) {
+    // Check quiet hours (skip if force override from admin)
+    if (!req.force && isQuietHours(effectiveTimezone)) {
       const scheduledFor = getNext9AM(effectiveTimezone);
       console.log(`[SMS] Quiet hours in ${effectiveTimezone}, scheduling for ${scheduledFor}`);
       return { sent: false, scheduled: true, scheduledFor };
+    }
+    if (req.force) {
+      console.log(`[SMS] Force override — bypassing quiet hours check`);
     }
 
     // Send via Brevo transactional SMS API
