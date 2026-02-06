@@ -1,6 +1,7 @@
 import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { User, Mail, Shield, Phone } from "lucide-react";
 
 interface YourDetailsStepProps {
@@ -76,8 +77,26 @@ const YourDetailsStep = ({ formData, updateFormData, errors }: YourDetailsStepPr
           className="text-lg py-6"
         />
         <p className="text-sm text-muted-foreground">
-          Get SMS updates when your song is ready. Standard message rates may apply.
+          Optional — for SMS delivery of your song link.
         </p>
+        {formData.phoneNumber && (
+          <div className="flex items-start gap-3 mt-3 p-3 bg-secondary/30 rounded-lg">
+            <Checkbox
+              id="sms-opt-in"
+              checked={formData.smsOptIn}
+              onCheckedChange={(checked) => updateFormData({ smsOptIn: checked === true })}
+              className="mt-0.5"
+            />
+            <div>
+              <label htmlFor="sms-opt-in" className="text-sm font-medium text-foreground cursor-pointer">
+                Text me my song link (optional)
+              </label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Msg & data rates may apply.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Privacy note */}
