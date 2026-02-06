@@ -1,7 +1,14 @@
 import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Music, Mic, Globe } from "lucide-react";
+import { Music, Mic } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface MusicStyleStepProps {
   formData: FormData;
@@ -110,37 +117,27 @@ const MusicStyleStep = ({ formData, updateFormData, errors }: MusicStyleStepProp
         </div>
       </div>
 
-      {/* Language */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Globe className="h-5 w-5 text-primary" />
-          <Label className="text-lg font-semibold">
-            Song Language <span className="text-destructive">*</span>
-          </Label>
-        </div>
-        {errors.lyricsLanguageCode && (
-          <p className="text-destructive text-sm">{errors.lyricsLanguageCode}</p>
-        )}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {languageOptions.map((lang) => {
-            const isSelected = formData.lyricsLanguageCode === lang.id;
-            return (
-              <Card
-                key={lang.id}
-                onClick={() => updateFormData({ lyricsLanguageCode: lang.id })}
-                className={`p-4 text-center cursor-pointer transition-all duration-200 ${
-                  isSelected 
-                    ? "ring-2 ring-primary bg-primary/5 border-primary" 
-                    : "hover:border-primary/50"
-                }`}
-              >
-                <span className={`font-medium ${isSelected ? "text-primary" : "text-foreground"}`}>
-                  {lang.label}
-                </span>
-              </Card>
-            );
-          })}
-        </div>
+      {/* Language - compact dropdown, optional */}
+      <div className="flex items-center gap-4 mt-6">
+        <Label htmlFor="language-select" className="text-sm text-muted-foreground whitespace-nowrap">
+          Song language
+        </Label>
+        <Select
+          value={formData.lyricsLanguageCode || "en"}
+          onValueChange={(value) => updateFormData({ lyricsLanguageCode: value })}
+        >
+          <SelectTrigger id="language-select" className="w-48">
+            <SelectValue placeholder="English" />
+          </SelectTrigger>
+          <SelectContent>
+            {languageOptions.map((lang) => (
+              <SelectItem key={lang.id} value={lang.id}>
+                {lang.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground">Default is English</span>
       </div>
     </div>
   );
