@@ -1,80 +1,119 @@
 
 
-# Fix Background Automation: Orders + Leads Not Processing
+# Emergency Recovery: Deploy + Fix + Resend
 
-## The Problem
+## Execution Order
 
-When you have automation enabled with target set to "Both", **nothing gets processed automatically**. You have **224 leads stuck in "queued" status** that never moved forward, and new orders/leads aren't being picked up either.
+1. Deploy 4 missing functions (restores customer access immediately)
+2. Edit and redeploy `process-scheduled-deliveries` (prevents recurrence)
+3. Run SQL to requeue affected orders (triggers email sends)
 
-## Root Cause: Two Bugs Working Together
+---
 
-**Bug 1: The cron job and the trigger function fight each other**
+## Step 1: Deploy 4 Missing Functions
 
-The per-minute cron job (`process-scheduled-deliveries`) picks up eligible items and marks them as `queued`, then calls `automation-trigger` to process them. But `automation-trigger` has a safety check that blocks any item already in `queued` status -- it thinks it's "already running." So items get marked as queued and then immediately rejected. They're stuck forever.
+Deploy immediately with no code changes:
+- `get-song-page`
+- `send-song-delivery`
+- `get-lead-preview`
+- `send-lead-preview`
 
-**Bug 2: No quality filter in the cron pickup**
+This alone restores all customer-facing song links and preview pages.
 
-The quality threshold check only happens inside `automation-trigger` (which runs after the item is already set to "queued"). If a lead fails the quality check, it stays stuck in "queued" status permanently because nothing ever resets it.
+---
 
-**Also missing:**
-- No global concurrency cap (you want max 9 total in-flight at any time)
-- Leads are sorted by quality score instead of oldest-first as you want
-- No way to know how many are actively being processed across both tables
+## Step 2: Fix `process-scheduled-deliveries/index.ts`
 
-## The Fix (3 Parts)
+### Section 3 -- Order Delivery Queue (lines 297-362)
 
-### Part 1: Fix automation-trigger to accept "queued" status
+**Replace premature status update (lines 297-309) with a "delivering" claim:**
+- Set only `delivery_status: "delivering"` (NOT `status: "delivered"`, NOT `sent_at`)
+- Use optimistic lock: `.is("sent_at", null)` stays, preventing duplicate pickup
 
-Remove `"queued"` from the list of statuses that block processing. The cron legitimately sets items to "queued" as a claim mechanism before calling the trigger. The trigger should accept "queued" as a valid starting state.
+**After email response (lines 336-362), split into success/failure:**
+- **Success (2xx):** Set `status: "delivered"`, `delivered_at`, `sent_at`, `delivery_status: "sent"`, and record `sent_to_emails` with the effective recipient email
+- **Failure (non-2xx or error):** Set `delivery_status: "failed"` and `delivery_last_error` with error text. Do NOT set `sent_at`, leaving it eligible for retry
 
-**File:** `supabase/functions/automation-trigger/index.ts`
-- Change the blocking check from `["pending", "lyrics_generating", "audio_generating", "queued"]` to `["pending", "lyrics_generating", "audio_generating"]`
+**Update pickup query (line 256) to include retryable statuses:**
+- Change `.neq("delivery_status", "needs_review")` to an explicit inclusion filter that picks up rows where `delivery_status` is null, `"failed"`, or has been stuck in `"delivering"` for over 15 minutes
 
-### Part 2: Add concurrency cap + quality filter + oldest-first ordering to the cron
+### Section 4 -- Legacy Delivery (lines 392-430)
 
-Update `process-scheduled-deliveries` (the cron job) to:
+**Replace premature status update (lines 394-404) with "delivering" claim:**
+- Set only `delivery_status: "delivering"` (keep `status: "ready"` until confirmed)
 
-1. **Count active jobs first**: Before picking up new items, count how many are currently in-flight (`queued`, `pending`, `lyrics_generating`, `audio_generating`) across BOTH orders and leads tables combined
-2. **Cap at 9 total**: Only pick up enough new items to reach 9 total in-flight (e.g., if 6 are already running, only pick up 3 more)
-3. **Apply quality threshold in the cron query**: Filter leads by quality score at pickup time so low-quality leads never get claimed
-4. **Order leads oldest-first**: Change from `quality_score DESC` to `captured_at ASC` so the oldest eligible lead gets processed first
-5. **Orders still get priority**: Process orders first, then fill remaining slots with leads
+**Add response checking after fetch (lines 406-420):**
+- **Success:** Set `status: "delivered"`, `delivered_at`, `sent_at`, `delivery_status: "sent"`, `sent_to_emails`
+- **Failure:** Set `delivery_status: "failed"`, `delivery_last_error`, leave status as "ready" for retry
 
-**File:** `supabase/functions/process-scheduled-deliveries/index.ts`
-- Replace `MAX_GENERATIONS_PER_RUN = 3` with `MAX_CONCURRENT_GENERATIONS = 9`
-- Add concurrency counting logic before the pickup queries
-- Add `.gte("quality_score", qualityThreshold)` to the leads query
-- Change lead ordering to `captured_at ASC`
+### Section 5 -- Scheduled Resends (lines 449-486)
 
-### Part 3: Unstick the 224 queued leads
+**Save original `resend_scheduled_at` before clearing (line 451-455).**
 
-SQL migration to reset all leads stuck in `queued` status back to `automation_status = NULL` so the fixed cron can re-evaluate and pick them up properly.
+**Add response checking after fetch (lines 457-476):**
+- **Success:** Append to `sent_to_emails` array, log success
+- **Failure:** Restore `resend_scheduled_at` to original value so it retries next cron run; log the error
 
-## How It Will Work After the Fix
+### Guardrail: Delivering Timeout Safety
 
-```text
-Every minute, the cron runs:
-  1. Count active jobs (orders + leads in queued/pending/generating states)
-  2. Calculate remaining slots: 9 - active_count
-  3. If slots available:
-     a. Pick up ORDERS first (priority tier first, then by generate time)
-     b. With remaining slots, pick up LEADS (oldest first, quality >= threshold)
-  4. For each picked item: set to "queued", call automation-trigger
-  5. Trigger accepts "queued" status, proceeds to generate lyrics + audio
+In Section 3's pickup query, add logic to treat `delivery_status = 'delivering'` rows older than 15 minutes as retryable. This prevents permanent stuck states from cron crashes or deploy issues. Implementation: the pickup query will use an `.or()` clause that includes `delivering` rows where no `sent_at` exists and the row was last updated more than 15 minutes ago (checked via `delivered_at` being null and a separate sub-query, or by adding a `delivery_claimed_at` timestamp set during claim).
+
+Simplest approach: during the "delivering" claim, set a `delivery_claimed_at` field. No -- we don't have that column. Instead, use the existing pattern: when claiming, we don't set `sent_at`. The pickup query already filters `sent_at IS NULL`. For the timeout, we'll query separately for stuck "delivering" rows (where `delivery_status = 'delivering'` and the row has been in that state for >15 min) and reset them to `delivery_status = 'failed'` at the top of Section 3, before the main pickup. This is the cleanest approach since it uses existing columns.
+
+**Add at the top of Section 3 (before line 246):**
+```
+Reset any orders stuck in "delivering" for >15 minutes back to "failed"
+so they're eligible for retry on the next run.
 ```
 
-## File Changes
+This query:
+- Finds orders where `delivery_status = 'delivering'` and `sent_at IS NULL`
+- Uses the `target_send_at` (which we know is set) to infer the row was claimed at least 15 min ago. Actually, better: we know `sent_at` is null and `delivered_at` is null for "delivering" rows. We can check `target_send_at <= now - 15 min` as a proxy, but that's not ideal. 
 
-| File | Action | Description |
-|------|--------|-------------|
-| `supabase/functions/automation-trigger/index.ts` | EDIT | Remove "queued" from blocking check |
-| `supabase/functions/process-scheduled-deliveries/index.ts` | EDIT | Add concurrency cap of 9, quality filter, oldest-first ordering |
-| Database migration | CREATE | Reset 224 stuck "queued" leads to null |
+Best approach: When we set `delivery_status = 'delivering'`, also set `delivered_at = now` as a timestamp marker. Then the timeout check looks for `delivery_status = 'delivering' AND delivered_at < now - 15min`. On success, we overwrite `delivered_at` with the real value. On failure, we null it out. This reuses the existing column without schema changes.
 
-## What Happens Immediately After Deploy
+---
 
-- The 224 stuck leads reset to eligible status
-- Next cron run (within 60 seconds) counts active jobs, picks up to 9 items
-- Orders get processed first, then leads fill remaining slots
-- System continuously processes the backlog at up to 9 concurrent, prioritizing orders
+## Step 3: Requeue Affected Orders (SQL)
+
+Per the user's guardrail, the SQL should cover ALL rows missing send evidence, not just `status = 'delivered'`:
+
+```sql
+UPDATE orders
+SET resend_scheduled_at = now()
+WHERE sent_to_emails IS NULL
+  AND dismissed_at IS NULL
+  AND song_url IS NOT NULL
+  AND delivery_status IN ('sent', 'failed')
+  AND (status = 'delivered' OR delivery_status = 'sent')
+```
+
+This catches:
+- The 110 orders marked "delivered" with no email evidence
+- Any edge cases where `delivery_status = 'sent'` but the order wasn't fully marked delivered
+- Failed deliveries that should retry
+
+---
+
+## Detailed Code Changes Summary
+
+| Location | Change |
+|----------|--------|
+| Lines 242-258 (Section 3 top) | Add stuck "delivering" timeout reset (>15 min -> failed) |
+| Line 256 | Update pickup to include `delivery_status` in (null, 'failed') |
+| Lines 297-309 | Replace premature delivered/sent with "delivering" claim + timestamp |
+| Lines 336-362 | Split into success path (delivered/sent/sent_to_emails) and failure path (failed/error) |
+| Lines 394-404 | Replace premature delivered with "delivering" claim |
+| Lines 406-420 | Add response checking with success/failure split |
+| Lines 451-455 | Save original resend_scheduled_at before clearing |
+| Lines 457-476 | Add response checking; restore resend_scheduled_at on failure |
+| Database | Requeue orders with broader coverage SQL |
+
+## Expected Outcome
+
+- Song links work immediately after function deployment
+- Affected customers receive delivery emails within 1-2 minutes of SQL execution
+- Future email failures auto-retry on next cron run
+- "Delivering" state can never get permanently stuck (15-min timeout)
+- Lead delivery (Section 6) unchanged -- already safe
 
