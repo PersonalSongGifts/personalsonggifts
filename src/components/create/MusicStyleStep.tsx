@@ -19,6 +19,7 @@ interface MusicStyleStepProps {
 const genres = [
   { id: "pop", label: "Pop" },
   { id: "country", label: "Country" },
+  { id: "prayer", label: "Prayer" },
   { id: "rock", label: "Rock" },
   { id: "rnb", label: "R&B" },
   { id: "jazz", label: "Jazz" },

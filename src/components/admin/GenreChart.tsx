@@ -14,6 +14,7 @@ interface GenreChartProps {
 const GENRE_COLORS: Record<string, string> = {
   "Pop": "#EC4899",
   "Country": "#F59E0B",
+  "Prayer": "#7C3AED",
   "Rock": "#EF4444",
   "R&B": "#8B5CF6",
   "Jazz": "#6366F1",

@@ -41,6 +41,7 @@ Target a typical 3:00-3:30 song. Keep line lengths short and singable (4-10 word
 # Genre Vibes
 - Pop/Acoustic: Emotional clarity, intimate
 - Country: Storytelling, down-to-earth, nostalgic
+- Prayer/Worship: Reverent, intimate conversation with God, gratitude and trust, congregational chorus hook
 - Rock: Energy, anthemic choruses, powerful
 - R&B: Smooth, soulful, romantic
 - Jazz: Poetic, sophisticated, late-night vibes
