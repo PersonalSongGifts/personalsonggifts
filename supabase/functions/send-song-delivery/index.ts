@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
         Personal Song Gifts<br>
-        2323 Music Row, Nashville, TN 37212<br>
+        2108 N ST STE N, SACRAMENTO, CA 95816<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">Order another song</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
@@ -155,7 +155,7 @@ The Personal Song Gifts Team
 
 ---
 Personal Song Gifts
-2323 Music Row, Nashville, TN 37212
+2108 N ST STE N, SACRAMENTO, CA 95816
 https://personalsonggifts.lovable.app
 
 To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}

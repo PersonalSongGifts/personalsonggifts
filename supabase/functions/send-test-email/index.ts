@@ -79,7 +79,7 @@ function getLeadPreviewHtml(previewUrl: string, email: string) {
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
         © 2026 Personal Song Gifts<br>
-        123 Music Lane, Nashville, TN 37203<br>
+        2108 N ST STE N, SACRAMENTO, CA 95816<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
@@ -114,7 +114,7 @@ The Personal Song Gifts Team
 
 ---
 Personal Song Gifts
-123 Music Lane, Nashville, TN 37203
+2108 N ST STE N, SACRAMENTO, CA 95816
 https://personalsonggifts.lovable.app
 
 Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}
@@ -176,7 +176,7 @@ function getLeadFollowupHtml(previewUrl: string, email: string) {
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
         © 2026 Personal Song Gifts<br>
-        123 Music Lane, Nashville, TN 37203<br>
+        2108 N ST STE N, SACRAMENTO, CA 95816<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
@@ -209,7 +209,7 @@ The Personal Song Gifts Team
 
 ---
 Personal Song Gifts
-123 Music Lane, Nashville, TN 37203
+2108 N ST STE N, SACRAMENTO, CA 95816
 https://personalsonggifts.lovable.app
 
 Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}
@@ -295,7 +295,7 @@ function getOrderConfirmationHtml(email: string) {
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
         © 2026 Personal Song Gifts<br>
-        123 Music Lane, Nashville, TN 37203<br>
+        2108 N ST STE N, SACRAMENTO, CA 95816<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
@@ -342,7 +342,7 @@ The Personal Song Gifts Team
 
 ---
 Personal Song Gifts
-123 Music Lane, Nashville, TN 37203
+2108 N ST STE N, SACRAMENTO, CA 95816
 https://personalsonggifts.lovable.app
 
 Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}
@@ -415,7 +415,7 @@ function getSongDeliveryHtml(email: string) {
     <div style="text-align: center; padding: 20px;">
       <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
         © 2026 Personal Song Gifts<br>
-        123 Music Lane, Nashville, TN 37203<br>
+        2108 N ST STE N, SACRAMENTO, CA 95816<br>
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">Order another song</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
@@ -455,7 +455,7 @@ The Personal Song Gifts Team
 
 ---
 Personal Song Gifts
-123 Music Lane, Nashville, TN 37203
+2108 N ST STE N, SACRAMENTO, CA 95816
 https://personalsonggifts.lovable.app
 
 Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}
