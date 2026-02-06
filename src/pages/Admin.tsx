@@ -27,7 +27,7 @@ import { ReactionsTable } from "@/components/admin/ReactionsTable";
 import { ScheduledDeliveryPicker } from "@/components/admin/ScheduledDeliveryPicker";
 import { SourceAnalytics } from "@/components/admin/SourceAnalytics";
 import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
-import { genreOptions, singerOptions, occasionOptions } from "@/components/admin/adminDropdownOptions";
+import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 
 interface Order {
   id: string;
@@ -97,6 +97,8 @@ interface Order {
   inputs_hash: string | null;
   // Dismissal tracking
   dismissed_at: string | null;
+  // Language
+  lyrics_language_code?: string;
 }
 
 const statusColors: Record<string, string> = {
@@ -550,6 +552,15 @@ export default function Admin() {
         description: "Order information updated successfully",
       });
 
+      // UX nudge if language changed
+      if (editedOrder.lyrics_language_code && 
+          editedOrder.lyrics_language_code !== selectedOrder.lyrics_language_code) {
+        toast({
+          title: "Language Changed",
+          description: "Click Regenerate Song to produce the new version.",
+        });
+      }
+
       // Update local state
       setSelectedOrder(data.order);
       setIsEditingOrder(false);
@@ -584,6 +595,7 @@ export default function Admin() {
       favorite_memory: selectedOrder.favorite_memory,
       special_message: selectedOrder.special_message || "",
       notes: selectedOrder.notes || "",
+      lyrics_language_code: selectedOrder.lyrics_language_code || "en",
     });
     setIsEditingOrder(true);
   };
@@ -1512,7 +1524,7 @@ export default function Admin() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-4 gap-4">
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Occasion</h4>
                     {isEditingOrder ? (
@@ -1565,6 +1577,24 @@ export default function Admin() {
                       </Select>
                     ) : (
                       <p>{selectedOrder.singer_preference}</p>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Language</h4>
+                    {isEditingOrder ? (
+                      <Select
+                        value={editedOrder.lyrics_language_code || selectedOrder.lyrics_language_code || "en"}
+                        onValueChange={(val) => setEditedOrder({ ...editedOrder, lyrics_language_code: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {languageOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{(selectedOrder.lyrics_language_code || "en")} — {getLanguageLabel(selectedOrder.lyrics_language_code || "en")}</p>
                     )}
                   </div>
                 </div>

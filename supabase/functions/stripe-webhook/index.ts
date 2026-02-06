@@ -1,5 +1,6 @@
 import Stripe from "npm:stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { computeInputsHash } from "../_shared/hash-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,15 +47,6 @@ function computeOrderTiming(expectedDelivery: string): {
   };
 }
 
-// Compute hash of key input fields for change detection
-async function computeInputsHash(fields: string[]): Promise<string> {
-  const combined = fields.join('|');
-  const encoder = new TextEncoder();
-  const data = encoder.encode(combined);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight

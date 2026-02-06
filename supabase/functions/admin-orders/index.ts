@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { computeInputsHash } from "../_shared/hash-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -700,7 +701,8 @@ Deno.serve(async (req) => {
           "occasion", "genre", "singer_preference",
           "special_qualities", "favorite_memory",
           "special_message", "notes",
-          "customer_email_override", "customer_email_cc"
+          "customer_email_override", "customer_email_cc",
+          "lyrics_language_code"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
@@ -728,6 +730,31 @@ Deno.serve(async (req) => {
           }
         }
 
+        // If lyrics_language_code is being changed, enforce automation guard
+        const isLanguageChange = safeUpdates.lyrics_language_code !== undefined;
+        if (isLanguageChange) {
+          const { data: currentOrder, error: fetchErr } = await supabase
+            .from("orders")
+            .select("automation_status")
+            .eq("id", orderId)
+            .maybeSingle();
+
+          if (fetchErr || !currentOrder) {
+            return new Response(
+              JSON.stringify({ error: "Order not found" }),
+              { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const IN_FLIGHT_STATUSES = ["pending", "queued", "lyrics_generating", "lyrics_ready", "audio_generating"];
+          if (currentOrder.automation_status && IN_FLIGHT_STATUSES.includes(currentOrder.automation_status)) {
+            return new Response(
+              JSON.stringify({ error: "Reset automation before changing language." }),
+              { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
         const { data: order, error: updateError } = await supabase
           .from("orders")
           .update(safeUpdates)
@@ -738,6 +765,36 @@ Deno.serve(async (req) => {
         if (updateError) {
           console.error("Failed to update order fields:", updateError);
           throw updateError;
+        }
+
+        // If lyrics_language_code changed, recompute inputs_hash and handle delivery safety
+        if (isLanguageChange) {
+          const hashUpdates: Record<string, unknown> = {};
+
+          // Recompute hash using canonical 8-field order list (matches stripe-webhook)
+          const newHash = await computeInputsHash([
+            order.recipient_name || "",
+            order.recipient_name_pronunciation || "",
+            order.special_qualities || "",
+            order.favorite_memory || "",
+            order.genre || "",
+            order.occasion || "",
+            order.singer_preference || "",
+            order.lyrics_language_code || "en",
+          ]);
+          hashUpdates.inputs_hash = newHash;
+
+          // If song already generated, block auto-send until regen
+          if (order.automation_status === "completed") {
+            hashUpdates.delivery_status = "needs_review";
+          }
+
+          await supabase
+            .from("orders")
+            .update(hashUpdates)
+            .eq("id", orderId);
+
+          console.log(`[ADMIN] Order ${orderId} language changed, hash recomputed, delivery_status=${hashUpdates.delivery_status || "unchanged"}`);
         }
 
         return new Response(
@@ -765,7 +822,8 @@ Deno.serve(async (req) => {
           "occasion", "genre", "singer_preference",
           "special_qualities", "favorite_memory",
           "special_message",
-          "lead_email_override", "lead_email_cc"
+          "lead_email_override", "lead_email_cc",
+          "lyrics_language_code"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
@@ -793,6 +851,31 @@ Deno.serve(async (req) => {
           }
         }
 
+        // If lyrics_language_code is being changed, enforce automation guard
+        const isLanguageChange = safeUpdates.lyrics_language_code !== undefined;
+        if (isLanguageChange) {
+          const { data: currentLead, error: fetchErr } = await supabase
+            .from("leads")
+            .select("automation_status")
+            .eq("id", leadId)
+            .maybeSingle();
+
+          if (fetchErr || !currentLead) {
+            return new Response(
+              JSON.stringify({ error: "Lead not found" }),
+              { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const IN_FLIGHT_STATUSES = ["pending", "queued", "lyrics_generating", "lyrics_ready", "audio_generating"];
+          if (currentLead.automation_status && IN_FLIGHT_STATUSES.includes(currentLead.automation_status)) {
+            return new Response(
+              JSON.stringify({ error: "Reset automation before changing language." }),
+              { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
         const { data: lead, error: updateError } = await supabase
           .from("leads")
           .update(safeUpdates)
@@ -803,6 +886,25 @@ Deno.serve(async (req) => {
         if (updateError) {
           console.error("Failed to update lead fields:", updateError);
           throw updateError;
+        }
+
+        // If lyrics_language_code changed, recompute inputs_hash
+        if (isLanguageChange) {
+          const newHash = await computeInputsHash([
+            lead.recipient_name || "",
+            lead.special_qualities || "",
+            lead.favorite_memory || "",
+            lead.genre || "",
+            lead.occasion || "",
+            lead.lyrics_language_code || "en",
+          ]);
+
+          await supabase
+            .from("leads")
+            .update({ inputs_hash: newHash })
+            .eq("id", leadId);
+
+          console.log(`[ADMIN] Lead ${leadId} language changed, hash recomputed`);
         }
 
         return new Response(
@@ -1201,6 +1303,9 @@ Deno.serve(async (req) => {
           inputs_hash: null,
           next_attempt_at: null,
           automation_manual_override_at: null,
+          lyrics_language_qa: null,
+          lyrics_raw_attempt_1: null,
+          lyrics_raw_attempt_2: null,
         };
 
         // Entity-specific clears
@@ -1467,6 +1572,9 @@ Deno.serve(async (req) => {
         inputs_hash: null,
         next_attempt_at: null,
         automation_manual_override_at: null, // Re-enable automation
+        lyrics_language_qa: null,
+        lyrics_raw_attempt_1: null,
+        lyrics_raw_attempt_2: null,
       };
 
       // If clearAssets=true, also wipe the song

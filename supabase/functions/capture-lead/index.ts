@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { computeInputsHash } from "../_shared/hash-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,15 +33,6 @@ interface LeadInput {
   utmTerm?: string;
 }
 
-// Compute hash of key input fields for change detection
-async function computeInputsHash(fields: string[]): Promise<string> {
-  const combined = fields.join('|');
-  const encoder = new TextEncoder();
-  const data = encoder.encode(combined);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-}
 
 // Compute timing fields for lead automation
 function computeLeadTiming(): {

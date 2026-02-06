@@ -16,7 +16,7 @@ import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
 import { createAudioPreview } from "@/lib/audioClipper";
-import { genreOptions, singerOptions, occasionOptions } from "@/components/admin/adminDropdownOptions";
+import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 
 export interface Lead {
   id: string;
@@ -69,6 +69,8 @@ export interface Lead {
   automation_lyrics?: string | null;
   automation_style_id?: string | null;
   automation_manual_override_at?: string | null;
+  // Language
+  lyrics_language_code?: string;
 }
 
 interface LeadsTableProps {
@@ -718,6 +720,15 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
         description: "Lead information updated successfully",
       });
 
+      // UX nudge if language changed
+      if (editedLead.lyrics_language_code && 
+          editedLead.lyrics_language_code !== selectedLead.lyrics_language_code) {
+        toast({
+          title: "Language Changed",
+          description: "Click Regenerate Song to produce the new version.",
+        });
+      }
+
       // Update local state
       setSelectedLead(data.lead);
       setIsEditingLead(false);
@@ -751,6 +762,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       special_qualities: selectedLead.special_qualities,
       favorite_memory: selectedLead.favorite_memory,
       special_message: selectedLead.special_message || "",
+      lyrics_language_code: selectedLead.lyrics_language_code || "en",
     });
     setIsEditingLead(true);
   };
@@ -1398,7 +1410,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-4 gap-4">
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Occasion</h4>
                     {isEditingLead ? (
@@ -1451,6 +1463,24 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       </Select>
                     ) : (
                       <p>{selectedLead.singer_preference}</p>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Language</h4>
+                    {isEditingLead ? (
+                      <Select
+                        value={editedLead.lyrics_language_code || selectedLead.lyrics_language_code || "en"}
+                        onValueChange={(val) => setEditedLead({ ...editedLead, lyrics_language_code: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {languageOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{(selectedLead.lyrics_language_code || "en")} — {getLanguageLabel(selectedLead.lyrics_language_code || "en")}</p>
                     )}
                   </div>
                 </div>
