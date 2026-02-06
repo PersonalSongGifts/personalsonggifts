@@ -8,10 +8,11 @@ const corsHeaders = {
 };
 
 // ======= BACKGROUND AUTOMATION CONSTANTS =======
-const MAX_GENERATIONS_PER_RUN = 3; // Rate limit: max 3 generations per minute
+const MAX_CONCURRENT_GENERATIONS = 9; // Global cap: max 9 in-flight across orders + leads
 const MAX_LEAD_PREVIEWS_PER_RUN = 5; // Catch-up: max 5 overdue lead previews
 const AUDIO_RECOVERY_AFTER_MINUTES = 5; // Recover stuck audio jobs after 5 min
 const MAX_AUDIO_RECOVERIES_PER_RUN = 3;
+const ACTIVE_STATUSES = ["queued", "pending", "lyrics_generating", "audio_generating"];
 
 
 Deno.serve(async (req) => {
@@ -109,101 +110,126 @@ Deno.serve(async (req) => {
         const processOrders = automationTarget === "orders" || automationTarget === "both";
         const processLeads = automationTarget === "leads" || automationTarget === "both";
 
+        // --- CONCURRENCY CAP: Count active jobs across both tables ---
+        let activeCount = 0;
+
+        const { count: activeOrders } = await supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .in("automation_status", ACTIVE_STATUSES);
+
+        const { count: activeLeads } = await supabase
+          .from("leads")
+          .select("id", { count: "exact", head: true })
+          .in("automation_status", ACTIVE_STATUSES);
+
+        activeCount = (activeOrders || 0) + (activeLeads || 0);
+        const availableSlots = Math.max(0, MAX_CONCURRENT_GENERATIONS - activeCount);
+
+        console.log(`[SCHEDULER] Active jobs: ${activeCount} (${activeOrders || 0} orders, ${activeLeads || 0} leads), available slots: ${availableSlots}`);
+
         let generationsTriggered = 0;
 
-        // Process ORDERS first (priority tier gets priority within orders)
-        if (processOrders && generationsTriggered < MAX_GENERATIONS_PER_RUN) {
-          const { data: pendingOrders } = await supabase
-            .from("orders")
-            .select("id, pricing_tier")
-            .is("automation_status", null)
-            .not("earliest_generate_at", "is", null)
-            .lte("earliest_generate_at", now)
-            .is("dismissed_at", null)
-            .neq("status", "cancelled")
-            .or("next_attempt_at.is.null,next_attempt_at.lte." + now)
-            .order("pricing_tier", { ascending: false }) // 'priority' before 'standard'
-            .order("earliest_generate_at", { ascending: true })
-            .limit(MAX_GENERATIONS_PER_RUN - generationsTriggered);
-
-          // Note: needs_review is an automation_status value, so .is("automation_status", null) 
-          // already excludes those records. Items with needs_review must be manually resolved.
-
-          for (const order of pendingOrders || []) {
-            // Atomic claim: update status only if still null (prevents double-pickup)
-            const { data: claimed } = await supabase
+        if (availableSlots > 0) {
+          // Process ORDERS first (priority tier gets priority within orders)
+          if (processOrders && generationsTriggered < availableSlots) {
+            const { data: pendingOrders } = await supabase
               .from("orders")
-              .update({
-                automation_status: "queued",
-                automation_started_at: now,
-              })
-              .eq("id", order.id)
+              .select("id, pricing_tier")
               .is("automation_status", null)
-              .select("id")
-              .single();
+              .not("earliest_generate_at", "is", null)
+              .lte("earliest_generate_at", now)
+              .is("dismissed_at", null)
+              .neq("status", "cancelled")
+              .or("next_attempt_at.is.null,next_attempt_at.lte." + now)
+              .order("pricing_tier", { ascending: false }) // 'priority' before 'standard'
+              .order("earliest_generate_at", { ascending: true })
+              .limit(availableSlots - generationsTriggered);
 
-            if (claimed) {
-              console.log(`[SCHEDULER] Triggering generation for order ${order.id} (${order.pricing_tier})`);
-              await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${supabaseServiceKey}`,
-                },
-                body: JSON.stringify({ orderId: order.id }),
-              });
-              generationsTriggered++;
+            for (const order of pendingOrders || []) {
+              // Atomic claim: update status only if still null (prevents double-pickup)
+              const { data: claimed } = await supabase
+                .from("orders")
+                .update({
+                  automation_status: "queued",
+                  automation_started_at: now,
+                })
+                .eq("id", order.id)
+                .is("automation_status", null)
+                .select("id")
+                .single();
+
+              if (claimed) {
+                console.log(`[SCHEDULER] Triggering generation for order ${order.id} (${order.pricing_tier})`);
+                await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${supabaseServiceKey}`,
+                  },
+                  body: JSON.stringify({ orderId: order.id }),
+                });
+                generationsTriggered++;
+              }
             }
           }
-        }
 
-        // Process LEADS (only remaining slots)
-        if (processLeads && generationsTriggered < MAX_GENERATIONS_PER_RUN) {
-          const { data: pendingLeads } = await supabase
-            .from("leads")
-            .select("id, quality_score")
-            .is("automation_status", null)
-            .not("earliest_generate_at", "is", null)
-            .lte("earliest_generate_at", now)
-            .is("dismissed_at", null)
-            .neq("status", "converted")
-            .or("next_attempt_at.is.null,next_attempt_at.lte." + now)
-            .order("quality_score", { ascending: false }) // Higher quality first
-            .order("earliest_generate_at", { ascending: true })
-            .limit(MAX_GENERATIONS_PER_RUN - generationsTriggered);
+          // Process LEADS (only remaining slots, oldest first, quality filtered)
+          if (processLeads && generationsTriggered < availableSlots) {
+            // Get quality threshold for filtering at pickup time
+            const { data: thresholdSetting } = await supabase
+              .from("admin_settings")
+              .select("value")
+              .eq("key", "automation_quality_threshold")
+              .maybeSingle();
 
-          // Note: needs_review is an automation_status value, so .is("automation_status", null) 
-          // already excludes those records. Items with needs_review must be manually resolved.
+            const qualityThreshold = parseInt((thresholdSetting as { value: string } | null)?.value || "65", 10);
 
-          for (const lead of pendingLeads || []) {
-            // Atomic claim
-            const { data: claimed } = await supabase
+            const { data: pendingLeads } = await supabase
               .from("leads")
-              .update({
-                automation_status: "queued",
-                automation_started_at: now,
-              })
-              .eq("id", lead.id)
+              .select("id, quality_score")
               .is("automation_status", null)
-              .select("id")
-              .single();
+              .not("earliest_generate_at", "is", null)
+              .lte("earliest_generate_at", now)
+              .is("dismissed_at", null)
+              .neq("status", "converted")
+              .gte("quality_score", qualityThreshold) // Quality filter at pickup
+              .or("next_attempt_at.is.null,next_attempt_at.lte." + now)
+              .order("captured_at", { ascending: true }) // Oldest first
+              .limit(availableSlots - generationsTriggered);
 
-            if (claimed) {
-              console.log(`[SCHEDULER] Triggering generation for lead ${lead.id} (score: ${lead.quality_score})`);
-              await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${supabaseServiceKey}`,
-                },
-                body: JSON.stringify({ leadId: lead.id }),
-              });
-              generationsTriggered++;
+            for (const lead of pendingLeads || []) {
+              // Atomic claim
+              const { data: claimed } = await supabase
+                .from("leads")
+                .update({
+                  automation_status: "queued",
+                  automation_started_at: now,
+                })
+                .eq("id", lead.id)
+                .is("automation_status", null)
+                .select("id")
+                .single();
+
+              if (claimed) {
+                console.log(`[SCHEDULER] Triggering generation for lead ${lead.id} (score: ${lead.quality_score}, oldest-first)`);
+                await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${supabaseServiceKey}`,
+                  },
+                  body: JSON.stringify({ leadId: lead.id }),
+                });
+                generationsTriggered++;
+              }
             }
           }
         }
 
         results.generationsTriggered = generationsTriggered;
+        results.activeJobs = activeCount;
+        results.availableSlots = availableSlots;
       } else {
         results.generationsTriggered = 0;
         results.automationDisabled = true;
