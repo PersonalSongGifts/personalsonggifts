@@ -1,51 +1,44 @@
 
+# Fix Admin Dashboard: Readability, Revenue Today, and Song Play Tracking Bug
 
-# Clean Up Admin Stats Dashboard
+## Problems Found
 
-## Problem
+1. **Stats cards still too small and truncated** -- titles like "Total R...", "Previe...", "Recov..." are cut off because the grid is too dense
+2. **Revenue Today not visible** -- code exists but may not have deployed; needs to be prominently placed
+3. **Songs Played showing 0 is a real bug** -- the song player page receives a short 8-character order ID from the URL (e.g., `027e8965`), but the tracking function tries to match it as a full UUID (`027e8965-042f-4817-bfc0-ba388d7f3c55`). The query `.eq("id", orderId)` returns nothing, so plays are never recorded. Lead tracking works fine because it uses preview tokens, not UUIDs.
+4. **"Conversion Rate by Source" chart is unclear** -- needs a subtitle explaining what it measures
 
-The stats cards are crammed into a 10-column grid on desktop, causing titles and descriptions to get truncated ("Total R...", "Orders...", "Recov...", "SMS S...", etc.). With 13 cards forced into tiny squares, nothing is readable at a glance.
+## Changes
 
-## Solution
+### 1. Fix Stats Cards Layout (StatsCards.tsx)
 
-Reorganize the 14 stats (13 existing + 1 new "Revenue Today") into **grouped rows by category** with section labels, using a wider, more readable grid layout.
+- Reduce max columns from 5 to **4 per row** on large screens (`lg:grid-cols-4`) and **2 on medium** (`sm:grid-cols-2`)
+- Increase card padding for breathing room
+- Make section headers slightly more prominent
+- Ensure "Revenue Today" card is the **first card** in the Revenue section so it's immediately visible with today's dollar amount and order count
 
-### Layout
+### 2. Fix Song Play Tracking Bug (track-song-engagement edge function)
 
-```text
-+---------------------------+---------------------------+
-|  REVENUE & ORDERS                                     |
-+---------------------------+---------------------------+
-| Total Revenue | Rev Today | Orders Today | Total | Pending |
-+---------------------------+---------------------------+
-|  LEAD RECOVERY                                        |
-+---------------------------+---------------------------+
-| Leads | Previews Sent | True Recoveries | Recovery Rate | Play > Buy |
-+---------------------------+---------------------------+
-|  ENGAGEMENT & SMS                                     |
-+---------------------------+---------------------------+
-| Songs Played | Downloads | SMS Sent | SMS Failed      |
-+---------------------------+---------------------------+
+The root cause: emails link to `/song/027e8965` (first 8 chars of UUID). The SongPlayer page passes this short ID directly to the tracking function, which does:
+```
+.eq("id", orderId)  // fails -- "027e8965" != full UUID
 ```
 
-- **5 columns max** on large screens (down from 10)
-- **3 columns** on medium, **2 columns** on mobile
-- Full titles and descriptions visible -- no truncation
-- Small section headers ("Revenue & Orders", "Lead Recovery", "Engagement & SMS") to group related metrics
+**Fix:** Add short-ID resolution logic (same pattern already used in `get-song-page`):
+- If orderId is 8 characters, query all orders and filter by UUID prefix match
+- If orderId is a full UUID, use direct `.eq()` lookup
+- This matches how `get-song-page` already handles it successfully
 
-### New Metric: Revenue Today
+### 3. Clarify "Conversion Rate by Source" (SourceAnalytics.tsx)
 
-Calculate today's revenue the same way total revenue is calculated, but filtered to orders created today (using the existing `today` date logic). Excludes cancelled orders.
+- Add a subtitle under the chart title: "Percentage of leads from each source that resulted in a purchase"
+- This makes it clear that 35% YouTube means 35% of YouTube leads became paying customers
 
-## Technical Changes
+## Technical Details
 
-**File: `src/components/admin/StatsCards.tsx`**
+**Files to modify:**
+- `src/components/admin/StatsCards.tsx` -- layout and card sizing
+- `supabase/functions/track-song-engagement/index.ts` -- fix short ID resolution for order plays/downloads
+- `src/components/admin/SourceAnalytics.tsx` -- add explanatory subtitle
 
-1. Add `revenueToday` calculation -- sum of `order.price` for non-cancelled orders created today
-2. Insert new "Revenue Today" card after "Total Revenue" in the stats array
-3. Restructure the stats array into grouped sections with labels
-4. Update the grid layout from `grid-cols-10` to `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5` with section dividers
-5. Render each section with a small heading label above the row of cards
-
-No other files need to change -- this is a self-contained component update.
-
+**No database changes needed.** The tracking columns (`song_played_at`, `song_play_count`) already exist and work -- the data just was never being written due to the ID mismatch bug. Once fixed, new plays will start tracking immediately. Historical plays cannot be recovered.
