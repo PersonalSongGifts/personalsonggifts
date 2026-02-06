@@ -13,6 +13,9 @@ const MAX_LEAD_PREVIEWS_PER_RUN = 5; // Catch-up: max 5 overdue lead previews
 const AUDIO_RECOVERY_AFTER_MINUTES = 5; // Recover stuck audio jobs after 5 min
 const MAX_AUDIO_RECOVERIES_PER_RUN = 3;
 const ACTIVE_STATUSES = ["queued", "pending", "lyrics_generating", "audio_generating"];
+const MAX_AUTO_RETRIES = 3; // Max retry attempts before permanent failure
+const RETRY_BACKOFF_MINUTES = 10; // Wait at least 10 min before retrying
+const MAX_RETRIES_PER_RUN = 5; // Max failed items to reset per cron run
 
 
 Deno.serve(async (req) => {
@@ -236,6 +239,89 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       console.error("[SCHEDULER] Generation queue error:", e);
+    }
+
+    // ======= 2b. AUTO-RETRY FAILED GENERATIONS =======
+    // Reset failed leads/orders for retry with backoff + max retry cap
+    try {
+      const retryCutoff = new Date(Date.now() - RETRY_BACKOFF_MINUTES * 60 * 1000).toISOString();
+      let totalRetried = 0;
+
+      // Retry failed orders first (paid = higher priority)
+      const { data: failedOrders } = await supabase
+        .from("orders")
+        .select("id, automation_retry_count")
+        .eq("automation_status", "failed")
+        .is("dismissed_at", null)
+        .neq("status", "cancelled")
+        .lte("automation_started_at", retryCutoff)
+        .lt("automation_retry_count", MAX_AUTO_RETRIES)
+        .order("automation_started_at", { ascending: true })
+        .limit(MAX_RETRIES_PER_RUN);
+
+      for (const order of failedOrders || []) {
+        const { data: reset } = await supabase
+          .from("orders")
+          .update({
+            automation_status: null,
+            automation_last_error: null,
+            automation_started_at: null,
+            automation_task_id: null,
+            automation_retry_count: (order.automation_retry_count || 0) + 1,
+          })
+          .eq("id", order.id)
+          .eq("automation_status", "failed")
+          .select("id")
+          .maybeSingle();
+
+        if (reset) {
+          console.log(`[RETRY] Reset failed order ${order.id} for retry (attempt ${(order.automation_retry_count || 0) + 1}/${MAX_AUTO_RETRIES})`);
+          totalRetried++;
+        }
+      }
+
+      // Retry failed leads (remaining slots)
+      const remainingRetrySlots = MAX_RETRIES_PER_RUN - totalRetried;
+      if (remainingRetrySlots > 0) {
+        const { data: failedLeads } = await supabase
+          .from("leads")
+          .select("id, automation_retry_count")
+          .eq("automation_status", "failed")
+          .is("dismissed_at", null)
+          .neq("status", "converted")
+          .lte("automation_started_at", retryCutoff)
+          .lt("automation_retry_count", MAX_AUTO_RETRIES)
+          .order("automation_started_at", { ascending: true })
+          .limit(remainingRetrySlots);
+
+        for (const lead of failedLeads || []) {
+          const { data: reset } = await supabase
+            .from("leads")
+            .update({
+              automation_status: null,
+              automation_last_error: null,
+              automation_started_at: null,
+              automation_task_id: null,
+              automation_retry_count: (lead.automation_retry_count || 0) + 1,
+            })
+            .eq("id", lead.id)
+            .eq("automation_status", "failed")
+            .select("id")
+            .maybeSingle();
+
+          if (reset) {
+            console.log(`[RETRY] Reset failed lead ${lead.id} for retry (attempt ${(lead.automation_retry_count || 0) + 1}/${MAX_AUTO_RETRIES})`);
+            totalRetried++;
+          }
+        }
+      }
+
+      if (totalRetried > 0) {
+        console.log(`[RETRY] Reset ${totalRetried} failed items for retry`);
+      }
+      results.autoRetried = totalRetried;
+    } catch (e) {
+      console.error("[RETRY] Auto-retry error:", e);
     }
 
     // ======= 3. ORDER DELIVERY QUEUE =======
