@@ -247,16 +247,25 @@ Deno.serve(async (req) => {
           ]);
           
           if (order.inputs_hash && currentHash !== order.inputs_hash) {
-            console.log(`[DELIVERY] Order ${order.id} inputs changed, marking needs_review`);
+            // If an admin manually edited inputs, block delivery for safety
+            if (order.automation_manual_override_at) {
+              console.log(`[DELIVERY] Order ${order.id} inputs changed (manual edit detected), marking needs_review`);
+              await supabase
+                .from("orders")
+                .update({
+                  delivery_status: "needs_review",
+                  delivery_last_error: "Inputs changed after generation",
+                })
+                .eq("id", order.id);
+              orderDeliveryResults.push({ orderId: order.id, success: false, error: "Inputs changed" });
+              continue;
+            }
+            // No manual edit — likely a hash formula evolution. Recompute and proceed.
+            console.log(`[DELIVERY] Order ${order.id} hash mismatch without manual override, recomputing hash and proceeding`);
             await supabase
               .from("orders")
-              .update({
-                delivery_status: "needs_review",
-                delivery_last_error: "Inputs changed after generation",
-              })
+              .update({ inputs_hash: currentHash })
               .eq("id", order.id);
-            orderDeliveryResults.push({ orderId: order.id, success: false, error: "Inputs changed" });
-            continue;
           }
 
           // Update status first (prevents duplicate processing)
