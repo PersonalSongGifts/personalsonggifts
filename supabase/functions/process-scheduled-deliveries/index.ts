@@ -243,6 +243,25 @@ Deno.serve(async (req) => {
     const orderDeliveryResults: Array<{ orderId: string; success: boolean; error?: string }> = [];
     
     try {
+      // Reset any orders stuck in "delivering" for >15 minutes back to "failed"
+      // so they're eligible for retry on the next run
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { data: stuckDelivering } = await supabase
+        .from("orders")
+        .update({
+          delivery_status: "failed",
+          delivery_last_error: "Stuck in delivering state for >15 minutes (timeout reset)",
+          delivered_at: null,
+        })
+        .eq("delivery_status", "delivering")
+        .is("sent_at", null)
+        .lte("delivered_at", fifteenMinAgo)
+        .select("id");
+      
+      if (stuckDelivering && stuckDelivering.length > 0) {
+        console.log(`[DELIVERY] Reset ${stuckDelivering.length} stuck "delivering" orders: ${stuckDelivering.map(o => o.id).join(", ")}`);
+      }
+
       const { data: ordersToDeliver } = await supabase
         .from("orders")
         .select("*")
@@ -253,7 +272,7 @@ Deno.serve(async (req) => {
         .is("dismissed_at", null)
         .neq("status", "cancelled")
         .not("song_url", "is", null)
-        .neq("delivery_status", "needs_review") // Exclude needs_review
+        .or("delivery_status.is.null,delivery_status.eq.failed") // Only pickup null or failed (excludes needs_review, sent, delivering)
         .limit(10);
 
       console.log(`[DELIVERY] Found ${ordersToDeliver?.length || 0} orders ready for delivery`);
@@ -294,19 +313,26 @@ Deno.serve(async (req) => {
               .eq("id", order.id);
           }
 
-          // Update status first (prevents duplicate processing)
-          const { error: updateError } = await supabase
+          // Claim row for delivery (prevents duplicate processing)
+          // Use delivered_at as timestamp marker for stuck detection
+          const { data: claimed, error: claimError } = await supabase
             .from("orders")
             .update({
-              status: "delivered",
-              delivered_at: now,
-              sent_at: now,
-              delivery_status: "sent",
+              delivery_status: "delivering",
+              delivered_at: now, // Timestamp marker for timeout detection
             })
             .eq("id", order.id)
-            .is("sent_at", null); // Optimistic lock
+            .is("sent_at", null) // Optimistic lock
+            .select("id");
 
-          if (updateError) throw updateError;
+          if (claimError) throw claimError;
+          if (!claimed || claimed.length === 0) {
+            console.log(`[DELIVERY] Order ${order.id} already claimed, skipping`);
+            continue;
+          }
+
+          // Determine effective recipient email (override > original)
+          const effectiveEmail = order.customer_email_override || order.customer_email;
 
           // Send delivery email (with SMS fields)
           const emailResponse = await fetch(
@@ -319,11 +345,12 @@ Deno.serve(async (req) => {
               },
               body: JSON.stringify({
                 orderId: order.id,
-                customerEmail: order.customer_email,
+                customerEmail: effectiveEmail,
                 customerName: order.customer_name,
                 recipientName: order.recipient_name,
                 occasion: order.occasion,
                 songUrl: order.song_url,
+                ccEmail: order.customer_email_cc,
                 // SMS fields
                 phoneE164: order.phone_e164,
                 smsOptIn: order.sms_opt_in,
@@ -333,11 +360,36 @@ Deno.serve(async (req) => {
             }
           );
 
+          // Track sent recipients
+          const sentEmails = [effectiveEmail];
+          if (order.customer_email_cc) sentEmails.push(order.customer_email_cc);
+
           if (!emailResponse.ok) {
             const errorText = await emailResponse.text();
             console.error(`[DELIVERY] Email failed for order ${order.id}:`, errorText);
-            orderDeliveryResults.push({ orderId: order.id, success: true, error: `Email failed: ${errorText}` });
+            // Mark as failed -- eligible for retry on next cron run
+            await supabase
+              .from("orders")
+              .update({
+                delivery_status: "failed",
+                delivery_last_error: `Email send failed (${emailResponse.status}): ${errorText.substring(0, 500)}`,
+                delivered_at: null, // Clear timestamp marker
+              })
+              .eq("id", order.id);
+            orderDeliveryResults.push({ orderId: order.id, success: false, error: `Email failed: ${errorText}` });
           } else {
+            // Email confirmed sent -- now safe to mark as delivered
+            await supabase
+              .from("orders")
+              .update({
+                status: "delivered",
+                delivery_status: "sent",
+                sent_at: now,
+                delivered_at: now,
+                sent_to_emails: sentEmails,
+              })
+              .eq("id", order.id);
+
             // Parse SMS result from response and update order
             try {
               const deliveryResult = await emailResponse.json();
@@ -358,7 +410,7 @@ Deno.serve(async (req) => {
                 }
               }
             } catch { /* non-blocking */ }
-            console.log(`[DELIVERY] ✅ Order ${order.id} delivered`);
+            console.log(`[DELIVERY] ✅ Order ${order.id} delivered to ${sentEmails.join(", ")}`);
             orderDeliveryResults.push({ orderId: order.id, success: true });
           }
         } catch (orderError) {
@@ -391,19 +443,24 @@ Deno.serve(async (req) => {
 
       for (const order of legacyOrders || []) {
         try {
-          const { error: updateError } = await supabase
+          // Claim row with "delivering" status (keep status as "ready" until confirmed)
+          const { data: claimed, error: claimError } = await supabase
             .from("orders")
             .update({
-              status: "delivered",
-              delivered_at: now,
-              sent_at: now,
+              delivery_status: "delivering",
+              delivered_at: now, // Timestamp marker for timeout detection
             })
             .eq("id", order.id)
-            .eq("status", "ready");
+            .eq("status", "ready")
+            .select("id");
 
-          if (updateError) throw updateError;
+          if (claimError) throw claimError;
+          if (!claimed || claimed.length === 0) {
+            console.log(`[LEGACY] Order ${order.id} already claimed, skipping`);
+            continue;
+          }
 
-          await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
+          const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -411,15 +468,46 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               orderId: order.id,
-              customerEmail: order.customer_email,
+              customerEmail: order.customer_email_override || order.customer_email,
               customerName: order.customer_name,
               recipientName: order.recipient_name,
               occasion: order.occasion,
               songUrl: order.song_url,
+              ccEmail: order.customer_email_cc,
             }),
           });
 
-          legacyDeliveryResults.push({ orderId: order.id, success: true });
+          const effectiveEmail = order.customer_email_override || order.customer_email;
+          const sentEmails = [effectiveEmail];
+          if (order.customer_email_cc) sentEmails.push(order.customer_email_cc);
+
+          if (!emailResponse.ok) {
+            const errorText = await emailResponse.text();
+            console.error(`[LEGACY] Email failed for order ${order.id}:`, errorText);
+            await supabase
+              .from("orders")
+              .update({
+                delivery_status: "failed",
+                delivery_last_error: `Email send failed (${emailResponse.status}): ${errorText.substring(0, 500)}`,
+                delivered_at: null,
+              })
+              .eq("id", order.id);
+            legacyDeliveryResults.push({ orderId: order.id, success: false, error: `Email failed: ${errorText}` });
+          } else {
+            // Email confirmed -- now safe to mark delivered
+            await supabase
+              .from("orders")
+              .update({
+                status: "delivered",
+                delivery_status: "sent",
+                sent_at: now,
+                delivered_at: now,
+                sent_to_emails: sentEmails,
+              })
+              .eq("id", order.id);
+            console.log(`[LEGACY] ✅ Order ${order.id} delivered to ${sentEmails.join(", ")}`);
+            legacyDeliveryResults.push({ orderId: order.id, success: true });
+          }
         } catch (orderError) {
           legacyDeliveryResults.push({
             orderId: order.id,
@@ -448,13 +536,19 @@ Deno.serve(async (req) => {
 
       for (const order of resendOrders || []) {
         try {
+          // Save original resend_scheduled_at so we can restore on failure
+          const originalResendAt = order.resend_scheduled_at;
+
+          // Clear resend_scheduled_at to prevent duplicate pickup
           await supabase
             .from("orders")
             .update({ resend_scheduled_at: null })
             .eq("id", order.id)
             .not("resend_scheduled_at", "is", null);
 
-          await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
+          const effectiveEmail = order.customer_email_override || order.customer_email;
+
+          const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -462,11 +556,12 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               orderId: order.id,
-              customerEmail: order.customer_email,
+              customerEmail: effectiveEmail,
               customerName: order.customer_name,
               recipientName: order.recipient_name,
               occasion: order.occasion,
               songUrl: order.song_url,
+              ccEmail: order.customer_email_cc,
               // SMS fields for resend
               phoneE164: order.phone_e164,
               smsOptIn: order.sms_opt_in,
@@ -475,7 +570,35 @@ Deno.serve(async (req) => {
             }),
           });
 
-          resendResults.push({ orderId: order.id, success: true });
+          if (!emailResponse.ok) {
+            const errorText = await emailResponse.text();
+            console.error(`[RESEND] Email failed for order ${order.id}:`, errorText);
+            // Restore resend_scheduled_at so it retries on next cron run
+            await supabase
+              .from("orders")
+              .update({
+                resend_scheduled_at: originalResendAt,
+                delivery_last_error: `Resend failed (${emailResponse.status}): ${errorText.substring(0, 500)}`,
+              })
+              .eq("id", order.id);
+            resendResults.push({ orderId: order.id, success: false, error: `Email failed: ${errorText}` });
+          } else {
+            // Append to sent_to_emails array
+            const existingSent = Array.isArray(order.sent_to_emails) ? order.sent_to_emails : [];
+            const newSentEmails = [...new Set([...existingSent, effectiveEmail, ...(order.customer_email_cc ? [order.customer_email_cc] : [])])];
+            
+            await supabase
+              .from("orders")
+              .update({
+                sent_to_emails: newSentEmails,
+                delivery_status: "sent",
+                delivery_last_error: null,
+              })
+              .eq("id", order.id);
+            
+            console.log(`[RESEND] ✅ Order ${order.id} resent to ${newSentEmails.join(", ")}`);
+            resendResults.push({ orderId: order.id, success: true });
+          }
         } catch (orderError) {
           resendResults.push({
             orderId: order.id,
