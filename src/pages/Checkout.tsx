@@ -233,7 +233,7 @@ const Checkout = () => {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 mb-10">
+          <div className="grid md:grid-cols-2 gap-6 mb-6">
             {/* Standard tier */}
             <Card 
               onClick={() => setSelectedTier("standard")}
@@ -330,6 +330,11 @@ const Checkout = () => {
                 </li>
               </ul>
             </Card>
+          </div>
+
+          {/* Valentine's delivery urgency notice */}
+          <div className="mb-6">
+            <ValentineDeliveryNotice />
           </div>
 
           {/* Order summary */}
@@ -432,14 +437,11 @@ const Checkout = () => {
             </div>
           </div>
 
-          {/* Valentine's delivery urgency notice */}
-          <ValentineDeliveryNotice />
-
           {/* Checkout button */}
           <Button 
             onClick={handleCheckout}
             size="lg" 
-            className="w-full text-lg py-6 font-semibold gap-2 mt-4"
+            className="w-full text-lg py-6 font-semibold gap-2"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
