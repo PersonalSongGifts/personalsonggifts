@@ -16,7 +16,7 @@ export const step3Schema = z.object({
 export const step4Schema = z.object({
   genre: z.string().min(1, "Please select a music genre"),
   singerPreference: z.string().min(1, "Please select a singer preference"),
-  lyricsLanguageCode: z.string().min(1, "Please select a language"),
+  lyricsLanguageCode: z.string().optional(), // Optional - defaults to "en"
 });
 
 export const step5Schema = z.object({
