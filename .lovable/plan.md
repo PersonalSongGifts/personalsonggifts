@@ -1,66 +1,30 @@
 
 
-# Fix: Auto-Retry Failed Leads + Unblock 52 Stuck Leads
+# Fix: Country Style Prompts Missing Vocal Gender
 
-## Immediate Problem
+## Problem
 
-52 leads are stuck with `automation_status = 'failed'` because they hit a 402 "Not enough credits" error. Credits have been replenished, but the cron never retries failed leads -- it only picks up leads where `automation_status IS NULL`.
+The Country Female and Country Male styles in the `song_styles` table have **identical** `suno_prompt` values. Neither mentions vocal gender, so Suno picks a random voice -- which is why the customer's "female" preference was ignored.
 
-## Part 1: Unblock the 52 Stuck Leads (Database Update)
+All other genres (Acoustic, EDM, Hip-Hop, Indie Folk, Jazz, K-Pop, Latin Pop, Pop, R&B, Rock) correctly include "female vocal" or "male vocal" in their prompts. Country is the only one missing it.
 
-Reset all 52 failed leads back to `automation_status = NULL` so the cron picks them up automatically:
+## Fix
 
-```sql
-UPDATE leads
-SET automation_status = NULL,
-    automation_last_error = NULL,
-    automation_started_at = NULL,
-    automation_task_id = NULL
-WHERE automation_status = 'failed'
-  AND automation_last_error LIKE '%402%';
-```
+Update both Country style prompts to include explicit vocal gender, matching the pattern used by all other genres:
 
-This only resets leads that failed due to the credits issue (402 errors), not any that failed for other reasons.
+**Country Female** (`dbc8e957-4a15-47ec-bd9c-965c037f52d1`):
+> country rock, mid-tempo (90-110 BPM), warm and heartfelt vibe, acoustic guitar, clean electric guitar, steady drums and bass, touch of fiddle or pedal steel, front-porch storytelling feel, **warm expressive female vocal**, down-to-earth lyrics about love, family, and small moments, big sing-along chorus that feels like driving with the windows down, natural live-band production, cozy nostalgic energy with a hopeful uplifting tone
 
-The cron runs every minute and processes up to 9 at a time, so all 52 will be processed within roughly 6 minutes.
+**Country Male** (`cfba483f-88f6-4b95-a34b-881e1b050da2`):
+> country rock, mid-tempo (90-110 BPM), warm and heartfelt vibe, acoustic guitar, clean electric guitar, steady drums and bass, touch of fiddle or pedal steel, front-porch storytelling feel, **warm expressive male vocal**, down-to-earth lyrics about love, family, and small moments, big sing-along chorus that feels like driving with the windows down, natural live-band production, cozy nostalgic energy with a hopeful uplifting tone
 
-## Part 2: Add Auto-Retry Logic to the Cron
+## Technical Details
 
-In `supabase/functions/process-scheduled-deliveries/index.ts`, add a new section (after the generation queue) that automatically resets `failed` leads for retry, with safeguards:
+Two SQL UPDATE statements against the `song_styles` table, targeting the two Country rows by their UUIDs. No code changes needed -- the automation pipeline already reads the `suno_prompt` field dynamically.
 
-- Only retry leads that have been in `failed` for at least **10 minutes** (backoff)
-- Only retry leads with **3 or fewer** previous retry attempts (prevents infinite loops)
-- Reset up to **5 per run** to avoid overwhelming the pipeline
-- Reset `automation_status` to `NULL`, clear error fields, and increment `automation_retry_count`
-- The existing generation queue will then pick them up naturally on the next cron cycle
+## Impact
 
-```text
-+------------------+     +-------------------+     +------------------+
-| Lead fails       | --> | Stays in 'failed' | --> | Cron auto-resets  |
-| (402 / timeout)  |     | for 10 min        |     | after backoff     |
-+------------------+     +-------------------+     +------------------+
-                                                          |
-                                                          v
-                                                   +------------------+
-                                                   | Generation queue  |
-                                                   | picks it up next  |
-                                                   +------------------+
-```
-
-This same logic will apply to failed **orders** as well, not just leads.
-
-## File Changes
-
-| File | Change |
-|------|--------|
-| `supabase/functions/process-scheduled-deliveries/index.ts` | Add auto-retry section (~40 lines) after the generation queue |
-| Database | One-time reset of 52 stuck leads |
-
-## Safeguards
-
-- Max 3 retries per lead/order prevents infinite loops
-- 10-minute backoff prevents rapid re-failing
-- 5-per-run cap prevents flooding the generation queue
-- Only resets transient failures; `needs_review` status is never touched
-- Manual override still takes priority
+- All future Country songs will respect the customer's singer preference
+- No code deploys required -- this is a data-only fix
+- Existing songs are unaffected (they've already been generated)
 
