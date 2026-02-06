@@ -311,7 +311,7 @@ export function checkMixedLanguage(lyrics: string, targetCode: string): { passed
     .filter(l => {
       // Skip empty lines, section headers, and very short lines
       if (!l || l.startsWith("[") || l.length < 3) return false;
-      // Skip lines that are 2 words or fewer
+      // Skip lines that are 2 words or fewer (likely hooks or proper nouns)
       const wordCount = l.split(/\s+/).length;
       if (wordCount <= 2) return false;
       // Skip mostly capitalized lines (likely hooks or exclamations)
@@ -325,16 +325,41 @@ export function checkMixedLanguage(lyrics: string, targetCode: string): { passed
     return { passed: true, foreignPercentage: 0, issues: [] };
   }
   
-  // For each line, detect its language
+  // English function words that indicate full English (not just proper nouns)
+  const ENGLISH_FUNCTION_WORDS = /\b(the|and|you|for|are|but|not|with|have|this|will|your|from|they|been|would|there|their|what|about|that|was|were|has|had|can|could|should|would|is|am|be|been|being)\b/gi;
+  
   let foreignLineCount = 0;
   
   for (const line of lines) {
+    const words = line.split(/\s+/);
+    const wordCount = words.length;
+    
+    // Count English function words in this line
+    const englishFunctionWordMatches = line.match(ENGLISH_FUNCTION_WORDS) || [];
+    const englishFunctionWordCount = englishFunctionWordMatches.length;
+    
+    // If >30% of words are English function words, this is likely a full English line
+    const englishFunctionRatio = englishFunctionWordCount / wordCount;
+    
+    if (englishFunctionRatio > 0.3 && wordCount > 3) {
+      // This looks like a full English line, not just proper nouns
+      if (targetCode !== "en") {
+        foreignLineCount++;
+      }
+      continue;
+    }
+    
+    // For lines with low function word ratio, do standard marker detection
+    // but be more lenient (proper nouns are expected)
     const detection = detectByMarkers(line);
-    if (detection && detection.language !== targetCode && detection.language !== "en" && targetCode !== "en") {
-      // Only count as foreign if it's not English (English hooks are common)
-      foreignLineCount++;
-    } else if (detection && detection.language === "en" && targetCode !== "en") {
-      // English in a non-English song
+    if (detection && detection.language === "en" && targetCode !== "en") {
+      // Only count if high confidence English AND significant function words
+      if (detection.confidence === "high" && englishFunctionWordCount >= 2) {
+        foreignLineCount++;
+      }
+      // Otherwise assume it's proper nouns mixed with target language
+    } else if (detection && detection.language !== targetCode && detection.language !== "en") {
+      // Wrong non-English language detected
       foreignLineCount++;
     }
   }
@@ -345,7 +370,7 @@ export function checkMixedLanguage(lyrics: string, targetCode: string): { passed
     return {
       passed: false,
       foreignPercentage,
-      issues: [`Mixed language detected: ${Math.round(foreignPercentage * 100)}% of lines appear to be in a different language`],
+      issues: [`Mixed language detected: ${Math.round(foreignPercentage * 100)}% of lines appear to be full English or wrong language (proper nouns are allowed)`],
     };
   }
   
@@ -430,7 +455,11 @@ CRITICAL RULES:
 
 ${rules}
 
-IMPORTANT: Every lyric line must be in ${label}. Do not mix languages.`;
+## Handling User-Provided Details
+
+User-provided details (SpecialQualities, FavoriteMemory, SpecialMessage) may be written in English. Use them as source meaning and rewrite them naturally in ${label}. Do NOT copy English sentences into the lyrics. Preserve only proper nouns exactly as provided (names, places, brands). Everything else should be expressed natively in ${label} with natural syntax and idioms.
+
+IMPORTANT: Every lyric line must be in ${label}. Do not mix languages except for preserved proper nouns.`;
 }
 
 /**
@@ -448,8 +477,9 @@ The previous attempt had these issues:
 ${issues.map(i => `- ${i}`).join("\n")}
 
 You MUST fix these issues in this attempt:
-- Write ONLY in ${label} - no English words or phrases
+- Write ONLY in ${label} - no English sentences or phrases
+- English proper nouns (names, places, brands) are OK to preserve
+- Rewrite all user-provided details natively in ${label}
 - Ensure natural ${label} phrasing, not translated English
-- Do not include any English hooks or phrases
 - If you cannot write in ${label}, respond with "CANNOT_GENERATE_IN_LANGUAGE"`;
 }
