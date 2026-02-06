@@ -272,7 +272,7 @@ Deno.serve(async (req) => {
         .is("dismissed_at", null)
         .neq("status", "cancelled")
         .not("song_url", "is", null)
-        .or("delivery_status.is.null,delivery_status.eq.failed") // Only pickup null or failed (excludes needs_review, sent, delivering)
+        .or("delivery_status.is.null,delivery_status.eq.scheduled,delivery_status.eq.failed") // Pickup null, scheduled, or failed (excludes needs_review, sent, delivering)
         .limit(10);
 
       console.log(`[DELIVERY] Found ${ordersToDeliver?.length || 0} orders ready for delivery`);
