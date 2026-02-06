@@ -23,6 +23,7 @@ interface LeadInput {
   favoriteMemory: string;
   specialMessage?: string;
   deviceType?: string;
+  lyricsLanguageCode?: string; // NEW: Language for lyrics (default 'en')
   // UTM tracking fields
   utmSource?: string;
   utmMedium?: string;
@@ -435,13 +436,14 @@ Deno.serve(async (req) => {
     const timing = computeLeadTiming();
     console.log(`[CAPTURE-LEAD] Timing: generate now, send preview at ${timing.targetSendAt}`);
     
-    // Compute inputs hash for change detection
+    // Compute inputs hash for change detection (includes language)
     const inputsHash = await computeInputsHash([
       input.recipientName.trim(),
       input.specialQualities.trim(),
       input.favoriteMemory.trim(),
       input.genre,
       input.occasion,
+      input.lyricsLanguageCode || "en",
     ]);
 
     // Insert new lead with timing fields
@@ -461,6 +463,8 @@ Deno.serve(async (req) => {
         special_message: input.specialMessage?.trim() || null,
         status: "lead",
         quality_score: qualityScore,
+        // Language setting
+        lyrics_language_code: input.lyricsLanguageCode || "en",
         // Background automation timing fields
         earliest_generate_at: timing.earliestGenerateAt,
         target_send_at: timing.targetSendAt,

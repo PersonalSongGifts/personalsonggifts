@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
       const timing = computeOrderTiming(expectedDelivery);
       console.log(`[WEBHOOK] Order timing: generate after ${timing.earliestGenerateAt}, send at ${timing.targetSendAt}`);
       
-      // Compute inputs hash for change detection (includes all creative fields)
+      // Compute inputs hash for change detection (includes all creative fields + language)
       const inputsHash = await computeInputsHash([
         metadata.recipientName || "",
         metadata.recipientNamePronunciation || "",
@@ -177,6 +177,7 @@ Deno.serve(async (req) => {
         metadata.genre || "",
         metadata.occasion || "",
         metadata.singerPreference || "",
+        metadata.lyricsLanguageCode || "en",
       ]);
 
       const { data: newOrder, error: insertError } = await supabase
@@ -199,6 +200,8 @@ Deno.serve(async (req) => {
           device_type: "Web",
           notes: `stripe_session:${session.id}`,
           status: "paid",
+          // Language setting
+          lyrics_language_code: metadata.lyricsLanguageCode || "en",
           // Background automation timing fields
           earliest_generate_at: timing.earliestGenerateAt,
           target_send_at: timing.targetSendAt,

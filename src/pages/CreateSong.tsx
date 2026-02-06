@@ -28,6 +28,7 @@ export interface FormData {
   // Step 4: Music Style (no mood)
   genre: string;
   singerPreference: string;
+  lyricsLanguageCode: string; // NEW: Language for lyrics
   // Step 5: Story
   specialQualities: string;
   favoriteMemory: string;
@@ -47,6 +48,7 @@ const initialFormData: FormData = {
   occasion: "",
   genre: "",
   singerPreference: "",
+  lyricsLanguageCode: "en", // Default to English
   specialQualities: "",
   favoriteMemory: "",
   specialMessage: "",
@@ -155,6 +157,7 @@ const CreateSong = () => {
             specialQualities: data.specialQualities,
             favoriteMemory: data.favoriteMemory,
             specialMessage: data.specialMessage || undefined,
+            lyricsLanguageCode: data.lyricsLanguageCode || "en",
             deviceType,
             // Include UTM parameters
             utmSource: utmParams.utm_source || undefined,

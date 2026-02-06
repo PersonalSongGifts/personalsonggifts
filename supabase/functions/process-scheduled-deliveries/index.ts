@@ -133,6 +133,9 @@ Deno.serve(async (req) => {
             .order("earliest_generate_at", { ascending: true })
             .limit(MAX_GENERATIONS_PER_RUN - generationsTriggered);
 
+          // Note: needs_review is an automation_status value, so .is("automation_status", null) 
+          // already excludes those records. Items with needs_review must be manually resolved.
+
           for (const order of pendingOrders || []) {
             // Atomic claim: update status only if still null (prevents double-pickup)
             const { data: claimed } = await supabase
@@ -175,6 +178,9 @@ Deno.serve(async (req) => {
             .order("quality_score", { ascending: false }) // Higher quality first
             .order("earliest_generate_at", { ascending: true })
             .limit(MAX_GENERATIONS_PER_RUN - generationsTriggered);
+
+          // Note: needs_review is an automation_status value, so .is("automation_status", null) 
+          // already excludes those records. Items with needs_review must be manually resolved.
 
           for (const lead of pendingLeads || []) {
             // Atomic claim
@@ -228,6 +234,7 @@ Deno.serve(async (req) => {
         .is("dismissed_at", null)
         .neq("status", "cancelled")
         .not("song_url", "is", null)
+        .neq("delivery_status", "needs_review") // Exclude needs_review
         .limit(10);
 
       console.log(`[DELIVERY] Found ${ordersToDeliver?.length || 0} orders ready for delivery`);

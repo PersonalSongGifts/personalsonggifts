@@ -1,7 +1,7 @@
 import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Music, Mic } from "lucide-react";
+import { Music, Mic, Globe } from "lucide-react";
 
 interface MusicStyleStepProps {
   formData: FormData;
@@ -26,6 +26,19 @@ const genres = [
 const singerOptions = [
   { id: "male", label: "Male" },
   { id: "female", label: "Female" },
+];
+
+const languageOptions = [
+  { id: "en", label: "English" },
+  { id: "es", label: "Spanish" },
+  { id: "fr", label: "French" },
+  { id: "de", label: "German" },
+  { id: "it", label: "Italian" },
+  { id: "pt-BR", label: "Portuguese (Brazil)" },
+  { id: "ja", label: "Japanese" },
+  { id: "ko", label: "Korean" },
+  { id: "sr", label: "Serbian" },
+  { id: "hr", label: "Croatian" },
 ];
 
 const MusicStyleStep = ({ formData, updateFormData, errors }: MusicStyleStepProps) => {
@@ -90,6 +103,39 @@ const MusicStyleStep = ({ formData, updateFormData, errors }: MusicStyleStepProp
               >
                 <span className={`font-medium ${isSelected ? "text-primary" : "text-foreground"}`}>
                   {option.label}
+                </span>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Language */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Globe className="h-5 w-5 text-primary" />
+          <Label className="text-lg font-semibold">
+            Song Language <span className="text-destructive">*</span>
+          </Label>
+        </div>
+        {errors.lyricsLanguageCode && (
+          <p className="text-destructive text-sm">{errors.lyricsLanguageCode}</p>
+        )}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {languageOptions.map((lang) => {
+            const isSelected = formData.lyricsLanguageCode === lang.id;
+            return (
+              <Card
+                key={lang.id}
+                onClick={() => updateFormData({ lyricsLanguageCode: lang.id })}
+                className={`p-4 text-center cursor-pointer transition-all duration-200 ${
+                  isSelected 
+                    ? "ring-2 ring-primary bg-primary/5 border-primary" 
+                    : "hover:border-primary/50"
+                }`}
+              >
+                <span className={`font-medium ${isSelected ? "text-primary" : "text-foreground"}`}>
+                  {lang.label}
                 </span>
               </Card>
             );
