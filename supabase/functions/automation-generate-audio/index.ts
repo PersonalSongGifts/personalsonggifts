@@ -147,6 +147,7 @@ Deno.serve(async (req) => {
        // Database slug format (primary)
        "pop": "pop",
        "country": "country",
+       "prayer": "worship",
        "rock": "rock",
        "rnb": "r&b",
        "jazz": "jazz",
@@ -159,6 +160,7 @@ Deno.serve(async (req) => {
        // Display label format (backward compatibility)
        "Pop": "pop",
        "Country": "country",
+       "Prayer": "worship",
        "Rock": "rock",
        "R&B": "r&b",
        "Jazz": "jazz",
