@@ -47,19 +47,23 @@ function getActivePromo() {
   return { code: "WELCOME50", emoji: "🎵" };
 }
 
-const BASE_PRICES = { standard: 99.99, priority: 159.99 };
+// All pricing math in integer cents with Math.floor to avoid float drift.
+// Only converted to dollars for display rendering.
+const BASE_PRICES_CENTS = { standard: 9999, priority: 15999 };
 const SEASONAL_DISCOUNT_PERCENT = 50;
 
-function calculateSeasonalPrice(tier: PricingTier): number {
-  return Math.round(BASE_PRICES[tier] * (1 - SEASONAL_DISCOUNT_PERCENT / 100) * 100) / 100;
+function calculateSeasonalPriceCents(tier: PricingTier): number {
+  // Integer arithmetic: 9999 * 50 / 100 = 499950 / 100 = 4999.5 → floor → 4999 ($49.99)
+  return Math.floor(BASE_PRICES_CENTS[tier] * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
 }
 
-function calculateAdditionalDiscount(priceAfterSeasonal: number, promo: AdditionalPromo): number {
+// Returns discount amount in cents
+function calculateAdditionalDiscountCents(afterSeasonalCents: number, promo: AdditionalPromo): number {
   if (promo.type === "amount_off" && promo.amount_off) {
-    return Math.min(promo.amount_off / 100, priceAfterSeasonal); // cents to dollars, capped
+    return Math.min(promo.amount_off, afterSeasonalCents); // both in cents, capped
   }
   if (promo.type === "percent_off" && promo.percent_off) {
-    return Math.round(priceAfterSeasonal * (promo.percent_off / 100) * 100) / 100;
+    return afterSeasonalCents - Math.floor(afterSeasonalCents * (100 - promo.percent_off) / 100);
   }
   return 0;
 }
@@ -92,20 +96,26 @@ const Checkout = () => {
   
   const activePromo = getActivePromo();
   
-  // Stacked pricing calculation
+  // Stacked pricing calculation -- all math in integer cents, converted to dollars only for display
   const pricing = useMemo(() => {
-    const base = BASE_PRICES[selectedTier];
-    const afterSeasonal = calculateSeasonalPrice(selectedTier);
-    const seasonalSavings = Math.round((base - afterSeasonal) * 100) / 100;
-    
-    let additionalSavings = 0;
+    const baseCents = BASE_PRICES_CENTS[selectedTier];
+    const afterSeasonalCents = calculateSeasonalPriceCents(selectedTier);
+    const seasonalSavingsCents = baseCents - afterSeasonalCents;
+
+    let additionalSavingsCents = 0;
     if (additionalPromo) {
-      additionalSavings = calculateAdditionalDiscount(afterSeasonal, additionalPromo);
+      additionalSavingsCents = calculateAdditionalDiscountCents(afterSeasonalCents, additionalPromo);
     }
-    
-    const total = Math.max(0, Math.round((afterSeasonal - additionalSavings) * 100) / 100);
-    
-    return { base, afterSeasonal, seasonalSavings, additionalSavings, total };
+
+    const totalCents = Math.max(0, afterSeasonalCents - additionalSavingsCents);
+
+    return {
+      base: baseCents / 100,
+      afterSeasonal: afterSeasonalCents / 100,
+      seasonalSavings: seasonalSavingsCents / 100,
+      additionalSavings: additionalSavingsCents / 100,
+      total: totalCents / 100,
+    };
   }, [selectedTier, additionalPromo]);
   
   const handleApplyPromo = async () => {
@@ -316,7 +326,7 @@ const Checkout = () => {
               <div className="mb-4">
                 <span className="text-lg text-muted-foreground line-through">$99.99</span>
                 <span className="text-4xl font-bold text-foreground ml-2">
-                  ${selectedTier === "standard" ? pricing.total.toFixed(2) : calculateSeasonalPrice("standard").toFixed(2)}
+                  ${selectedTier === "standard" ? pricing.total.toFixed(2) : (calculateSeasonalPriceCents("standard") / 100).toFixed(2)}
                 </span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
@@ -368,7 +378,7 @@ const Checkout = () => {
               <div className="mb-4">
                 <span className="text-lg text-muted-foreground line-through">$159.99</span>
                 <span className="text-4xl font-bold text-foreground ml-2">
-                  ${selectedTier === "priority" ? pricing.total.toFixed(2) : calculateSeasonalPrice("priority").toFixed(2)}
+                  ${selectedTier === "priority" ? pricing.total.toFixed(2) : (calculateSeasonalPriceCents("priority") / 100).toFixed(2)}
                 </span>
               </div>
               <ul className="space-y-2 text-muted-foreground">

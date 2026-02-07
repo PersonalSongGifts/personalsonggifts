@@ -100,12 +100,12 @@ Deno.serve(async (req) => {
 
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents")
       .eq("notes", `stripe_session:${sessionId}`)
       .single();
 
     if (existingOrder) {
-      // Order already exists, return the details
+      // Order already exists (webhook or prior call created it), return the details
       return new Response(
         JSON.stringify({
           orderId: existingOrder.id,
@@ -115,6 +115,7 @@ Deno.serve(async (req) => {
           pricingTier: existingOrder.pricing_tier,
           customerEmail: existingOrder.customer_email,
           expectedDelivery: existingOrder.expected_delivery,
+          price: existingOrder.price_cents != null ? existingOrder.price_cents / 100 : undefined,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -122,8 +123,25 @@ Deno.serve(async (req) => {
 
     // Create the order with timing fields for background automation
     const pricingTier = metadata.pricingTier || "standard";
-    const price = pricingTier === "priority" ? 79 : 49;
+
+    // Canonical price: session.amount_total (Stripe's actual total charge, cents).
+    // Single line item, no tax/shipping. Fallback: metadata -> legacy tier mapping.
+    const priceCents: number = (session.amount_total
+      ?? (metadata.amount_total_cents ? parseInt(metadata.amount_total_cents, 10) : NaN))
+      || (pricingTier === "priority" ? 7999 : 4999);
+    const price = Math.floor(priceCents / 100); // backward-compat integer dollars
+
     const expectedDelivery = calculateExpectedDelivery(pricingTier);
+
+    // Strict notes format assertion -- do not proceed if format is wrong
+    const notesValue = `stripe_session:${sessionId}`;
+    if (!/^stripe_session:cs_[a-zA-Z0-9_]+$/.test(notesValue)) {
+      console.error(`[PROCESS-PAYMENT] Unexpected notes format: ${notesValue}`);
+      return new Response(
+        JSON.stringify({ error: "Internal error: unexpected session ID format" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     
     // Compute timing for background automation
     const timing = computeOrderTiming(expectedDelivery);
@@ -145,7 +163,8 @@ Deno.serve(async (req) => {
       .from("orders")
       .insert({
         pricing_tier: pricingTier,
-        price,
+        price,               // integer dollars (backward compat)
+        price_cents: priceCents, // canonical cents from Stripe amount_total
         expected_delivery: expectedDelivery,
         customer_name: metadata.customerName || "",
         customer_email: metadata.customerEmail || session.customer_email || "",
@@ -169,7 +188,7 @@ Deno.serve(async (req) => {
         inputs_hash: inputsHash,
         delivery_status: "pending",
       })
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents")
       .single();
 
     // Handle unique constraint violation (race condition) - re-query for existing order
@@ -179,7 +198,7 @@ Deno.serve(async (req) => {
         console.log(`Race condition detected for session ${sessionId}, fetching existing order`);
         const { data: raceOrder } = await supabase
           .from("orders")
-          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents")
           .eq("notes", `stripe_session:${sessionId}`)
           .single();
 
@@ -193,6 +212,7 @@ Deno.serve(async (req) => {
               pricingTier: raceOrder.pricing_tier,
               customerEmail: raceOrder.customer_email,
               expectedDelivery: raceOrder.expected_delivery,
+              price: raceOrder.price_cents != null ? raceOrder.price_cents / 100 : undefined,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -267,7 +287,7 @@ Deno.serve(async (req) => {
             createdAt: new Date().toISOString(),
             status: "paid",
             pricingTier: newOrder.pricing_tier,
-            price: price,
+            price: priceCents / 100, // canonical cents → dollars for external sync
             expectedDelivery: newOrder.expected_delivery,
             customerName: metadata.customerName || "",
             customerEmail: newOrder.customer_email,
@@ -299,6 +319,7 @@ Deno.serve(async (req) => {
         pricingTier: newOrder.pricing_tier,
         customerEmail: newOrder.customer_email,
         expectedDelivery: newOrder.expected_delivery,
+        price: newOrder.price_cents != null ? newOrder.price_cents / 100 : priceCents / 100,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

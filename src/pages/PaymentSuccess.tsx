@@ -16,6 +16,7 @@ interface OrderDetails {
   customerEmail: string;
   expectedDelivery?: string;
   songUrl?: string;
+  price?: number; // actual charged amount in dollars (from price_cents / 100)
 }
 
 const MAX_POLL_ATTEMPTS = 10;
@@ -39,7 +40,8 @@ const PaymentSuccess = () => {
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
     if (hasTrackedPurchase.current) return;
     
-    const purchaseValue = data.pricingTier === "priority" ? 79 : 49;
+    // Use real stored price from server (canonical price_cents / 100), fallback to legacy tier guess
+    const purchaseValue = data.price ?? (data.pricingTier === "priority" ? 79 : 49);
     
     // Meta Pixel Purchase
     trackMetaEvent('Purchase', {

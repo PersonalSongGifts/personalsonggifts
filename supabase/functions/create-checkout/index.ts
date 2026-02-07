@@ -82,13 +82,14 @@ function calculateFinalPrice(
 ): number {
   const basePrice = BASE_PRICES[tier] || BASE_PRICES.standard;
 
-  // Step 1: Apply seasonal 50% discount
-  const afterSeasonal = Math.round(basePrice * (1 - SEASONAL_DISCOUNT_PERCENT / 100));
+  // Step 1: Apply seasonal discount using integer arithmetic to avoid float drift.
+  // Example: 9999 * (100 - 50) / 100 = 9999 * 50 / 100 = 499950 / 100 = 4999.5 → floor → 4999 ($49.99)
+  const afterSeasonal = Math.floor(basePrice * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
 
-  // Step 2: If additional promo, apply on top
+  // Step 2: If additional promo, apply on top using same integer pattern
   if (stripeCoupon) {
     if (stripeCoupon.percent_off) {
-      const afterAdditional = Math.round(afterSeasonal * (1 - stripeCoupon.percent_off / 100));
+      const afterAdditional = Math.floor(afterSeasonal * (100 - stripeCoupon.percent_off) / 100);
       return Math.max(0, afterAdditional);
     } else if (stripeCoupon.amount_off) {
       // amount_off is in cents
@@ -179,7 +180,7 @@ Deno.serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
-    const metadata = buildMetadata(input);
+    const metadata: Record<string, string> = buildMetadata(input);
 
     // Determine unit amount
     let unitAmount: number;
@@ -189,6 +190,10 @@ Deno.serve(async (req) => {
     if (FREE_TEST_CODES[upperAdditional]) {
       unitAmount = 0;
       metadata.promoCode = upperAdditional;
+      // Store the calculated charge amount in metadata as a fallback.
+      // Canonical price source downstream is session.amount_total (Stripe's actual charge in cents).
+      // This metadata field is only used if amount_total is somehow unavailable (legacy sessions).
+      metadata.amount_total_cents = "0";
     } else {
       // Look up additional coupon in Stripe if provided
       let stripeCoupon: Stripe.Coupon | null = null;
@@ -200,6 +205,10 @@ Deno.serve(async (req) => {
       }
 
       unitAmount = calculateFinalPrice(pricingTier, upperAdditional, stripeCoupon);
+      // Store the calculated charge amount in metadata as a fallback.
+      // Canonical price source downstream is session.amount_total (Stripe's actual charge in cents).
+      // This metadata field is only used if amount_total is somehow unavailable (legacy sessions).
+      metadata.amount_total_cents = String(unitAmount);
     }
 
     const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
