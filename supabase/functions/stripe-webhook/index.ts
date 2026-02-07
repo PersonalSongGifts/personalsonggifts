@@ -153,8 +153,25 @@ Deno.serve(async (req) => {
 
       // Create the order with timing fields for background automation
       const pricingTier = metadata.pricingTier || "standard";
-      const price = pricingTier === "priority" ? 79 : 49;
+
+      // Canonical price: session.amount_total (Stripe's actual total charge, cents).
+      // Single line item, no tax/shipping. Fallback: metadata -> legacy tier mapping.
+      const priceCents: number = (session.amount_total
+        ?? (metadata.amount_total_cents ? parseInt(metadata.amount_total_cents, 10) : NaN))
+        || (pricingTier === "priority" ? 7999 : 4999);
+      const price = Math.floor(priceCents / 100); // backward-compat integer dollars
+
       const expectedDelivery = calculateExpectedDelivery(pricingTier);
+
+      // Strict notes format assertion -- do not proceed if format is wrong
+      const notesValue = `stripe_session:${session.id}`;
+      if (!/^stripe_session:cs_[a-zA-Z0-9_]+$/.test(notesValue)) {
+        console.error(`[WEBHOOK] Unexpected notes format: ${notesValue}`);
+        return new Response(
+          JSON.stringify({ error: "Internal error: unexpected session ID format" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       
       // Compute timing for background automation
       const timing = computeOrderTiming(expectedDelivery);
@@ -175,8 +192,9 @@ Deno.serve(async (req) => {
       const { data: newOrder, error: insertError } = await supabase
         .from("orders")
         .insert({
-          pricing_tier: pricingTier,
-          price,
+        pricing_tier: pricingTier,
+          price,               // integer dollars (backward compat for admin dashboard)
+          price_cents: priceCents, // canonical cents from Stripe amount_total
           expected_delivery: expectedDelivery,
           customer_name: metadata.customerName || "",
           customer_email: metadata.customerEmail || session.customer_email || "",
@@ -302,7 +320,7 @@ Deno.serve(async (req) => {
               createdAt: new Date().toISOString(),
               status: "paid",
               pricingTier: newOrder.pricing_tier,
-              price: price,
+              price: priceCents / 100, // canonical cents → dollars for external sync
               expectedDelivery: newOrder.expected_delivery,
               customerName: metadata.customerName || "",
               customerEmail: newOrder.customer_email,

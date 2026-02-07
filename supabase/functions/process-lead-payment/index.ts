@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     // Check for existing order with this session (idempotency)
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents")
       .eq("notes", `lead_session:${sessionId}`)
       .single();
 
@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
           pricingTier: existingOrder.pricing_tier,
           customerEmail: existingOrder.customer_email,
           songUrl: existingOrder.song_url,
+          price: existingOrder.price_cents != null ? existingOrder.price_cents / 100 : undefined,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -98,14 +99,31 @@ Deno.serve(async (req) => {
     }
 
     const pricingTier = metadata.pricingTier || "standard";
-    const price = pricingTier === "priority" ? 79 : 49;
+
+    // Canonical price: session.amount_total (Stripe's actual total charge, cents).
+    // Lead checkout may have different pricing than standard checkout.
+    const priceCents: number = (session.amount_total
+      ?? (metadata.offerPriceCents ? parseInt(metadata.offerPriceCents, 10) : NaN))
+      || 4999; // legacy fallback
+    const price = Math.floor(priceCents / 100); // backward-compat integer dollars
+
+    // Strict notes format assertion -- do not proceed if format is wrong
+    const notesValue = `lead_session:${sessionId}`;
+    if (!/^lead_session:cs_[a-zA-Z0-9_]+$/.test(notesValue)) {
+      console.error(`[LEAD-PAYMENT] Unexpected notes format: ${notesValue}`);
+      return new Response(
+        JSON.stringify({ error: "Internal error: unexpected session ID format" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Create order from lead data
     const { data: newOrder, error: insertError } = await supabase
       .from("orders")
       .insert({
         pricing_tier: pricingTier,
-        price: price,
+        price: price,            // integer dollars (backward compat)
+        price_cents: priceCents, // canonical cents from Stripe amount_total
         expected_delivery: new Date().toISOString(), // Immediate - already heard preview
         customer_name: lead.customer_name,
         customer_email: lead.email,
@@ -127,7 +145,7 @@ Deno.serve(async (req) => {
         status: "delivered", // Immediate delivery since song already exists
         delivered_at: new Date().toISOString(),
       })
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents")
       .single();
 
     // Handle unique constraint violation (race condition) - re-query for existing order
@@ -137,7 +155,7 @@ Deno.serve(async (req) => {
         console.log(`Race condition detected for lead session ${sessionId}, fetching existing order`);
         const { data: raceOrder } = await supabase
           .from("orders")
-          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents")
           .eq("notes", `lead_session:${sessionId}`)
           .single();
 
@@ -151,6 +169,7 @@ Deno.serve(async (req) => {
               pricingTier: raceOrder.pricing_tier,
               customerEmail: raceOrder.customer_email,
               songUrl: raceOrder.song_url,
+              price: raceOrder.price_cents != null ? raceOrder.price_cents / 100 : undefined,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -189,7 +208,7 @@ Deno.serve(async (req) => {
           createdAt: new Date().toISOString(),
           status: "delivered",
           pricingTier: pricingTier,
-          price: price,
+          price: priceCents / 100, // canonical cents → dollars for external sync
           customerName: lead.customer_name,
           customerEmail: lead.email,
           customerPhone: lead.phone || "",
@@ -238,6 +257,7 @@ Deno.serve(async (req) => {
         pricingTier: newOrder.pricing_tier,
         customerEmail: newOrder.customer_email,
         songUrl: newOrder.song_url,
+        price: newOrder.price_cents != null ? newOrder.price_cents / 100 : priceCents / 100,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

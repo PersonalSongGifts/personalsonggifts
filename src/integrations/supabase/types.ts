@@ -292,6 +292,7 @@ export type Database = {
           occasion: string
           phone_e164: string | null
           price: number
+          price_cents: number | null
           pricing_tier: string
           reaction_submitted_at: string | null
           reaction_video_url: string | null
@@ -366,6 +367,7 @@ export type Database = {
           occasion: string
           phone_e164?: string | null
           price: number
+          price_cents?: number | null
           pricing_tier: string
           reaction_submitted_at?: string | null
           reaction_video_url?: string | null
@@ -440,6 +442,7 @@ export type Database = {
           occasion?: string
           phone_e164?: string | null
           price?: number
+          price_cents?: number | null
           pricing_tier?: string
           reaction_submitted_at?: string | null
           reaction_video_url?: string | null
