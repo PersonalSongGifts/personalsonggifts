@@ -26,6 +26,14 @@ import { normalizeToE164 } from "@/lib/phoneUtils";
 
 type PricingTier = "standard" | "priority";
 
+interface AdditionalPromo {
+  code: string;
+  type: "amount_off" | "percent_off";
+  amount_off?: number; // in cents
+  percent_off?: number;
+  name: string;
+}
+
 // Get active promo info based on PST time
 function getActivePromo() {
   // Feb 15, 2026 at 1:00 AM PST (UTC-8) = 9:00 AM UTC
@@ -38,6 +46,23 @@ function getActivePromo() {
   return { code: "WELCOME50", emoji: "🎵" };
 }
 
+const BASE_PRICES = { standard: 99.99, priority: 159.99 };
+const SEASONAL_DISCOUNT_PERCENT = 50;
+
+function calculateSeasonalPrice(tier: PricingTier): number {
+  return Math.round(BASE_PRICES[tier] * (1 - SEASONAL_DISCOUNT_PERCENT / 100) * 100) / 100;
+}
+
+function calculateAdditionalDiscount(priceAfterSeasonal: number, promo: AdditionalPromo): number {
+  if (promo.type === "amount_off" && promo.amount_off) {
+    return Math.min(promo.amount_off / 100, priceAfterSeasonal); // cents to dollars, capped
+  }
+  if (promo.type === "percent_off" && promo.percent_off) {
+    return Math.round(priceAfterSeasonal * (promo.percent_off / 100) * 100) / 100;
+  }
+  return 0;
+}
+
 const Checkout = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -48,9 +73,9 @@ const Checkout = () => {
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [promoCode, setPromoCode] = useState("");
-  const [promoApplied, setPromoApplied] = useState<{ code: string; discount: number } | null>(null);
+  const [additionalPromo, setAdditionalPromo] = useState<AdditionalPromo | null>(null);
   const [promoError, setPromoError] = useState("");
-  // smsOptIn now comes from formData (set on step 7)
+  const [isValidating, setIsValidating] = useState(false);
   
   // Auto-detect user timezone
   const userTimezone = useMemo(() => {
@@ -66,60 +91,72 @@ const Checkout = () => {
   
   const activePromo = getActivePromo();
   
-  // Calculate pricing based on applied promo
-  const getBasePrices = () => {
-    const baseStandard = 99.99;
-    const basePriority = 159.99;
+  // Stacked pricing calculation
+  const pricing = useMemo(() => {
+    const base = BASE_PRICES[selectedTier];
+    const afterSeasonal = calculateSeasonalPrice(selectedTier);
+    const seasonalSavings = Math.round((base - afterSeasonal) * 100) / 100;
     
-    // If custom promo applied, use that discount
-    if (promoApplied) {
-      const discountMultiplier = 1 - (promoApplied.discount / 100);
-      return {
-        standard: Math.round(baseStandard * discountMultiplier * 100) / 100,
-        priority: Math.round(basePriority * discountMultiplier * 100) / 100,
-        discountPercent: promoApplied.discount,
-        promoCode: promoApplied.code,
-      };
+    let additionalSavings = 0;
+    if (additionalPromo) {
+      additionalSavings = calculateAdditionalDiscount(afterSeasonal, additionalPromo);
     }
     
-    // Default 50% off promo
-    return {
-      standard: 49.99,
-      priority: 79.99,
-      discountPercent: 50,
-      promoCode: activePromo.code,
-    };
-  };
+    const total = Math.max(0, Math.round((afterSeasonal - additionalSavings) * 100) / 100);
+    
+    return { base, afterSeasonal, seasonalSavings, additionalSavings, total };
+  }, [selectedTier, additionalPromo]);
   
-  const prices = getBasePrices();
-  
-  const handleApplyPromo = () => {
-    const code = promoCode.trim().toUpperCase();
+  const handleApplyPromo = async () => {
+    const code = promoCode.trim();
     if (!code) return;
     
     setPromoError("");
+    setIsValidating(true);
     
-    // Known promo codes (validated server-side too)
-    const promoCodes: Record<string, number> = {
-      "VALENTINES50": 50,
-      "WELCOME50": 50,
-      "HYPERDRIVETEST": 100, // Free for testing
-      "HYPERDRIVEFREE2026": 100, // Free for testing
-      "HYPERDRIVEFREE2026!": 100, // Free for testing (with exclamation)
-      "FRIEND20": 20,
-      "VIP75": 75,
-    };
-    
-    if (promoCodes[code]) {
-      setPromoApplied({ code, discount: promoCodes[code] });
-      toast({ title: "Promo code applied!", description: `${promoCodes[code]}% discount applied.` });
-    } else {
-      setPromoError("Invalid promo code");
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-promo-code`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ code }),
+        }
+      );
+      
+      const data = await response.json();
+      
+      if (data.valid) {
+        // For 100% off test codes, treat as percent_off
+        const promo: AdditionalPromo = {
+          code: data.name || code.toUpperCase(),
+          type: data.type,
+          amount_off: data.amount_off,
+          percent_off: data.percent_off,
+          name: data.name || code.toUpperCase(),
+        };
+        setAdditionalPromo(promo);
+        
+        const discountDesc = data.type === "amount_off" 
+          ? `$${(data.amount_off / 100).toFixed(2)} off` 
+          : `${data.percent_off}% off`;
+        toast({ title: "Promo code applied!", description: `${discountDesc} stacked on top of ${activePromo.code}.` });
+      } else {
+        setPromoError(data.error || "Invalid promo code");
+      }
+    } catch (error) {
+      console.error("Promo validation error:", error);
+      setPromoError("Unable to validate code. Please try again.");
+    } finally {
+      setIsValidating(false);
     }
   };
   
   const handleRemovePromo = () => {
-    setPromoApplied(null);
+    setAdditionalPromo(null);
     setPromoCode("");
     setPromoError("");
   };
@@ -148,14 +185,12 @@ const Checkout = () => {
     
     setIsSubmitting(true);
     
-    // Fire InitiateCheckout event (Meta Pixel) - use current discounted values
-    const checkoutValue = selectedTier === "priority" ? prices.priority : prices.standard;
+    const checkoutValue = pricing.total;
     trackMetaEvent('InitiateCheckout', {
       value: checkoutValue,
       currency: 'USD',
     });
     
-    // Fire begin_checkout event (Google Analytics)
     trackGAEvent('begin_checkout', {
       currency: 'USD',
       value: checkoutValue,
@@ -168,10 +203,8 @@ const Checkout = () => {
     });
     
     try {
-      // Get stored UTM parameters
       const utmParams = getStoredUtmParams();
 
-      // Call the create-checkout edge function
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout`,
         {
@@ -188,8 +221,8 @@ const Checkout = () => {
               phoneE164: phoneE164 || undefined,
               timezone: userTimezone,
             },
-            promoCode: promoApplied?.code || prices.promoCode,
-            // Include UTM parameters
+            // Send additional promo code for server-side stacking
+            additionalPromoCode: additionalPromo?.code || undefined,
             utmSource: utmParams.utm_source || undefined,
             utmMedium: utmParams.utm_medium || undefined,
             utmCampaign: utmParams.utm_campaign || undefined,
@@ -206,7 +239,6 @@ const Checkout = () => {
 
       const { url } = await response.json();
       
-      // Redirect to Stripe Checkout
       if (url) {
         window.location.href = url;
       } else {
@@ -282,7 +314,9 @@ const Checkout = () => {
               </div>
               <div className="mb-4">
                 <span className="text-lg text-muted-foreground line-through">$99.99</span>
-                <span className="text-4xl font-bold text-foreground ml-2">${prices.standard.toFixed(2)}</span>
+                <span className="text-4xl font-bold text-foreground ml-2">
+                  ${selectedTier === "standard" ? pricing.total.toFixed(2) : calculateSeasonalPrice("standard").toFixed(2)}
+                </span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -332,7 +366,9 @@ const Checkout = () => {
               </div>
               <div className="mb-4">
                 <span className="text-lg text-muted-foreground line-through">$159.99</span>
-                <span className="text-4xl font-bold text-foreground ml-2">${prices.priority.toFixed(2)}</span>
+                <span className="text-4xl font-bold text-foreground ml-2">
+                  ${selectedTier === "priority" ? pricing.total.toFixed(2) : calculateSeasonalPrice("priority").toFixed(2)}
+                </span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -395,11 +431,15 @@ const Checkout = () => {
               <div className="space-y-2">
                 <label className="text-sm text-muted-foreground flex items-center gap-1">
                   <Tag className="h-3 w-3" />
-                  Promo Code
+                  Have an additional promo code?
                 </label>
-                {promoApplied ? (
+                {additionalPromo ? (
                   <div className="flex items-center justify-between bg-primary/10 rounded-md px-3 py-2">
-                    <span className="text-primary font-medium">{promoApplied.code} ({promoApplied.discount}% off)</span>
+                    <span className="text-primary font-medium">
+                      {additionalPromo.name} ({additionalPromo.type === "amount_off" 
+                        ? `$${((additionalPromo.amount_off || 0) / 100).toFixed(2)} off` 
+                        : `${additionalPromo.percent_off}% off`})
+                    </span>
                     <Button variant="ghost" size="sm" onClick={handleRemovePromo} className="h-6 w-6 p-0">
                       <X className="h-4 w-4" />
                     </Button>
@@ -413,10 +453,13 @@ const Checkout = () => {
                         setPromoCode(e.target.value);
                         setPromoError("");
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleApplyPromo();
+                      }}
                       className="flex-1"
                     />
-                    <Button variant="outline" onClick={handleApplyPromo} disabled={!promoCode.trim()}>
-                      Apply
+                    <Button variant="outline" onClick={handleApplyPromo} disabled={!promoCode.trim() || isValidating}>
+                      {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
                     </Button>
                   </div>
                 )}
@@ -424,18 +467,31 @@ const Checkout = () => {
               </div>
               
               <div className="border-t border-border my-4" />
+              
+              {/* Subtotal */}
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Subtotal:</span>
-                <span className="text-muted-foreground">${selectedTier === "priority" ? "159.99" : "99.99"}</span>
+                <span className="text-muted-foreground">${pricing.base.toFixed(2)}</span>
               </div>
+              
+              {/* Seasonal discount line */}
               <div className="flex justify-between items-center text-primary">
-                <span>{promoApplied ? "🎟️" : activePromo.emoji} {prices.promoCode} Discount ({prices.discountPercent}% Off):</span>
-                <span>-${selectedTier === "priority" ? (159.99 - prices.priority).toFixed(2) : (99.99 - prices.standard).toFixed(2)}</span>
+                <span>{activePromo.emoji} {activePromo.code} Discount ({SEASONAL_DISCOUNT_PERCENT}% Off):</span>
+                <span>-${pricing.seasonalSavings.toFixed(2)}</span>
               </div>
+              
+              {/* Additional promo discount line */}
+              {additionalPromo && pricing.additionalSavings > 0 && (
+                <div className="flex justify-between items-center text-primary">
+                  <span>🎟️ {additionalPromo.name} Discount:</span>
+                  <span>-${pricing.additionalSavings.toFixed(2)}</span>
+                </div>
+              )}
+              
               <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Total:</span>
-                <span>${selectedTier === "priority" ? prices.priority.toFixed(2) : prices.standard.toFixed(2)}</span>
+                <span>${pricing.total.toFixed(2)}</span>
               </div>
             </div>
           </Card>
@@ -468,7 +524,7 @@ const Checkout = () => {
             ) : (
               <CreditCard className="h-5 w-5" />
             )}
-            {isSubmitting ? "Processing..." : `Complete Payment — $${selectedTier === "priority" ? prices.priority.toFixed(2) : prices.standard.toFixed(2)}`}
+            {isSubmitting ? "Processing..." : `Complete Payment — $${pricing.total.toFixed(2)}`}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground mt-4">

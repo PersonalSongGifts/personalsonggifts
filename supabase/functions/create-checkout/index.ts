@@ -8,6 +8,7 @@ const corsHeaders = {
 interface CheckoutInput {
   pricingTier: "standard" | "priority";
   promoCode?: string;
+  additionalPromoCode?: string;
   formData: {
     recipientType: string;
     recipientName: string;
@@ -21,12 +22,10 @@ interface CheckoutInput {
     yourEmail: string;
     phoneNumber?: string;
     lyricsLanguageCode?: string;
-    // SMS fields
     smsOptIn?: boolean;
     phoneE164?: string;
     timezone?: string;
   };
-  // UTM tracking fields
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
@@ -34,41 +33,109 @@ interface CheckoutInput {
   utmTerm?: string;
 }
 
-// Known promo codes with their discount percentages
-const PROMO_CODES: Record<string, number> = {
-  "VALENTINES50": 50,
-  "WELCOME50": 50,
-  "HYPERDRIVETEST": 100, // Free for testing
-  "HYPERDRIVEFREE2026": 100, // Free for testing
-  "HYPERDRIVEFREE2026!": 100, // Free for testing (with exclamation)
-  "FRIEND20": 20,
-  "VIP75": 75,
+// Hardcoded test codes (100% off overrides)
+const FREE_TEST_CODES: Record<string, boolean> = {
+  "HYPERDRIVETEST": true,
+  "HYPERDRIVEFREE2026": true,
+  "HYPERDRIVEFREE2026!": true,
 };
 
 // Base prices in cents
-const BASE_PRICES: Record<CheckoutInput["pricingTier"], number> = {
+const BASE_PRICES: Record<string, number> = {
   standard: 9999,  // $99.99
   priority: 15999, // $159.99
 };
 
-// Calculate discounted price based on promo code
-function getDiscountedPrice(tier: CheckoutInput["pricingTier"], promoCode?: string): number {
-  const basePrice = BASE_PRICES[tier];
-  const discount = promoCode && PROMO_CODES[promoCode.toUpperCase()] 
-    ? PROMO_CODES[promoCode.toUpperCase()] 
-    : 50; // Default 50% off
+// Seasonal discount percentage
+const SEASONAL_DISCOUNT_PERCENT = 50;
+
+async function lookupStripeCoupon(stripe: Stripe, code: string): Promise<Stripe.Coupon | null> {
+  const upperCode = code.trim().toUpperCase();
   
-  return Math.round(basePrice * (1 - discount / 100));
+  try {
+    // Try retrieving by ID (original case, then uppercase)
+    try {
+      return await stripe.coupons.retrieve(code.trim());
+    } catch {
+      try {
+        return await stripe.coupons.retrieve(upperCode);
+      } catch {
+        // Not found by ID
+      }
+    }
+
+    // Search by listing
+    const coupons = await stripe.coupons.list({ limit: 100 });
+    const found = coupons.data.find(
+      (c) => c.name?.toUpperCase() === upperCode || c.id.toUpperCase() === upperCode
+    );
+    return found && found.valid ? found : null;
+  } catch {
+    return null;
+  }
+}
+
+function calculateFinalPrice(
+  tier: string,
+  additionalPromoCode?: string,
+  stripeCoupon?: Stripe.Coupon | null
+): number {
+  const basePrice = BASE_PRICES[tier] || BASE_PRICES.standard;
+
+  // Step 1: Apply seasonal 50% discount
+  const afterSeasonal = Math.round(basePrice * (1 - SEASONAL_DISCOUNT_PERCENT / 100));
+
+  // Step 2: If additional promo, apply on top
+  if (stripeCoupon) {
+    if (stripeCoupon.percent_off) {
+      const afterAdditional = Math.round(afterSeasonal * (1 - stripeCoupon.percent_off / 100));
+      return Math.max(0, afterAdditional);
+    } else if (stripeCoupon.amount_off) {
+      // amount_off is in cents
+      return Math.max(0, afterSeasonal - stripeCoupon.amount_off);
+    }
+  }
+
+  return afterSeasonal;
+}
+
+function buildMetadata(input: CheckoutInput): Record<string, string> {
+  const { pricingTier, formData, utmSource, utmMedium, utmCampaign, utmContent, utmTerm } = input;
+  
+  const metadata: Record<string, string> = {
+    pricingTier,
+    recipientType: formData.recipientType,
+    recipientName: formData.recipientName.substring(0, 500),
+    occasion: formData.occasion,
+    genre: formData.genre,
+    singerPreference: formData.singerPreference,
+    specialQualities: formData.specialQualities.substring(0, 500),
+    favoriteMemory: formData.favoriteMemory.substring(0, 500),
+    customerName: formData.yourName.substring(0, 500),
+    customerEmail: formData.yourEmail,
+  };
+
+  if (formData.specialMessage) metadata.specialMessage = formData.specialMessage.substring(0, 500);
+  if (formData.phoneNumber) metadata.customerPhone = formData.phoneNumber;
+  if (formData.lyricsLanguageCode) metadata.lyricsLanguageCode = formData.lyricsLanguageCode;
+  if (formData.smsOptIn) metadata.smsOptIn = "true";
+  if (formData.phoneE164) metadata.phoneE164 = formData.phoneE164;
+  if (formData.timezone) metadata.timezone = formData.timezone;
+  if (utmSource) metadata.utmSource = utmSource;
+  if (utmMedium) metadata.utmMedium = utmMedium;
+  if (utmCampaign) metadata.utmCampaign = utmCampaign;
+  if (utmContent) metadata.utmContent = utmContent;
+  if (utmTerm) metadata.utmTerm = utmTerm;
+
+  return metadata;
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Only allow POST
     if (req.method !== "POST") {
       return new Response(
         JSON.stringify({ error: "Method not allowed" }),
@@ -76,7 +143,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { pricingTier, formData, promoCode, utmSource, utmMedium, utmCampaign, utmContent, utmTerm }: CheckoutInput = await req.json();
+    const input: CheckoutInput = await req.json();
+    const { pricingTier, formData, additionalPromoCode } = input;
 
     // Validate tier
     if (!["standard", "priority"].includes(pricingTier)) {
@@ -109,67 +177,31 @@ Deno.serve(async (req) => {
       );
     }
 
-    const stripe = new Stripe(stripeKey, {
-      apiVersion: "2025-08-27.basil",
-    });
-
-    // Get origin for redirect URLs
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
+    const metadata = buildMetadata(input);
 
-    // Store form data in metadata (Stripe limits metadata values to 500 chars each)
-    // We'll store the essential data that we need to create the order
-    const metadata: Record<string, string> = {
-      pricingTier,
-      recipientType: formData.recipientType,
-      recipientName: formData.recipientName.substring(0, 500),
-      occasion: formData.occasion,
-      genre: formData.genre,
-      singerPreference: formData.singerPreference,
-      specialQualities: formData.specialQualities.substring(0, 500),
-      favoriteMemory: formData.favoriteMemory.substring(0, 500),
-      customerName: formData.yourName.substring(0, 500),
-      customerEmail: formData.yourEmail,
-    };
+    // Determine unit amount
+    let unitAmount: number;
+    const upperAdditional = additionalPromoCode?.trim().toUpperCase() || "";
 
-    // Add optional fields if present
-    if (formData.specialMessage) {
-      metadata.specialMessage = formData.specialMessage.substring(0, 500);
-    }
-    if (formData.phoneNumber) {
-      metadata.customerPhone = formData.phoneNumber;
-    }
-    // Add language to metadata
-    if (formData.lyricsLanguageCode) {
-      metadata.lyricsLanguageCode = formData.lyricsLanguageCode;
-    }
-    // Add SMS fields to metadata
-    if (formData.smsOptIn) {
-      metadata.smsOptIn = "true";
-    }
-    if (formData.phoneE164) {
-      metadata.phoneE164 = formData.phoneE164;
-    }
-    if (formData.timezone) {
-      metadata.timezone = formData.timezone;
-    }
-    // Add UTM fields to metadata
-    if (utmSource) {
-      metadata.utmSource = utmSource;
-    }
-    if (utmMedium) {
-      metadata.utmMedium = utmMedium;
-    }
-    if (utmCampaign) {
-      metadata.utmCampaign = utmCampaign;
-    }
-    if (utmContent) {
-      metadata.utmContent = utmContent;
-    }
-    if (utmTerm) {
-      metadata.utmTerm = utmTerm;
+    // Check for free test codes (100% override - applies to the additional code)
+    if (FREE_TEST_CODES[upperAdditional]) {
+      unitAmount = 0;
+      metadata.promoCode = upperAdditional;
+    } else {
+      // Look up additional coupon in Stripe if provided
+      let stripeCoupon: Stripe.Coupon | null = null;
+      if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
+        stripeCoupon = await lookupStripeCoupon(stripe, upperAdditional);
+        if (stripeCoupon) {
+          metadata.additionalPromoCode = upperAdditional;
+        }
+      }
+
+      unitAmount = calculateFinalPrice(pricingTier, upperAdditional, stripeCoupon);
     }
 
-    const unitAmount = getDiscountedPrice(pricingTier, promoCode);
     const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
 
     // Create Stripe Checkout Session
@@ -179,9 +211,7 @@ Deno.serve(async (req) => {
         {
           price_data: {
             currency: "usd",
-            product_data: {
-              name: productName,
-            },
+            product_data: { name: productName },
             unit_amount: unitAmount,
           },
           quantity: 1,
@@ -200,7 +230,6 @@ Deno.serve(async (req) => {
       JSON.stringify({ url: session.url }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
   } catch (error: unknown) {
     console.error("Checkout error:", error);
     const message = error instanceof Error ? error.message : "Failed to create checkout session";
