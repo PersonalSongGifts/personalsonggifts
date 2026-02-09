@@ -1424,6 +1424,45 @@ export default function Admin() {
               </DialogHeader>
 
               <div className="space-y-6 py-4">
+                {selectedOrder.delivery_status === "needs_review" && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-center space-y-2">
+                    <div className="flex items-center justify-center gap-2 text-amber-800 font-medium">
+                      <AlertTriangle className="h-4 w-4" />
+                      This order needs review before delivery.
+                    </div>
+                    <p className="text-sm text-amber-700">The song was generated but inputs were changed.</p>
+                    <Button
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                      disabled={updating}
+                      onClick={async () => {
+                        setUpdating(true);
+                        try {
+                          const { error } = await supabase.functions.invoke("admin-orders", {
+                            method: "POST",
+                            body: {
+                              action: "update_order_fields",
+                              orderId: selectedOrder.id,
+                              updates: { delivery_status: "scheduled" },
+                              adminPassword: password,
+                            },
+                          });
+                          if (error) throw error;
+                          toast({ title: "Approved", description: "Delivery status set to scheduled. The cron will pick it up." });
+                          setSelectedOrder(null);
+                          fetchOrders();
+                        } catch (err) {
+                          toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to approve", variant: "destructive" });
+                        } finally {
+                          setUpdating(false);
+                        }
+                      }}
+                    >
+                      {updating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                      Approve for Delivery
+                    </Button>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Customer</h4>
