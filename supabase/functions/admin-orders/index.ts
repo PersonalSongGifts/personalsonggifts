@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
           query = query.eq("status", status);
         }
 
-        const { data: orders, error } = await query.range(0, 4999);
+        const { data: orders, error } = await query.range(0, 49999);
         if (error) throw error;
 
         // Also fetch full leads data (override default 1000-row cap)
@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
           .from("leads")
           .select("*")
           .order("captured_at", { ascending: false })
-          .range(0, 4999);
+          .range(0, 49999);
 
         if (leadsError) {
           console.error("Failed to fetch leads:", leadsError);
