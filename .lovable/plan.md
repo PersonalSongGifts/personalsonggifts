@@ -1,22 +1,37 @@
 
 
-# Add Generated Lyrics Display to Lead Details
+# Add "Approve for Delivery" Button
 
 ## What's Changing
 
-The generated lyrics are already stored in the database (`automation_lyrics` column) for both orders and leads. The **order detail** view already shows them, but the **lead detail** dialog does not. This change adds the lyrics display to the lead detail dialog so you can see them for each lead too.
+When an order has `delivery_status = "needs_review"`, it's blocked from automatic delivery by the cron job. Currently, an admin has no quick way to clear this flag -- they'd have to know to manually change the delivery status. This adds a prominent "Approve for Delivery" button that clears the review flag and sets the delivery status back to `scheduled` so the cron picks it up at the scheduled time.
 
 ## Changes
 
-### File: `src/components/admin/LeadsTable.tsx`
+### File: `src/pages/Admin.tsx`
 
-Add a "Generated Lyrics" section inside the lead detail dialog, right after the existing "Automation Status" section (around line 1691). This will show the lyrics in a scrollable, formatted block -- matching the same style already used in the order detail view.
+**1. Add an "Approve for Delivery" handler function**
 
-The section will:
-- Only appear when `automation_lyrics` exists for the lead
-- Show the lyrics in a preformatted text block with word wrap
-- Have a max height with scroll for long lyrics
-- Match the existing order detail styling for consistency
+A new async function `handleApproveForDelivery` that calls the existing `admin-orders` edge function with `action: "update_order_fields"` to set `delivery_status: "scheduled"`. This reuses the existing backend endpoint -- no edge function changes needed.
 
-No backend changes needed -- the data is already being fetched and available in the lead objects.
+**2. Add the button in the order detail dialog**
+
+Insert a visible banner + button in the order detail view that appears only when `delivery_status === "needs_review"`. It will be placed prominently near the top of the order detail content (after the song details section, before the upload section), styled with an amber/warning background to draw attention.
+
+The banner will look like:
+
+```text
++--------------------------------------------------+
+| This order needs review before delivery.         |
+| The song was generated but inputs were changed.  |
+|                                                  |
+|              [Approve for Delivery]              |
++--------------------------------------------------+
+```
+
+**Technical details:**
+- The button calls `update_order_fields` with `{ delivery_status: "scheduled" }` via the existing `admin-orders` edge function
+- On success, it refreshes the orders list and shows a success toast
+- The button is disabled while the request is in-flight
+- No new state variables needed beyond reusing `updating` for the loading state
 
