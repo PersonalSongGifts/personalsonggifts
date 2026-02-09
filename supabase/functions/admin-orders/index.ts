@@ -114,14 +114,15 @@ Deno.serve(async (req) => {
           query = query.eq("status", status);
         }
 
-        const { data: orders, error } = await query;
+        const { data: orders, error } = await query.range(0, 4999);
         if (error) throw error;
 
-        // Also fetch full leads data
+        // Also fetch full leads data (override default 1000-row cap)
         const { data: leads, error: leadsError } = await supabase
           .from("leads")
           .select("*")
-          .order("captured_at", { ascending: false });
+          .order("captured_at", { ascending: false })
+          .range(0, 4999);
 
         if (leadsError) {
           console.error("Failed to fetch leads:", leadsError);
