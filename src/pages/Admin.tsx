@@ -1831,6 +1831,28 @@ export default function Admin() {
                   </div>
                 )}
 
+                {selectedOrder.automation_lyrics && (
+                  <div className="border-t pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium">Generated Lyrics</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedOrder.automation_lyrics!);
+                          toast({ title: "Lyrics copied to clipboard" });
+                        }}
+                      >
+                        <Copy className="h-3 w-3" /> Copy
+                      </Button>
+                    </div>
+                    <pre className="text-xs bg-muted p-3 rounded-md max-h-[200px] overflow-y-auto whitespace-pre-wrap">
+                      {selectedOrder.automation_lyrics}
+                    </pre>
+                  </div>
+                )}
+
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-3">Order Settings</h4>
                   
