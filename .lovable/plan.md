@@ -1,27 +1,21 @@
 
 
-# Add Copy Button to Lyrics Display
+# Add Lyrics Display to Main Order Detail Dialog
 
-## What's Changing
+## Problem
 
-The generated lyrics section already exists in both the order detail dialog (`src/pages/Admin.tsx`, line ~2102) and the lead detail dialog (`src/components/admin/LeadsTable.tsx`, line ~1693). This change adds a "Copy" button next to each lyrics header so admins can quickly copy lyrics to clipboard.
+The "Generated Lyrics" section with the Copy button currently only exists inside the Debug Info dialog -- not in the main order detail dialog. That's why you can't see or copy lyrics when viewing an order.
 
 ## Changes
 
-### 1. `src/pages/Admin.tsx` (Order Detail Dialog)
+### `src/pages/Admin.tsx`
 
-Update the "Generated Lyrics" section (around line 2102-2109) to add a copy button next to the header:
+Add a "Generated Lyrics" section with a Copy button directly into the **main order detail dialog**, placed right after the "Song Title" section (around line 1832) and before "Order Settings". This puts it high enough that it's visible without excessive scrolling.
 
-- Change the header from a plain `<h4>` to a flex row with `<h4>` + a small "Copy" button
-- The button uses `navigator.clipboard.writeText()` with the `automation_lyrics` value
-- Show a brief toast confirmation on copy
+The section will:
+- Only show when `selectedOrder.automation_lyrics` exists
+- Display the lyrics in a scrollable `<pre>` block (max height ~200px)
+- Include a Copy button in the header row that copies lyrics to clipboard with a toast confirmation
+- Use the same styling already established in the debug dialog
 
-### 2. `src/components/admin/LeadsTable.tsx` (Lead Detail Dialog)
-
-Same change in the leads lyrics section (around line 1693-1700):
-
-- Add a flex header row with "Generated Lyrics" title + "Copy" button
-- Same clipboard copy logic and toast feedback
-
-Both buttons will use the existing `Copy` icon from lucide-react and the existing `toast` hook already in use in both files.
-
+This keeps the existing lyrics display in the Debug dialog as-is (for technical reference), while giving you easy access in the main view.
