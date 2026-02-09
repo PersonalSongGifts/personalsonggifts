@@ -1737,12 +1737,13 @@ Deno.serve(async (req) => {
     if (body?.action === "get_alerts_summary") {
       const now = new Date().toISOString();
       const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const allActiveStatuses = ["queued", "pending", "lyrics_generating", "audio_generating"];
 
-      // Stuck orders (audio_generating > 15 min)
+      // Stuck orders (ANY active status > 15 min)
       const { count: stuckOrders } = await supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
-        .eq("automation_status", "audio_generating")
+        .in("automation_status", allActiveStatuses)
         .lt("automation_started_at", fifteenMinAgo)
         .is("dismissed_at", null);
 
@@ -1776,11 +1777,11 @@ Deno.serve(async (req) => {
         .eq("delivery_status", "failed")
         .is("dismissed_at", null);
 
-      // Stuck leads
+      // Stuck leads (ANY active status > 15 min)
       const { count: stuckLeads } = await supabase
         .from("leads")
         .select("id", { count: "exact", head: true })
-        .eq("automation_status", "audio_generating")
+        .in("automation_status", allActiveStatuses)
         .lt("automation_started_at", fifteenMinAgo)
         .is("dismissed_at", null);
 
@@ -1815,6 +1816,81 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ alerts, total }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Unstick all stuck items
+    if (body?.action === "unstick_all") {
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const allActiveStatuses = ["queued", "pending", "lyrics_generating", "audio_generating"];
+      const MAX_AUTO_RETRIES = 3;
+      let fixed = 0;
+      let permanentlyFailed = 0;
+
+      // Fix stuck orders
+      const { data: stuckOrders } = await supabase
+        .from("orders")
+        .select("id, automation_status, automation_retry_count")
+        .in("automation_status", allActiveStatuses)
+        .lt("automation_started_at", fifteenMinAgo)
+        .is("automation_manual_override_at", null)
+        .is("dismissed_at", null)
+        .neq("status", "cancelled");
+
+      for (const order of stuckOrders || []) {
+        const retryCount = (order.automation_retry_count || 0) + 1;
+        if (retryCount > MAX_AUTO_RETRIES) {
+          await supabase.from("orders").update({
+            automation_status: "permanently_failed",
+            automation_last_error: `Unstick: exceeded max retries after stuck in ${order.automation_status}`,
+          }).eq("id", order.id);
+          permanentlyFailed++;
+        } else {
+          await supabase.from("orders").update({
+            automation_status: null,
+            automation_started_at: null,
+            automation_task_id: null,
+            automation_last_error: `Admin unstick from ${order.automation_status}`,
+            automation_retry_count: retryCount,
+          }).eq("id", order.id);
+          fixed++;
+        }
+      }
+
+      // Fix stuck leads
+      const { data: stuckLeads } = await supabase
+        .from("leads")
+        .select("id, automation_status, automation_retry_count")
+        .in("automation_status", allActiveStatuses)
+        .lt("automation_started_at", fifteenMinAgo)
+        .is("automation_manual_override_at", null)
+        .is("dismissed_at", null);
+
+      for (const lead of stuckLeads || []) {
+        const retryCount = (lead.automation_retry_count || 0) + 1;
+        if (retryCount > MAX_AUTO_RETRIES) {
+          await supabase.from("leads").update({
+            automation_status: "permanently_failed",
+            automation_last_error: `Unstick: exceeded max retries after stuck in ${lead.automation_status}`,
+          }).eq("id", lead.id);
+          permanentlyFailed++;
+        } else {
+          await supabase.from("leads").update({
+            automation_status: null,
+            automation_started_at: null,
+            automation_task_id: null,
+            automation_last_error: `Admin unstick from ${lead.automation_status}`,
+            automation_retry_count: retryCount,
+          }).eq("id", lead.id);
+          fixed++;
+        }
+      }
+
+      console.log(`[ADMIN] Unstick all: fixed=${fixed}, permanentlyFailed=${permanentlyFailed}`);
+
+      return new Response(
+        JSON.stringify({ success: true, fixed, permanentlyFailed }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

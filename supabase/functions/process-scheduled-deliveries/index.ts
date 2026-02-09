@@ -133,6 +133,83 @@ Deno.serve(async (req) => {
             .eq("id", lead.id);
         }
       }
+
+      // --- STUCK EARLY-STAGE RECOVERY ---
+      // Catch items stuck in lyrics_generating, pending, or queued for >15 min
+      // These have no audio task_id so the audio recovery above won't catch them
+      const earlyStuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const earlyStuckStatuses = ["lyrics_generating", "pending", "queued"];
+      let earlyStuckRecovered = 0;
+
+      // Orders stuck in early stages
+      const { data: earlyStuckOrders } = await supabase
+        .from("orders")
+        .select("id, automation_status, automation_retry_count")
+        .in("automation_status", earlyStuckStatuses)
+        .is("automation_manual_override_at", null)
+        .is("dismissed_at", null)
+        .neq("status", "cancelled")
+        .lte("automation_started_at", earlyStuckCutoff)
+        .order("automation_started_at", { ascending: true })
+        .limit(MAX_RETRIES_PER_RUN);
+
+      for (const order of earlyStuckOrders || []) {
+        const retryCount = (order.automation_retry_count || 0) + 1;
+        if (retryCount > MAX_AUTO_RETRIES) {
+          console.log(`[RECOVERY] Order ${order.id} stuck in ${order.automation_status}, exceeded max retries → permanently_failed`);
+          await supabase.from("orders").update({
+            automation_status: "permanently_failed",
+            automation_last_error: `Stuck in ${order.automation_status} for >15min, exceeded max retries (${MAX_AUTO_RETRIES})`,
+          }).eq("id", order.id);
+        } else {
+          console.log(`[RECOVERY] Order ${order.id} stuck in ${order.automation_status} >15min, resetting (retry ${retryCount}/${MAX_AUTO_RETRIES})`);
+          await supabase.from("orders").update({
+            automation_status: null,
+            automation_started_at: null,
+            automation_task_id: null,
+            automation_last_error: `Auto-recovered from stuck ${order.automation_status}`,
+            automation_retry_count: retryCount,
+          }).eq("id", order.id);
+          earlyStuckRecovered++;
+        }
+      }
+
+      // Leads stuck in early stages
+      const { data: earlyStuckLeads } = await supabase
+        .from("leads")
+        .select("id, automation_status, automation_retry_count")
+        .in("automation_status", earlyStuckStatuses)
+        .is("automation_manual_override_at", null)
+        .is("dismissed_at", null)
+        .lte("automation_started_at", earlyStuckCutoff)
+        .order("automation_started_at", { ascending: true })
+        .limit(MAX_RETRIES_PER_RUN);
+
+      for (const lead of earlyStuckLeads || []) {
+        const retryCount = (lead.automation_retry_count || 0) + 1;
+        if (retryCount > MAX_AUTO_RETRIES) {
+          console.log(`[RECOVERY] Lead ${lead.id} stuck in ${lead.automation_status}, exceeded max retries → permanently_failed`);
+          await supabase.from("leads").update({
+            automation_status: "permanently_failed",
+            automation_last_error: `Stuck in ${lead.automation_status} for >15min, exceeded max retries (${MAX_AUTO_RETRIES})`,
+          }).eq("id", lead.id);
+        } else {
+          console.log(`[RECOVERY] Lead ${lead.id} stuck in ${lead.automation_status} >15min, resetting (retry ${retryCount}/${MAX_AUTO_RETRIES})`);
+          await supabase.from("leads").update({
+            automation_status: null,
+            automation_started_at: null,
+            automation_task_id: null,
+            automation_last_error: `Auto-recovered from stuck ${lead.automation_status}`,
+            automation_retry_count: retryCount,
+          }).eq("id", lead.id);
+          earlyStuckRecovered++;
+        }
+      }
+
+      if (earlyStuckRecovered > 0) {
+        console.log(`[RECOVERY] Recovered ${earlyStuckRecovered} items stuck in early stages`);
+      }
+      results.earlyStuckRecoveries = earlyStuckRecovered;
     } catch (e) {
       console.error("[RECOVERY] Error:", e);
     }

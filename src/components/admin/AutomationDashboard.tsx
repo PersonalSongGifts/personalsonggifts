@@ -399,12 +399,13 @@ export function AutomationDashboard({ adminPassword, onRefresh, orders = [] }: A
     }
   };
 
-  // Check if a job is stuck (audio_generating for >5 minutes)
-  // Uses actual pipeline status "audio_generating" (not "generating_audio")
+  // Check if a job is stuck in ANY active status
   const isJobStuck = (job: ActiveJob) => {
-    return job.status === "audio_generating" && 
-      job.startedAt && 
-      (Date.now() - new Date(job.startedAt).getTime()) > 5 * 60 * 1000;
+    if (!job.startedAt) return false;
+    const elapsedMs = Date.now() - new Date(job.startedAt).getTime();
+    if (job.status === "audio_generating") return elapsedMs > 5 * 60 * 1000;
+    if (["lyrics_generating", "pending", "queued"].includes(job.status)) return elapsedMs > 15 * 60 * 1000;
+    return false;
   };
 
   const getElapsedTime = (startedAt: string | null) => {
@@ -545,29 +546,59 @@ const BATCH_LIMIT = 9;
                   {alertsTotal} item{alertsTotal !== 1 ? "s" : ""} need attention
                 </p>
                 <ul className="text-sm text-red-700 mt-1 space-y-0.5">
-                  {alerts?.stuckOrders && alerts.stuckOrders > 0 && <li>• {alerts.stuckOrders} order(s) stuck in audio generation</li>}
+                  {alerts?.stuckOrders && alerts.stuckOrders > 0 && <li>• {alerts.stuckOrders} order(s) stuck in generation</li>}
                   {alerts?.overdueOrders && alerts.overdueOrders > 0 && <li>• {alerts.overdueOrders} order(s) overdue for delivery</li>}
                   {alerts?.failedOrders && alerts.failedOrders > 0 && <li>• {alerts.failedOrders} order(s) failed</li>}
                   {alerts?.needsReviewOrders && alerts.needsReviewOrders > 0 && <li>• {alerts.needsReviewOrders} order(s) need review</li>}
                   {alerts?.deliveryFailedOrders && alerts.deliveryFailedOrders > 0 && <li>• {alerts.deliveryFailedOrders} order(s) delivery failed</li>}
-                  {alerts?.stuckLeads && alerts.stuckLeads > 0 && <li>• {alerts.stuckLeads} lead(s) stuck in audio generation</li>}
+                  {alerts?.stuckLeads && alerts.stuckLeads > 0 && <li>• {alerts.stuckLeads} lead(s) stuck in generation</li>}
                   {alerts?.overdueLeads && alerts.overdueLeads > 0 && <li>• {alerts.overdueLeads} lead(s) overdue for preview</li>}
                   {alerts?.failedLeads && alerts.failedLeads > 0 && <li>• {alerts.failedLeads} lead(s) failed</li>}
                 </ul>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => {
-                  fetchAutomationStatus();
-                  fetchAlerts();
-                  onRefresh?.();
-                }}
-                className="border-red-300 text-red-600 hover:bg-red-100"
-              >
-                <RefreshCw className="h-4 w-4 mr-1" />
-                Refresh
-              </Button>
+              <div className="flex flex-col gap-2">
+                {((alerts?.stuckOrders || 0) + (alerts?.stuckLeads || 0)) > 0 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={async () => {
+                      try {
+                        const { data, error } = await supabase.functions.invoke("admin-orders", {
+                          method: "POST",
+                          body: { action: "unstick_all", adminPassword },
+                        });
+                        if (error) throw error;
+                        toast({
+                          title: "Stuck Items Fixed",
+                          description: `${data.fixed} item(s) reset for retry${data.permanentlyFailed > 0 ? `, ${data.permanentlyFailed} exceeded max retries` : ""}`,
+                        });
+                        fetchAutomationStatus();
+                        fetchAlerts();
+                        onRefresh?.();
+                      } catch (err) {
+                        toast({ title: "Error", description: "Failed to unstick items", variant: "destructive" });
+                      }
+                    }}
+                    className="border-red-300 text-red-600 hover:bg-red-100"
+                  >
+                    <Zap className="h-4 w-4 mr-1" />
+                    Auto-Fix Stuck
+                  </Button>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    fetchAutomationStatus();
+                    fetchAlerts();
+                    onRefresh?.();
+                  }}
+                  className="border-red-300 text-red-600 hover:bg-red-100"
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Refresh
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
