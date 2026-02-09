@@ -15,6 +15,8 @@ import SongPlayer from "./pages/SongPlayer";
 import SongPreview from "./pages/SongPreview";
 import SubmitReaction from "./pages/SubmitReaction";
 import Unsubscribe from "./pages/Unsubscribe";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +38,8 @@ const App = () => (
           <Route path="/preview/:token" element={<SongPreview />} />
           <Route path="/submit-reaction" element={<SubmitReaction />} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
