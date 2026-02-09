@@ -254,14 +254,38 @@ Deno.serve(async (req) => {
       }
 
       // Update the order with song URL, title, and cover (if extracted)
-      const updateData: Record<string, string | null> = {
+      // Also complete automation if it was stuck in an active state
+      const updateData: Record<string, unknown> = {
         song_url: publicUrl,
         song_title: songTitle,
+        automation_manual_override_at: new Date().toISOString(),
       };
       
       // Only update cover_image_url if we extracted one
       if (coverImageUrl) {
         updateData.cover_image_url = coverImageUrl;
+      }
+
+      // Check current automation status to auto-complete stuck automation
+      const { data: currentOrder } = await supabase
+        .from("orders")
+        .select("automation_status, delivery_status, status")
+        .eq("id", targetId)
+        .single();
+
+      const activeStatuses = ["queued", "pending", "lyrics_generating", "lyrics_ready", "audio_generating"];
+      if (currentOrder && activeStatuses.includes(currentOrder.automation_status)) {
+        updateData.automation_status = "completed";
+        updateData.generated_at = new Date().toISOString();
+        updateData.automation_audio_url_source = "manual_upload";
+        console.log(`[UPLOAD] Auto-completing stuck automation (was: ${currentOrder.automation_status})`);
+      }
+
+      // If order hasn't been delivered yet, ensure delivery pipeline can pick it up
+      if (currentOrder && !currentOrder.sent_at && currentOrder.delivery_status !== "sent") {
+        if (!updateData.automation_status) {
+          updateData.automation_status = "completed";
+        }
       }
 
       const { error: updateError } = await supabase

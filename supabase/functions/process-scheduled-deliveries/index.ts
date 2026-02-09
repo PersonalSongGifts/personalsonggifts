@@ -85,6 +85,54 @@ Deno.serve(async (req) => {
       }
       
       results.stuckRecoveries = stuckTotal;
+
+      // --- FAILSAFE: Auto-complete orders that have a song but stuck automation_status ---
+      const { data: stuckWithSong } = await supabase
+        .from("orders")
+        .select("id, automation_status")
+        .in("automation_status", ["queued", "pending", "lyrics_generating", "audio_generating"])
+        .not("song_url", "is", null)
+        .is("sent_at", null)
+        .limit(10);
+
+      if (stuckWithSong && stuckWithSong.length > 0) {
+        console.log(`[FAILSAFE] Found ${stuckWithSong.length} orders with song_url but stuck automation_status`);
+        for (const order of stuckWithSong) {
+          console.log(`[FAILSAFE] Auto-completing order ${order.id} (was: ${order.automation_status})`);
+          await supabase
+            .from("orders")
+            .update({
+              automation_status: "completed",
+              generated_at: new Date().toISOString(),
+              automation_audio_url_source: "failsafe_recovery",
+            })
+            .eq("id", order.id);
+        }
+        results.failsafeRecoveries = stuckWithSong.length;
+      }
+
+      // Same failsafe for leads
+      const { data: stuckLeadsWithSong } = await supabase
+        .from("leads")
+        .select("id, automation_status")
+        .in("automation_status", ["queued", "pending", "lyrics_generating", "audio_generating"])
+        .not("preview_song_url", "is", null)
+        .is("sent_at", null)
+        .limit(10);
+
+      if (stuckLeadsWithSong && stuckLeadsWithSong.length > 0) {
+        console.log(`[FAILSAFE] Found ${stuckLeadsWithSong.length} leads with song but stuck automation_status`);
+        for (const lead of stuckLeadsWithSong) {
+          await supabase
+            .from("leads")
+            .update({
+              automation_status: "completed",
+              generated_at: new Date().toISOString(),
+              automation_audio_url_source: "failsafe_recovery",
+            })
+            .eq("id", lead.id);
+        }
+      }
     } catch (e) {
       console.error("[RECOVERY] Error:", e);
     }
