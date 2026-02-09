@@ -128,6 +128,8 @@ Deno.serve(async (req) => {
           console.error("Failed to fetch leads:", leadsError);
         }
 
+        console.log(`[ADMIN] Returning ${orders?.length ?? 0} orders, ${leads?.length ?? 0} leads`);
+
         return new Response(
           JSON.stringify({ orders, leads: leads || [] }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
