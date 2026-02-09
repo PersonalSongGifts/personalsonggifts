@@ -11,7 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search, Pencil, Save, ArrowRightCircle, Wand2, Loader2, AlertCircle, Bot } from "lucide-react";
+import { Download, Eye, Users, Upload, FileAudio, Play, Pause, Send, Clock, Gift, Star, AlertTriangle, Check, X, Timer, CheckCircle2, Archive, RotateCcw, RefreshCw, Search, Pencil, Save, ArrowRightCircle, Wand2, Loader2, AlertCircle, Bot, Copy } from "lucide-react";
 import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
@@ -1693,7 +1693,20 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                 {/* Generated Lyrics */}
                 {selectedLead.automation_lyrics && (
                   <div className="border-t pt-4">
-                    <h4 className="font-medium mb-3">Generated Lyrics</h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-medium">Generated Lyrics</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedLead.automation_lyrics!);
+                          toast({ title: "Lyrics copied to clipboard" });
+                        }}
+                      >
+                        <Copy className="h-3 w-3" /> Copy
+                      </Button>
+                    </div>
                     <pre className="text-sm bg-muted/40 border border-border rounded-lg p-4 whitespace-pre-wrap break-words max-h-64 overflow-y-auto font-sans">
                       {selectedLead.automation_lyrics}
                     </pre>

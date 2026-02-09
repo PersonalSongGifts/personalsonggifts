@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
@@ -2102,7 +2102,20 @@ export default function Admin() {
               {/* Generated Lyrics */}
               {selectedOrder.automation_lyrics && (
                 <div>
-                  <h4 className="font-medium text-sm mb-2">Generated Lyrics</h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium text-sm">Generated Lyrics</h4>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs gap-1"
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedOrder.automation_lyrics!);
+                        toast({ title: "Lyrics copied to clipboard" });
+                      }}
+                    >
+                      <Copy className="h-3 w-3" /> Copy
+                    </Button>
+                  </div>
                   <pre className="text-xs bg-muted p-4 rounded overflow-auto max-h-48 whitespace-pre-wrap">
                     {selectedOrder.automation_lyrics}
                   </pre>
