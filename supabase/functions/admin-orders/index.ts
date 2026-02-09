@@ -114,21 +114,49 @@ Deno.serve(async (req) => {
           query = query.eq("status", status);
         }
 
-        const { data: orders, error } = await query.range(0, 49999);
-        if (error) throw error;
-
-        // Also fetch full leads data (override default 1000-row cap)
-        const { data: leads, error: leadsError } = await supabase
-          .from("leads")
-          .select("*")
-          .order("captured_at", { ascending: false })
-          .range(0, 49999);
-
-        if (leadsError) {
-          console.error("Failed to fetch leads:", leadsError);
+        // Paginate orders to bypass PostgREST 1000-row server limit
+        let allOrders: any[] = [];
+        let orderPage = 0;
+        const PAGE_SIZE = 1000;
+        while (true) {
+          let pageQuery = supabase
+            .from("orders")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .range(orderPage * PAGE_SIZE, (orderPage + 1) * PAGE_SIZE - 1);
+          if (status && status !== "all") {
+            pageQuery = pageQuery.eq("status", status);
+          }
+          const { data: page, error: pageErr } = await pageQuery;
+          if (pageErr) throw pageErr;
+          if (!page || page.length === 0) break;
+          allOrders = allOrders.concat(page);
+          if (page.length < PAGE_SIZE) break;
+          orderPage++;
         }
+        const orders = allOrders;
 
-        console.log(`[ADMIN] Returning ${orders?.length ?? 0} orders, ${leads?.length ?? 0} leads`);
+        // Paginate leads to bypass PostgREST 1000-row server limit
+        let allLeads: any[] = [];
+        let leadPage = 0;
+        while (true) {
+          const { data: page, error: pageErr } = await supabase
+            .from("leads")
+            .select("*")
+            .order("captured_at", { ascending: false })
+            .range(leadPage * PAGE_SIZE, (leadPage + 1) * PAGE_SIZE - 1);
+          if (pageErr) {
+            console.error("Failed to fetch leads page:", pageErr);
+            break;
+          }
+          if (!page || page.length === 0) break;
+          allLeads = allLeads.concat(page);
+          if (page.length < PAGE_SIZE) break;
+          leadPage++;
+        }
+        const leads = allLeads;
+
+        console.log(`[ADMIN] Returning ${orders.length} orders, ${leads.length} leads`);
 
         return new Response(
           JSON.stringify({ orders, leads: leads || [] }),
