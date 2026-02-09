@@ -1690,6 +1690,16 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   </div>
                 )}
 
+                {/* Generated Lyrics */}
+                {selectedLead.automation_lyrics && (
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-3">Generated Lyrics</h4>
+                    <pre className="text-sm bg-muted/40 border border-border rounded-lg p-4 whitespace-pre-wrap break-words max-h-64 overflow-y-auto font-sans">
+                      {selectedLead.automation_lyrics}
+                    </pre>
+                  </div>
+                )}
+
                 {/* Song Info - show when song is uploaded */}
                 {selectedLead.full_song_url && (
                   <div className="border-t pt-4">
