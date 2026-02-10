@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
-import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Tag } from "lucide-react";
+import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -74,7 +73,7 @@ const SongPlayer = () => {
   const [error, setError] = useState<string | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsCopied, setLyricsCopied] = useState(false);
-  const [lyricsPromoCode, setLyricsPromoCode] = useState("");
+  
   
   
   // Audio player state
@@ -601,7 +600,7 @@ const SongPlayer = () => {
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ orderId, promoCode: lyricsPromoCode || undefined }),
+                  body: JSON.stringify({ orderId }),
                 }
               );
               const data = await response.json();
@@ -708,16 +707,7 @@ const SongPlayer = () => {
                   <div className="h-16 bg-gradient-to-t from-card to-transparent -mt-16 relative z-10" />
                 </div>
               </CardContent>
-              <div className="px-6 pb-6 text-center space-y-3">
-                <div className="flex items-center gap-2 max-w-xs mx-auto">
-                  <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <Input
-                    placeholder="Promo code"
-                    value={lyricsPromoCode}
-                    onChange={(e) => setLyricsPromoCode(e.target.value)}
-                    className="text-sm"
-                  />
-                </div>
+              <div className="px-6 pb-6 text-center">
                 <Button
                   onClick={handleUnlockLyrics}
                   disabled={lyricsLoading}
