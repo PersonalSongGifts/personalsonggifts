@@ -1,39 +1,33 @@
 
-# Lyrics Unlock Upgrade ($4.99) — IMPLEMENTED
 
-## Status: ✅ Complete
+# Add Lyrics Unlock Stats to Admin Dashboard
 
-All steps implemented and edge functions deployed + tested.
+## Approach
 
-## What was built
+Since the admin dashboard already fetches all orders (with `lyrics_unlocked_at` and `lyrics_price_cents` columns included), we can compute lyrics unlock metrics entirely client-side in the existing `StatsCards` component. No backend changes required.
 
-### Stripe Product
-- Product: `prod_TwypT7izyacLdc` ("Lyrics Unlock"), Price: `price_1Sz4rQGax2m9otRwuiNX9sEc` ($4.99 one-time)
+## Changes
 
-### Database
-- Added to `orders`: `lyrics_unlocked_at`, `lyrics_unlock_session_id`, `lyrics_unlock_payment_intent_id`, `lyrics_price_cents`
+### 1. Update `StatsCards.tsx` -- Add Lyrics Unlock section
 
-### Edge Functions
-- **get-song-page**: Returns `has_lyrics`, `lyrics_unlocked`, `lyrics_preview` (locked) or `lyrics` (unlocked). Cache-Control: no-store. Collision-safe prefix matching.
-- **create-lyrics-checkout**: Creates Stripe session with `entitlement: "lyrics_unlock"` metadata. No delivery status check.
-- **verify-lyrics-purchase**: Derives orderId from Stripe metadata (not client). Idempotent writes.
-- **stripe-webhook**: Early return handler for `lyrics_unlock` entitlement before order creation.
+Add the Order interface fields:
+- `lyrics_unlocked_at?: string | null`
+- `lyrics_price_cents?: number | null`
 
-### Frontend (SongPlayer.tsx)
-- Locked: lyrics preview + gradient fade + "$4.99 Unlock" button
-- Unlocked: full lyrics in Playfair Display + Copy button
-- No lyrics: "Lyrics aren't available for this song yet."
-- Stripe redirect: verifies purchase, re-fetches data, cleans URL
+Add a new stats section called **"Lyrics Unlocks"** with these cards:
 
-### Admin
-- Warning badge when lyrics paid but content missing
-- "Unlocked" badge on lyrics section when purchased
+| Card | Value | Description |
+|------|-------|-------------|
+| Total Unlocks | count where `lyrics_unlocked_at` is set | "All time" |
+| Unlock Revenue | sum of `lyrics_price_cents / 100` as dollars | "Paid: X, Free: Y" |
+| Paid Unlocks | count where unlocked AND `lyrics_price_cents > 0` | "At $4.99 each" |
+| Free Unlocks | count where unlocked AND `lyrics_price_cents` is 0 or null | "Admin/comp unlocks" |
 
-## Security
-- Full lyrics never sent unless `lyrics_unlocked_at` is set
-- verify-lyrics-purchase uses Stripe metadata as authoritative source
-- All writes idempotent (only if `lyrics_unlocked_at IS NULL`)
-- Cache-Control: no-store on all get-song-page responses
+Uses the existing card grid layout and icon styling (BookOpen or similar icon from lucide-react).
 
-## Backfill
-- 92 pre-Feb-2 orders without lyrics show "Lyrics aren't available" — deferred to separate task
+### 2. Update `Admin.tsx` Order interface
+
+Add `lyrics_unlocked_at` and `lyrics_price_cents` to the Order interface so TypeScript is happy (the data is already being returned from the backend).
+
+No edge function changes, no database changes, no new endpoints needed.
+
