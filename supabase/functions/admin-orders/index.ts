@@ -453,24 +453,35 @@ Deno.serve(async (req) => {
       // Cancel automation for a lead
       if (body?.action === "cancel_automation") {
         const leadId = typeof body.leadId === "string" ? body.leadId : null;
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
 
-        if (!leadId) {
+        if (!leadId && !orderId) {
           return new Response(
-            JSON.stringify({ error: "Lead ID required" }),
+            JSON.stringify({ error: "Lead ID or Order ID required" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
+        if (leadId && orderId) {
+          return new Response(
+            JSON.stringify({ error: "Provide either leadId or orderId, not both" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const table = orderId ? "orders" : "leads";
+        const id = orderId || leadId;
+
         await supabase
-          .from("leads")
+          .from(table)
           .update({
             automation_status: null,
             automation_last_error: "Cancelled by admin",
             automation_manual_override_at: new Date().toISOString(),
           })
-          .eq("id", leadId);
+          .eq("id", id);
 
-        console.log(`Automation cancelled for lead ${leadId}`);
+        console.log(`Automation cancelled for ${table.slice(0, -1)} ${id}`);
 
         return new Response(
           JSON.stringify({ success: true }),

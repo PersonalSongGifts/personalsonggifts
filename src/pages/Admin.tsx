@@ -97,9 +97,11 @@ interface Order {
   delivery_last_error: string | null;
   delivery_retry_count: number | null;
   // Input change detection
-  inputs_hash: string | null;
+   inputs_hash: string | null;
   // Dismissal tracking
   dismissed_at: string | null;
+  // Manual override
+  automation_manual_override_at: string | null;
   // Language
   lyrics_language_code?: string;
   // SMS fields
@@ -171,6 +173,7 @@ export default function Admin() {
   const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
   // Reset automation state
   const [resettingAutomation, setResettingAutomation] = useState(false);
+  const [stoppingAutomation, setStoppingAutomation] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState<"soft" | "full" | null>(null);
   const [regenerateConfirmText, setRegenerateConfirmText] = useState("");
   const [showDebugInfo, setShowDebugInfo] = useState(false);
@@ -1760,6 +1763,38 @@ export default function Admin() {
                       Automation Controls
                     </h4>
                     <div className="flex gap-2 flex-wrap">
+                      {/* Stop Automation Button */}
+                      {["queued", "pending", "lyrics_generating", "lyrics_ready", "audio_generating"].includes(selectedOrder.automation_status || "") && !selectedOrder.automation_manual_override_at && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={stoppingAutomation}
+                          onClick={async () => {
+                            setStoppingAutomation(true);
+                            try {
+                              const { error } = await supabase.functions.invoke("admin-orders", {
+                                method: "POST",
+                                body: {
+                                  action: "cancel_automation",
+                                  orderId: selectedOrder.id,
+                                  adminPassword: password,
+                                },
+                              });
+                              if (error) throw error;
+                              toast({ title: "Automation Stopped", description: "You can now safely upload a song manually." });
+                              setSelectedOrder({ ...selectedOrder, automation_status: null, automation_manual_override_at: new Date().toISOString(), automation_last_error: "Cancelled by admin" });
+                              fetchOrders();
+                            } catch (error) {
+                              toast({ title: "Failed to Stop", description: error instanceof Error ? error.message : "Unknown error", variant: "destructive" });
+                            } finally {
+                              setStoppingAutomation(false);
+                            }
+                          }}
+                        >
+                          {stoppingAutomation ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
+                          Stop Automation
+                        </Button>
+                      )}
                       {/* Debug Info Button */}
                       <Button 
                         variant="outline" 
