@@ -1,55 +1,46 @@
 
 
-## Converted Lead Admin Controls: "View Order" Bridge + Song Page Link
+## "Hot Leads" Widget -- Most-Engaged Unconverted Leads
 
-### The Problem (Two Issues)
+### What It Does
 
-1. **No bridge from lead to order**: When a lead converts, the lead card shows "Converted to Order: 229E978F" as plain text. There's no way to click through to the order's detail dialog to upload songs, edit lyrics, resend delivery, etc.
+Adds a new card/section to the Analytics tab (or top of the Leads tab) showing leads who have played their preview the most but haven't converted to a purchase yet. These are your warmest prospects -- people who keep coming back to listen but haven't pulled the trigger.
 
-2. **Song Page link invisible**: The song page URL (`/song/229E978F`) only appears inside the ORDER detail dialog (and only when status is "delivered"). From the leads tab, you can't see or access it at all.
+The widget will show a ranked table of the top 10 unconverted leads sorted by `preview_play_count` (descending), displaying:
+- Lead name and email
+- Play count and last played date
+- Occasion and genre
+- How long ago they were captured
+- A quick "View Lead" button to open their detail dialog
 
-### The Fix
+### Where It Lives
 
-#### Change 1: "Manage Order" button on converted leads (LeadsTable.tsx)
-
-Replace the plain-text "Converted to Order: 229E978F" with:
-- A **clickable "Manage Order" button** that closes the lead view and opens the order's detail dialog in the Orders tab
-- A **Song Page link** (`/song/SHORT_ID`) displayed directly, so you can copy/share it without navigating
-
-This requires a new prop `onNavigateToOrder` on LeadsTable, which Admin.tsx will provide.
-
-#### Change 2: Cross-tab navigation handler (Admin.tsx)
-
-Add a `handleNavigateToOrder` function that:
-1. Switches `activeTab` to `"orders"`
-2. Clears `statusFilter` to `"all"` (so the order isn't hidden by a filter)
-3. Finds the order in `allOrders` by ID
-4. Sets it as `selectedOrder` to open the detail dialog immediately
-
-Pass this function to LeadsTable as `onNavigateToOrder`.
-
-### Pitfalls and Prevention
-
-| Pitfall | Risk | Prevention |
-|---------|------|------------|
-| Order not in `allOrders` array | If data hasn't been fetched yet or order was created externally | Show a toast "Order not found -- try refreshing" and still switch to the orders tab so admin can search manually |
-| Stale `allOrders` after manual conversion | Admin converts a lead, but `allOrders` hasn't refreshed yet | The existing `fetchOrders()` is already called after conversion. The navigate function will also call `fetchOrders()` as a safety net if the order isn't found |
-| Filter hiding the order | `statusFilter` might be set to "delivered" while the order is still "pending" | Clear `statusFilter` to "all" before selecting the order |
-| Song Page link for orders without a song | Clicking the link when no song is uploaded shows an error page | Only render the Song Page link when the order has status "delivered" or "ready". Otherwise show "Song not yet uploaded" |
-| Lead dialog staying open behind order dialog | Both dialogs could render simultaneously | Close the lead detail (via `setSelectedLead(null)` in LeadsTable) before triggering the navigation callback |
+A new card in the **Analytics tab**, placed after the existing charts (Revenue, Orders, Status, Genre). It fits naturally here since it's an analytical insight, not an operational action.
 
 ### Technical Details
 
-**Files modified:**
+**New file: `src/components/admin/HotLeadsCard.tsx`**
+- Accepts the `leads` array (already fetched by Admin.tsx)
+- Filters to leads where `status !== "converted"` AND `preview_play_count > 0`
+- Sorts by `preview_play_count` descending, takes top 10
+- Renders a Card with a small table showing rank, name, email, play count, last played, occasion
+- Includes an `onViewLead` callback prop so clicking a row can navigate to the Leads tab and open that lead
 
-**`src/components/admin/LeadsTable.tsx`**:
-- Add `onNavigateToOrder?: (orderId: string) => void` to `LeadsTableProps`
-- In the converted lead section (around line 1099), replace plain text with:
-  - Song Page link (anchor tag, opens in new tab) -- only if order exists
-  - "Manage Order" button that calls `onNavigateToOrder(lead.order_id)`
+**Modified: `src/pages/Admin.tsx`**
+- Import and render `HotLeadsCard` in the Analytics tab content area
+- Pass `allLeads` and a `handleNavigateToLead` callback (similar pattern to the existing `handleNavigateToOrder`)
+- `handleNavigateToLead` switches to the Leads tab and sets the selected lead
 
-**`src/pages/Admin.tsx`**:
-- Add `handleNavigateToOrder` function
-- Pass it as prop to `LeadsTable`
+### Pitfalls
 
-### No new files, no new dependencies, no database changes.
+| Pitfall | Prevention |
+|---------|------------|
+| No leads have plays yet | Show an empty state: "No preview plays recorded yet" |
+| Lead was dismissed but has high plays | Include dismissed leads in the list -- they're still unconverted prospects worth seeing. Show a subtle "dismissed" indicator if applicable |
+| Clicking "View Lead" while on Analytics tab | The callback switches tabs and opens the lead dialog, same pattern as the order navigation bridge |
+
+### Files
+- **New**: `src/components/admin/HotLeadsCard.tsx`
+- **Modified**: `src/pages/Admin.tsx` (import + render in analytics tab + navigation handler)
+
+No database changes. No new dependencies.
