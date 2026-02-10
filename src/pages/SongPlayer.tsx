@@ -441,9 +441,8 @@ const SongPlayer = () => {
       <audio 
         ref={audioRef} 
         src={songData.song_url} 
-        preload="metadata"
+        preload="auto"
         playsInline
-        crossOrigin="anonymous"
       />
 
       <div className="container max-w-2xl mx-auto px-4 py-8 md:py-16">
