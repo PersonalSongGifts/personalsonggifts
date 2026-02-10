@@ -149,6 +149,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   // Automation state
   const [triggeringAutomation, setTriggeringAutomation] = useState<string | null>(null);
   const [convertingLead, setConvertingLead] = useState(false);
+  const [stoppingAutomation, setStoppingAutomation] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -1724,6 +1725,44 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                             What the system will do: Auto-retry every minute by polling the provider for status.
                           </p>
                         </div>
+                      )}
+
+                      {/* Stop Automation Button */}
+                      {["queued", "pending", "lyrics_generating", "lyrics_ready", "audio_generating"].includes(selectedLead.automation_status || "") && !selectedLead.automation_manual_override_at && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={stoppingAutomation}
+                          onClick={async () => {
+                            if (!adminPassword) return;
+                            setStoppingAutomation(true);
+                            try {
+                              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  action: "cancel_automation",
+                                  leadId: selectedLead.id,
+                                  adminPassword,
+                                }),
+                              });
+                              if (!response.ok) {
+                                const err = await response.json().catch(() => ({}));
+                                throw new Error(err.error || "Failed to stop automation");
+                              }
+                              toast({ title: "Automation Stopped", description: "You can now safely upload a song manually." });
+                              setSelectedLead({ ...selectedLead, automation_status: null, automation_manual_override_at: new Date().toISOString(), automation_last_error: "Cancelled by admin" });
+                              onRefresh?.();
+                            } catch (error) {
+                              toast({ title: "Failed to Stop", description: error instanceof Error ? error.message : "Unknown error", variant: "destructive" });
+                            } finally {
+                              setStoppingAutomation(false);
+                            }
+                          }}
+                        >
+                          {stoppingAutomation ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
+                          Stop Automation
+                        </Button>
                       )}
                     </div>
                   </div>
