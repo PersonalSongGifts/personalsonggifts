@@ -1910,6 +1910,16 @@ export default function Admin() {
                         </p>
                       </div>
                     )}
+                    {selectedOrder.song_url && (
+                      <div>
+                        <label className="text-sm font-medium">Song Page</label>
+                        <p className="text-xs text-muted-foreground mt-1 break-all">
+                          <a href={`/song/${selectedOrder.id.slice(0, 8).toUpperCase()}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            {`${window.location.origin}/song/${selectedOrder.id.slice(0, 8).toUpperCase()}`}
+                          </a>
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
