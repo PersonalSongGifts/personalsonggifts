@@ -118,6 +118,7 @@ Deno.serve(async (req) => {
     }
 
     // Create order from lead data
+    // SYNC POINT: When adding new fields to leads, also add them here for lead conversion.
     const { data: newOrder, error: insertError } = await supabase
       .from("orders")
       .insert({
@@ -139,7 +140,11 @@ Deno.serve(async (req) => {
         song_url: lead.full_song_url, // Copy the full song URL from lead
         song_title: lead.song_title,
         cover_image_url: lead.cover_image_url,
-       source: "lead_conversion",
+        automation_lyrics: lead.automation_lyrics,
+        automation_status: lead.automation_lyrics ? "completed" : null,
+        lyrics_language_code: lead.lyrics_language_code || "en",
+        inputs_hash: lead.inputs_hash,
+        source: "lead_conversion",
         device_type: "Web",
         notes: `lead_session:${sessionId}`,
         status: "delivered", // Immediate delivery since song already exists
@@ -194,6 +199,23 @@ Deno.serve(async (req) => {
       .eq("id", lead.id);
 
     console.log(`Lead ${lead.id} converted to order ${newOrder.id}`);
+
+    // Fallback: if lyrics weren't ready when the lead paid, trigger generation for the new order
+    if (!lead.automation_lyrics) {
+      try {
+        console.log(`Lyrics missing on lead ${lead.id}, triggering generation for order ${newOrder.id}`);
+        await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ orderId: newOrder.id, type: "order" }),
+        });
+      } catch (e) {
+        console.error("Failed to trigger fallback lyrics generation:", e);
+      }
+    }
 
     // Sync to Google Sheets - update lead row to converted and add order row
     try {
