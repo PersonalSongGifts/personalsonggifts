@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
     const session = await stripe.checkout.sessions.create({
       line_items: [{ price: LYRICS_PRICE_ID, quantity: 1 }],
       mode: "payment",
+      allow_promotion_codes: true,
       success_url: `${origin}/song/${shortId}?lyrics_session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/song/${shortId}`,
       metadata: {
