@@ -1,20 +1,32 @@
 
 
-# Make Song Page Links Work for "Ready" Orders
+# Auto-Generate Lyrics on Manual Song Upload
 
-## Why It's Currently Blocked
-The `get-song-page` backend function only returns data for orders with `status = "delivered"`. Orders in `"ready"` status already have a song URL and all the data needed to render the page -- they're just waiting to be sent to the customer.
+## What Just Happened
+I triggered lyrics generation for Jim's anniversary song (order 350B2B5B) -- it's done and the customer can now unlock the lyrics on their song page.
 
-## Simple Fix
-Update the `get-song-page` edge function to accept both `"delivered"` and `"ready"` statuses. This is a minimal change:
+## The Permanent Fix
 
-### `supabase/functions/get-song-page/index.ts`
-- For short ID queries: change `.eq("status", "delivered")` to `.in("status", ["delivered", "ready"])`
-- For full UUID queries: no status filter on the query (it already checks afterward)
-- Update the guard check from `order.status !== "delivered"` to `!["delivered", "ready"].includes(order.status)`
+When a song is manually uploaded via the `upload-song` edge function and the order has no lyrics yet (`automation_lyrics` is null), automatically trigger lyrics generation in the background.
 
-### `src/pages/Admin.tsx`
-- Update the warning to show for statuses other than "delivered" or "ready" (e.g., "pending", "generating")
-- Change warning text to: "Link works once song is uploaded"
+### Changes to `supabase/functions/upload-song/index.ts`
 
-No new endpoints, no authentication changes, no database changes needed. Orders in earlier statuses (pending, generating) still won't be accessible since they have no song URL anyway.
+After the order update succeeds (around line 291-299), add a background call to the `automation-generate-lyrics` function:
+
+```text
+1. Check if the order has no automation_lyrics
+2. If missing, fire a non-blocking fetch to automation-generate-lyrics with the orderId
+3. Log the result but don't block the upload response -- lyrics generation is a nice-to-have, not critical
+```
+
+The call will be fire-and-forget style (using `fetch` without `await` on the response body) so it doesn't slow down the upload flow. If it fails for any reason, the admin can still manually trigger it later.
+
+### Technical Detail
+
+- After line ~299 (after the order update), add:
+  - Query the order for `automation_lyrics`
+  - If null, call the lyrics generation endpoint
+  - Log success/failure but don't block the response
+- No database migrations needed
+- No frontend changes needed
+
