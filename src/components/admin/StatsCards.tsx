@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare } from "lucide-react";
+import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen } from "lucide-react";
 import { LucideIcon } from "lucide-react";
 
 interface Order {
@@ -15,6 +15,8 @@ interface Order {
   source?: string | null;
   sms_opt_in?: boolean;
   sms_status?: string | null;
+  lyrics_unlocked_at?: string | null;
+  lyrics_price_cents?: number | null;
 }
 
 interface Lead {
@@ -103,6 +105,14 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const smsSent = allEntities.filter((e) => e.sms_status === "sent").length;
   const smsFailed = allEntities.filter((e) => e.sms_status === "failed").length;
 
+  // Lyrics Unlocks
+  const lyricsUnlocked = orders.filter((o) => o.lyrics_unlocked_at);
+  const totalUnlocks = lyricsUnlocked.length;
+  const paidUnlocks = lyricsUnlocked.filter((o) => o.lyrics_price_cents && o.lyrics_price_cents > 0).length;
+  const freeUnlocks = totalUnlocks - paidUnlocks;
+  const unlockRevenueCents = lyricsUnlocked.reduce((sum, o) => sum + (o.lyrics_price_cents || 0), 0);
+  const unlockRevenue = unlockRevenueCents / 100;
+
   return [
     {
       label: "Revenue & Orders",
@@ -122,6 +132,15 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
         { title: "True Recoveries", value: trueRecoveryCount.toString(), description: `$${trueRecoveryRevenue.toLocaleString()} revenue`, icon: TrendingUp, color: "text-emerald-600", bgColor: "bg-emerald-100" },
         { title: "Recovery Rate", value: `${recoveryRate}%`, description: `${trueRecoveryCount} of ${previewsSent} sent`, icon: RefreshCw, color: "text-teal-600", bgColor: "bg-teal-100" },
         { title: "Play → Buy", value: `${playToBuyRate}%`, description: `${leadsWhoPlayedAndConverted} of ${leadsWhoPlayedPreview} played`, icon: Play, color: "text-purple-600", bgColor: "bg-purple-100" },
+      ],
+    },
+    {
+      label: "Lyrics Unlocks",
+      stats: [
+        { title: "Total Unlocks", value: totalUnlocks.toString(), description: "All time", icon: BookOpen, color: "text-fuchsia-600", bgColor: "bg-fuchsia-100" },
+        { title: "Unlock Revenue", value: `$${unlockRevenue.toLocaleString()}`, description: `Paid: ${paidUnlocks}, Free: ${freeUnlocks}`, icon: DollarSign, color: "text-fuchsia-600", bgColor: "bg-fuchsia-100" },
+        { title: "Paid Unlocks", value: paidUnlocks.toString(), description: "At $4.99 each", icon: BookOpen, color: "text-green-600", bgColor: "bg-green-100" },
+        { title: "Free Unlocks", value: freeUnlocks.toString(), description: "Admin/comp unlocks", icon: BookOpen, color: "text-slate-600", bgColor: "bg-slate-100" },
       ],
     },
     {
