@@ -155,6 +155,10 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
   const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  // Lyrics editing state
+  const [editingLeadLyrics, setEditingLeadLyrics] = useState(false);
+  const [editedLeadLyricsText, setEditedLeadLyricsText] = useState("");
+  const [savingLeadLyrics, setSavingLeadLyrics] = useState(false);
   // Filter by status, quality, dismissed state, and search query
   const filteredLeads = leads
     .filter((lead) => {
@@ -1690,28 +1694,99 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   </div>
                 )}
 
-                {/* Generated Lyrics */}
-                {selectedLead.automation_lyrics && (
-                  <div className="border-t pt-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-medium">Generated Lyrics</h4>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs gap-1"
-                        onClick={() => {
-                          navigator.clipboard.writeText(selectedLead.automation_lyrics!);
-                          toast({ title: "Lyrics copied to clipboard" });
-                        }}
-                      >
-                        <Copy className="h-3 w-3" /> Copy
-                      </Button>
+                {/* Editable Lyrics Section */}
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium">{selectedLead.automation_lyrics ? "Generated Lyrics" : "Lyrics"}</h4>
+                    <div className="flex items-center gap-1">
+                      {selectedLead.automation_lyrics && !editingLeadLyrics && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedLead.automation_lyrics!);
+                            toast({ title: "Lyrics copied to clipboard" });
+                          }}
+                        >
+                          <Copy className="h-3 w-3" /> Copy
+                        </Button>
+                      )}
+                      {!editingLeadLyrics && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={() => {
+                            setEditingLeadLyrics(true);
+                            setEditedLeadLyricsText(selectedLead.automation_lyrics || "");
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" /> Edit
+                        </Button>
+                      )}
                     </div>
+                  </div>
+                  {editingLeadLyrics ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editedLeadLyricsText}
+                        onChange={(e) => setEditedLeadLyricsText(e.target.value.slice(0, 5000))}
+                        className="min-h-[200px] text-xs font-mono"
+                        placeholder="Enter or paste lyrics here..."
+                      />
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">{editedLeadLyricsText.length}/5000</span>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingLeadLyrics(false)}
+                            disabled={savingLeadLyrics}
+                          >
+                            <X className="h-3 w-3 mr-1" /> Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={savingLeadLyrics}
+                            onClick={async () => {
+                              setSavingLeadLyrics(true);
+                              try {
+                                const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    action: "update_lead_fields",
+                                    leadId: selectedLead.id,
+                                    updates: { automation_lyrics: editedLeadLyricsText },
+                                    adminPassword,
+                                  }),
+                                });
+                                if (!response.ok) throw new Error("Failed to save");
+                                toast({ title: "Lyrics saved" });
+                                setSelectedLead({ ...selectedLead, automation_lyrics: editedLeadLyricsText });
+                                setEditingLeadLyrics(false);
+                                onRefresh?.();
+                              } catch {
+                                toast({ title: "Failed to save lyrics", variant: "destructive" });
+                              } finally {
+                                setSavingLeadLyrics(false);
+                              }
+                            }}
+                          >
+                            <Save className="h-3 w-3 mr-1" /> Save
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : selectedLead.automation_lyrics ? (
                     <pre className="text-sm bg-muted/40 border border-border rounded-lg p-4 whitespace-pre-wrap break-words max-h-64 overflow-y-auto font-sans">
                       {selectedLead.automation_lyrics}
                     </pre>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No lyrics yet. Click Edit to add.</p>
+                  )}
+                </div>
 
                 {/* Song Info - show when song is uploaded */}
                 {selectedLead.full_song_url && (

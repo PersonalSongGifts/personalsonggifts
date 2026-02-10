@@ -735,7 +735,8 @@ Deno.serve(async (req) => {
           "customer_email_override", "customer_email_cc",
           "lyrics_language_code",
           "sms_opt_in",
-          "delivery_status"
+          "delivery_status",
+          "automation_lyrics"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
@@ -786,6 +787,11 @@ Deno.serve(async (req) => {
               { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
+        }
+
+        // If automation_lyrics is being edited, set manual override to prevent AI overwrite
+        if (safeUpdates.automation_lyrics !== undefined) {
+          safeUpdates.automation_manual_override_at = new Date().toISOString();
         }
 
         const { data: order, error: updateError } = await supabase
@@ -856,7 +862,8 @@ Deno.serve(async (req) => {
           "special_qualities", "favorite_memory",
           "special_message",
           "lead_email_override", "lead_email_cc",
-          "lyrics_language_code"
+          "lyrics_language_code",
+          "automation_lyrics"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
@@ -907,6 +914,11 @@ Deno.serve(async (req) => {
               { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
+        }
+
+        // If automation_lyrics is being edited, set manual override to prevent AI overwrite
+        if (safeUpdates.automation_lyrics !== undefined) {
+          safeUpdates.automation_manual_override_at = new Date().toISOString();
         }
 
         const { data: lead, error: updateError } = await supabase

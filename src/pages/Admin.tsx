@@ -171,6 +171,10 @@ export default function Admin() {
   const [showResetConfirm, setShowResetConfirm] = useState<"soft" | "full" | null>(null);
   const [regenerateConfirmText, setRegenerateConfirmText] = useState("");
   const [showDebugInfo, setShowDebugInfo] = useState(false);
+  // Lyrics editing state
+  const [editingOrderLyrics, setEditingOrderLyrics] = useState(false);
+  const [editedOrderLyricsText, setEditedOrderLyricsText] = useState("");
+  const [savingOrderLyrics, setSavingOrderLyrics] = useState(false);
   // Regenerate song state
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
@@ -1850,32 +1854,103 @@ export default function Admin() {
                   </div>
                 )}
 
-                {selectedOrder.automation_lyrics && (
-                  <div className="border-t pt-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium">Generated Lyrics</h4>
-                        {(selectedOrder as any).lyrics_unlocked_at && (
-                          <Badge className="bg-green-100 text-green-800 text-xs">Unlocked</Badge>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs gap-1"
-                        onClick={() => {
-                          navigator.clipboard.writeText(selectedOrder.automation_lyrics!);
-                          toast({ title: "Lyrics copied to clipboard" });
-                        }}
-                      >
-                        <Copy className="h-3 w-3" /> Copy
-                      </Button>
+                {/* Editable Lyrics Section */}
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium">{selectedOrder.automation_lyrics ? "Generated Lyrics" : "Lyrics"}</h4>
+                      {(selectedOrder as any).lyrics_unlocked_at && (
+                        <Badge className="bg-green-100 text-green-800 text-xs">Unlocked</Badge>
+                      )}
                     </div>
+                    <div className="flex items-center gap-1">
+                      {selectedOrder.automation_lyrics && !editingOrderLyrics && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedOrder.automation_lyrics!);
+                            toast({ title: "Lyrics copied to clipboard" });
+                          }}
+                        >
+                          <Copy className="h-3 w-3" /> Copy
+                        </Button>
+                      )}
+                      {!editingOrderLyrics && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={() => {
+                            setEditingOrderLyrics(true);
+                            setEditedOrderLyricsText(selectedOrder.automation_lyrics || "");
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" /> Edit
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {editingOrderLyrics ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editedOrderLyricsText}
+                        onChange={(e) => setEditedOrderLyricsText(e.target.value.slice(0, 5000))}
+                        className="min-h-[200px] text-xs font-mono"
+                        placeholder="Enter or paste lyrics here..."
+                      />
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">{editedOrderLyricsText.length}/5000</span>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingOrderLyrics(false)}
+                            disabled={savingOrderLyrics}
+                          >
+                            <X className="h-3 w-3 mr-1" /> Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={savingOrderLyrics}
+                            onClick={async () => {
+                              setSavingOrderLyrics(true);
+                              try {
+                                const { error } = await supabase.functions.invoke("admin-orders", {
+                                  method: "POST",
+                                  body: {
+                                    action: "update_order_fields",
+                                    orderId: selectedOrder.id,
+                                    updates: { automation_lyrics: editedOrderLyricsText },
+                                    adminPassword: password,
+                                  },
+                                });
+                                if (error) throw error;
+                                toast({ title: "Lyrics saved" });
+                                setSelectedOrder({ ...selectedOrder, automation_lyrics: editedOrderLyricsText });
+                                setEditingOrderLyrics(false);
+                                fetchOrders();
+                              } catch {
+                                toast({ title: "Failed to save lyrics", variant: "destructive" });
+                              } finally {
+                                setSavingOrderLyrics(false);
+                              }
+                            }}
+                          >
+                            <Save className="h-3 w-3 mr-1" /> Save
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : selectedOrder.automation_lyrics ? (
                     <pre className="text-xs bg-muted p-3 rounded-md max-h-[200px] overflow-y-auto whitespace-pre-wrap">
                       {selectedOrder.automation_lyrics}
                     </pre>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No lyrics yet. Click Edit to add.</p>
+                  )}
+                </div>
 
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-3">Order Settings</h4>
