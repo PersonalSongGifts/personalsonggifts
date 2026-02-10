@@ -1914,10 +1914,13 @@ export default function Admin() {
                       <div>
                         <label className="text-sm font-medium">Song Page</label>
                         <p className="text-xs text-muted-foreground mt-1 break-all">
-                          <a href={`/song/${selectedOrder.id.slice(0, 8).toUpperCase()}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                            {`${window.location.origin}/song/${selectedOrder.id.slice(0, 8).toUpperCase()}`}
+                          <a href={`https://www.personalsonggifts.com/song/${selectedOrder.id.slice(0, 8).toUpperCase()}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            {`https://www.personalsonggifts.com/song/${selectedOrder.id.slice(0, 8).toUpperCase()}`}
                           </a>
                         </p>
+                        {selectedOrder.status !== "delivered" && (
+                          <p className="text-xs text-muted-foreground/70 mt-0.5 italic">⚠️ Link only works after order is delivered</p>
+                        )}
                       </div>
                     )}
                   </div>
