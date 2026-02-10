@@ -734,7 +734,8 @@ Deno.serve(async (req) => {
           "special_message", "notes",
           "customer_email_override", "customer_email_cc",
           "lyrics_language_code",
-          "sms_opt_in"
+          "sms_opt_in",
+          "delivery_status"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
