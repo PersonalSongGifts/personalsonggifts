@@ -1918,8 +1918,8 @@ export default function Admin() {
                             {`https://www.personalsonggifts.com/song/${selectedOrder.id.slice(0, 8).toUpperCase()}`}
                           </a>
                         </p>
-                        {selectedOrder.status !== "delivered" && (
-                          <p className="text-xs text-muted-foreground/70 mt-0.5 italic">⚠️ Link only works after order is delivered</p>
+                        {selectedOrder.status !== "delivered" && selectedOrder.status !== "ready" && (
+                          <p className="text-xs text-muted-foreground/70 mt-0.5 italic">⚠️ Link works once song is uploaded</p>
                         )}
                       </div>
                     )}
