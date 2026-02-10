@@ -458,33 +458,54 @@ Deno.serve(async (req) => {
     const canonical = normalizeSunoCallback(statusData);
     console.log(`[CALLBACK] Canonical extraction: audioUrl=${canonical.audioUrl ? 'present' : 'missing'}, from=${canonical.extractedFrom}`);
     
-    // If canonical extraction failed, try the legacy fallback
-    let audioUrl = canonical.audioUrl;
     let coverUrl = canonical.coverUrl;
     const title = canonical.title || (entity.song_title as string) || `Song for ${entity.recipient_name}`;
     
-    // Fallback: try direct from record-info sunoData if canonical failed
-    if (!audioUrl && sunoData && Array.isArray(sunoData) && sunoData.length > 0) {
+    // Collect ALL available audio URLs for retry fallback
+    const allAudioUrls: Array<{ url: string; source: string }> = [];
+    
+    // From canonical extraction
+    if (canonical.audioUrl) {
+      allAudioUrls.push({ url: canonical.audioUrl, source: canonical.extractedFrom });
+    }
+    
+    // From sunoData - collect ALL URL variants (not just first match)
+    if (sunoData && Array.isArray(sunoData) && sunoData.length > 0) {
       const song = sunoData[0];
-      audioUrl = song.audioUrl || song.audio_url ||
-                 song.sourceAudioUrl || song.source_audio_url ||
-                 song.streamAudioUrl || song.stream_audio_url ||
-                 song.sourceStreamAudioUrl || song.source_stream_audio_url;
+      const urlFields = [
+        { key: 'audioUrl', value: song.audioUrl },
+        { key: 'audio_url', value: song.audio_url },
+        { key: 'sourceAudioUrl', value: song.sourceAudioUrl },
+        { key: 'source_audio_url', value: song.source_audio_url },
+        { key: 'streamAudioUrl', value: song.streamAudioUrl },
+        { key: 'stream_audio_url', value: song.stream_audio_url },
+        { key: 'sourceStreamAudioUrl', value: song.sourceStreamAudioUrl },
+        { key: 'source_stream_audio_url', value: song.source_stream_audio_url },
+      ];
+      
+      for (const field of urlFields) {
+        if (typeof field.value === 'string' && field.value.length > 0) {
+          // Avoid duplicates
+          if (!allAudioUrls.some(u => u.url === field.value)) {
+            allAudioUrls.push({ url: field.value, source: `sunoData.${field.key}` });
+          }
+        }
+      }
+      
       coverUrl = coverUrl || song.imageUrl || song.image_url;
-      console.log(`[CALLBACK] Fallback extraction: audioUrl=${audioUrl ? 'present' : 'missing'}`);
     }
 
-    console.log(`[CALLBACK] Final extraction - audioUrl: ${audioUrl ? 'present' : 'missing'}, coverUrl: ${coverUrl ? 'present' : 'missing'}, title: ${title}`);
+    console.log(`[CALLBACK] Found ${allAudioUrls.length} audio URL(s): ${allAudioUrls.map(u => u.source).join(', ')}`);
+    console.log(`[CALLBACK] Final extraction - coverUrl: ${coverUrl ? 'present' : 'missing'}, title: ${title}`);
 
-    if (!audioUrl) {
+    if (allAudioUrls.length === 0) {
       console.error("[CALLBACK] No audio URL found after all extraction attempts");
-      console.error(`[CALLBACK] Canonical extractedFrom: ${canonical.extractedFrom}`);
       
       await supabase
         .from(tableName)
         .update({
           automation_status: "failed",
-          automation_last_error: `[CALLBACK] No audio URL in Suno response. Extraction tried: ${canonical.extractedFrom}. Raw payload stored for debugging.`,
+          automation_last_error: `[CALLBACK] No audio URL in Suno response. Raw payload stored for debugging.`,
           automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
         })
         .eq("id", entityId);
@@ -492,40 +513,62 @@ Deno.serve(async (req) => {
       return new Response("No audio URL", { status: 200, headers: corsHeaders });
     }
 
-    // Download audio file (with timeout and size limits)
-    console.log(`[CALLBACK] Downloading audio from: ${audioUrl}`);
-    const audioResponse = await fetch(audioUrl, {
-      signal: AbortSignal.timeout(60000), // 60 second timeout
-    });
-
-    if (!audioResponse.ok) {
-      console.error(`[CALLBACK] Audio download failed: ${audioResponse.status}`);
-      throw new Error(`Audio download failed: ${audioResponse.status}`);
-    }
-
-    const audioBuffer = await audioResponse.arrayBuffer();
-    const audioBytes = new Uint8Array(audioBuffer);
+    // Try downloading from each URL until we get a valid file (>10KB)
+    let audioBytes: Uint8Array | null = null;
+    let usedSource = '';
     
-    console.log(`[CALLBACK] Downloaded ${audioBytes.length} bytes`);
+    for (const { url, source } of allAudioUrls) {
+      try {
+        console.log(`[CALLBACK] Trying download from ${source}: ${url.substring(0, 80)}...`);
+        const audioResponse = await fetch(url, {
+          signal: AbortSignal.timeout(60000),
+        });
 
-    // Validate file size
-    if (audioBytes.length > 50 * 1024 * 1024) {
-      throw new Error("Audio file too large");
+        if (!audioResponse.ok) {
+          console.warn(`[CALLBACK] Download failed from ${source}: HTTP ${audioResponse.status}`);
+          continue;
+        }
+
+        const audioBuffer = await audioResponse.arrayBuffer();
+        const bytes = new Uint8Array(audioBuffer);
+        
+        console.log(`[CALLBACK] Downloaded ${bytes.length} bytes from ${source}`);
+        
+        // Validate minimum size (10KB for a real MP3)
+        if (bytes.length < 10000) {
+          console.warn(`[CALLBACK] File from ${source} too small (${bytes.length} bytes), trying next URL`);
+          continue;
+        }
+        
+        // Validate maximum size (50MB)
+        if (bytes.length > 50 * 1024 * 1024) {
+          console.warn(`[CALLBACK] File from ${source} too large (${bytes.length} bytes), trying next URL`);
+          continue;
+        }
+        
+        audioBytes = bytes;
+        usedSource = source;
+        break;
+      } catch (downloadError) {
+        console.warn(`[CALLBACK] Download error from ${source}:`, downloadError);
+        continue;
+      }
     }
     
-    // Guard: reject empty or too-small files (< 10KB is not a valid MP3)
-    if (audioBytes.length < 10000) {
-      console.error(`[CALLBACK] Audio file too small (${audioBytes.length} bytes), likely a failed download`);
+    if (!audioBytes) {
+      console.error(`[CALLBACK] All ${allAudioUrls.length} audio URL(s) failed to produce a valid file`);
       await supabase
         .from(tableName)
         .update({
           automation_status: "failed",
-          automation_last_error: `[CALLBACK] Downloaded audio is only ${audioBytes.length} bytes (empty/corrupted). Source URL may have expired. Will retry.`,
+          automation_last_error: `[CALLBACK] All ${allAudioUrls.length} audio URLs returned empty/invalid files. URLs tried: ${allAudioUrls.map(u => u.source).join(', ')}. Will retry.`,
           automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
         })
         .eq("id", entityId);
       return new Response("Audio file empty", { status: 200, headers: corsHeaders });
     }
+    
+    console.log(`[CALLBACK] ✅ Valid audio: ${audioBytes.length} bytes from ${usedSource}`);
 
     // Deterministic storage path for idempotency
     const shortId = entityId.slice(0, 8).toUpperCase();
@@ -614,7 +657,7 @@ Deno.serve(async (req) => {
     // Fallback: try to extract cover art from MP3
     if (!coverImageUrl) {
       try {
-        const mp3tag = new MP3Tag(audioBuffer);
+        const mp3tag = new MP3Tag(audioBytes.buffer);
         mp3tag.read();
         
         if (!mp3tag.error && mp3tag.tags?.v2?.APIC) {
@@ -699,7 +742,7 @@ Deno.serve(async (req) => {
           automation_status: "completed",
           automation_last_error: null,
           generated_at: new Date().toISOString(), // Track when generation completed
-          automation_audio_url_source: canonical.extractedFrom, // Track which URL field was used
+          automation_audio_url_source: usedSource, // Track which URL field was used
         })
         .eq("id", entityId);
 
@@ -720,7 +763,7 @@ Deno.serve(async (req) => {
           automation_last_error: null,
           generated_at: new Date().toISOString(), // Track when generation completed
           delivery_status: "scheduled", // Ready for scheduled delivery
-          automation_audio_url_source: canonical.extractedFrom, // Track which URL field was used
+          automation_audio_url_source: usedSource, // Track which URL field was used
         })
         .eq("id", entityId);
 
