@@ -1,26 +1,20 @@
 
-# Fix "Approve for Delivery" Error
 
-## Problem
-The "Approve for Delivery" button sends `{ delivery_status: "scheduled" }` to the `update_order_fields` action, but `delivery_status` is **not included in the allowed fields whitelist** in the `admin-orders` edge function. This causes a 400 error: "No valid fields to update".
+# Make Song Page Links Work for "Ready" Orders
 
-## Fix
+## Why It's Currently Blocked
+The `get-song-page` backend function only returns data for orders with `status = "delivered"`. Orders in `"ready"` status already have a song URL and all the data needed to render the page -- they're just waiting to be sent to the customer.
 
-### `supabase/functions/admin-orders/index.ts`
-Add `"delivery_status"` to the `allowedFields` array (around line 729):
+## Simple Fix
+Update the `get-song-page` edge function to accept both `"delivered"` and `"ready"` statuses. This is a minimal change:
 
-```
-const allowedFields = [
-  "customer_name", "customer_email", "customer_phone",
-  "recipient_name", "recipient_name_pronunciation",
-  "occasion", "genre", "singer_preference",
-  "special_qualities", "favorite_memory",
-  "special_message", "notes",
-  "customer_email_override", "customer_email_cc",
-  "lyrics_language_code",
-  "sms_opt_in",
-  "delivery_status"   // <-- add this
-];
-```
+### `supabase/functions/get-song-page/index.ts`
+- For short ID queries: change `.eq("status", "delivered")` to `.in("status", ["delivered", "ready"])`
+- For full UUID queries: no status filter on the query (it already checks afterward)
+- Update the guard check from `order.status !== "delivered"` to `!["delivered", "ready"].includes(order.status)`
 
-This is a one-line change. The edge function will then accept the `delivery_status` update and set it to `"scheduled"`, allowing the cron job to pick it up for delivery.
+### `src/pages/Admin.tsx`
+- Update the warning to show for statuses other than "delivered" or "ready" (e.g., "pending", "generating")
+- Change warning text to: "Link works once song is uploaded"
+
+No new endpoints, no authentication changes, no database changes needed. Orders in earlier statuses (pending, generating) still won't be accessible since they have no song URL anyway.
