@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
-import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle } from "lucide-react";
+import { useParams, Link, useSearchParams } from "react-router-dom";
+import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,13 +59,21 @@ interface SongData {
   cover_image_url: string | null;
   occasion: string;
   recipient_name: string;
+  has_lyrics: boolean;
+  lyrics_unlocked: boolean;
+  lyrics?: string;
+  lyrics_preview?: string;
 }
 
 const SongPlayer = () => {
   const { orderId } = useParams<{ orderId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [songData, setSongData] = useState<SongData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [lyricsCopied, setLyricsCopied] = useState(false);
+  
   
   // Audio player state
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -78,31 +86,61 @@ const SongPlayer = () => {
   const [audioError, setAudioError] = useState<string | null>(null);
   const hasTrackedPlay = useRef(false);
 
+  const fetchSongData = async () => {
+    if (!orderId) return;
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}`
+      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Song not found");
+      }
+      const data = await response.json();
+      setSongData(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load song");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchSongData = async () => {
-      if (!orderId) return;
-      
+    fetchSongData();
+  }, [orderId]);
+
+  // Handle lyrics unlock redirect from Stripe
+  useEffect(() => {
+    const lyricsSessionId = searchParams.get("lyrics_session_id");
+    if (!lyricsSessionId) return;
+
+    const verifyLyricsPurchase = async () => {
+      setLyricsLoading(true);
       try {
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}`
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-lyrics-purchase`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: lyricsSessionId }),
+          }
         );
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Song not found");
+        if (response.ok) {
+          // Re-fetch song data to get full lyrics
+          await fetchSongData();
+          toast.success("Lyrics unlocked!");
         }
-        
-        const data = await response.json();
-        setSongData(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load song");
+        console.error("Lyrics verification failed:", err);
       } finally {
-        setLoading(false);
+        setLyricsLoading(false);
+        // Clean URL param
+        setSearchParams({}, { replace: true });
       }
     };
 
-    fetchSongData();
-  }, [orderId]);
+    verifyLyricsPurchase();
+  }, [searchParams]);
 
   // Track playback error for diagnostics
   const trackPlaybackError = (errorName: string, errorMessage: string) => {
@@ -549,6 +587,143 @@ const SongPlayer = () => {
             Copy Link
           </Button>
         </div>
+
+        {/* Lyrics Section */}
+        {songData && (() => {
+          const handleUnlockLyrics = async () => {
+            if (!orderId) return;
+            setLyricsLoading(true);
+            try {
+              const response = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-lyrics-checkout`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orderId }),
+                }
+              );
+              const data = await response.json();
+              if (data.alreadyUnlocked) {
+                await fetchSongData();
+                toast.success("Lyrics already unlocked!");
+                return;
+              }
+              if (data.url) {
+                window.location.href = data.url;
+              } else {
+                toast.error(data.error || "Failed to start checkout");
+              }
+            } catch {
+              toast.error("Failed to start lyrics checkout");
+            } finally {
+              setLyricsLoading(false);
+            }
+          };
+
+          const handleCopyLyrics = async () => {
+            if (!songData.lyrics) return;
+            try {
+              await navigator.clipboard.writeText(songData.lyrics);
+              setLyricsCopied(true);
+              toast.success("Lyrics copied to clipboard!");
+              setTimeout(() => setLyricsCopied(false), 2000);
+            } catch {
+              toast.error("Failed to copy lyrics");
+            }
+          };
+
+          if (!songData.has_lyrics) {
+            // No lyrics available (older orders)
+            return (
+              <Card className="mb-8">
+                <CardContent className="py-6 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Lyrics aren't available for this song yet.
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          }
+
+          if (songData.lyrics_unlocked && songData.lyrics) {
+            // Unlocked — show full lyrics
+            return (
+              <Card className="mb-8">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-foreground">Lyrics</h3>
+                    <Button variant="outline" size="sm" onClick={handleCopyLyrics} className="gap-2">
+                      {lyricsCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {lyricsCopied ? "Copied" : "Copy Lyrics"}
+                    </Button>
+                  </div>
+                  <div
+                    className="max-h-[400px] overflow-y-auto"
+                    style={{
+                      fontFamily: "'Playfair Display', serif",
+                      fontSize: "1.05rem",
+                      lineHeight: "1.65",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {songData.lyrics}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          }
+
+          if (songData.lyrics_unlocked && !songData.lyrics) {
+            // Paid but lyrics missing (admin cleared)
+            return (
+              <Card className="mb-8">
+                <CardContent className="py-6 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Your lyrics are being prepared.
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          }
+
+          // Locked — show preview + upsell
+          return (
+            <Card className="mb-8 overflow-hidden">
+              <CardContent className="pt-6 pb-0">
+                <h3 className="font-semibold text-foreground mb-4">Lyrics</h3>
+                <div className="relative">
+                  <div
+                    style={{
+                      fontFamily: "'Playfair Display', serif",
+                      fontSize: "1.05rem",
+                      lineHeight: "1.65",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {songData.lyrics_preview}
+                  </div>
+                  {/* Gradient fade */}
+                  <div className="h-16 bg-gradient-to-t from-card to-transparent -mt-16 relative z-10" />
+                </div>
+              </CardContent>
+              <div className="px-6 pb-6 text-center">
+                <Button
+                  onClick={handleUnlockLyrics}
+                  disabled={lyricsLoading}
+                  className="gap-2"
+                  size="lg"
+                >
+                  {lyricsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Lock className="h-4 w-4" />
+                  )}
+                  Unlock Full Lyrics — $4.99
+                </Button>
+              </div>
+            </Card>
+          );
+        })()}
 
         {/* Reaction CTA */}
         <Card className="bg-primary/5 border-primary/20">

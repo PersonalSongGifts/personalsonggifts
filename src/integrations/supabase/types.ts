@@ -285,8 +285,12 @@ export type Database = {
           inputs_hash: string | null
           lyrics_language_code: string
           lyrics_language_qa: Json | null
+          lyrics_price_cents: number | null
           lyrics_raw_attempt_1: string | null
           lyrics_raw_attempt_2: string | null
+          lyrics_unlock_payment_intent_id: string | null
+          lyrics_unlock_session_id: string | null
+          lyrics_unlocked_at: string | null
           next_attempt_at: string | null
           notes: string | null
           occasion: string
@@ -360,8 +364,12 @@ export type Database = {
           inputs_hash?: string | null
           lyrics_language_code?: string
           lyrics_language_qa?: Json | null
+          lyrics_price_cents?: number | null
           lyrics_raw_attempt_1?: string | null
           lyrics_raw_attempt_2?: string | null
+          lyrics_unlock_payment_intent_id?: string | null
+          lyrics_unlock_session_id?: string | null
+          lyrics_unlocked_at?: string | null
           next_attempt_at?: string | null
           notes?: string | null
           occasion: string
@@ -435,8 +443,12 @@ export type Database = {
           inputs_hash?: string | null
           lyrics_language_code?: string
           lyrics_language_qa?: Json | null
+          lyrics_price_cents?: number | null
           lyrics_raw_attempt_1?: string | null
           lyrics_raw_attempt_2?: string | null
+          lyrics_unlock_payment_intent_id?: string | null
+          lyrics_unlock_session_id?: string | null
+          lyrics_unlocked_at?: string | null
           next_attempt_at?: string | null
           notes?: string | null
           occasion?: string

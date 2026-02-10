@@ -65,3 +65,9 @@ verify_jwt = false
 
 [functions.validate-promo-code]
 verify_jwt = false
+
+[functions.create-lyrics-checkout]
+verify_jwt = false
+
+[functions.verify-lyrics-purchase]
+verify_jwt = false

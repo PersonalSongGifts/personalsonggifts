@@ -119,6 +119,49 @@ Deno.serve(async (req) => {
         );
       }
 
+      // --- Lyrics Unlock handler (early return before order creation) ---
+      const sessionMetadata = session.metadata || {};
+      if (sessionMetadata.entitlement === "lyrics_unlock") {
+        const lyricsOrderId = sessionMetadata.orderId;
+        console.log(`[WEBHOOK] Lyrics unlock for order ${lyricsOrderId}`);
+
+        if (!lyricsOrderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lyricsOrderId)) {
+          console.error("[WEBHOOK] Invalid orderId in lyrics_unlock metadata");
+          return new Response(
+            JSON.stringify({ received: true, error: "Invalid orderId in metadata" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        // Idempotent: only update if lyrics_unlocked_at IS NULL
+        const { error: lyricsUpdateError } = await supabase
+          .from("orders")
+          .update({
+            lyrics_unlocked_at: new Date().toISOString(),
+            lyrics_unlock_session_id: session.id,
+            lyrics_unlock_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : null,
+            lyrics_price_cents: session.amount_total,
+          })
+          .eq("id", lyricsOrderId)
+          .is("lyrics_unlocked_at", null);
+
+        if (lyricsUpdateError) {
+          console.error("[WEBHOOK] Failed to unlock lyrics:", lyricsUpdateError);
+        } else {
+          console.log(`[WEBHOOK] Lyrics unlocked for order ${lyricsOrderId}`);
+        }
+
+        return new Response(
+          JSON.stringify({ received: true, type: "lyrics_unlock", orderId: lyricsOrderId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // --- End Lyrics Unlock handler ---
+
       // Initialize Supabase
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
