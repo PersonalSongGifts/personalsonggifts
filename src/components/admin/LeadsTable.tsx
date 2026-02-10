@@ -88,6 +88,7 @@ interface LeadsTableProps {
   onSortChange: (sort: "latest" | "oldest" | "quality") => void;
   adminPassword?: string;
   onRefresh?: () => void;
+  onNavigateToOrder?: (orderId: string) => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -118,7 +119,7 @@ function getQualityBadge(score: number | null | undefined) {
   return { label: `${score}`, className: "bg-red-100 text-red-700", icon: AlertTriangle };
 }
 
-export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, onRefresh }: LeadsTableProps) {
+export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, onRefresh, onNavigateToOrder }: LeadsTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState("all");
   const [dismissedFilter, setDismissedFilter] = useState<"active" | "dismissed" | "all">("active");
@@ -1095,18 +1096,43 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         <strong>Auto-send in:</strong> {getAutoSendTimeRemaining(lead)}
                       </p>
                     )}
-                    {/* Converted lead shows linked order */}
+                    {/* Converted lead shows linked order with navigation */}
                     {lead.status === "converted" && lead.order_id && (
-                      <p className="text-sm text-green-600 font-medium">
-                        <CheckCircle2 className="h-3 w-3 inline mr-1" />
-                        <strong>Converted to Order:</strong>{" "}
-                        <span className="font-mono">{lead.order_id.slice(0, 8).toUpperCase()}</span>
-                        {lead.converted_at && (
-                          <span className="text-muted-foreground font-normal ml-2">
-                            on {formatAdminDateShort(lead.converted_at)}
-                          </span>
-                        )}
-                      </p>
+                      <div className="space-y-2">
+                        <p className="text-sm text-green-600 font-medium">
+                          <CheckCircle2 className="h-3 w-3 inline mr-1" />
+                          <strong>Converted to Order:</strong>{" "}
+                          <span className="font-mono">{lead.order_id.slice(0, 8).toUpperCase()}</span>
+                          {lead.converted_at && (
+                            <span className="text-muted-foreground font-normal ml-2">
+                              on {formatAdminDateShort(lead.converted_at)}
+                            </span>
+                          )}
+                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            onClick={() => {
+                              setSelectedLead(null);
+                              onNavigateToOrder?.(lead.order_id!);
+                            }}
+                          >
+                            <ArrowRightCircle className="h-3 w-3 mr-1" />
+                            Manage Order
+                          </Button>
+                          <a
+                            href={`https://www.personalsonggifts.com/song/${lead.order_id.slice(0, 8).toUpperCase()}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <Eye className="h-3 w-3" />
+                            Song Page
+                          </a>
+                        </div>
+                      </div>
                     )}
                     {lead.dismissed_at && (
                       <p className="text-sm text-gray-500 italic">
