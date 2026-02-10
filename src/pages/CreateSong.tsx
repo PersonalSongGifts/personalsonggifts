@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,34 @@ const CreateSong = () => {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [hasAttemptedContinue, setHasAttemptedContinue] = useState(false);
+  const isAutoAdvancing = useRef(false);
+  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear auto-advance guard whenever step changes
+  useEffect(() => {
+    isAutoAdvancing.current = false;
+    if (autoAdvanceTimer.current) {
+      clearTimeout(autoAdvanceTimer.current);
+      autoAdvanceTimer.current = null;
+    }
+  }, [currentStep]);
+
+  const autoAdvance = useCallback(() => {
+    if (isAutoAdvancing.current) return;
+    isAutoAdvancing.current = true;
+    autoAdvanceTimer.current = setTimeout(() => {
+      setErrors({});
+      setHasAttemptedContinue(false);
+      setCurrentStep((prev) => {
+        if (prev < TOTAL_STEPS) {
+          window.scrollTo({ top: 0, behavior: "instant" });
+          return prev + 1;
+        }
+        return prev;
+      });
+      autoAdvanceTimer.current = null;
+    }, 400);
+  }, []);
 
   // Track ViewContent once when user starts song creation
   useEffect(() => {
@@ -246,13 +274,13 @@ const CreateSong = () => {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <RecipientStep formData={formData} updateFormData={updateFormData} errors={errors} />;
+        return <RecipientStep formData={formData} updateFormData={updateFormData} errors={errors} onAutoAdvance={autoAdvance} />;
       case 2:
         return <DetailsStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 3:
-        return <OccasionStep formData={formData} updateFormData={updateFormData} errors={errors} />;
+        return <OccasionStep formData={formData} updateFormData={updateFormData} errors={errors} onAutoAdvance={autoAdvance} />;
       case 4:
-        return <MusicStyleStep formData={formData} updateFormData={updateFormData} errors={errors} />;
+        return <MusicStyleStep formData={formData} updateFormData={updateFormData} errors={errors} onAutoAdvance={autoAdvance} />;
       case 5:
         return <StoryStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 6:

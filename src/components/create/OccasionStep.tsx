@@ -6,6 +6,7 @@ interface OccasionStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
   errors: FormErrors;
+  onAutoAdvance?: () => void;
 }
 
 // ========================================
@@ -37,7 +38,7 @@ const occasions = [
   { id: "custom", label: "Custom" },
 ];
 
-const OccasionStep = ({ formData, updateFormData, errors }: OccasionStepProps) => {
+const OccasionStep = ({ formData, updateFormData, errors, onAutoAdvance }: OccasionStepProps) => {
   const isFeaturedSelected = formData.occasion === featuredOccasion.id;
 
   return (
@@ -50,7 +51,10 @@ const OccasionStep = ({ formData, updateFormData, errors }: OccasionStepProps) =
         <Button
           variant={isFeaturedSelected ? "default" : "outline"}
           size="lg"
-          onClick={() => updateFormData({ occasion: featuredOccasion.id })}
+          onClick={() => {
+            updateFormData({ occasion: featuredOccasion.id });
+            onAutoAdvance?.();
+          }}
           className={`px-12 py-8 text-xl font-semibold transition-all duration-200 ${
             isFeaturedSelected 
               ? "ring-2 ring-primary ring-offset-2 bg-primary text-primary-foreground" 
@@ -77,7 +81,10 @@ const OccasionStep = ({ formData, updateFormData, errors }: OccasionStepProps) =
           return (
             <Card
               key={occasion.id}
-              onClick={() => updateFormData({ occasion: occasion.id })}
+              onClick={() => {
+                updateFormData({ occasion: occasion.id });
+                onAutoAdvance?.();
+              }}
               className={`p-4 text-center cursor-pointer transition-all duration-200 ${
                 isSelected 
                   ? "ring-2 ring-primary bg-primary/5 border-primary" 

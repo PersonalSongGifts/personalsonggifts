@@ -15,6 +15,7 @@ interface RecipientStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
   errors: FormErrors;
+  onAutoAdvance?: () => void;
 }
 
 const recipientOptions = [
@@ -29,7 +30,7 @@ const recipientOptions = [
   { id: "other", label: "Other", icon: Sparkles },
 ];
 
-const RecipientStep = ({ formData, updateFormData, errors }: RecipientStepProps) => {
+const RecipientStep = ({ formData, updateFormData, errors, onAutoAdvance }: RecipientStepProps) => {
   return (
     <div className="space-y-4">
       {errors.recipientType && (
@@ -41,7 +42,10 @@ const RecipientStep = ({ formData, updateFormData, errors }: RecipientStepProps)
         return (
           <Card
             key={option.id}
-            onClick={() => updateFormData({ recipientType: option.id })}
+            onClick={() => {
+              updateFormData({ recipientType: option.id });
+              onAutoAdvance?.();
+            }}
             className={`p-6 text-center cursor-pointer transition-all duration-200 hover:shadow-card ${
               isSelected 
                 ? "ring-2 ring-primary bg-primary/5 border-primary" 

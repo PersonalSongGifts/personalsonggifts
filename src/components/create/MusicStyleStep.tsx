@@ -14,6 +14,7 @@ interface MusicStyleStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
   errors: FormErrors;
+  onAutoAdvance?: () => void;
 }
 
 const genres = [
@@ -49,7 +50,7 @@ const languageOptions = [
   { id: "hr", label: "Croatian" },
 ];
 
-const MusicStyleStep = ({ formData, updateFormData, errors }: MusicStyleStepProps) => {
+const MusicStyleStep = ({ formData, updateFormData, errors, onAutoAdvance }: MusicStyleStepProps) => {
   return (
     <div className="space-y-10">
       {/* Genre */}
@@ -69,7 +70,13 @@ const MusicStyleStep = ({ formData, updateFormData, errors }: MusicStyleStepProp
             return (
               <Card
                 key={genre.id}
-                onClick={() => updateFormData({ genre: genre.id })}
+                onClick={() => {
+                  updateFormData({ genre: genre.id });
+                  // Auto-advance if singer is already selected
+                  if (formData.singerPreference) {
+                    onAutoAdvance?.();
+                  }
+                }}
                 className={`p-4 text-center cursor-pointer transition-all duration-200 ${
                   isSelected 
                     ? "ring-2 ring-primary bg-primary/5 border-primary" 
@@ -102,7 +109,13 @@ const MusicStyleStep = ({ formData, updateFormData, errors }: MusicStyleStepProp
             return (
               <Card
                 key={option.id}
-                onClick={() => updateFormData({ singerPreference: option.id })}
+                onClick={() => {
+                  updateFormData({ singerPreference: option.id });
+                  // Auto-advance if genre is already selected
+                  if (formData.genre) {
+                    onAutoAdvance?.();
+                  }
+                }}
                 className={`p-4 text-center cursor-pointer transition-all duration-200 ${
                   isSelected 
                     ? "ring-2 ring-primary bg-primary/5 border-primary" 
