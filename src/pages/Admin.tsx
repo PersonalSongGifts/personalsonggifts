@@ -1831,10 +1831,25 @@ export default function Admin() {
                   </div>
                 )}
 
+                {/* Lyrics unlock warning: paid but content missing */}
+                {(selectedOrder as any).lyrics_unlocked_at && !selectedOrder.automation_lyrics && (
+                  <div className="border-t pt-4">
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-center gap-2 text-amber-800 text-sm">
+                      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                      <span><strong>Lyrics Paid</strong> — Customer paid for lyrics but content is missing. Please add lyrics.</span>
+                    </div>
+                  </div>
+                )}
+
                 {selectedOrder.automation_lyrics && (
                   <div className="border-t pt-4">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium">Generated Lyrics</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">Generated Lyrics</h4>
+                        {(selectedOrder as any).lyrics_unlocked_at && (
+                          <Badge className="bg-green-100 text-green-800 text-xs">Unlocked</Badge>
+                        )}
+                      </div>
                       <Button
                         variant="ghost"
                         size="sm"
