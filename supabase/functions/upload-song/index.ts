@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
       // Check current automation status to auto-complete stuck automation
       const { data: currentOrder } = await supabase
         .from("orders")
-        .select("automation_status, delivery_status, status")
+        .select("automation_status, delivery_status, status, automation_lyrics")
         .eq("id", targetId)
         .single();
 
@@ -296,6 +296,22 @@ Deno.serve(async (req) => {
       if (updateError) {
         console.error("Order update error:", updateError);
         // Don't fail - the file is uploaded, just couldn't update order
+      }
+
+      // Auto-generate lyrics if missing (fire-and-forget)
+      if (!currentOrder?.automation_lyrics) {
+        console.log(`[UPLOAD] No lyrics found for order ${shortId}, triggering generation...`);
+        const lyricsUrl = `${supabaseUrl}/functions/v1/automation-generate-lyrics`;
+        fetch(lyricsUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ orderId: targetId, type: "order" }),
+        })
+          .then(r => console.log(`[UPLOAD] Lyrics generation triggered for ${shortId}: ${r.status}`))
+          .catch(e => console.error(`[UPLOAD] Lyrics generation failed for ${shortId}:`, e));
       }
 
       console.log(`Song uploaded for order ${shortId}: ${publicUrl}`);
