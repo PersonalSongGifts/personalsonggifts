@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { orderId } = await req.json();
+    const { orderId, promoCode } = await req.json();
 
     if (!orderId || typeof orderId !== "string") {
       return new Response(
@@ -98,10 +98,47 @@ Deno.serve(async (req) => {
     const shortId = order.id.substring(0, 8).toUpperCase();
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
 
+    // If promoCode provided, look up coupon and apply directly
+    let sessionDiscountParams: Record<string, any> = { allow_promotion_codes: true };
+
+    if (promoCode && typeof promoCode === "string" && promoCode.trim().length > 0) {
+      const code = promoCode.trim();
+      const upperCode = code.toUpperCase();
+      let coupon: any = null;
+
+      // Try retrieve by ID (original case, then uppercase)
+      try {
+        coupon = await stripe.coupons.retrieve(code);
+      } catch {
+        try {
+          coupon = await stripe.coupons.retrieve(upperCode);
+        } catch {
+          coupon = null;
+        }
+      }
+
+      // If not found by ID, search by name
+      if (!coupon) {
+        const coupons = await stripe.coupons.list({ limit: 100 });
+        coupon = coupons.data.find(
+          (c: any) => c.name?.toUpperCase() === upperCode || c.id.toUpperCase() === upperCode
+        );
+      }
+
+      if (coupon && coupon.valid) {
+        sessionDiscountParams = { discounts: [{ coupon: coupon.id }] };
+      } else {
+        return new Response(
+          JSON.stringify({ error: "Invalid promo code" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       line_items: [{ price: LYRICS_PRICE_ID, quantity: 1 }],
       mode: "payment",
-      allow_promotion_codes: true,
+      ...sessionDiscountParams,
       success_url: `${origin}/song/${shortId}?lyrics_session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/song/${shortId}`,
       metadata: {
