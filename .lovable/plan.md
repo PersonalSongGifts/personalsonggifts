@@ -1,71 +1,55 @@
 
 
-## **QUESTIONS**
+## Converted Lead Admin Controls: "View Order" Bridge + Song Page Link
 
-**1. For Step 4 (Music Style), the user must pick both Genre AND Singer. Should auto-advance happen as soon as the second one is picked (regardless of order), or should Singer always be picked last? I'm planning to auto-advance when whichever one is picked second completes the pair -- so order doesn't matter.**
+### The Problem (Two Issues)
 
-**2. Should tapping the same already-selected option (e.g., going back and re-tapping "Husband") also trigger auto-advance, or only new selections?**
+1. **No bridge from lead to order**: When a lead converts, the lead card shows "Converted to Order: 229E978F" as plain text. There's no way to click through to the order's detail dialog to upload songs, edit lyrics, resend delivery, etc.
 
----
+2. **Song Page link invisible**: The song page URL (`/song/229E978F`) only appears inside the ORDER detail dialog (and only when status is "delivered"). From the leads tab, you can't see or access it at all.
 
-## What Changes
+### The Fix
 
-### Step 1 (Recipient) and Step 3 (Occasion)
-Single-selection steps. On click, show the selection highlight for ~400ms, then auto-advance to the next step.
+#### Change 1: "Manage Order" button on converted leads (LeadsTable.tsx)
 
-### Step 4 (Music Style)
-Has two required fields (genre + singer) and one optional (language). Auto-advance triggers only when the **second** required field is selected -- regardless of which order the user picks them. Language dropdown does NOT trigger auto-advance since it has a default value already.
+Replace the plain-text "Converted to Order: 229E978F" with:
+- A **clickable "Manage Order" button** that closes the lead view and opens the order's detail dialog in the Orders tab
+- A **Song Page link** (`/song/SHORT_ID`) displayed directly, so you can copy/share it without navigating
 
-### Steps 2, 5, 6, 7 -- No Change
-These have text inputs, so the Continue button stays as the only way to advance.
+This requires a new prop `onNavigateToOrder` on LeadsTable, which Admin.tsx will provide.
 
----
+#### Change 2: Cross-tab navigation handler (Admin.tsx)
 
-## Pitfalls and How They're Prevented
+Add a `handleNavigateToOrder` function that:
+1. Switches `activeTab` to `"orders"`
+2. Clears `statusFilter` to `"all"` (so the order isn't hidden by a filter)
+3. Finds the order in `allOrders` by ID
+4. Sets it as `selectedOrder` to open the detail dialog immediately
+
+Pass this function to LeadsTable as `onNavigateToOrder`.
+
+### Pitfalls and Prevention
 
 | Pitfall | Risk | Prevention |
 |---------|------|------------|
-| **Double-tap on mobile** advances two steps | User taps a card, auto-advance fires, but the tap also registers on the next step's content | Use a flag to prevent auto-advance from firing more than once per step render. Clear it on step change. |
-| **No visual feedback** before transition | User clicks but the page changes so fast they don't see their selection was registered -- feels broken | Add a 400ms delay between selection highlight and step transition. User sees the ring/highlight appear, then the page advances. |
-| **Step 3 pre-filled from URL** (`?occasion=birthday`) | User lands on step 3 with occasion already selected. If auto-advance triggers on mount, it'd skip the step without user action | Auto-advance only fires on **click events**, never on mount/initial render. A `useRef` tracks whether the component has mounted to gate this. |
-| **Step 4 order-dependent bug** | If auto-advance only triggers on singer click, a user who picks singer first then genre would be stuck | Auto-advance checks if **both** genre and singer are filled after every selection. Fires regardless of which was picked last. |
-| **User wants to change their mind on Step 4** | User picks Pop, then picks Male, auto-advances. They go back. They now want to change genre to Country. But singer is already set, so clicking Country would immediately advance again before they can also change singer | This is actually fine -- if they go back and change genre, and singer is still set, it means they're happy with the singer choice. If they want to change singer too, they'd click the new singer which would re-trigger advance. The 400ms delay gives them time to see what's selected. |
-| **Accessibility / keyboard navigation** | Screen readers or keyboard users tabbing through cards might accidentally trigger auto-advance | The auto-advance only fires on `onClick`, not on focus. Keyboard users can still use the Continue button which remains visible and functional on all steps. |
-| **React strict mode double-render** | In dev, effects run twice, potentially causing double advance | The advance logic uses a ref-based guard that gets set to `true` after firing and only resets on step change. |
+| Order not in `allOrders` array | If data hasn't been fetched yet or order was created externally | Show a toast "Order not found -- try refreshing" and still switch to the orders tab so admin can search manually |
+| Stale `allOrders` after manual conversion | Admin converts a lead, but `allOrders` hasn't refreshed yet | The existing `fetchOrders()` is already called after conversion. The navigate function will also call `fetchOrders()` as a safety net if the order isn't found |
+| Filter hiding the order | `statusFilter` might be set to "delivered" while the order is still "pending" | Clear `statusFilter` to "all" before selecting the order |
+| Song Page link for orders without a song | Clicking the link when no song is uploaded shows an error page | Only render the Song Page link when the order has status "delivered" or "ready". Otherwise show "Song not yet uploaded" |
+| Lead dialog staying open behind order dialog | Both dialogs could render simultaneously | Close the lead detail (via `setSelectedLead(null)` in LeadsTable) before triggering the navigation callback |
 
----
+### Technical Details
 
-## Technical Approach
+**Files modified:**
 
-### Callback-based, not effect-based
+**`src/components/admin/LeadsTable.tsx`**:
+- Add `onNavigateToOrder?: (orderId: string) => void` to `LeadsTableProps`
+- In the converted lead section (around line 1099), replace plain text with:
+  - Song Page link (anchor tag, opens in new tab) -- only if order exists
+  - "Manage Order" button that calls `onNavigateToOrder(lead.order_id)`
 
-Rather than using `useEffect` to watch form data changes (which is fragile and can fire on mount), the approach passes an `onAutoAdvance` callback to steps 1, 3, and 4. Each step calls this callback explicitly inside its click handler after updating the form data, but only when the step's requirements are fully met.
+**`src/pages/Admin.tsx`**:
+- Add `handleNavigateToOrder` function
+- Pass it as prop to `LeadsTable`
 
-This avoids all the mount/re-render pitfalls of effect-based approaches.
-
-### Implementation Details
-
-**`CreateSong.tsx`**:
-- Create an `autoAdvance()` function that validates the current step and advances with a 400ms delay
-- Pass it as an `onAutoAdvance` prop to RecipientStep, OccasionStep, and MusicStyleStep
-- Use a `useRef` flag (`isAutoAdvancing`) to prevent double-fires
-
-**`RecipientStep.tsx`**:
-- After `updateFormData({ recipientType: option.id })`, call `onAutoAdvance()`
-
-**`OccasionStep.tsx`**:
-- After `updateFormData({ occasion: ... })`, call `onAutoAdvance()`
-
-**`MusicStyleStep.tsx`**:
-- After updating genre: check if singer is already selected. If yes, call `onAutoAdvance()`
-- After updating singer: check if genre is already selected. If yes, call `onAutoAdvance()`
-- Language dropdown change: never calls `onAutoAdvance()`
-
-### Files Modified
-- `src/pages/CreateSong.tsx` -- add `autoAdvance` function, pass as prop to 3 steps
-- `src/components/create/RecipientStep.tsx` -- accept and call `onAutoAdvance`
-- `src/components/create/OccasionStep.tsx` -- accept and call `onAutoAdvance`
-- `src/components/create/MusicStyleStep.tsx` -- accept and call `onAutoAdvance`, with genre+singer completion check
-
-### No new files, no new dependencies.
-
+### No new files, no new dependencies, no database changes.
