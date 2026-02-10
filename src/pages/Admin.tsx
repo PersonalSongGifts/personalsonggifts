@@ -372,6 +372,18 @@ export default function Admin() {
     }
   };
 
+  const handleNavigateToOrder = (orderId: string) => {
+    setActiveTab("orders");
+    setStatusFilter("all");
+    const order = allOrders.find(o => o.id === orderId);
+    if (order) {
+      setSelectedOrder(order);
+    } else {
+      fetchOrders();
+      toast({ title: "Order not found in current list", description: "Switched to Orders tab — try refreshing if needed." });
+    }
+  };
+
   const fetchOrders = async () => {
     if (!password) {
       setIsAuthenticated(false);
@@ -1388,6 +1400,7 @@ export default function Admin() {
               onSortChange={setLeadSort}
               adminPassword={password}
               onRefresh={fetchOrders}
+              onNavigateToOrder={handleNavigateToOrder}
             />
           </TabsContent>
 
