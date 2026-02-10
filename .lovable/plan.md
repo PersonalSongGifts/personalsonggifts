@@ -1,34 +1,55 @@
 
+## Fix: Songs Delivered Without Lyrics (Lead Conversion Bug)
 
-## Admin Lyrics Editing
+### Problem
+When a lead converts to a paid order, the system copies the song file, title, and cover image -- but **forgets to copy the lyrics**. Every lead-converted order is delivered with "Lyrics aren't available for this song yet" even though the lyrics exist on the original lead record.
 
-This feature adds the ability for admins to directly edit lyrics for both orders and leads from the admin panel. Edited lyrics will immediately reflect on customer-facing song pages.
+This affects all lead conversions (the majority of orders based on the data -- 15+ recent orders are missing lyrics).
 
-### What Changes
+### Root Cause
+In `process-lead-payment/index.ts` (the function that creates an order when a lead pays), the INSERT statement on line 121-148 copies these lead fields:
+- `full_song_url` -> `song_url`
+- `song_title`
+- `cover_image_url`
 
-**1. Backend: Allow `automation_lyrics` in the update whitelist**
+But does NOT copy:
+- `automation_lyrics` (the actual lyrics text)
+- `automation_status` (should be "completed")
+- `lyrics_language_code` (language setting)
+- `song_title` from automation (already copied, but good to confirm)
 
-- In `supabase/functions/admin-orders/index.ts`, add `"automation_lyrics"` to the `allowedFields` array for both the `update_order_fields` action (line 729) and the `update_lead_fields` action (line 852).
-- When `automation_lyrics` is updated, also set `automation_manual_override_at` to the current timestamp. This prevents future AI callbacks from overwriting manual admin edits.
+### Solution
 
-**2. Order Detail Dialog: Add editable lyrics textarea**
+**1. Fix the lead conversion INSERT** (`process-lead-payment/index.ts`)
 
-In `src/pages/Admin.tsx` (around line 1853), replace the read-only lyrics `<pre>` block with:
-- In **view mode**: Show lyrics as before (read-only `<pre>` with Copy button), but add an "Edit" button next to the Copy button.
-- In **edit mode**: Show a `<Textarea>` pre-filled with the current lyrics, with Save and Cancel buttons.
-- Allow admins to add lyrics even when none exist (for the "lyrics paid but missing" warning case).
+Add the missing fields to the order insert:
+- `automation_lyrics: lead.automation_lyrics`
+- `automation_status: "completed"` (since the song is already done)
+- `lyrics_language_code: lead.lyrics_language_code || "en"`
+- `inputs_hash: lead.inputs_hash` (for change detection consistency)
 
-**3. Lead Detail Dialog: Add editable lyrics textarea**
+**2. Backfill existing orders** (one-time data fix)
 
-In `src/components/admin/LeadsTable.tsx` (around line 1694), apply the same pattern:
-- View mode with an Edit button.
-- Edit mode with a Textarea, Save, and Cancel buttons.
+Run a SQL update to copy lyrics from converted leads to their corresponding orders where lyrics are missing. The `leads` table has an `order_id` field that links directly to the order.
 
-### Technical Details
+```text
+UPDATE orders o
+SET automation_lyrics = l.automation_lyrics,
+    automation_status = 'completed'
+FROM leads l
+WHERE l.order_id = o.id
+  AND l.automation_lyrics IS NOT NULL
+  AND o.automation_lyrics IS NULL;
+```
 
-- Lyrics editing uses a separate state variable (`editingLyrics` / `editedLyricsText`) independent of the existing order field editing, so admins can quickly edit lyrics without entering full edit mode.
-- The save action calls the existing `update_order_fields` / `update_lead_fields` endpoints with `{ automation_lyrics: newText }`.
-- Setting `automation_manual_override_at` on the backend ensures the automation pipeline won't overwrite the admin's manual edit.
-- Max length validation of 5000 characters on the textarea to prevent abuse.
-- The `get-song-page` edge function already serves `automation_lyrics` to customers -- no changes needed there.
+### Pitfalls Addressed
 
+1. **Race condition**: What if the lead hasn't finished generating lyrics when the customer pays? The INSERT will copy `null` lyrics. To handle this, after the order is created, we add a fallback check: if `automation_lyrics` is null, trigger `automation-generate-lyrics` for the new order (same pattern already used in `upload-song`).
+
+2. **Language code missing**: Without copying `lyrics_language_code`, any fallback lyrics generation would default to English even if the lead was in Spanish. The fix copies this field.
+
+3. **Future fields forgotten again**: As new fields are added to leads, they may again be forgotten during conversion. A code comment will be added to flag this as a "sync point" for future developers.
+
+### Files Changed
+- `supabase/functions/process-lead-payment/index.ts` -- Add missing fields to the order INSERT + fallback lyrics trigger
+- One-time data backfill query for existing affected orders
