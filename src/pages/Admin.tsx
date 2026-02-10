@@ -26,6 +26,8 @@ import { EmailTemplates } from "@/components/admin/EmailTemplates";
 import { ReactionsTable } from "@/components/admin/ReactionsTable";
 import { ScheduledDeliveryPicker } from "@/components/admin/ScheduledDeliveryPicker";
 import { SourceAnalytics } from "@/components/admin/SourceAnalytics";
+import { SalesVelocity } from "@/components/admin/SalesVelocity";
+import { SalesHeatmap } from "@/components/admin/SalesHeatmap";
 import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 
@@ -945,6 +947,8 @@ export default function Admin() {
           <TabsContent value="analytics" className="space-y-6">
             <StatsCards orders={allOrders} leads={leads} />
             
+            <SalesVelocity orders={allOrders} />
+            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <RevenueChart orders={allOrders} />
               <OrdersChart orders={allOrders} />
@@ -954,6 +958,8 @@ export default function Admin() {
               <StatusChart orders={allOrders} />
               <GenreChart orders={allOrders} />
             </div>
+            
+            <SalesHeatmap orders={allOrders} />
             
             {/* Source Analytics */}
             <SourceAnalytics orders={allOrders} leads={leads} />
