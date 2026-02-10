@@ -1,46 +1,45 @@
 
 
-## "Hot Leads" Widget -- Most-Engaged Unconverted Leads
+## Add "Stop Automation" Button to Both Leads and Orders
 
 ### What It Does
 
-Adds a new card/section to the Analytics tab (or top of the Leads tab) showing leads who have played their preview the most but haven't converted to a purchase yet. These are your warmest prospects -- people who keep coming back to listen but haven't pulled the trigger.
+Adds a visible **"Stop Automation"** button directly in the detail dialogs for both **leads** (LeadsTable.tsx) and **orders** (Admin.tsx). One click immediately halts all in-progress automation, preventing any AI-generated content from overwriting a manual upload.
 
-The widget will show a ranked table of the top 10 unconverted leads sorted by `preview_play_count` (descending), displaying:
-- Lead name and email
-- Play count and last played date
-- Occasion and genre
-- How long ago they were captured
-- A quick "View Lead" button to open their detail dialog
+### Backend Change: Extend `cancel_automation` to support orders
 
-### Where It Lives
+The existing `cancel_automation` action in `admin-orders/index.ts` only works on leads. We need to extend it to also accept an `orderId` parameter and update the `orders` table.
 
-A new card in the **Analytics tab**, placed after the existing charts (Revenue, Orders, Status, Genre). It fits naturally here since it's an analytical insight, not an operational action.
+**Logic**: If `orderId` is provided, update `orders` table. If `leadId` is provided, update `leads` table (existing behavior). Require exactly one of the two.
 
-### Technical Details
+### Frontend Changes
 
-**New file: `src/components/admin/HotLeadsCard.tsx`**
-- Accepts the `leads` array (already fetched by Admin.tsx)
-- Filters to leads where `status !== "converted"` AND `preview_play_count > 0`
-- Sorts by `preview_play_count` descending, takes top 10
-- Renders a Card with a small table showing rank, name, email, play count, last played, occasion
-- Includes an `onViewLead` callback prop so clicking a row can navigate to the Leads tab and open that lead
+**Lead Detail Dialog (`src/components/admin/LeadsTable.tsx`)**:
+- Add a red "Stop Automation" button inside the existing Automation Status section (lines 1697-1729)
+- Visible when `automation_status` is active (`queued`, `pending`, `lyrics_generating`, `lyrics_ready`, `audio_generating`) AND `automation_manual_override_at` is null
+- On click: calls `admin-orders` with `action: "cancel_automation", leadId: selectedLead.id`
+- After success: refreshes leads and shows toast
 
-**Modified: `src/pages/Admin.tsx`**
-- Import and render `HotLeadsCard` in the Analytics tab content area
-- Pass `allLeads` and a `handleNavigateToLead` callback (similar pattern to the existing `handleNavigateToOrder`)
-- `handleNavigateToLead` switches to the Leads tab and sets the selected lead
+**Order Detail Dialog (`src/pages/Admin.tsx`)**:
+- Add the same "Stop Automation" button inside the Automation Controls section (lines 1755-1813)
+- Same visibility logic using the order's `automation_status` and `automation_manual_override_at`
+- On click: calls `admin-orders` with `action: "cancel_automation", orderId: selectedOrder.id`
+- After success: refreshes orders and shows toast
 
 ### Pitfalls
 
 | Pitfall | Prevention |
 |---------|------------|
-| No leads have plays yet | Show an empty state: "No preview plays recorded yet" |
-| Lead was dismissed but has high plays | Include dismissed leads in the list -- they're still unconverted prospects worth seeing. Show a subtle "dismissed" indicator if applicable |
-| Clicking "View Lead" while on Analytics tab | The callback switches tabs and opens the lead dialog, same pattern as the order navigation bridge |
+| Backend only supports `leadId` today | Extend the action to accept `orderId` as an alternative, updating the `orders` table instead |
+| Suno callback arrives after cancel | Already protected -- all callback handlers check `automation_manual_override_at` before writing |
+| Admin uploads a song without clicking Stop first | Still safe -- `upload-song` automatically sets `automation_manual_override_at` |
+| Admin wants to re-enable automation later | "Regenerate Song" and "Reset Automation" already clear `automation_manual_override_at` |
+| Button shows after automation already completed | Visibility guard checks for active statuses only, so it won't appear on `completed` or null statuses |
 
-### Files
-- **New**: `src/components/admin/HotLeadsCard.tsx`
-- **Modified**: `src/pages/Admin.tsx` (import + render in analytics tab + navigation handler)
+### Files Modified
 
-No database changes. No new dependencies.
+- **`supabase/functions/admin-orders/index.ts`** -- extend `cancel_automation` to accept `orderId`
+- **`src/components/admin/LeadsTable.tsx`** -- add Stop Automation button in lead detail dialog
+- **`src/pages/Admin.tsx`** -- add Stop Automation button in order detail dialog
+
+No database changes. No new dependencies. No new files.
