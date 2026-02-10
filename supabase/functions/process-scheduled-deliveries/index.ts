@@ -524,6 +524,35 @@ Deno.serve(async (req) => {
               .eq("id", order.id);
           }
 
+          // === FILE ACCESSIBILITY GUARD ===
+          // Verify the song file actually exists and is >10KB before delivering
+          try {
+            const headResponse = await fetch(order.song_url, { method: "HEAD", signal: AbortSignal.timeout(10000) });
+            const contentLength = parseInt(headResponse.headers.get("content-length") || "0");
+            
+            if (!headResponse.ok || contentLength < 10000) {
+              console.error(`[DELIVERY] Song file invalid for order ${order.id}: status=${headResponse.status}, size=${contentLength}`);
+              // Clear bad song_url and reset for regeneration
+              await supabase
+                .from("orders")
+                .update({
+                  song_url: null,
+                  automation_status: null,
+                  automation_started_at: null,
+                  automation_task_id: null,
+                  delivery_status: null,
+                  delivery_last_error: `Song file empty/missing (${contentLength} bytes). Auto-resetting for regeneration.`,
+                })
+                .eq("id", order.id);
+              orderDeliveryResults.push({ orderId: order.id, success: false, error: `Song file invalid (${contentLength} bytes)` });
+              continue;
+            }
+            console.log(`[DELIVERY] Song file verified for order ${order.id}: ${contentLength} bytes`);
+          } catch (headError) {
+            console.error(`[DELIVERY] Song file verification failed for order ${order.id}:`, headError);
+            // Don't block delivery on HEAD failure - the file might still be accessible
+          }
+
           // Claim row for delivery (prevents duplicate processing)
           // Use delivered_at as timestamp marker for stuck detection
           const { data: claimed, error: claimError } = await supabase
