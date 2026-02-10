@@ -1245,6 +1245,9 @@ export default function Admin() {
                           </p>
                           <p className="text-sm text-muted-foreground">
                             <strong>Order ID:</strong> {order.id.slice(0, 8).toUpperCase()}
+                            {order.status === "delivered" && order.song_url && (
+                              <> · <a href={`/song/${order.id.slice(0, 8)}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">🔗 Song Page</a></>
+                            )}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             <strong>Order Date/Time:</strong>{" "}
@@ -1404,6 +1407,9 @@ export default function Admin() {
                     <DialogTitle>Order Details</DialogTitle>
                     <DialogDescription>
                       Order ID: {selectedOrder.id.slice(0, 8).toUpperCase()}
+                      {selectedOrder.status === "delivered" && selectedOrder.song_url && (
+                        <> · <a href={`/song/${selectedOrder.id.slice(0, 8)}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View Song Page ↗</a></>
+                      )}
                     </DialogDescription>
                   </div>
                   {!isEditingOrder ? (

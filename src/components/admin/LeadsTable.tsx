@@ -1725,7 +1725,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         <p className="text-sm">
                           <strong>Preview URL:</strong>{" "}
                           <a 
-                            href={`https://personalsonggifts.lovable.app/preview/${selectedLead.preview_token}`}
+                            href={`/preview/${selectedLead.preview_token}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-primary hover:underline"
