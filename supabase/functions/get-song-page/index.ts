@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       const result = await supabase
         .from("orders")
         .select(selectFields)
-        .eq("status", "delivered")
+        .in("status", ["delivered", "ready"])
         .not("song_url", "is", null);
 
       if (result.error) {
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     const order = orders[0];
 
-    if (order.status !== "delivered" || !order.song_url) {
+    if (!["delivered", "ready"].includes(order.status) || !order.song_url) {
       return new Response(
         JSON.stringify({ error: "Song is not ready yet" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
