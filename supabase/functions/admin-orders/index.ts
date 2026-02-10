@@ -780,7 +780,7 @@ Deno.serve(async (req) => {
         if (isLanguageChange) {
           const { data: currentOrder, error: fetchErr } = await supabase
             .from("orders")
-            .select("automation_status")
+            .select("automation_status, automation_manual_override_at")
             .eq("id", orderId)
             .maybeSingle();
 
@@ -792,7 +792,7 @@ Deno.serve(async (req) => {
           }
 
           const IN_FLIGHT_STATUSES = ["pending", "queued", "lyrics_generating", "lyrics_ready", "audio_generating"];
-          if (currentOrder.automation_status && IN_FLIGHT_STATUSES.includes(currentOrder.automation_status)) {
+          if (currentOrder.automation_status && IN_FLIGHT_STATUSES.includes(currentOrder.automation_status) && !currentOrder.automation_manual_override_at) {
             return new Response(
               JSON.stringify({ error: "Reset automation before changing language." }),
               { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -907,7 +907,7 @@ Deno.serve(async (req) => {
         if (isLanguageChange) {
           const { data: currentLead, error: fetchErr } = await supabase
             .from("leads")
-            .select("automation_status")
+            .select("automation_status, automation_manual_override_at")
             .eq("id", leadId)
             .maybeSingle();
 
@@ -919,7 +919,7 @@ Deno.serve(async (req) => {
           }
 
           const IN_FLIGHT_STATUSES = ["pending", "queued", "lyrics_generating", "lyrics_ready", "audio_generating"];
-          if (currentLead.automation_status && IN_FLIGHT_STATUSES.includes(currentLead.automation_status)) {
+          if (currentLead.automation_status && IN_FLIGHT_STATUSES.includes(currentLead.automation_status) && !currentLead.automation_manual_override_at) {
             return new Response(
               JSON.stringify({ error: "Reset automation before changing language." }),
               { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
