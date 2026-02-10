@@ -506,12 +506,26 @@ Deno.serve(async (req) => {
     const audioBuffer = await audioResponse.arrayBuffer();
     const audioBytes = new Uint8Array(audioBuffer);
     
-    // Validate file size (max 50MB)
+    console.log(`[CALLBACK] Downloaded ${audioBytes.length} bytes`);
+
+    // Validate file size
     if (audioBytes.length > 50 * 1024 * 1024) {
       throw new Error("Audio file too large");
     }
-
-    console.log(`[CALLBACK] Downloaded ${audioBytes.length} bytes`);
+    
+    // Guard: reject empty or too-small files (< 10KB is not a valid MP3)
+    if (audioBytes.length < 10000) {
+      console.error(`[CALLBACK] Audio file too small (${audioBytes.length} bytes), likely a failed download`);
+      await supabase
+        .from(tableName)
+        .update({
+          automation_status: "failed",
+          automation_last_error: `[CALLBACK] Downloaded audio is only ${audioBytes.length} bytes (empty/corrupted). Source URL may have expired. Will retry.`,
+          automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+        })
+        .eq("id", entityId);
+      return new Response("Audio file empty", { status: 200, headers: corsHeaders });
+    }
 
     // Deterministic storage path for idempotency
     const shortId = entityId.slice(0, 8).toUpperCase();
