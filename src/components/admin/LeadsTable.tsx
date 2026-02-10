@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,7 @@ interface LeadsTableProps {
   adminPassword?: string;
   onRefresh?: () => void;
   onNavigateToOrder?: (orderId: string) => void;
+  initialSelectedLeadId?: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -119,7 +120,7 @@ function getQualityBadge(score: number | null | undefined) {
   return { label: `${score}`, className: "bg-red-100 text-red-700", icon: AlertTriangle };
 }
 
-export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, onRefresh, onNavigateToOrder }: LeadsTableProps) {
+export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, onRefresh, onNavigateToOrder, initialSelectedLeadId }: LeadsTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState("all");
   const [dismissedFilter, setDismissedFilter] = useState<"active" | "dismissed" | "all">("active");
@@ -160,6 +161,14 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [editingLeadLyrics, setEditingLeadLyrics] = useState(false);
   const [editedLeadLyricsText, setEditedLeadLyricsText] = useState("");
   const [savingLeadLyrics, setSavingLeadLyrics] = useState(false);
+  // Auto-open lead from external navigation (e.g., Hot Leads card)
+  useEffect(() => {
+    if (initialSelectedLeadId) {
+      const lead = leads.find((l) => l.id === initialSelectedLeadId);
+      if (lead) setSelectedLead(lead);
+    }
+  }, [initialSelectedLeadId, leads]);
+
   // Filter by status, quality, dismissed state, and search query
   const filteredLeads = leads
     .filter((lead) => {
