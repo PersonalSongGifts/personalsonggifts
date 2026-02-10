@@ -15,7 +15,7 @@ interface HotLeadsCardProps {
 
 export function HotLeadsCard({ leads, onViewLead }: HotLeadsCardProps) {
   const hotLeads = leads
-    .filter((l) => l.status !== "converted" && (l.preview_play_count ?? 0) > 0)
+    .filter((l) => l.status !== "converted" && !l.order_id && (l.preview_play_count ?? 0) > 0)
     .sort((a, b) => (b.preview_play_count ?? 0) - (a.preview_play_count ?? 0))
     .slice(0, 10);
 
@@ -45,7 +45,8 @@ export function HotLeadsCard({ leads, onViewLead }: HotLeadsCardProps) {
                 <TableHead className="text-center">Plays</TableHead>
                 <TableHead>Last Played</TableHead>
                 <TableHead>Occasion</TableHead>
-                <TableHead>Captured</TableHead>
+                <TableHead>Became Lead</TableHead>
+                <TableHead>Preview Sent</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -73,6 +74,11 @@ export function HotLeadsCard({ leads, onViewLead }: HotLeadsCardProps) {
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(lead.captured_at), { addSuffix: true })}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {lead.preview_sent_at
+                      ? formatAdminDateShort(lead.preview_sent_at)
+                      : "—"}
                   </TableCell>
                   <TableCell>
                     <Button
