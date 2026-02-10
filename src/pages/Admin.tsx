@@ -107,6 +107,9 @@ interface Order {
   sms_sent_at?: string | null;
   sms_scheduled_for?: string | null;
   timezone?: string | null;
+  // Lyrics unlock
+  lyrics_unlocked_at?: string | null;
+  lyrics_price_cents?: number | null;
 }
 
 const statusColors: Record<string, string> = {
