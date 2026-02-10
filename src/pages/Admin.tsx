@@ -28,6 +28,7 @@ import { ScheduledDeliveryPicker } from "@/components/admin/ScheduledDeliveryPic
 import { SourceAnalytics } from "@/components/admin/SourceAnalytics";
 import { SalesVelocity } from "@/components/admin/SalesVelocity";
 import { SalesHeatmap } from "@/components/admin/SalesHeatmap";
+import { HotLeadsCard } from "@/components/admin/HotLeadsCard";
 import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 
@@ -183,7 +184,8 @@ export default function Admin() {
   const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
   const [regenerating, setRegenerating] = useState(false);
  // Source filter for direct vs lead conversion orders
- const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
+  const [pendingLeadId, setPendingLeadId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -975,6 +977,15 @@ export default function Admin() {
             
             {/* Source Analytics */}
             <SourceAnalytics orders={allOrders} leads={leads} />
+
+            {/* Hot Leads - most engaged unconverted */}
+            <HotLeadsCard
+              leads={leads}
+              onViewLead={(leadId) => {
+                setPendingLeadId(leadId);
+                setActiveTab("leads");
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="orders" className="space-y-6">
@@ -1401,6 +1412,7 @@ export default function Admin() {
               adminPassword={password}
               onRefresh={fetchOrders}
               onNavigateToOrder={handleNavigateToOrder}
+              initialSelectedLeadId={pendingLeadId}
             />
           </TabsContent>
 
