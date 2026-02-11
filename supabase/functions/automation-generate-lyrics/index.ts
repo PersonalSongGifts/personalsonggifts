@@ -60,6 +60,14 @@ Target a typical 3:00-3:30 song. Keep line lengths short and singable (4-10 word
 - FavoriteMemory: Turn into a mini-scene in verse or bridge with concrete details
 - SpecialMessage: Integrate in bridge or closing lines
 
+# Detail Fidelity (CRITICAL)
+- Preserve the EXACT meaning of life events: proposals, weddings, births, deaths, diagnoses
+- If input says someone "proposed" or "asked to marry," the lyrics MUST reflect a marriage proposal -- never paraphrase into something vaguer
+- When input describes WHO did WHAT, maintain correct attribution (who proposed to whom, who said what)
+- Prefer the customer's own phrasing for key moments over poetic alternatives
+- Specific dates/years should be preserved when mentioned
+- When in doubt, stay closer to the original wording
+
 # Formatting
 - Use [Section Name] labels exactly
 - One line of lyrics per line
@@ -67,7 +75,7 @@ Target a typical 3:00-3:30 song. Keep line lengths short and singable (4-10 word
 - You may use repetitions for hooks and vocalizations (oh, ooooh, la la la)
 
 # Rules
-- If input has typos/fragments, infer meaning and clean up
+- If input has typos/fragments, infer meaning and clean up spelling/grammar, but NEVER change the meaning of what happened
 - Prioritize safety and wholesome tone
 - Do NOT explain reasoning or ask questions
 - Output lyrics ONLY in the specified format`;
