@@ -16,6 +16,7 @@ import { formatAdminDate, formatAdminDateShort } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/components/admin/LeadPreviewTimingPicker";
 import { createAudioPreview } from "@/lib/audioClipper";
+import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 
 export interface Lead {
@@ -1601,6 +1602,20 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* Album Art Upload */}
+                {selectedLead.status !== "converted" && adminPassword && (
+                  <AlbumArtUpload
+                    entityType="lead"
+                    entityId={selectedLead.id}
+                    currentUrl={selectedLead.cover_image_url || null}
+                    adminPassword={adminPassword}
+                    onUpdate={(newUrl) => {
+                      setSelectedLead({ ...selectedLead, cover_image_url: newUrl });
+                      onRefresh?.();
+                    }}
+                  />
                 )}
 
                 {/* Upload Song Section - show for new leads OR to replace existing song */}
