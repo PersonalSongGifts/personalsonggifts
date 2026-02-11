@@ -93,13 +93,16 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
   const conversionData = allSources.map((source) => {
     const sourceLeads = leadsBySource[source] || 0;
     const sourceOrders = ordersBySource[source] || 0;
+    const sourceRevenue = revenueBySource[source] || 0;
     const conversionRate = sourceLeads > 0 ? Math.round((sourceOrders / sourceLeads) * 100) : 0;
+    const aov = sourceOrders > 0 ? Math.round(sourceRevenue / sourceOrders) : 0;
     return {
       source,
       leads: sourceLeads,
       orders: sourceOrders,
-      revenue: revenueBySource[source] || 0,
+      revenue: sourceRevenue,
       conversionRate,
+      aov,
     };
   }).filter((d) => d.leads > 0 || d.orders > 0);
 
@@ -138,6 +141,7 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
                   <th className="text-right py-2 font-medium">Leads</th>
                   <th className="text-right py-2 font-medium">Orders</th>
                   <th className="text-right py-2 font-medium">Revenue</th>
+                  <th className="text-right py-2 font-medium">AOV</th>
                   <th className="text-right py-2 font-medium">Conv. Rate</th>
                 </tr>
               </thead>
@@ -156,6 +160,7 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
                     <td className="text-right py-2">{row.leads}</td>
                     <td className="text-right py-2">{row.orders}</td>
                     <td className="text-right py-2">${row.revenue.toLocaleString()}</td>
+                    <td className="text-right py-2">${row.aov}</td>
                     <td className="text-right py-2">{row.conversionRate}%</td>
                   </tr>
                 ))}
@@ -165,6 +170,7 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
                   <td className="text-right py-2">{totalLeads}</td>
                   <td className="text-right py-2">{totalOrders}</td>
                   <td className="text-right py-2">${totalRevenue.toLocaleString()}</td>
+                  <td className="text-right py-2">${totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0}</td>
                   <td className="text-right py-2">
                     {totalLeads > 0 ? Math.round((totalOrders / totalLeads) * 100) : 0}%
                   </td>
