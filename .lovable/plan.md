@@ -1,120 +1,80 @@
 
 
-## Order Activity Log
+## Album Art Change Feature
 
-### Problem
-When customers have issues (like Cathy's case where the wrong song was delivered), there's no way to trace what happened -- when songs were generated, regenerated, uploaded, or delivered. All investigation requires manual database queries.
+### Overview
+Add the ability for admins to upload or change album artwork for both leads and orders directly from the admin detail dialogs. Currently, cover art is only set automatically when extracted from MP3 ID3 tags during song upload.
 
-### Solution
-Add an `order_activity_log` table that records every significant event for orders and leads, then display a chronological timeline in the admin detail dialogs.
+### Approach
+Since the `admin-orders` edge function uses JSON (not multipart form data), the simplest approach is to reuse the existing `upload-song` function's storage infrastructure. The admin UI will:
+1. Let the admin pick an image file
+2. Upload it directly to the `songs` storage bucket via the Supabase client
+3. Save the public URL to the order/lead via the existing `update_order_fields` / `update_lead_fields` actions
 
-### What Gets Logged (Event Types)
-- `order_created` -- new order placed
-- `lyrics_generated` -- AI lyrics completed
-- `audio_generated` -- AI audio completed (with Suno task ID)
-- `song_uploaded` -- manual admin upload
-- `song_regenerated` -- regeneration triggered (clears old assets)
-- `delivery_sent` -- email delivered
-- `delivery_scheduled` -- scheduled for future send
-- `resend_scheduled` -- resend scheduled after song replacement
-- `resend_sent` -- resend email delivered
-- `automation_cancelled` -- admin stopped automation
-- `automation_reset` -- automation reset for re-generation
-- `lyrics_edited` -- admin manually edited lyrics
-- `fields_updated` -- admin edited order/lead fields
-- `lead_converted` -- lead became a paid order
-- `order_cancelled` -- order dismissed/cancelled
-- `order_restored` -- cancelled order restored
+This avoids creating a new edge function or modifying `admin-orders` to handle multipart form data.
 
-### UI
-A collapsible "Activity Log" section inside the order/lead detail dialogs showing a vertical timeline with:
-- Timestamp (PST)
-- Event type badge (color-coded)
-- Actor ("system" or "admin")
-- Details text (e.g., "Lyrics generated, 1842 chars, language: en")
+### Pitfalls Addressed
+- **Cache busting**: Append `?v=timestamp` to the URL so browsers and CDN serve the new image immediately (matching existing pattern used for song URLs).
+- **Lead-to-order sync**: If cover art is changed on a lead *after* it has already converted to an order, the order's art won't auto-update. This is acceptable since post-conversion changes are rare and can be done on the order directly.
+- **File validation**: Only allow image types (JPEG, PNG, WebP) and enforce a reasonable size limit (5MB) on the client side.
+- **Overwrite safety**: Use `upsert: true` in storage upload so replacing art doesn't leave orphaned files.
+- **SongPlayer fallback**: No changes needed -- the existing `getCoverImage()` already checks `cover_image_url` first, falling back to occasion images only when null.
+- **Storage path convention**: Use `{SHORT_ID}-cover.{ext}` for orders and `leads/{SHORT_ID}-cover.{ext}` for leads, matching the pattern already used by `upload-song`.
 
 ---
 
 ### Technical Details
 
-#### 1. New Database Table
+#### 1. Backend: Add `cover_image_url` to Whitelists
 
-```sql
-CREATE TABLE public.order_activity_log (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_type text NOT NULL,        -- 'order' or 'lead'
-  entity_id uuid NOT NULL,
-  event_type text NOT NULL,
-  actor text NOT NULL DEFAULT 'system',  -- 'system' or 'admin'
-  details text,
-  metadata jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+In `supabase/functions/admin-orders/index.ts`:
+- Add `"cover_image_url"` to the `allowedFields` array in **both** `update_order_fields` (line 773) and `update_lead_fields` (line 910) actions.
 
-CREATE INDEX idx_activity_log_entity 
-  ON public.order_activity_log (entity_type, entity_id, created_at DESC);
+This allows the admin UI to save the new cover URL after uploading the image to storage.
 
-ALTER TABLE public.order_activity_log ENABLE ROW LEVEL SECURITY;
+#### 2. Frontend: Album Art Upload Component
 
-CREATE POLICY "No public access to activity log"
-  ON public.order_activity_log FOR ALL
-  USING (false);
-```
+Create a small reusable component or inline section in the order/lead detail dialogs that:
+- Displays current cover art (or occasion fallback) as a thumbnail
+- Shows a "Change" button that opens a file picker (accept: `image/jpeg, image/png, image/webp`)
+- On file selection:
+  1. Validates type and size (max 5MB)
+  2. Uploads to `songs` bucket at path `{SHORT_ID}-cover.{ext}` (orders) or `leads/{SHORT_ID}-cover.{ext}` (leads)
+  3. Gets public URL, appends cache buster `?v={timestamp}`
+  4. Calls `update_order_fields` or `update_lead_fields` with `{ cover_image_url: newUrl }`
+  5. Logs activity via the existing activity log system
+- Shows a "Remove" button if art exists, which sets `cover_image_url` to `null`
 
-#### 2. Shared Logging Helper
+#### 3. Storage Upload from Client
 
-Create `supabase/functions/_shared/activity-log.ts` with a `logActivity()` function that edge functions can import:
+The `songs` bucket is public, so we can upload directly using the Supabase JS client:
 
 ```typescript
-export async function logActivity(
-  supabase: SupabaseClient,
-  entityType: "order" | "lead",
-  entityId: string,
-  eventType: string,
-  actor: "system" | "admin",
-  details?: string,
-  metadata?: Record<string, unknown>
-)
+const { error } = await supabase.storage
+  .from("songs")
+  .upload(path, file, { contentType: file.type, upsert: true });
 ```
 
-#### 3. Edge Function Instrumentation
+No RLS policy changes needed -- the bucket is already public for reads. For uploads, the service role key in the edge function handles writes. However, since we want to upload from the client, we need to ensure the bucket allows public uploads OR route the upload through the admin-orders edge function.
 
-Add `logActivity()` calls to these existing edge functions:
-- `admin-orders/index.ts` -- for regenerate, reset, cancel, field edits, lyrics edits, resend scheduling, delivery scheduling, order dismissal/restore
-- `upload-song/index.ts` -- for manual song uploads
-- `automation-generate-lyrics/index.ts` -- when lyrics are generated
-- `automation-suno-callback/index.ts` -- when audio is generated
-- `send-song-delivery/index.ts` -- when delivery email is sent
-- `send-lead-preview/index.ts` -- when lead preview email is sent
-- `process-lead-payment/index.ts` -- when lead converts to order
-- `stripe-webhook/index.ts` -- when order is created
-- `process-payment/index.ts` -- when order is created (fallback)
+**Recommended approach**: Route the image through a new `upload_cover_art` action in `admin-orders` that accepts base64-encoded image data in JSON. This keeps the admin password protection and avoids needing storage RLS changes.
 
-#### 4. Fetch Endpoint
+Wait -- base64 in JSON is wasteful for large images. Better approach: Add a dedicated lightweight edge function `upload-cover-art` that accepts multipart form data (like `upload-song` does), validates the admin password, uploads to storage, updates the DB, and returns the URL.
 
-Add a new action `get_activity_log` to `admin-orders/index.ts` that queries the log by entity_id, returns up to 100 events sorted by created_at DESC.
+**Final approach**: Create a new `upload-cover-art` edge function that:
+- Accepts multipart form data with `adminPassword`, `file` (image), `orderId` or `leadId`
+- Validates admin password, file type (JPEG/PNG/WebP), and size (max 5MB)
+- Uploads to `songs` bucket at the correct path
+- Updates `cover_image_url` on the order or lead
+- Logs activity
+- Returns the new URL
 
-#### 5. Admin UI Component
+#### 4. Files to Create
+- `supabase/functions/upload-cover-art/index.ts` -- new edge function for secure image upload
+- No new migration needed (column already exists on both tables)
 
-Create `src/components/admin/ActivityLog.tsx`:
-- Collapsible section using existing Collapsible component
-- Fetches log when opened (lazy load)
-- Vertical timeline with color-coded event badges
-- Timestamps displayed in PST using existing `formatAdminDate`
-- Placed inside both order and lead detail dialogs
-
-#### 6. Files to Create
-- `supabase/functions/_shared/activity-log.ts`
-- `src/components/admin/ActivityLog.tsx`
-
-#### 7. Files to Modify
-- `supabase/functions/admin-orders/index.ts` (add get_activity_log action + log calls to existing actions)
-- `supabase/functions/upload-song/index.ts` (log on upload)
-- `supabase/functions/automation-generate-lyrics/index.ts` (log on lyrics ready)
-- `supabase/functions/automation-suno-callback/index.ts` (log on audio ready)
-- `supabase/functions/send-song-delivery/index.ts` (log on delivery)
-- `supabase/functions/send-lead-preview/index.ts` (log on preview sent)
-- `supabase/functions/process-lead-payment/index.ts` (log on conversion)
-- `supabase/functions/stripe-webhook/index.ts` (log on order creation)
-- `src/pages/Admin.tsx` (add ActivityLog component to order/lead detail dialogs)
-
+#### 5. Files to Modify
+- `supabase/functions/admin-orders/index.ts` -- add `cover_image_url` to both field whitelists
+- `src/pages/Admin.tsx` -- add album art display + change button to order detail dialog
+- `src/components/admin/LeadsTable.tsx` -- add album art display + change button to lead detail dialog
+- `supabase/config.toml` -- add `upload-cover-art` function config with `verify_jwt = false`
