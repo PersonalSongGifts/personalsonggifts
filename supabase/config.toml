@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.verify-lyrics-purchase]
 verify_jwt = false
+
+[functions.upload-cover-art]
+verify_jwt = false

@@ -16,6 +16,7 @@ import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCi
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
 import { ActivityLog } from "@/components/admin/ActivityLog";
+import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
@@ -1910,6 +1911,18 @@ export default function Admin() {
                     <p className="text-sm text-muted-foreground">{selectedOrder.song_title}</p>
                   </div>
                 )}
+
+                {/* Album Art Upload */}
+                <AlbumArtUpload
+                  entityType="order"
+                  entityId={selectedOrder.id}
+                  currentUrl={selectedOrder.cover_image_url}
+                  adminPassword={password}
+                  onUpdate={(newUrl) => {
+                    setSelectedOrder({ ...selectedOrder, cover_image_url: newUrl });
+                    fetchOrders();
+                  }}
+                />
 
                 {/* Lyrics unlock warning: paid but content missing */}
                 {(selectedOrder as any).lyrics_unlocked_at && !selectedOrder.automation_lyrics && (
