@@ -1,54 +1,87 @@
 
 
-## Strengthen Lyrics Detail Fidelity via Prompt Update
+## Guard Against "Completed Without Audio" + Fix Root Cause
 
-### What Changed
-A customer received lyrics where "asked me to take your last name" (a proposal) was paraphrased into "asked for my name" (nonsensical). The AI was too aggressive in rewriting specific life events.
+### The Bug
+
+In `process-lead-payment/index.ts` (line 145), when a lead converts to a paid order:
+
+```typescript
+automation_status: lead.automation_lyrics ? "completed" : null,
+```
+
+This marks the new order as `completed` if lyrics exist, **even if the lead never got a song generated**. This is exactly what happened to Rick Gilmore -- his lead had lyrics but no audio, so when he paid, the order was created as "completed" with no `song_url`, and the pipeline never picked it up again.
+
+### Findings: Other Stuck Records
+
+Queried both `orders` and `leads` tables -- **no other records** are currently stuck with `completed` + missing audio. Rick's was the only one.
 
 ### Fix
-Update the system prompt in the lyrics generation edge function to add explicit rules preventing the AI from paraphrasing key life moments. Also tighten the existing "clean up typos" rule so it doesn't encourage meaning changes.
 
-### Changes
+**1. Fix the root cause in `process-lead-payment/index.ts`** (line 145)
 
-**Add a new "Detail Fidelity" section** to the system prompt with these rules:
-- NEVER paraphrase proposals, marriages, births, deaths, or other life events into vaguer language
-- When the input describes a specific action (e.g., "proposed," "asked me to marry"), preserve that exact meaning
-- Prefer the customer's own phrasing over poetic alternatives when describing key moments
-- If unsure about a detail's meaning, keep it closer to the original wording rather than interpreting loosely
-
-**Tighten the existing cleanup rule** from:
-> "If input has typos/fragments, infer meaning and clean up"
-
+Change:
+```typescript
+automation_status: lead.automation_lyrics ? "completed" : null,
+```
 To:
-> "If input has typos/fragments, infer meaning and clean up spelling/grammar, but NEVER change the meaning of what happened"
+```typescript
+automation_status: lead.full_song_url ? "completed" : (lead.automation_lyrics ? "lyrics_ready" : null),
+```
+
+Logic: Only mark as `completed` if the lead actually has a song. If it only has lyrics, mark as `lyrics_ready` so the pipeline picks it up for audio generation. If neither, leave null for fresh start.
+
+Also update the `status` field (line 151) similarly -- only set `"delivered"` if there's actually a song:
+```typescript
+status: lead.full_song_url ? "delivered" : "pending",
+delivered_at: lead.full_song_url ? new Date().toISOString() : null,
+```
+
+**2. Add a defensive guard in `automation-suno-callback/index.ts`**
+
+Before setting `automation_status: "completed"`, verify the song URL was actually saved successfully by doing a re-read after the update. This is a belt-and-suspenders check.
+
+**3. Add a failsafe in `process-scheduled-deliveries/index.ts`**
+
+Add a new recovery block that catches records where `automation_status = 'completed'` but `song_url IS NULL` (orders) or `preview_song_url IS NULL` (leads), and resets them to `"failed"` so they get retried.
 
 ---
 
 ### Technical Details
 
-#### File to Modify
-- `supabase/functions/automation-generate-lyrics/index.ts` -- update the `SYSTEM_PROMPT` constant
+#### Files to Modify
 
-#### Specific Prompt Changes
+- `supabase/functions/process-lead-payment/index.ts` (line 145, 151-152) -- Fix root cause: only set completed/delivered when song actually exists
+- `supabase/functions/process-scheduled-deliveries/index.ts` -- Add failsafe recovery for completed-without-audio records  
+- `supabase/functions/automation-suno-callback/index.ts` -- Add post-update verification
 
-1. Add new section after "# Field Usage" block:
+#### Failsafe Recovery Block (process-scheduled-deliveries)
 
-```
-# Detail Fidelity (CRITICAL)
-- Preserve the EXACT meaning of life events: proposals, weddings, births, deaths, diagnoses
-- If input says someone "proposed" or "asked to marry," the lyrics MUST reflect a marriage proposal -- never paraphrase into something vaguer
-- When input describes WHO did WHAT, maintain correct attribution (who proposed to whom, who said what)
-- Prefer the customer's own phrasing for key moments over poetic alternatives
-- Specific dates/years should be preserved when mentioned
-- When in doubt, stay closer to the original wording
+After the existing failsafe blocks (~line 135), add:
+
+```typescript
+// FAILSAFE: Reset records marked "completed" but missing audio
+const { data: completedNoAudio } = await supabase
+  .from("orders")
+  .select("id, automation_status")
+  .eq("automation_status", "completed")
+  .is("song_url", null)
+  .is("dismissed_at", null)
+  .limit(10);
+
+if (completedNoAudio?.length) {
+  for (const order of completedNoAudio) {
+    console.log(`[FAILSAFE] Order ${order.id} marked completed but has no song_url, resetting to failed`);
+    await supabase
+      .from("orders")
+      .update({
+        automation_status: "failed",
+        automation_last_error: "Marked completed without song_url - reset by failsafe",
+      })
+      .eq("id", order.id);
+  }
+}
 ```
 
-2. In the "# Rules" section, change:
-```
-- If input has typos/fragments, infer meaning and clean up
-```
-To:
-```
-- If input has typos/fragments, infer meaning and clean up spelling/grammar, but NEVER change the meaning of what happened
-```
+Same pattern for leads checking `preview_song_url`.
 
