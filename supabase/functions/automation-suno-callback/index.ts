@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import MP3Tag from "npm:mp3tag.js@3.11.0";
+import { logActivity } from "../_shared/activity-log.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -749,6 +750,9 @@ Deno.serve(async (req) => {
       console.log(`[CALLBACK] ✅ Automation complete for lead ${entityId}`);
       console.log(`[CALLBACK] Preview scheduled for: ${autoSendTime}`);
 
+      await logActivity(supabase, "lead", entityId, "audio_generated", "system", `Audio generated, ${audioBytes!.length} bytes, source: ${usedSource}`, { taskId });
+
+
     } else {
       // Update order with song data + generated_at timestamp
       console.log(`[CALLBACK] Updating order ${entityId} with final song data`);
@@ -768,6 +772,8 @@ Deno.serve(async (req) => {
         .eq("id", entityId);
 
       console.log(`[CALLBACK] ✅ Automation complete for order ${entityId}`);
+
+      await logActivity(supabase, "order", entityId, "audio_generated", "system", `Audio generated, ${audioBytes!.length} bytes, source: ${usedSource}`, { taskId });
     }
 
     console.log(`[CALLBACK] Title: ${title}`);

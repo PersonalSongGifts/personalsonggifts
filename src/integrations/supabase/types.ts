@@ -251,6 +251,39 @@ export type Database = {
           },
         ]
       }
+      order_activity_log: {
+        Row: {
+          actor: string
+          created_at: string
+          details: string | null
+          entity_id: string
+          entity_type: string
+          event_type: string
+          id: string
+          metadata: Json | null
+        }
+        Insert: {
+          actor?: string
+          created_at?: string
+          details?: string | null
+          entity_id: string
+          entity_type: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+        }
+        Update: {
+          actor?: string
+          created_at?: string
+          details?: string | null
+          entity_id?: string
+          entity_type?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           automation_audio_url_source: string | null

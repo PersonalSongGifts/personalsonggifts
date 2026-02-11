@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { sendSms } from "../_shared/brevo-sms.ts";
+import { logActivity } from "../_shared/activity-log.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password",
@@ -240,6 +241,8 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
     const result = await response.json();
     console.log(`Preview email sent to ${recipients.join(", ")}:`, result);
+
+    await logActivity(supabase, "lead", leadId, "delivery_sent", "system", `Preview email sent to ${recipients.join(", ")}`);
 
     // === SMS DELIVERY (after email success) ===
     try {
