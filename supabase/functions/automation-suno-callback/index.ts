@@ -747,7 +747,18 @@ Deno.serve(async (req) => {
         })
         .eq("id", entityId);
 
-      console.log(`[CALLBACK] ✅ Automation complete for lead ${entityId}`);
+      // POST-UPDATE VERIFICATION: Re-read to confirm song URL was persisted
+      const { data: verifyLead } = await supabase.from("leads").select("preview_song_url, full_song_url").eq("id", entityId).single();
+      if (!verifyLead?.preview_song_url && !verifyLead?.full_song_url) {
+        console.error(`[CALLBACK] ⚠️ VERIFICATION FAILED: Lead ${entityId} song URLs not persisted after update!`);
+        await supabase.from("leads").update({
+          automation_status: "failed",
+          automation_last_error: "Post-update verification failed: song URL not persisted",
+        }).eq("id", entityId);
+        return new Response("Verification failed", { status: 500, headers: corsHeaders });
+      }
+
+      console.log(`[CALLBACK] ✅ Automation complete for lead ${entityId} (verified)`);
       console.log(`[CALLBACK] Preview scheduled for: ${autoSendTime}`);
 
       await logActivity(supabase, "lead", entityId, "audio_generated", "system", `Audio generated, ${audioBytes!.length} bytes, source: ${usedSource}`, { taskId });
@@ -771,7 +782,18 @@ Deno.serve(async (req) => {
         })
         .eq("id", entityId);
 
-      console.log(`[CALLBACK] ✅ Automation complete for order ${entityId}`);
+      // POST-UPDATE VERIFICATION: Re-read to confirm song URL was persisted
+      const { data: verifyOrder } = await supabase.from("orders").select("song_url").eq("id", entityId).single();
+      if (!verifyOrder?.song_url) {
+        console.error(`[CALLBACK] ⚠️ VERIFICATION FAILED: Order ${entityId} song_url not persisted after update!`);
+        await supabase.from("orders").update({
+          automation_status: "failed",
+          automation_last_error: "Post-update verification failed: song_url not persisted",
+        }).eq("id", entityId);
+        return new Response("Verification failed", { status: 500, headers: corsHeaders });
+      }
+
+      console.log(`[CALLBACK] ✅ Automation complete for order ${entityId} (verified)`);
 
       await logActivity(supabase, "order", entityId, "audio_generated", "system", `Audio generated, ${audioBytes!.length} bytes, source: ${usedSource}`, { taskId });
     }
