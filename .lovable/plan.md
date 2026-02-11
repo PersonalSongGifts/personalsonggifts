@@ -1,87 +1,56 @@
 
 
-## Guard Against "Completed Without Audio" + Fix Root Cause
+## Emergency Fix: Stop Preview Emails to Paying Customers
 
-### The Bug
+### Damage Report
 
-In `process-lead-payment/index.ts` (line 145), when a lead converts to a paid order:
+| Metric | Count |
+|--------|-------|
+| Leads with paid orders but NOT marked converted | **270** |
+| Preview emails already sent to paying customers | **118** |
+| Preview emails queued and about to send | **149** |
+| Follow-up emails sent to paying customers | **0** (not yet, but would start in 24h) |
+| Customers with **multiple orders** (potential double-charges) | **~17** |
 
-```typescript
-automation_status: lead.automation_lyrics ? "completed" : null,
-```
+Notable double-charge cases:
+- **Teresa** (trasalan@gmail.com) -- 12 orders, $599.88 total
+- **Amanda Murphy** (luv_my_marine@hotmail.com) -- 2 orders, $129.98
+- Several others with 2 orders each (~$98-99 total)
 
-This marks the new order as `completed` if lyrics exist, **even if the lead never got a song generated**. This is exactly what happened to Rick Gilmore -- his lead had lyrics but no audio, so when he paid, the order was created as "completed" with no `song_url`, and the pipeline never picked it up again.
+### What We're Fixing
 
-### Findings: Other Stuck Records
+**Root cause**: When a customer pays, the webhook tries to mark their lead as converted using `.eq("status", "lead")`. But the automation pipeline has usually already changed the status to `"song_ready"`, so the update silently matches zero rows. The lead stays active, and the cron sends them a "buy your song" email 24 hours later.
 
-Queried both `orders` and `leads` tables -- **no other records** are currently stuck with `completed` + missing audio. Rick's was the only one.
+### Implementation (4 changes + 1 data fix)
 
-### Fix
+**1. Database migration: Bulk-convert 270 corrupted leads**
 
-**1. Fix the root cause in `process-lead-payment/index.ts`** (line 145)
+SQL to mark all affected leads as `converted` with their matching order ID. This immediately cancels all 149 queued preview emails.
 
-Change:
-```typescript
-automation_status: lead.automation_lyrics ? "completed" : null,
-```
-To:
-```typescript
-automation_status: lead.full_song_url ? "completed" : (lead.automation_lyrics ? "lyrics_ready" : null),
-```
+**2. Fix stripe-webhook/index.ts (root cause)**
 
-Logic: Only mark as `completed` if the lead actually has a song. If it only has lyrics, mark as `lyrics_ready` so the pipeline picks it up for audio generation. If neither, leave null for fresh start.
+Line 315: Change `.eq("status", "lead")` to `.neq("status", "converted")`
+Line 316: Change `.single()` to `.maybeSingle()`
 
-Also update the `status` field (line 151) similarly -- only set `"delivered"` if there's actually a song:
-```typescript
-status: lead.full_song_url ? "delivered" : "pending",
-delivered_at: lead.full_song_url ? new Date().toISOString() : null,
-```
+**3. Add purchase guard in process-scheduled-deliveries/index.ts**
 
-**2. Add a defensive guard in `automation-suno-callback/index.ts`**
+At line 929, before the email send loop body: query the orders table for a matching paid order. If found, auto-convert the lead and skip.
 
-Before setting `automation_status: "completed"`, verify the song URL was actually saved successfully by doing a re-read after the update. This is a belt-and-suspenders check.
+**4. Add purchase guard in send-lead-preview/index.ts**
 
-**3. Add a failsafe in `process-scheduled-deliveries/index.ts`**
+After line 64 (the existing converted check): query orders table by email. If paid order exists, auto-convert and return error.
 
-Add a new recovery block that catches records where `automation_status = 'completed'` but `song_url IS NULL` (orders) or `preview_song_url IS NULL` (leads), and resets them to `"failed"` so they get retried.
+**5. Add purchase guard in send-lead-followup/index.ts**
 
----
+After line 64 (same pattern): query orders table by email. If paid order exists, auto-convert and return error.
 
-### Technical Details
+### Audit Options for Double-Charged Customers
 
-#### Files to Modify
+There are ~17 customers with multiple orders. Options:
 
-- `supabase/functions/process-lead-payment/index.ts` (line 145, 151-152) -- Fix root cause: only set completed/delivered when song actually exists
-- `supabase/functions/process-scheduled-deliveries/index.ts` -- Add failsafe recovery for completed-without-audio records  
-- `supabase/functions/automation-suno-callback/index.ts` -- Add post-update verification
+1. **Manual review**: I can list all 17 with order details so you can decide case-by-case which are legitimate repeat purchases vs. duplicates caused by this bug
+2. **Bulk refund duplicates**: Identify orders where the same customer paid twice within a short window (e.g., under 10 minutes) for the same recipient, and refund the second charge
+3. **Do nothing for now**: Fix the bug first, then audit at your pace
 
-#### Failsafe Recovery Block (process-scheduled-deliveries)
-
-After the existing failsafe blocks (~line 135), add:
-
-```typescript
-// FAILSAFE: Reset records marked "completed" but missing audio
-const { data: completedNoAudio } = await supabase
-  .from("orders")
-  .select("id, automation_status")
-  .eq("automation_status", "completed")
-  .is("song_url", null)
-  .is("dismissed_at", null)
-  .limit(10);
-
-if (completedNoAudio?.length) {
-  for (const order of completedNoAudio) {
-    console.log(`[FAILSAFE] Order ${order.id} marked completed but has no song_url, resetting to failed`);
-    await supabase
-      .from("orders")
-      .update({
-        automation_status: "failed",
-        automation_last_error: "Marked completed without song_url - reset by failsafe",
-      })
-      .eq("id", order.id);
-  }
-}
-```
-
-Same pattern for leads checking `preview_song_url`.
+I'd recommend option 1 -- get the list, then decide. Not all multi-order customers are duplicates (some may be repeat buyers for different recipients).
 
