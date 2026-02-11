@@ -312,8 +312,8 @@ Deno.serve(async (req) => {
           .from("leads")
           .select("id")
           .eq("email", (metadata.customerEmail || session.customer_email || "").toLowerCase())
-          .eq("status", "lead")
-          .single();
+          .neq("status", "converted")
+          .maybeSingle();
 
         if (matchingLead) {
           await supabase

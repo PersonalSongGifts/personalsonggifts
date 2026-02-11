@@ -933,6 +933,24 @@ Deno.serve(async (req) => {
               continue;
             }
 
+            // Purchase guard: check if customer already has a paid order
+            const { data: existingOrder } = await supabase
+              .from("orders")
+              .select("id")
+              .eq("customer_email", lead.email)
+              .neq("status", "cancelled")
+              .limit(1)
+              .maybeSingle();
+
+            if (existingOrder) {
+              console.log(`[PREVIEW] Lead ${lead.id} has paid order ${existingOrder.id}, auto-converting`);
+              await supabase.from("leads")
+                .update({ status: "converted", converted_at: new Date().toISOString(), order_id: existingOrder.id })
+                .eq("id", lead.id);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: "Auto-converted: customer already paid" });
+              continue;
+            }
+
             const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}`;
 
             const emailHtml = `

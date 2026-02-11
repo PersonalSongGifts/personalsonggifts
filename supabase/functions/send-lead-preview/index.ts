@@ -64,6 +64,26 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Purchase guard: check if customer already has a paid order
+    const { data: existingOrder } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("customer_email", lead.email)
+      .neq("status", "cancelled")
+      .limit(1)
+      .maybeSingle();
+
+    if (existingOrder) {
+      console.log(`Lead ${lead.id} has paid order ${existingOrder.id}, auto-converting`);
+      await supabase.from("leads")
+        .update({ status: "converted", converted_at: new Date().toISOString(), order_id: existingOrder.id })
+        .eq("id", lead.id);
+      return new Response(
+        JSON.stringify({ error: "Lead auto-converted: customer already paid" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Check if preview already sent (unless resend=true)
     if (lead.preview_sent_at && !resend) {
       return new Response(
