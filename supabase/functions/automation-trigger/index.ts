@@ -85,6 +85,28 @@ Deno.serve(async (req) => {
     
     console.log(`[TRIGGER] Found ${entityType}: ${recipientName} (${email})`);
 
+    // Purchase guard: skip automation for leads that already have a paid order
+    if (entityType === "lead") {
+      const { data: existingOrder } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("customer_email", email)
+        .neq("status", "cancelled")
+        .limit(1)
+        .maybeSingle();
+
+      if (existingOrder) {
+        console.log(`[TRIGGER] Lead ${entityId} has paid order ${existingOrder.id}, auto-converting and skipping`);
+        await supabase.from("leads")
+          .update({ status: "converted", converted_at: new Date().toISOString(), order_id: existingOrder.id })
+          .eq("id", entityId);
+        return new Response(
+          JSON.stringify({ error: "Lead auto-converted: customer already paid", orderId: existingOrder.id }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Check if already has a song (skip unless forcing)
     if (existingSongUrl && !forceRun) {
       console.log(`[TRIGGER] ${entityType} ${entityId} already has a song, skipping`);
