@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { computeInputsHash } from "../_shared/hash-utils.ts";
+import { logActivity } from "../_shared/activity-log.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -160,6 +161,34 @@ Deno.serve(async (req) => {
 
         return new Response(
           JSON.stringify({ orders, leads: leads || [] }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Get activity log for an entity
+      if (body?.action === "get_activity_log") {
+        const entityId = typeof body.entityId === "string" ? body.entityId : null;
+        if (!entityId) {
+          return new Response(
+            JSON.stringify({ error: "entityId required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: events, error: logError } = await supabase
+          .from("order_activity_log")
+          .select("id, event_type, actor, details, metadata, created_at")
+          .eq("entity_id", entityId)
+          .order("created_at", { ascending: false })
+          .limit(100);
+
+        if (logError) {
+          console.error("Failed to fetch activity log:", logError);
+          throw logError;
+        }
+
+        return new Response(
+          JSON.stringify({ events: events || [] }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -483,6 +512,8 @@ Deno.serve(async (req) => {
 
         console.log(`Automation cancelled for ${table.slice(0, -1)} ${id}`);
 
+        await logActivity(supabase, orderId ? "order" : "lead", id!, "automation_cancelled", "admin", "Cancelled by admin");
+
         return new Response(
           JSON.stringify({ success: true }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -718,6 +749,8 @@ Deno.serve(async (req) => {
 
         console.log(`Order ${orderId} ${dismissed ? "cancelled" : "restored"}`);
 
+        await logActivity(supabase, "order", orderId!, dismissed ? "order_cancelled" : "order_restored", "admin");
+
         return new Response(
           JSON.stringify({ order: updatedOrder }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -801,7 +834,8 @@ Deno.serve(async (req) => {
         }
 
         // If automation_lyrics is being edited, set manual override to prevent AI overwrite
-        if (safeUpdates.automation_lyrics !== undefined) {
+        const isLyricsEdit = safeUpdates.automation_lyrics !== undefined;
+        if (isLyricsEdit) {
           safeUpdates.automation_manual_override_at = new Date().toISOString();
         }
 
@@ -815,6 +849,13 @@ Deno.serve(async (req) => {
         if (updateError) {
           console.error("Failed to update order fields:", updateError);
           throw updateError;
+        }
+
+        if (isLyricsEdit) {
+          await logActivity(supabase, "order", orderId!, "lyrics_edited", "admin", `Lyrics manually edited`);
+        } else {
+          const changedFields = Object.keys(safeUpdates).filter(k => k !== "automation_manual_override_at");
+          await logActivity(supabase, "order", orderId!, "fields_updated", "admin", `Updated: ${changedFields.join(", ")}`);
         }
 
         // If lyrics_language_code changed, recompute inputs_hash and handle delivery safety
@@ -928,7 +969,8 @@ Deno.serve(async (req) => {
         }
 
         // If automation_lyrics is being edited, set manual override to prevent AI overwrite
-        if (safeUpdates.automation_lyrics !== undefined) {
+        const isLeadLyricsEdit = safeUpdates.automation_lyrics !== undefined;
+        if (isLeadLyricsEdit) {
           safeUpdates.automation_manual_override_at = new Date().toISOString();
         }
 
@@ -942,6 +984,13 @@ Deno.serve(async (req) => {
         if (updateError) {
           console.error("Failed to update lead fields:", updateError);
           throw updateError;
+        }
+
+        if (isLeadLyricsEdit) {
+          await logActivity(supabase, "lead", leadId!, "lyrics_edited", "admin", `Lyrics manually edited`);
+        } else {
+          const changedFields = Object.keys(safeUpdates).filter(k => k !== "automation_manual_override_at");
+          await logActivity(supabase, "lead", leadId!, "fields_updated", "admin", `Updated: ${changedFields.join(", ")}`);
         }
 
         // If lyrics_language_code changed, recompute inputs_hash
@@ -1570,6 +1619,8 @@ Deno.serve(async (req) => {
 
         console.log(`[REGENERATE] ✅ Success for ${entityType} ${entityId}`);
 
+        await logActivity(supabase, orderId ? "order" : "lead", entityId!, "song_regenerated", "admin", `Regeneration triggered, sendOption=${sendOption}`);
+
         return new Response(
           JSON.stringify({ success: true, targetSendAt, entityType, entityId, env }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -1782,10 +1833,12 @@ Deno.serve(async (req) => {
 
       console.log(`[ADMIN] Automation reset for ${entityType} ${entityId}, clearAssets=${clearAssets}`);
 
-      return new Response(
-        JSON.stringify({ success: true, mode: clearAssets ? "full_reset" : "preserve_song" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+        await logActivity(supabase, orderId ? "order" : "lead", entityId!, "automation_reset", "admin", clearAssets ? "Full reset with asset clearing" : "Soft reset, assets preserved");
+
+        return new Response(
+          JSON.stringify({ success: true, mode: clearAssets ? "full_reset" : "preserve_song" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
     }
 
     // Get alerts summary for dashboard banner

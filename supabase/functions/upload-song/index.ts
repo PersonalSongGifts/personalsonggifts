@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import MP3Tag from "npm:mp3tag.js@3.11.0";
+import { logActivity } from "../_shared/activity-log.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -320,6 +321,8 @@ Deno.serve(async (req) => {
         console.log(`Cover art extracted: ${coverImageUrl}`);
       }
 
+      await logActivity(supabase, "order", targetId, "song_uploaded", "admin", `Manual upload: "${songTitle}", ${uint8Array.length} bytes`);
+
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -432,6 +435,8 @@ Deno.serve(async (req) => {
     console.log(`Full: ${fullSongUrl}`);
     console.log(`Preview: ${previewSongUrl}`);
     console.log(`Token: ${previewToken}`);
+
+    await logActivity(supabase, "lead", targetId, "song_uploaded", "admin", `Manual upload: "${songTitle}", ${uint8Array.length} bytes`);
 
     return new Response(
       JSON.stringify({ 

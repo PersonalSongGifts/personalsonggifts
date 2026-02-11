@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { logActivity } from "../_shared/activity-log.ts";
 import {
   getLanguageLabel,
   buildLanguagePromptBlock,
@@ -411,6 +412,8 @@ Remember:
       .eq("id", entityId);
 
     console.log(`[LYRICS] ✅ Lyrics saved for ${entityType} ${entityId} (language: ${languageLabel}, QA: ${finalQA.passed ? "passed" : "passed with warnings"})`);
+
+    await logActivity(supabase, entityType as "order" | "lead", entityId, "lyrics_generated", "system", `Lyrics generated, ${finalLyrics.length} chars, language: ${languageLabel}`);
 
     return new Response(
       JSON.stringify({ 

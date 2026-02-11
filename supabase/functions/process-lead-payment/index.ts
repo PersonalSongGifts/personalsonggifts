@@ -1,5 +1,6 @@
 import Stripe from "npm:stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { logActivity } from "../_shared/activity-log.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -199,6 +200,9 @@ Deno.serve(async (req) => {
       .eq("id", lead.id);
 
     console.log(`Lead ${lead.id} converted to order ${newOrder.id}`);
+
+    await logActivity(supabase, "lead", lead.id, "lead_converted", "system", `Converted to order ${newOrder.id.slice(0, 8).toUpperCase()}`);
+    await logActivity(supabase, "order", newOrder.id, "order_created", "system", `Created from lead conversion, $${priceCents / 100}`);
 
     // Fallback: if lyrics weren't ready when the lead paid, trigger generation for the new order
     if (!lead.automation_lyrics) {

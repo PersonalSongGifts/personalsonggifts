@@ -1,4 +1,6 @@
+import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { sendSms } from "../_shared/brevo-sms.ts";
+import { logActivity } from "../_shared/activity-log.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -201,6 +203,12 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
     const result = await response.json();
     console.log("Song delivery email sent:", result);
+
+    // Log activity
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sbClient = createClient(supabaseUrl, supabaseServiceKey);
+    await logActivity(sbClient, "order", orderId, "delivery_sent", "system", `Delivery email sent to ${customerEmail}`);
 
     // === SMS DELIVERY (after email success) ===
     let smsResult = null;
