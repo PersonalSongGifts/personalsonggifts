@@ -1,45 +1,120 @@
 
 
-## Add "Stop Automation" Button to Both Leads and Orders
+## Order Activity Log
 
-### What It Does
+### Problem
+When customers have issues (like Cathy's case where the wrong song was delivered), there's no way to trace what happened -- when songs were generated, regenerated, uploaded, or delivered. All investigation requires manual database queries.
 
-Adds a visible **"Stop Automation"** button directly in the detail dialogs for both **leads** (LeadsTable.tsx) and **orders** (Admin.tsx). One click immediately halts all in-progress automation, preventing any AI-generated content from overwriting a manual upload.
+### Solution
+Add an `order_activity_log` table that records every significant event for orders and leads, then display a chronological timeline in the admin detail dialogs.
 
-### Backend Change: Extend `cancel_automation` to support orders
+### What Gets Logged (Event Types)
+- `order_created` -- new order placed
+- `lyrics_generated` -- AI lyrics completed
+- `audio_generated` -- AI audio completed (with Suno task ID)
+- `song_uploaded` -- manual admin upload
+- `song_regenerated` -- regeneration triggered (clears old assets)
+- `delivery_sent` -- email delivered
+- `delivery_scheduled` -- scheduled for future send
+- `resend_scheduled` -- resend scheduled after song replacement
+- `resend_sent` -- resend email delivered
+- `automation_cancelled` -- admin stopped automation
+- `automation_reset` -- automation reset for re-generation
+- `lyrics_edited` -- admin manually edited lyrics
+- `fields_updated` -- admin edited order/lead fields
+- `lead_converted` -- lead became a paid order
+- `order_cancelled` -- order dismissed/cancelled
+- `order_restored` -- cancelled order restored
 
-The existing `cancel_automation` action in `admin-orders/index.ts` only works on leads. We need to extend it to also accept an `orderId` parameter and update the `orders` table.
+### UI
+A collapsible "Activity Log" section inside the order/lead detail dialogs showing a vertical timeline with:
+- Timestamp (PST)
+- Event type badge (color-coded)
+- Actor ("system" or "admin")
+- Details text (e.g., "Lyrics generated, 1842 chars, language: en")
 
-**Logic**: If `orderId` is provided, update `orders` table. If `leadId` is provided, update `leads` table (existing behavior). Require exactly one of the two.
+---
 
-### Frontend Changes
+### Technical Details
 
-**Lead Detail Dialog (`src/components/admin/LeadsTable.tsx`)**:
-- Add a red "Stop Automation" button inside the existing Automation Status section (lines 1697-1729)
-- Visible when `automation_status` is active (`queued`, `pending`, `lyrics_generating`, `lyrics_ready`, `audio_generating`) AND `automation_manual_override_at` is null
-- On click: calls `admin-orders` with `action: "cancel_automation", leadId: selectedLead.id`
-- After success: refreshes leads and shows toast
+#### 1. New Database Table
 
-**Order Detail Dialog (`src/pages/Admin.tsx`)**:
-- Add the same "Stop Automation" button inside the Automation Controls section (lines 1755-1813)
-- Same visibility logic using the order's `automation_status` and `automation_manual_override_at`
-- On click: calls `admin-orders` with `action: "cancel_automation", orderId: selectedOrder.id`
-- After success: refreshes orders and shows toast
+```sql
+CREATE TABLE public.order_activity_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type text NOT NULL,        -- 'order' or 'lead'
+  entity_id uuid NOT NULL,
+  event_type text NOT NULL,
+  actor text NOT NULL DEFAULT 'system',  -- 'system' or 'admin'
+  details text,
+  metadata jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
-### Pitfalls
+CREATE INDEX idx_activity_log_entity 
+  ON public.order_activity_log (entity_type, entity_id, created_at DESC);
 
-| Pitfall | Prevention |
-|---------|------------|
-| Backend only supports `leadId` today | Extend the action to accept `orderId` as an alternative, updating the `orders` table instead |
-| Suno callback arrives after cancel | Already protected -- all callback handlers check `automation_manual_override_at` before writing |
-| Admin uploads a song without clicking Stop first | Still safe -- `upload-song` automatically sets `automation_manual_override_at` |
-| Admin wants to re-enable automation later | "Regenerate Song" and "Reset Automation" already clear `automation_manual_override_at` |
-| Button shows after automation already completed | Visibility guard checks for active statuses only, so it won't appear on `completed` or null statuses |
+ALTER TABLE public.order_activity_log ENABLE ROW LEVEL SECURITY;
 
-### Files Modified
+CREATE POLICY "No public access to activity log"
+  ON public.order_activity_log FOR ALL
+  USING (false);
+```
 
-- **`supabase/functions/admin-orders/index.ts`** -- extend `cancel_automation` to accept `orderId`
-- **`src/components/admin/LeadsTable.tsx`** -- add Stop Automation button in lead detail dialog
-- **`src/pages/Admin.tsx`** -- add Stop Automation button in order detail dialog
+#### 2. Shared Logging Helper
 
-No database changes. No new dependencies. No new files.
+Create `supabase/functions/_shared/activity-log.ts` with a `logActivity()` function that edge functions can import:
+
+```typescript
+export async function logActivity(
+  supabase: SupabaseClient,
+  entityType: "order" | "lead",
+  entityId: string,
+  eventType: string,
+  actor: "system" | "admin",
+  details?: string,
+  metadata?: Record<string, unknown>
+)
+```
+
+#### 3. Edge Function Instrumentation
+
+Add `logActivity()` calls to these existing edge functions:
+- `admin-orders/index.ts` -- for regenerate, reset, cancel, field edits, lyrics edits, resend scheduling, delivery scheduling, order dismissal/restore
+- `upload-song/index.ts` -- for manual song uploads
+- `automation-generate-lyrics/index.ts` -- when lyrics are generated
+- `automation-suno-callback/index.ts` -- when audio is generated
+- `send-song-delivery/index.ts` -- when delivery email is sent
+- `send-lead-preview/index.ts` -- when lead preview email is sent
+- `process-lead-payment/index.ts` -- when lead converts to order
+- `stripe-webhook/index.ts` -- when order is created
+- `process-payment/index.ts` -- when order is created (fallback)
+
+#### 4. Fetch Endpoint
+
+Add a new action `get_activity_log` to `admin-orders/index.ts` that queries the log by entity_id, returns up to 100 events sorted by created_at DESC.
+
+#### 5. Admin UI Component
+
+Create `src/components/admin/ActivityLog.tsx`:
+- Collapsible section using existing Collapsible component
+- Fetches log when opened (lazy load)
+- Vertical timeline with color-coded event badges
+- Timestamps displayed in PST using existing `formatAdminDate`
+- Placed inside both order and lead detail dialogs
+
+#### 6. Files to Create
+- `supabase/functions/_shared/activity-log.ts`
+- `src/components/admin/ActivityLog.tsx`
+
+#### 7. Files to Modify
+- `supabase/functions/admin-orders/index.ts` (add get_activity_log action + log calls to existing actions)
+- `supabase/functions/upload-song/index.ts` (log on upload)
+- `supabase/functions/automation-generate-lyrics/index.ts` (log on lyrics ready)
+- `supabase/functions/automation-suno-callback/index.ts` (log on audio ready)
+- `supabase/functions/send-song-delivery/index.ts` (log on delivery)
+- `supabase/functions/send-lead-preview/index.ts` (log on preview sent)
+- `supabase/functions/process-lead-payment/index.ts` (log on conversion)
+- `supabase/functions/stripe-webhook/index.ts` (log on order creation)
+- `src/pages/Admin.tsx` (add ActivityLog component to order/lead detail dialogs)
+
