@@ -37,7 +37,7 @@ export default function ValentineDeliveryNotice() {
       </p>
       <p className="text-sm text-foreground/90 leading-relaxed">
         We're nearly booked for Valentine's Day.{" "}
-        <span className="font-semibold">7 of 40</span> Valentine's Day orders are still available.
+        <span className="font-semibold">6 of 40</span> Valentine's Day orders are still available.
       </p>
       <p className="text-xs text-muted-foreground">
         Orders placed now are still eligible for Valentine's delivery.
