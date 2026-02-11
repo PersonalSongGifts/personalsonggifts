@@ -31,6 +31,7 @@ import { SourceAnalytics } from "@/components/admin/SourceAnalytics";
 import { SalesVelocity } from "@/components/admin/SalesVelocity";
 import { SalesHeatmap } from "@/components/admin/SalesHeatmap";
 import { HotLeadsCard } from "@/components/admin/HotLeadsCard";
+import { ConversionFunnel } from "@/components/admin/ConversionFunnel";
 import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 
@@ -967,6 +968,8 @@ export default function Admin() {
             <StatsCards orders={allOrders} leads={leads} />
             
             <SalesVelocity orders={allOrders} />
+            
+            <ConversionFunnel orders={allOrders} leads={leads} />
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <RevenueChart orders={allOrders} />
