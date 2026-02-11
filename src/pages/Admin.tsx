@@ -33,6 +33,7 @@ import { SalesHeatmap } from "@/components/admin/SalesHeatmap";
 import { HotLeadsCard } from "@/components/admin/HotLeadsCard";
 import { ConversionFunnel } from "@/components/admin/ConversionFunnel";
 import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
+import { FunnelInsights } from "@/components/admin/FunnelInsights";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 
 interface Order {
@@ -985,6 +986,9 @@ export default function Admin() {
             
             {/* Source Analytics */}
             <SourceAnalytics orders={allOrders} leads={leads} />
+
+            {/* Device & Speed Insights */}
+            <FunnelInsights orders={allOrders} leads={leads} />
 
             {/* Hot Leads - most engaged unconverted */}
             <HotLeadsCard
