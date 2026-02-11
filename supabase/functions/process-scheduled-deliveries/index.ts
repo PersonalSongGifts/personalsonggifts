@@ -134,6 +134,52 @@ Deno.serve(async (req) => {
         }
       }
 
+      // --- FAILSAFE: Reset records marked "completed" but missing audio ---
+      const { data: completedNoAudioOrders } = await supabase
+        .from("orders")
+        .select("id, automation_status")
+        .eq("automation_status", "completed")
+        .is("song_url", null)
+        .is("dismissed_at", null)
+        .limit(10);
+
+      if (completedNoAudioOrders?.length) {
+        for (const order of completedNoAudioOrders) {
+          console.log(`[FAILSAFE] Order ${order.id} marked completed but has no song_url, resetting to failed`);
+          await supabase
+            .from("orders")
+            .update({
+              automation_status: "failed",
+              automation_last_error: "Marked completed without song_url - reset by failsafe",
+            })
+            .eq("id", order.id);
+        }
+        results.completedNoAudioOrders = completedNoAudioOrders.length;
+      }
+
+      // Same for leads
+      const { data: completedNoAudioLeads } = await supabase
+        .from("leads")
+        .select("id, automation_status")
+        .eq("automation_status", "completed")
+        .is("preview_song_url", null)
+        .is("dismissed_at", null)
+        .limit(10);
+
+      if (completedNoAudioLeads?.length) {
+        for (const lead of completedNoAudioLeads) {
+          console.log(`[FAILSAFE] Lead ${lead.id} marked completed but has no preview_song_url, resetting to failed`);
+          await supabase
+            .from("leads")
+            .update({
+              automation_status: "failed",
+              automation_last_error: "Marked completed without preview_song_url - reset by failsafe",
+            })
+            .eq("id", lead.id);
+        }
+        results.completedNoAudioLeads = completedNoAudioLeads.length;
+      }
+
       // --- STUCK EARLY-STAGE RECOVERY ---
       // Catch items stuck in lyrics_generating, pending, or queued for >15 min
       // These have no audio task_id so the audio recovery above won't catch them

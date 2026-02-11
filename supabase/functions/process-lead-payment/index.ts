@@ -142,14 +142,14 @@ Deno.serve(async (req) => {
         song_title: lead.song_title,
         cover_image_url: lead.cover_image_url,
         automation_lyrics: lead.automation_lyrics,
-        automation_status: lead.automation_lyrics ? "completed" : null,
+        automation_status: lead.full_song_url ? "completed" : (lead.automation_lyrics ? "lyrics_ready" : null),
         lyrics_language_code: lead.lyrics_language_code || "en",
         inputs_hash: lead.inputs_hash,
         source: "lead_conversion",
         device_type: "Web",
         notes: `lead_session:${sessionId}`,
-        status: "delivered", // Immediate delivery since song already exists
-        delivered_at: new Date().toISOString(),
+        status: lead.full_song_url ? "delivered" : "pending",
+        delivered_at: lead.full_song_url ? new Date().toISOString() : null,
       })
       .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents")
       .single();
