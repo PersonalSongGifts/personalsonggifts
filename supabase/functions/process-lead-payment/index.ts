@@ -204,8 +204,10 @@ Deno.serve(async (req) => {
     await logActivity(supabase, "lead", lead.id, "lead_converted", "system", `Converted to order ${newOrder.id.slice(0, 8).toUpperCase()}`);
     await logActivity(supabase, "order", newOrder.id, "order_created", "system", `Created from lead conversion, $${priceCents / 100}`);
 
-    // Fallback: if lyrics weren't ready when the lead paid, trigger generation for the new order
-    if (!lead.automation_lyrics) {
+    // Fallback: if lyrics AND audio are both missing, trigger generation for the new order.
+    // If audio exists but lyrics are missing, do NOT regenerate — the existing audio's paired lyrics
+    // are the correct ones. Regenerating would create a lyrics/audio mismatch.
+    if (!lead.automation_lyrics && !lead.full_song_url) {
       try {
         console.log(`Lyrics missing on lead ${lead.id}, triggering generation for order ${newOrder.id}`);
         await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
