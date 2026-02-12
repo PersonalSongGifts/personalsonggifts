@@ -993,8 +993,8 @@ Deno.serve(async (req) => {
       
       <div style="background-color: #FFF8E7; border-left: 4px solid #FFA000; padding: 15px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
         <p style="color: #5D4E37; margin: 0; font-size: 15px;">
-          <strong>50% Off Today!</strong><br>
-          Complete your order now and get instant access to the full song.
+       <strong>Special offer inside!</strong><br>
+          Complete your order now to unlock the full-length song and download.
         </p>
       </div>
       
@@ -1011,7 +1011,7 @@ Deno.serve(async (req) => {
         <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
       </p>
       <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color: #999;">Unsubscribe</a>
+        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}" style="color: #999;">Unsubscribe</a>
       </p>
     </div>
   </div>
@@ -1028,7 +1028,7 @@ Deno.serve(async (req) => {
               body: JSON.stringify({
                 sender: { name: senderName, email: senderEmail },
                 replyTo: { email: senderEmail, name: senderName },
-                to: [{ email: lead.email, name: lead.customer_name }],
+                to: [{ email: lead.lead_email_override || lead.email, name: lead.customer_name }],
                 subject: `Your song for ${lead.recipient_name} is ready`,
                 htmlContent: emailHtml,
                 textContent: `Your Song for ${lead.recipient_name} is Ready!
@@ -1039,8 +1039,8 @@ Great news! We've created a beautiful personalized ${lead.occasion} song just fo
 
 We're so excited for you to hear it! Listen to a preview here: ${previewUrl}
 
-50% Off Today!
-Complete your order now and get instant access to the full song.
+Special offer inside!
+Complete your order now to unlock the full-length song and download.
 
 With love and music,
 The Personal Song Gifts Team
@@ -1050,14 +1050,14 @@ Personal Song Gifts
 2108 N ST STE N, SACRAMENTO, CA 95816
 https://personalsonggifts.lovable.app
 
-To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}
+To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}
 `,
                 headers: {
                   "Message-ID": `<${lead.id}.${Date.now()}@personalsonggifts.com>`,
                   "X-Entity-Ref-ID": lead.id,
                   "X-Priority": "1",
                   "Precedence": "transactional",
-                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
+                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}>`,
                   "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                 }
               }),
