@@ -206,6 +206,16 @@ Deno.serve(async (req) => {
     
     console.log(`[LYRICS] Found ${entityType}: ${entity.recipient_name} (${entity.recipient_type}), genre: ${entity.genre}, language: ${languageLabel}`);
 
+    // Guard: never regenerate lyrics when audio already exists — would create a mismatch
+    const audioUrl = rawEntity.song_url || rawEntity.full_song_url;
+    if (audioUrl) {
+      console.log(`[LYRICS] Audio already exists for ${entityType} ${entityId}, skipping to preserve pairing`);
+      return new Response(
+        JSON.stringify({ error: "Audio already generated, lyrics locked" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Check if manual override is set
     if (entity.automation_manual_override_at) {
       console.log(`[LYRICS] Manual override active for ${entityType} ${entity.id}, skipping`);
