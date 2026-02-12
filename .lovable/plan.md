@@ -1,64 +1,50 @@
 
 
-## Add Conversion Rate Analytics + Additional Insights
+## Fix Lyrics/Audio Mismatch on Lead-to-Order Conversion
 
-### Overview
-Add a new **Conversion Funnel** analytics component to the Analytics tab showing daily conversion rates (leads-to-orders), plus an **Average Order Value (AOV) trend** chart -- two high-value metrics currently missing from the dashboard.
+### What Happened (Hannah's Case)
+Order `350B2B5B` inherited the correct audio file from lead `4FF1AABB` ("Oh Jim you treat me like a queen in a crown"), but the system then independently regenerated new lyrics ("Oh Jim you're the hero in my story"), creating a mismatch. Hannah paid $4.99 to unlock lyrics that don't match her song.
 
-### New Component: `ConversionFunnel.tsx`
+### Immediate Database Fix
+Copy the correct lyrics and song title from lead `4FF1AABB` onto order `350B2B5B`:
+- Set `automation_lyrics` to the lead's lyrics ("Oh, Jim, you treat me like a queen in a crown...")
+- Set `song_title` to "Oh Jim you treat me like a queen in a crown"
 
-A card showing:
+### Systemic Fix (2 files)
 
-1. **Daily Conversion Rate Chart** (line chart, last 14 days)
-   - X-axis: date
-   - Y-axis: conversion rate (%)
-   - Calculation: `(orders created that day / leads captured that day) * 100`
-   - Excludes cancelled orders
-   - Shows today vs yesterday comparison with trend arrow
-   - All timestamps converted to PST before bucketing
+**1. `supabase/functions/process-lead-payment/index.ts` (line ~207)**
 
-2. **Summary Stats Row** below the chart:
-   - Today's conversion rate vs yesterday's (with % change badge)
-   - 7-day rolling average conversion rate
-   - 30-day rolling average conversion rate
-   - Best day (highest conversion rate and which date)
-
-3. **AOV Trend** (second chart in same component or separate card)
-   - Line chart showing Average Order Value per day over last 14 days
-   - Calculation: `total revenue that day / number of paid orders that day`
-   - Helps spot pricing tier shifts or discount impact
-
-### Placement in Analytics Tab
-
-Insert after `SalesVelocity` and before the existing chart grid:
-
+Current code triggers lyrics generation whenever `lead.automation_lyrics` is missing:
 ```
-StatsCards
-SalesVelocity
-ConversionFunnel  <-- NEW
-AOV Trend         <-- NEW (can be part of same component)
-RevenueChart + OrdersChart
-StatusChart + GenreChart
-SalesHeatmap
-SourceAnalytics
-HotLeads
+if (!lead.automation_lyrics) { trigger automation-generate-lyrics }
 ```
 
-### Technical Details
+Change to only trigger when BOTH lyrics AND audio are missing:
+```
+if (!lead.automation_lyrics && !lead.full_song_url) { trigger automation-generate-lyrics }
+```
 
-**File changes:**
+If the lead already has audio, its paired lyrics are the correct ones -- regenerating would create a mismatch. If the lead has audio but somehow lost its lyrics, the admin can manually trigger regeneration.
 
-1. **`src/components/admin/ConversionFunnel.tsx`** (new file)
-   - Accepts `orders` and `leads` arrays as props
-   - Uses `recharts` LineChart for the daily trend
-   - Uses `date-fns-tz` `toZonedTime` for PST conversion (matches existing pattern in SalesHeatmap/SalesVelocity)
-   - Groups orders by `created_at` date (PST) and leads by `captured_at` date (PST)
-   - Computes daily conversion rate, 7-day and 30-day rolling averages
-   - Shows AOV trend as a second line chart below
+**2. `supabase/functions/automation-generate-lyrics/index.ts` (after line ~203)**
 
-2. **`src/pages/Admin.tsx`**
-   - Import `ConversionFunnel`
-   - Add `<ConversionFunnel orders={allOrders} leads={leads} />` after `<SalesVelocity>`
+Add a safety guard after fetching entity data: if the entity already has a `song_url` (orders) or `full_song_url` (leads), skip lyrics generation entirely. This prevents any code path from overwriting lyrics that are already paired with generated audio.
 
-No database changes needed -- all computed client-side from existing data.
+```typescript
+// Guard: never regenerate lyrics when audio already exists
+const audioUrl = rawEntity.song_url || rawEntity.full_song_url;
+if (audioUrl) {
+  console.log(`[LYRICS] Audio already exists for ${entityType} ${entityId}, skipping to preserve pairing`);
+  return new Response(
+    JSON.stringify({ error: "Audio already generated, lyrics locked" }),
+    { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+```
 
+This guard is placed AFTER the manual override check (line 210) so admin "Regenerate Song" flows (which clear all artifacts first) still work correctly.
+
+### Why This Is Safe
+- Admin "Regenerate Song" clears `song_url`, `automation_lyrics`, and all timestamps before triggering fresh generation -- the new guard won't block it.
+- Admin "AI Generate" override sets `automation_manual_override_at` which is already checked earlier (line 210).
+- The only scenario blocked is automated/fallback lyrics generation when audio already exists -- exactly the bug that caused Hannah's issue.
