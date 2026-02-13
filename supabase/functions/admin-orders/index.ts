@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
         query = query.eq("status", status);
       }
 
-      const { data: orders, error } = await query;
+      const { data: orders, error } = await query.limit(1000);
 
       if (error) {
         throw error;

@@ -415,6 +415,7 @@ const SongPlayer = () => {
   }
 
   if (error || !songData) {
+    const shortId = orderId ? orderId.substring(0, 8).toUpperCase() : null;
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -423,6 +424,21 @@ const SongPlayer = () => {
             <h1 className="text-xl font-semibold mb-2">Song Not Found</h1>
             <p className="text-muted-foreground mb-4">
               {error || "This song may not be ready yet or the link is invalid."}
+            </p>
+            {shortId && (
+              <p className="text-sm text-muted-foreground mb-4">
+                Reference code: <span className="font-mono font-semibold">{shortId}</span>
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground mb-6">
+              Need help? Contact us at{" "}
+              <a
+                href={`mailto:support@personalsonggifts.com${shortId ? `?subject=Song%20Issue%20-%20Ref%20${shortId}` : ""}`}
+                className="text-primary underline"
+              >
+                support@personalsonggifts.com
+              </a>
+              {shortId && <> with reference code <span className="font-mono font-semibold">{shortId}</span></>}
             </p>
             <Link to="/">
               <Button>Go Home</Button>

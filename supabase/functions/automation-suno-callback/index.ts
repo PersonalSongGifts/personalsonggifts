@@ -270,7 +270,7 @@ Deno.serve(async (req) => {
       .from("leads")
       .select("*")
       .eq("automation_task_id", taskId)
-      .single();
+      .maybeSingle();
 
     if (lead && !leadError) {
       entityInfo = { type: "lead", table: "leads", id: lead.id, entity: lead };
@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
         .from("orders")
         .select("*")
         .eq("automation_task_id", taskId)
-        .single();
+        .maybeSingle();
 
       if (order && !orderError) {
         entityInfo = { type: "order", table: "orders", id: order.id, entity: order };
