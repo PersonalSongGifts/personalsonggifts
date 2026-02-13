@@ -54,17 +54,17 @@ Deno.serve(async (req) => {
 
     if (isShortId) {
       const result = await supabase
-        .from("orders")
-        .select(selectFields)
-        .in("status", ["delivered", "ready"])
-        .not("song_url", "is", null);
+        .rpc("find_orders_by_short_id", {
+          short_id: orderId,
+          status_filter: ["delivered", "ready"],
+          require_song_url: true,
+          max_results: 2,
+        });
 
       if (result.error) {
         error = result.error;
       } else {
-        orders = result.data?.filter((o: any) =>
-          o.id.toLowerCase().startsWith(orderId.toLowerCase())
-        ) || [];
+        orders = result.data || [];
       }
     } else {
       const result = await supabase

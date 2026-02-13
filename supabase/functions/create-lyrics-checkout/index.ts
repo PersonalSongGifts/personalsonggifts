@@ -42,12 +42,15 @@ Deno.serve(async (req) => {
 
     if (isShortId) {
       const { data, error } = await supabase
-        .from("orders")
-        .select("id, automation_lyrics, lyrics_unlocked_at")
-        .not("song_url", "is", null);
+        .rpc("find_orders_by_short_id", {
+          short_id: orderId,
+          status_filter: null,
+          require_song_url: true,
+          max_results: 2,
+        });
 
       if (error) throw error;
-      orders = data?.filter((o: any) => o.id.toLowerCase().startsWith(orderId.toLowerCase())) || [];
+      orders = data || [];
     } else {
       const { data, error } = await supabase
         .from("orders")

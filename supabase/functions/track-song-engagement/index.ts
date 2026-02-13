@@ -133,17 +133,27 @@ Deno.serve(async (req) => {
       let order: { id: string; song_played_at: string | null; song_play_count: number | null; song_downloaded_at: string | null; song_download_count: number | null } | null = null;
 
       if (isShortId) {
-        // Short ID: fetch and filter by UUID prefix (same pattern as get-song-page)
         const { data: orders, error: fetchError } = await supabase
-          .from("orders")
-          .select("id, song_played_at, song_play_count, song_downloaded_at, song_download_count");
+          .rpc("find_orders_by_short_id", {
+            short_id: orderId,
+            status_filter: null,
+            require_song_url: false,
+            max_results: 2,
+          });
 
         if (fetchError) {
           console.error("Failed to fetch orders for short ID resolution:", fetchError);
           throw fetchError;
         }
 
-        order = orders?.find(o => o.id.toLowerCase().startsWith(orderId.toLowerCase())) || null;
+        if (orders && orders.length === 1) {
+          order = orders[0];
+        } else if (orders && orders.length > 1) {
+          return new Response(
+            JSON.stringify({ error: "Ambiguous ID" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       } else {
         // Full UUID: direct lookup
         const { data, error: fetchError } = await supabase
