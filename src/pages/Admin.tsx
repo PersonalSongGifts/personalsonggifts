@@ -1487,6 +1487,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="emails" className="space-y-6">
+            <ValentineRemarketingPanel adminPassword={password} />
             <EmailTemplates adminPassword={password} />
           </TabsContent>
         </Tabs>
