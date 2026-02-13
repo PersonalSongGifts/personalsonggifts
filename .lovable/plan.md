@@ -1,33 +1,55 @@
 
+## Fix: Admin Login Failing Due to Memory Limit
 
-## Add Explicit Video Usage Consent to Reaction Submission Page
+### Root Cause
 
-Currently, the consent language on `/submit-reaction` is a passive, vague line of text: *"By submitting this video, you give permission to Personal Song Gifts to use this video."* This does not hold up for advertising, social media, or marketing use.
+The `admin-orders` edge function is crashing with **"Memory limit exceeded"** every time you log in. The login flow calls `action: "list"` which fetches **all 1,010 orders + 3,928 leads** in a single response. This ~5,000 record payload exceeds the edge function's memory cap, causing the function to return a non-2xx error.
 
-### What changes
+### Solution: Add Pagination to the Admin List Endpoint
 
-**File: `src/pages/SubmitReaction.tsx`**
+Instead of returning everything at once, implement server-side pagination with a reasonable page size (e.g., 200 records per page). The frontend will fetch pages as needed.
 
-1. **Replace the passive text disclaimer** (line 199) with a **required checkbox** that the user must check before the Submit button becomes enabled.
+### Changes
 
-2. **Consent checkbox text:**
-   > "I grant Personal Song Gifts a perpetual, royalty-free, worldwide, irrevocable license to use, reproduce, edit, and distribute this video for any purpose, including but not limited to advertising, social media, website content, and promotional materials."
+**1. Edge Function: `supabase/functions/admin-orders/index.ts`**
 
-3. **Disable the "Submit Reaction" button** unless the checkbox is checked (in addition to the existing file-selected check).
+- Add `page` and `pageSize` parameters to the `action: "list"` handler
+- Default to page 0, pageSize 200
+- Return `totalOrders` and `totalLeads` counts alongside the paginated data so the frontend knows how many pages exist
+- Remove the manual pagination loop that concatenates all pages into memory (the current approach defeats the purpose of pagination by loading everything anyway)
+- For the initial login call, only fetch the first page of data
 
-4. Add a `consentChecked` state variable (`useState<boolean>(false)`) and wire it to a Radix checkbox component (already available in the project).
+**2. Frontend: `src/pages/Admin.tsx`**
 
-### What this gives you
+- Update `listOrders` to accept page/pageSize parameters
+- On login, fetch only page 0 (first 200 orders + first 200 leads) to verify credentials and load the initial view
+- Add a "Load More" or auto-pagination mechanism to fetch additional pages as the user scrolls or switches tabs
+- Store total counts to show accurate stats without loading all records
 
-- Explicit, legally robust consent covering ads, social, website, editing rights
-- Active opt-in (checkbox) rather than passive notice
-- Submit button is blocked until consent is granted
-- Uses the existing `Checkbox` and `Label` components already in the project
+### Why This Fixes the Login
 
-### Technical details
+The login currently triggers a full data load. By fetching only 200 orders + 200 leads initially (instead of 5,000 total records), memory usage drops by ~95%, well within the edge function limit.
 
-- New state: `const [consentChecked, setConsentChecked] = useState(false);`
-- Button disabled condition changes from `!selectedFile || isUploading` to `!selectedFile || isUploading || !consentChecked`
-- Checkbox resets to unchecked if user goes back to lookup step
-- No backend changes needed -- consent is implied by successful submission (the checkbox is the gate)
+### Technical Details
 
+```text
+Current flow:
+  Login -> Fetch ALL 1,010 orders + 3,928 leads -> Memory exceeded -> Crash
+
+Fixed flow:
+  Login -> Fetch 200 orders + 200 leads (page 0) -> Success (~400 records)
+  User scrolls -> Fetch page 1, page 2... -> Incremental loading
+```
+
+Edge function changes:
+- Accept `page` (default 0) and `pageSize` (default 200) in the list action body
+- Use `.range(page * pageSize, (page + 1) * pageSize - 1)` for both orders and leads
+- Add separate count queries using `.select('id', { count: 'exact', head: true })` to return totals without loading data
+- Return `{ orders, leads, totalOrders, totalLeads, page, pageSize }`
+
+Frontend changes:
+- `listOrders` sends `page` and `pageSize` in the request body
+- Initial login fetches page 0 only
+- Admin dashboard stores `allOrders` and `allLeads` arrays, appending pages as loaded
+- Add a useEffect or button to load remaining pages after login succeeds
+- Stats cards use the `totalOrders`/`totalLeads` counts from the API response
