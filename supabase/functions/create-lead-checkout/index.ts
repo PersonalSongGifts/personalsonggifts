@@ -79,9 +79,15 @@ Deno.serve(async (req) => {
       apiVersion: "2025-08-27.basil",
     });
 
-    const unitAmount = applyFollowupDiscount
+    let unitAmount = applyFollowupDiscount
       ? LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS
       : LEAD_STANDARD_TOTAL_CENTS;
+
+    // VDay10: subtract $10 server-side when remarketing link is used
+    const VDAY10_DISCOUNT_CENTS = 1000;
+    if (applyVday10Discount) {
+      unitAmount = Math.max(0, unitAmount - VDAY10_DISCOUNT_CENTS);
+    }
 
     // Get origin for redirect URLs
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
@@ -111,6 +117,7 @@ Deno.serve(async (req) => {
         previewToken: previewToken,
         pricingTier: "standard",
         offerPriceCents: String(unitAmount),
+        vday10Applied: applyVday10Discount ? "true" : "false",
         customerName: lead.customer_name,
         customerEmail: lead.email,
         recipientType: lead.recipient_type,
