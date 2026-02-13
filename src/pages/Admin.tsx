@@ -365,16 +365,33 @@ export default function Admin() {
         let accLeads = [...(data.leads || [])];
 
         for (let p = 1; p < maxPages; p++) {
+          await new Promise(r => setTimeout(r, 100));
           try {
             const { data: pageData, error: pageErr } = await listOrders("all", p, pageSize);
-            if (pageErr) break;
+            if (pageErr) {
+              console.error(`Page ${p} returned error:`, pageErr);
+              continue;
+            }
             if (pageData.orders?.length) accOrders = accOrders.concat(pageData.orders);
             if (pageData.leads?.length) accLeads = accLeads.concat(pageData.leads);
             setOrders([...accOrders]);
             setAllOrders([...accOrders]);
             setLeads([...accLeads]);
-          } catch {
-            break;
+          } catch (pageLoadErr) {
+            console.error(`Failed to load page ${p}, retrying...`, pageLoadErr);
+            try {
+              await new Promise(r => setTimeout(r, 500));
+              const { data: retryData, error: retryErr } = await listOrders("all", p, pageSize);
+              if (!retryErr && retryData) {
+                if (retryData.orders?.length) accOrders = accOrders.concat(retryData.orders);
+                if (retryData.leads?.length) accLeads = accLeads.concat(retryData.leads);
+                setOrders([...accOrders]);
+                setAllOrders([...accOrders]);
+                setLeads([...accLeads]);
+              }
+            } catch {
+              console.error(`Page ${p} retry also failed, continuing to next page`);
+            }
           }
         }
         setLoadingMore(false);
@@ -434,16 +451,33 @@ export default function Admin() {
       if (maxPages > 1) {
         setLoadingMore(true);
         for (let p = 1; p < maxPages; p++) {
+          await new Promise(r => setTimeout(r, 100));
           try {
             const { data: pageData, error: pageErr } = await listOrders("all", p, pageSize);
-            if (pageErr) break;
+            if (pageErr) {
+              console.error(`Page ${p} returned error:`, pageErr);
+              continue;
+            }
             if (pageData.orders?.length) accOrders = accOrders.concat(pageData.orders);
             if (pageData.leads?.length) accLeads = accLeads.concat(pageData.leads);
             setOrders([...accOrders]);
             setAllOrders([...accOrders]);
             setLeads([...accLeads]);
-          } catch {
-            break;
+          } catch (pageLoadErr) {
+            console.error(`Failed to load page ${p}, retrying...`, pageLoadErr);
+            try {
+              await new Promise(r => setTimeout(r, 500));
+              const { data: retryData, error: retryErr } = await listOrders("all", p, pageSize);
+              if (!retryErr && retryData) {
+                if (retryData.orders?.length) accOrders = accOrders.concat(retryData.orders);
+                if (retryData.leads?.length) accLeads = accLeads.concat(retryData.leads);
+                setOrders([...accOrders]);
+                setAllOrders([...accOrders]);
+                setLeads([...accLeads]);
+              }
+            } catch {
+              console.error(`Page ${p} retry also failed, continuing to next page`);
+            }
           }
         }
         setLoadingMore(false);
