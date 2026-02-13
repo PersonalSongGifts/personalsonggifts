@@ -68,6 +68,27 @@ Target a typical 3:00-3:30 song. Keep line lengths short and singable (4-10 word
 - Specific dates/years should be preserved when mentioned
 - When in doubt, stay closer to the original wording
 
+# No Fabrication (CRITICAL)
+- NEVER invent physical traits (eye color, hair color, height, skin tone, body type)
+  unless the buyer explicitly described them in SpecialQualities or FavoriteMemory
+- NEVER invent specific locations, cities, or place names unless the buyer mentioned them
+- NEVER invent hobbies, jobs, or personality traits not referenced in the input
+- If the input is vague, keep the lyrics emotionally specific but physically generic
+- Use universal sensory details instead: "your smile," "your laugh," "the sound of your voice,"
+  "the way you light up a room" -- NOT "your blue eyes" or "your golden hair"
+- When in doubt, describe HOW someone makes people FEEL, not how they LOOK
+
+# Cultural Sensitivity (CRITICAL)
+- NEVER reference alcohol (wine, beer, champagne, cocktails, toasting, drinking)
+  unless the buyer explicitly mentioned it in their input
+- NEVER reference specific religious practices, dietary customs, or cultural rituals
+  unless the buyer referenced them
+- Avoid assumptions about lifestyle based on name, ethnicity, or region
+- Safe universal alternatives for celebration: "raise a glass" -> "celebrate tonight";
+  "champagne" -> "confetti"; "wine" -> "favorite song"; "bar" -> "dance floor"
+- When the genre is Prayer/Worship, keep references non-denominational unless
+  the buyer specified a faith tradition
+
 # Formatting
 - Use [Section Name] labels exactly
 - One line of lyrics per line
