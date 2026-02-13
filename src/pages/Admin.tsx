@@ -374,9 +374,6 @@ export default function Admin() {
             }
             if (pageData.orders?.length) accOrders = accOrders.concat(pageData.orders);
             if (pageData.leads?.length) accLeads = accLeads.concat(pageData.leads);
-            setOrders([...accOrders]);
-            setAllOrders([...accOrders]);
-            setLeads([...accLeads]);
           } catch (pageLoadErr) {
             console.error(`Failed to load page ${p}, retrying...`, pageLoadErr);
             try {
@@ -385,15 +382,16 @@ export default function Admin() {
               if (!retryErr && retryData) {
                 if (retryData.orders?.length) accOrders = accOrders.concat(retryData.orders);
                 if (retryData.leads?.length) accLeads = accLeads.concat(retryData.leads);
-                setOrders([...accOrders]);
-                setAllOrders([...accOrders]);
-                setLeads([...accLeads]);
               }
             } catch {
               console.error(`Page ${p} retry also failed, continuing to next page`);
             }
           }
         }
+        // Batch update: set state once after all pages loaded
+        setOrders([...accOrders]);
+        setAllOrders([...accOrders]);
+        setLeads([...accLeads]);
         setLoadingMore(false);
       }
     } catch (err: unknown) {
@@ -460,9 +458,6 @@ export default function Admin() {
             }
             if (pageData.orders?.length) accOrders = accOrders.concat(pageData.orders);
             if (pageData.leads?.length) accLeads = accLeads.concat(pageData.leads);
-            setOrders([...accOrders]);
-            setAllOrders([...accOrders]);
-            setLeads([...accLeads]);
           } catch (pageLoadErr) {
             console.error(`Failed to load page ${p}, retrying...`, pageLoadErr);
             try {
@@ -471,15 +466,16 @@ export default function Admin() {
               if (!retryErr && retryData) {
                 if (retryData.orders?.length) accOrders = accOrders.concat(retryData.orders);
                 if (retryData.leads?.length) accLeads = accLeads.concat(retryData.leads);
-                setOrders([...accOrders]);
-                setAllOrders([...accOrders]);
-                setLeads([...accLeads]);
               }
             } catch {
               console.error(`Page ${p} retry also failed, continuing to next page`);
             }
           }
         }
+        // Batch update: set state once after all pages loaded
+        setOrders([...accOrders]);
+        setAllOrders([...accOrders]);
+        setLeads([...accLeads]);
         setLoadingMore(false);
       }
     } catch {
@@ -1124,44 +1120,30 @@ export default function Admin() {
                  <SelectItem value="lead_conversion">🔄 Converted Leads</SelectItem>
                </SelectContent>
              </Select>
-              <Input
+               <Input
                 placeholder="Search orders..."
                 value={orderSearch}
-                onChange={(e) => setOrderSearch(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setOrderSearch(val);
+                  if (val.trim()) {
+                    setStatusFilter("all");
+                    setDismissedOrderFilter("all");
+                    setSourceFilter("all");
+                  }
+                }}
                 className="w-64"
-              />
-              <span className="text-sm text-muted-foreground">
-                {orders.filter((order) => {
-                  if (!orderSearch.trim()) return true;
-                  const searchLower = orderSearch.toLowerCase();
-                  return (
-                    order.customer_name.toLowerCase().includes(searchLower) ||
-                    order.customer_email.toLowerCase().includes(searchLower) ||
-                    order.recipient_name.toLowerCase().includes(searchLower) ||
-                    order.genre.toLowerCase().includes(searchLower) ||
-                    order.special_qualities.toLowerCase().includes(searchLower) ||
-                    order.favorite_memory.toLowerCase().includes(searchLower) ||
-                    (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
-                    (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
-                    order.occasion.toLowerCase().includes(searchLower)
-                  );
-                }).length} order{orders.filter((order) => {
-                  if (!orderSearch.trim()) return true;
-                  const searchLower = orderSearch.toLowerCase();
-                  return (
-                    order.customer_name.toLowerCase().includes(searchLower) ||
-                    order.customer_email.toLowerCase().includes(searchLower) ||
-                    order.recipient_name.toLowerCase().includes(searchLower) ||
-                    order.genre.toLowerCase().includes(searchLower) ||
-                    order.special_qualities.toLowerCase().includes(searchLower) ||
-                    order.favorite_memory.toLowerCase().includes(searchLower) ||
-                    (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
-                    (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
-                    order.occasion.toLowerCase().includes(searchLower)
-                  );
-                }).length !== 1 ? "s" : ""}
-              </span>
-            </div>
+               />
+               <span className="text-sm text-muted-foreground whitespace-nowrap">
+                 {orders.length} order{orders.length !== 1 ? "s" : ""}
+                 {loadingMore && (
+                   <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground/70">
+                     <Loader2 className="h-3 w-3 animate-spin" />
+                     loading more…
+                   </span>
+                 )}
+               </span>
+             </div>
 
             {(() => {
               // Helper to format time until auto-send
