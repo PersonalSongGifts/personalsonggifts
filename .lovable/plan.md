@@ -1,95 +1,64 @@
 
 
-## Fix: Dashboard Only Showing 200 Orders
+## Fix: Prevent Gemini from Inventing Details or Including Culturally Sensitive Content
 
 ### Problem
 
-The admin dashboard loads orders in pages of 200. Page 0 loads fine, but the background sync for pages 1-5 (to get all 1,063 orders) is **silently failing**. The `catch { break }` on line 376 of `Admin.tsx` swallows the error, so you only ever see the first 200 orders.
+Two categories of issues:
 
-Edge function logs confirm: only "page 0" requests are reaching the server in recent sessions -- pages 1+ are never received.
+1. **Hallucinated physical traits**: Gemini invents details like "blue eyes" or "golden hair" that were never mentioned by the customer. This feels wrong and breaks trust.
+2. **Culturally insensitive content**: Gemini defaults to Western tropes (wine, champagne, toasting) that can be offensive -- e.g., referencing alcohol for a Muslim recipient.
 
-### Colleen's Issue (Already Fixed)
+### Root Cause
 
-Colleen's order `be7cedeb` is in the database with status `delivered` and a valid `song_url`. Her "Song Not Found" error was caused by the 1,000-row query limit bug we just fixed and deployed. Her song link should work now.
-
-### Root Cause of the 200-Order Cap
-
-The `catch { break }` pattern silently swallows any error from subsequent page fetches and stops the entire background sync. If page 1 fails for any reason (timeout, network blip, edge function cold start), ALL remaining pages are skipped and the dashboard stays at 200 orders.
+The system prompt in `supabase/functions/automation-generate-lyrics/index.ts` has a "Detail Fidelity" section that says to preserve details the customer provides, but it never says **"don't invent details the customer didn't provide."** Gemini fills gaps with generic imagery (blue eyes, wine glasses, beach sunsets) because it's trying to be vivid.
 
 ### The Fix
 
-**File: `src/pages/Admin.tsx`** -- Two changes in the background pagination loops:
+Add two new sections to the `SYSTEM_PROMPT` constant (lines 17-81):
 
-1. **Add error logging** instead of silent `catch { break }` so issues are visible in the console
+**1. "No Fabrication" rule** (after the Detail Fidelity section):
 
-2. **Add retry logic** -- if a page fetch fails, retry once before giving up on that page, and continue to the next page instead of breaking the entire loop
-
-3. **Add a small delay between page fetches** to avoid overwhelming the edge function with rapid sequential requests (which may be causing timeouts)
-
-4. **Show a warning toast** if background loading fails partway through, so admins know their data is incomplete
-
-### Changes to Both Pagination Loops (handleLogin + fetchOrders)
-
-Replace:
-```typescript
-catch {
-  break;
-}
+```
+# No Fabrication (CRITICAL)
+- NEVER invent physical traits (eye color, hair color, height, skin tone, body type)
+  unless the buyer explicitly described them in SpecialQualities or FavoriteMemory
+- NEVER invent specific locations, cities, or place names unless the buyer mentioned them
+- NEVER invent hobbies, jobs, or personality traits not referenced in the input
+- If the input is vague, keep the lyrics emotionally specific but physically generic
+- Use universal sensory details instead: "your smile," "your laugh," "the sound of your voice,"
+  "the way you light up a room" -- NOT "your blue eyes" or "your golden hair"
+- When in doubt, describe HOW someone makes people FEEL, not how they LOOK
 ```
 
-With:
-```typescript
-catch (pageLoadErr) {
-  console.error(`Failed to load page ${p}, retrying...`, pageLoadErr);
-  // Retry once
-  try {
-    await new Promise(r => setTimeout(r, 500));
-    const { data: retryData, error: retryErr } = await listOrders("all", p, pageSize);
-    if (!retryErr && retryData) {
-      if (retryData.orders?.length) accOrders = accOrders.concat(retryData.orders);
-      if (retryData.leads?.length) accLeads = accLeads.concat(retryData.leads);
-      setOrders([...accOrders]);
-      setAllOrders([...accOrders]);
-      setLeads([...accLeads]);
-    }
-  } catch {
-    console.error(`Page ${p} retry also failed, continuing to next page`);
-    // Continue instead of break -- try remaining pages
-  }
-}
+**2. "Cultural Sensitivity" rule** (after No Fabrication):
+
+```
+# Cultural Sensitivity (CRITICAL)
+- NEVER reference alcohol (wine, beer, champagne, cocktails, toasting, drinking)
+  unless the buyer explicitly mentioned it in their input
+- NEVER reference specific religious practices, dietary customs, or cultural rituals
+  unless the buyer referenced them
+- Avoid assumptions about lifestyle based on name, ethnicity, or region
+- Safe universal alternatives for celebration: "raise a glass" -> "celebrate tonight";
+  "champagne" -> "confetti"; "wine" -> "favorite song"; "bar" -> "dance floor"
+- When the genre is Prayer/Worship, keep references non-denominational unless
+  the buyer specified a faith tradition
 ```
 
-Also add a 100ms delay between page fetches to prevent request piling:
-```typescript
-// Add inside the for loop, before the try block
-await new Promise(r => setTimeout(r, 100));
-```
+### File Changed
 
-And add an `if (pageErr)` handler that logs instead of silently breaking:
-```typescript
-if (pageErr) {
-  console.error(`Page ${p} returned error:`, pageErr);
-  continue; // Try next page instead of breaking
-}
-```
+| File | Change |
+|------|--------|
+| `supabase/functions/automation-generate-lyrics/index.ts` | Add two new sections to `SYSTEM_PROMPT` between "Detail Fidelity" and "Formatting" |
 
-### Summary of Changes
+### Why This Works
 
-| File | Change | Purpose |
-|------|--------|---------|
-| `src/pages/Admin.tsx` (handleLogin loop, ~line 367) | Add retry, logging, continue-instead-of-break | Prevent silent failure of background sync |
-| `src/pages/Admin.tsx` (fetchOrders loop, ~line 436) | Same changes | Both entry points use the same pattern |
+- Gemini follows explicit negative constraints ("NEVER") very well -- it just needs to be told
+- The "safe alternatives" list gives the model concrete substitutions instead of leaving it guessing
+- The rule to describe feelings over appearances redirects the model's creativity productively
+- No other files need to change -- this is purely a prompt update
 
-### What This Fixes
+### Deployment
 
-- Dashboard will load all 1,063+ orders instead of stopping at 200
-- Failed page loads get retried once before moving on
-- Errors are logged to console for debugging
-- A single page failure no longer kills the entire sync
-
-### No Risk Assessment
-
-- All changes are in the admin dashboard only -- no customer-facing impact
-- The retry adds at most 500ms delay per failed page
-- `continue` instead of `break` means even if some pages fail, you get partial data instead of none
-
+The `automation-generate-lyrics` edge function will be redeployed after the change. Only affects newly generated lyrics -- existing songs are untouched.
