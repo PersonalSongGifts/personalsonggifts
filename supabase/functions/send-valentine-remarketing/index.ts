@@ -65,58 +65,33 @@ function buildEmailHtml(customerName: string, recipientName: string, occasion: s
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your song is waiting</title></head>
-<body style="margin:0;padding:0;background-color:#FDF8F3;font-family:Georgia,'Times New Roman',serif;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF8F3;">
-<tr><td align="center" style="padding:40px 20px;">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<title>You have an unread message</title></head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#222;font-size:15px;line-height:1.6;">
+<div style="max-width:580px;margin:0 auto;padding:40px 20px;">
 
-<!-- Header -->
-<tr><td style="background-color:#1E3A5F;padding:30px 40px;text-align:center;">
-<h1 style="color:#FFFFFF;margin:0;font-size:24px;font-weight:normal;font-family:Georgia,serif;">Personal Song Gifts</h1>
-</td></tr>
+<p>Hi ${customerName},</p>
 
-<!-- Body -->
-<tr><td style="background-color:#FFFFFF;padding:40px;">
+<p>Valentine's Day is coming up and the best part is that ${recipientName}'s personalized song is already finished. What better way to express how you feel than with a song made just for them?</p>
 
-<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 20px;">Hi ${customerName},</p>
+<p>Listen to a preview here:<br>
+<a href="${ctaUrl}" style="color:#1a73e8;">${ctaUrl}</a></p>
 
-<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 20px;">You recently created a custom ${occasion.toLowerCase()} song preview for <strong>${recipientName}</strong>. The full version is ready to unlock instantly.</p>
+<p>
+- Full-length studio version<br>
+- Instant download<br>
+- Guaranteed delivery before Valentine's Day<br>
+- $10 Valentine's bonus applied automatically at checkout
+</p>
 
-<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 20px;">You will receive the complete song download immediately after checkout.</p>
+<p>No shipping, no waiting — delivered instantly.</p>
 
-<!-- Offer Box -->
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
-<tr><td style="border-left:4px solid #D97706;background-color:#FFFBEB;padding:16px 20px;">
-<p style="color:#92400E;font-size:15px;margin:0;line-height:1.5;"><strong>Valentine's Day bonus:</strong> An additional $10 off has been applied to your unlock price automatically.</p>
-</td></tr></table>
+<p>— The Personal Song Gifts Team</p>
 
-<ul style="color:#333;font-size:15px;line-height:1.8;padding-left:20px;margin:0 0 24px;">
-<li>Full-length studio version</li>
-<li>Instant download</li>
-<li>Guaranteed delivery before Valentine's Day</li>
-</ul>
+<p style="color:#999;font-size:12px;margin-top:32px;padding-top:16px;border-top:1px solid #eee;">If you have already purchased, please ignore this email.<br>
+<a href="${unsubscribeUrl}" style="color:#999;">unsubscribe</a></p>
 
-<!-- CTA Button -->
-<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
-<tr><td style="background-color:#16A34A;border-radius:8px;">
-<a href="${ctaUrl}" target="_blank" style="display:inline-block;padding:16px 40px;color:#FFFFFF;font-size:18px;font-weight:bold;text-decoration:none;font-family:Georgia,serif;">Unlock My Full Song</a>
-</td></tr></table>
-
-<p style="color:#666;font-size:13px;text-align:center;margin:16px 0 0;">The $10 discount is applied automatically at checkout.</p>
-
-<p style="color:#999;font-size:13px;margin:24px 0 0;padding-top:16px;border-top:1px solid #eee;">If you have already purchased, please ignore this email. You will not be charged again.</p>
-
-</td></tr>
-
-<!-- Footer -->
-<tr><td style="background-color:#F9FAFB;padding:24px 40px;text-align:center;">
-<p style="color:#999;font-size:12px;margin:0 0 8px;line-height:1.5;">Personal Song Gifts<br>Sacramento, CA 95814</p>
-<p style="color:#999;font-size:12px;margin:0 0 8px;line-height:1.5;">You are receiving this because you started creating a song at Personal Song Gifts.</p>
-<p style="color:#999;font-size:12px;margin:0;line-height:1.5;"><a href="${unsubscribeUrl}" style="color:#6B7280;text-decoration:underline;">Unsubscribe</a> from promotional emails</p>
-</td></tr>
-
-</table></td></tr></table></body></html>`;
+</div>
+</body></html>`;
 }
 
 function buildPlainText(customerName: string, recipientName: string, occasion: string, previewToken: string, origin: string): string {
@@ -125,27 +100,22 @@ function buildPlainText(customerName: string, recipientName: string, occasion: s
 
   return `Hi ${customerName},
 
-You recently created a custom ${occasion.toLowerCase()} song preview for ${recipientName}. The full version is ready to unlock instantly.
+Valentine's Day is coming up and the best part is that ${recipientName}'s personalized song is already finished. What better way to express how you feel than with a song made just for them?
 
-You will receive the complete song download immediately after checkout.
-
-Valentine's Day bonus: An additional $10 off has been applied to your unlock price automatically.
+Listen to a preview here:
+${ctaUrl}
 
 - Full-length studio version
 - Instant download
 - Guaranteed delivery before Valentine's Day
+- $10 Valentine's bonus applied automatically at checkout
 
-Unlock My Full Song: ${ctaUrl}
+No shipping, no waiting — delivered instantly.
 
-The $10 discount is applied automatically at checkout.
+— The Personal Song Gifts Team
 
-If you have already purchased, please ignore this email. You will not be charged again.
-
----
-Personal Song Gifts
-Sacramento, CA 95814
-You are receiving this because you started creating a song at Personal Song Gifts.
-Unsubscribe: ${unsubscribeUrl}`;
+If you have already purchased, please ignore this email.
+unsubscribe: ${unsubscribeUrl}`;
 }
 
 async function sendEmail(
@@ -173,7 +143,7 @@ async function sendEmail(
     body: JSON.stringify({
       sender: { name: senderName, email: senderEmail },
       to: [{ email: toEmail, name: customerName }],
-      subject: "Your Valentine's song is waiting",
+      subject: "You have an unread message from Personal Song Gifts",
       htmlContent,
       textContent,
       headers: {
