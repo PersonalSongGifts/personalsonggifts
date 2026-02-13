@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Pause, Play, Send, BarChart3, RefreshCw } from "lucide-react";
+import { Loader2, Pause, Play, Send, BarChart3, RefreshCw, AlertTriangle, Mail } from "lucide-react";
 
 interface CampaignSettings {
   paused: boolean;
@@ -33,21 +34,24 @@ interface Props {
 export function ValentineRemarketingPanel({ adminPassword }: Props) {
   const [settings, setSettings] = useState<CampaignSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [dryRunCount, setDryRunCount] = useState<number | null>(null);
   const [batchSizeInput, setBatchSizeInput] = useState("500");
+  const [testEmailsInput, setTestEmailsInput] = useState("");
   const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null);
   const { toast } = useToast();
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
   const fetchSettings = useCallback(async () => {
+    setFetchError(null);
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/automation-get-settings`, {
         method: "GET",
         headers: { "x-admin-password": adminPassword },
       });
-      if (!res.ok) throw new Error("Failed to fetch settings");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.valentine_remarketing) {
         try {
@@ -60,6 +64,7 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
       }
     } catch (err) {
       console.error("Failed to fetch campaign settings:", err);
+      setFetchError(String(err));
     } finally {
       setLoading(false);
     }
@@ -92,6 +97,22 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
     }
   };
 
+  const callRemarketingFunction = async (body: Record<string, unknown>) => {
+    const res = await fetch(`${supabaseUrl}/functions/v1/send-valentine-remarketing`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-password": adminPassword,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  };
+
   const handlePause = async () => {
     setActionLoading("pause");
     await updateSetting({ paused: true });
@@ -116,22 +137,6 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
     await updateSetting({ batch_size: size });
     toast({ title: "Batch size updated", description: `Set to ${size} per run.` });
     setActionLoading(null);
-  };
-
-  const callRemarketingFunction = async (body: Record<string, unknown>) => {
-    const res = await fetch(`${supabaseUrl}/functions/v1/send-valentine-remarketing`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-admin-password": adminPassword,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
   };
 
   const handleDryRun = async () => {
@@ -160,7 +165,6 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
           title: data.canaryBatch ? "Canary Batch Sent" : "Batch Sent",
           description: `${data.sent} sent, ${data.failed} failed, ${data.remaining} remaining.`,
         });
-        // Refresh settings to get updated counts
         await fetchSettings();
       }
     } catch (err) {
@@ -170,31 +174,58 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
     }
   };
 
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center">
-          <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-        </CardContent>
-      </Card>
-    );
-  }
+  const handleTestSend = async () => {
+    const emails = testEmailsInput
+      .split(",")
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0);
+    if (emails.length === 0) {
+      toast({ title: "No emails", description: "Enter at least one email address.", variant: "destructive" });
+      return;
+    }
+    setActionLoading("test");
+    try {
+      const data = await callRemarketingFunction({ testEmails: emails });
+      setLastResult(data);
+      toast({ title: "Test Emails Sent", description: `Sent to ${emails.length} address(es).` });
+    } catch (err) {
+      toast({ title: "Test Send Failed", description: String(err), variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const progressPercent = dryRunCount && dryRunCount > 0
     ? Math.min(100, (settings.total_sent / dryRunCount) * 100)
     : 0;
 
   return (
-    <Card>
+    <Card className="border-2 border-primary/20">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Valentine Remarketing Campaign</CardTitle>
-          <Badge variant={settings.paused ? "secondary" : "default"} className={settings.paused ? "" : "bg-green-600"}>
-            {settings.paused ? "Paused" : "Running"}
-          </Badge>
+          <CardTitle className="text-lg">💌 Valentine Remarketing Campaign</CardTitle>
+          <div className="flex items-center gap-2">
+            {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            <Badge variant={settings.paused ? "secondary" : "default"} className={settings.paused ? "" : "bg-green-600"}>
+              {settings.paused ? "Paused" : "Running"}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Error state */}
+        {fetchError && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>Failed to load settings: {fetchError}</span>
+              <Button onClick={fetchSettings} variant="outline" size="sm">
+                <RefreshCw className="h-3 w-3 mr-1" /> Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Progress */}
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
@@ -237,6 +268,31 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
           <Button onClick={fetchSettings} disabled={!!actionLoading} variant="ghost" size="sm">
             <RefreshCw className="h-4 w-4" />
           </Button>
+        </div>
+
+        {/* Send Test Emails */}
+        <div className="space-y-2 rounded-md border p-3 bg-muted/30">
+          <Label className="text-xs font-semibold flex items-center gap-1">
+            <Mail className="h-3 w-3" /> Send Test Remarketing Email
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="email1@example.com, email2@example.com"
+              value={testEmailsInput}
+              onChange={(e) => setTestEmailsInput(e.target.value)}
+              className="h-8 text-sm flex-1"
+            />
+            <Button
+              onClick={handleTestSend}
+              disabled={!!actionLoading || !testEmailsInput.trim()}
+              size="sm"
+              variant="outline"
+            >
+              {actionLoading === "test" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+              Send Test
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Comma-separated. Sends the actual remarketing email to these addresses for testing.</p>
         </div>
 
         {/* Batch Size */}
