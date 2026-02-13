@@ -32,6 +32,21 @@ export type Database = {
         }
         Relationships: []
       }
+      email_suppressions: {
+        Row: {
+          created_at: string
+          email: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           automation_audio_url_source: string | null
@@ -58,6 +73,7 @@ export type Database = {
           genre: string
           id: string
           inputs_hash: string | null
+          last_valentine_remarketing_sent_at: string | null
           lead_email_cc: string | null
           lead_email_override: string | null
           lyrics_language_code: string
@@ -125,6 +141,7 @@ export type Database = {
           genre: string
           id?: string
           inputs_hash?: string | null
+          last_valentine_remarketing_sent_at?: string | null
           lead_email_cc?: string | null
           lead_email_override?: string | null
           lyrics_language_code?: string
@@ -192,6 +209,7 @@ export type Database = {
           genre?: string
           id?: string
           inputs_hash?: string | null
+          last_valentine_remarketing_sent_at?: string | null
           lead_email_cc?: string | null
           lead_email_override?: string | null
           lyrics_language_code?: string
