@@ -456,6 +456,8 @@ Deno.serve(async (req) => {
         .not("preview_token", "is", null)
         .is("last_valentine_remarketing_sent_at", null);
 
+      const totalEligible = (remainingCount || 0) + settings.total_sent + totalSent;
+
       return new Response(
         JSON.stringify({
           send: true,
@@ -464,6 +466,7 @@ Deno.serve(async (req) => {
           sent: totalSent,
           failed: totalFailed,
           remaining: remainingCount || 0,
+          totalEligible,
           errors: errors.slice(0, 20),
           canaryBatch: !settings.canary_sent,
         }),

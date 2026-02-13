@@ -15,6 +15,7 @@ interface CampaignSettings {
   canary_size: number;
   canary_sent: boolean;
   total_sent: number;
+  total_eligible: number;
   last_run_at: string | null;
 }
 
@@ -24,6 +25,7 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   canary_size: 100,
   canary_sent: false,
   total_sent: 0,
+  total_eligible: 0,
   last_run_at: null,
 };
 
@@ -36,7 +38,6 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [dryRunCount, setDryRunCount] = useState<number | null>(null);
   const [batchSizeInput, setBatchSizeInput] = useState("500");
   const [testEmailsInput, setTestEmailsInput] = useState("");
   const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null);
@@ -143,7 +144,7 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
     setActionLoading("dryRun");
     try {
       const data = await callRemarketingFunction({ dryRun: true });
-      setDryRunCount(data.totalEligible);
+      await updateSetting({ total_eligible: data.totalEligible });
       setLastResult(data);
       toast({ title: "Dry Run Complete", description: `${data.totalEligible} eligible leads. ${data.suppressedEmails} suppressed.` });
     } catch (err) {
@@ -195,8 +196,8 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
     }
   };
 
-  const progressPercent = dryRunCount && dryRunCount > 0
-    ? Math.min(100, (settings.total_sent / dryRunCount) * 100)
+  const progressPercent = settings.total_eligible > 0
+    ? Math.min(100, (settings.total_sent / settings.total_eligible) * 100)
     : 0;
 
   return (
@@ -230,7 +231,7 @@ export function ValentineRemarketingPanel({ adminPassword }: Props) {
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">
-              {settings.total_sent} sent{dryRunCount !== null ? ` / ${dryRunCount} eligible` : ""}
+              {settings.total_sent} sent{settings.total_eligible > 0 ? ` / ${settings.total_eligible} eligible` : ""}
             </span>
             <span className="text-muted-foreground">
               {!settings.canary_sent ? "Canary pending (first 100)" : "Post-canary batches"}
