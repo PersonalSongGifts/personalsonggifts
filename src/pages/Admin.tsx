@@ -35,6 +35,7 @@ import { ConversionFunnel } from "@/components/admin/ConversionFunnel";
 import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
 import { FunnelInsights } from "@/components/admin/FunnelInsights";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
+import { ValentineRemarketingPanel } from "@/components/admin/ValentineRemarketingPanel";
 
 interface Order {
   id: string;
