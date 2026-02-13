@@ -615,6 +615,100 @@ export type Database = {
         }
         Returns: number
       }
+      find_orders_by_short_id: {
+        Args: {
+          max_results?: number
+          require_song_url?: boolean
+          select_fields?: string
+          short_id: string
+          status_filter?: string[]
+        }
+        Returns: {
+          automation_audio_url_source: string | null
+          automation_last_error: string | null
+          automation_lyrics: string | null
+          automation_manual_override_at: string | null
+          automation_raw_callback: Json | null
+          automation_retry_count: number | null
+          automation_started_at: string | null
+          automation_status: string | null
+          automation_style_id: string | null
+          automation_task_id: string | null
+          cover_image_url: string | null
+          created_at: string
+          customer_email: string
+          customer_email_cc: string | null
+          customer_email_override: string | null
+          customer_name: string
+          customer_phone: string | null
+          delivered_at: string | null
+          delivery_last_error: string | null
+          delivery_retry_count: number | null
+          delivery_status: string | null
+          device_type: string | null
+          dismissed_at: string | null
+          earliest_generate_at: string | null
+          expected_delivery: string | null
+          favorite_memory: string
+          generated_at: string | null
+          genre: string
+          id: string
+          inputs_hash: string | null
+          lyrics_language_code: string
+          lyrics_language_qa: Json | null
+          lyrics_price_cents: number | null
+          lyrics_raw_attempt_1: string | null
+          lyrics_raw_attempt_2: string | null
+          lyrics_unlock_payment_intent_id: string | null
+          lyrics_unlock_session_id: string | null
+          lyrics_unlocked_at: string | null
+          next_attempt_at: string | null
+          notes: string | null
+          occasion: string
+          phone_e164: string | null
+          price: number
+          price_cents: number | null
+          pricing_tier: string
+          reaction_submitted_at: string | null
+          reaction_video_url: string | null
+          recipient_name: string
+          recipient_name_pronunciation: string | null
+          recipient_type: string
+          resend_scheduled_at: string | null
+          scheduled_delivery_at: string | null
+          sent_at: string | null
+          sent_to_emails: Json | null
+          singer_preference: string
+          sms_last_error: string | null
+          sms_opt_in: boolean
+          sms_scheduled_for: string | null
+          sms_sent_at: string | null
+          sms_status: string | null
+          song_download_count: number | null
+          song_downloaded_at: string | null
+          song_play_count: number | null
+          song_played_at: string | null
+          song_title: string | null
+          song_url: string | null
+          source: string | null
+          special_message: string | null
+          special_qualities: string
+          status: string
+          target_send_at: string | null
+          timezone: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
       [_ in never]: never
