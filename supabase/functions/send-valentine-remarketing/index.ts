@@ -190,8 +190,8 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const brevoApiKey = Deno.env.get("BREVO_API_KEY") || "";
-    const senderEmail = Deno.env.get("BREVO_SENDER_EMAIL") || "support@personalsonggifts.com";
-    const senderName = Deno.env.get("BREVO_SENDER_NAME") || "Personal Song Gifts";
+    const senderEmail = "support@personalsonggifts.com";
+    const senderName = "Personal Song Gifts";
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
 
     // ---- DRY RUN ----
