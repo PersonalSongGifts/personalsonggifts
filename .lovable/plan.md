@@ -1,55 +1,67 @@
 
-## Fix: Admin Login Failing Due to Memory Limit
+
+## Fix: Songs Not Loading ("Song Not Found") for Many Customers
 
 ### Root Cause
 
-The `admin-orders` edge function is crashing with **"Memory limit exceeded"** every time you log in. The login flow calls `action: "list"` which fetches **all 1,010 orders + 3,928 leads** in a single response. This ~5,000 record payload exceeds the edge function's memory cap, causing the function to return a non-2xx error.
+The song delivery page (`/song/:shortId`) uses 8-character short IDs to look up orders. The edge function currently fetches **all 1,052+ delivered orders** into memory, then filters by ID prefix in JavaScript. But Supabase has a **default 1,000-row query limit** -- so any order beyond row 1,000 silently vanishes, causing "Song not found."
 
-### Solution: Add Pagination to the Admin List Endpoint
+As your order volume grew past 1,000 delivered orders, this started affecting more and more customers. It will only get worse as orders increase.
 
-Instead of returning everything at once, implement server-side pagination with a reasonable page size (e.g., 200 records per page). The frontend will fetch pages as needed.
+### The Fix
 
-### Changes
+Replace the "fetch all, filter in JS" pattern with a **server-side prefix filter** using Postgres `ilike`. Instead of loading 1,000+ rows, it loads only the 1 matching row. This is both faster and has no row-limit issues.
 
-**1. Edge Function: `supabase/functions/admin-orders/index.ts`**
+```text
+Before:  SELECT * FROM orders WHERE status IN ('delivered','ready')  --> 1,052 rows --> JS filter
+After:   SELECT * FROM orders WHERE id::text ILIKE 'b15daeb8%'      --> 1 row
+```
 
-- Add `page` and `pageSize` parameters to the `action: "list"` handler
-- Default to page 0, pageSize 200
-- Return `totalOrders` and `totalLeads` counts alongside the paginated data so the frontend knows how many pages exist
-- Remove the manual pagination loop that concatenates all pages into memory (the current approach defeats the purpose of pagination by loading everything anyway)
-- For the initial login call, only fetch the first page of data
+### Files Changed
 
-**2. Frontend: `src/pages/Admin.tsx`**
+**1. `supabase/functions/get-song-page/index.ts`**
+- Replace the short ID branch: instead of fetching all orders and filtering, use `.ilike('id', orderId + '%')` with `.in("status", ["delivered", "ready"])` and `.not("song_url", "is", null)`
+- Add `.limit(2)` to remain collision-safe (if 2+ results, return "Ambiguous ID")
 
-- Update `listOrders` to accept page/pageSize parameters
-- On login, fetch only page 0 (first 200 orders + first 200 leads) to verify credentials and load the initial view
-- Add a "Load More" or auto-pagination mechanism to fetch additional pages as the user scrolls or switches tabs
-- Store total counts to show accurate stats without loading all records
+**2. `supabase/functions/track-song-engagement/index.ts`**
+- Same fix: replace fetch-all + `.find()` with `.ilike('id', orderId + '%').limit(2)`
 
-### Why This Fixes the Login
+**3. `supabase/functions/create-lyrics-checkout/index.ts`**
+- Same fix: replace fetch-all + `.filter()` with `.ilike('id', orderId + '%').limit(2)`
 
-The login currently triggers a full data load. By fetching only 200 orders + 200 leads initially (instead of 5,000 total records), memory usage drops by ~95%, well within the edge function limit.
+### What This Fixes
+
+- All existing delivered songs will immediately become accessible again
+- No data migration or manual restoration needed -- the songs and audio files are intact in storage, the lookup query was just failing to find them
+- Performance improves dramatically (1 row fetched vs 1,000+)
+- The fix scales to any number of orders
 
 ### Technical Details
 
-```text
-Current flow:
-  Login -> Fetch ALL 1,010 orders + 3,928 leads -> Memory exceeded -> Crash
+Each of the three edge functions has a `if (isShortId)` branch that will be updated from:
 
-Fixed flow:
-  Login -> Fetch 200 orders + 200 leads (page 0) -> Success (~400 records)
-  User scrolls -> Fetch page 1, page 2... -> Incremental loading
+```typescript
+// OLD: Fetches up to 1,000 rows, misses orders beyond that
+const result = await supabase
+  .from("orders")
+  .select(selectFields)
+  .in("status", ["delivered", "ready"])
+  .not("song_url", "is", null);
+orders = result.data?.filter(o => o.id.startsWith(orderId)) || [];
 ```
 
-Edge function changes:
-- Accept `page` (default 0) and `pageSize` (default 200) in the list action body
-- Use `.range(page * pageSize, (page + 1) * pageSize - 1)` for both orders and leads
-- Add separate count queries using `.select('id', { count: 'exact', head: true })` to return totals without loading data
-- Return `{ orders, leads, totalOrders, totalLeads, page, pageSize }`
+To:
 
-Frontend changes:
-- `listOrders` sends `page` and `pageSize` in the request body
-- Initial login fetches page 0 only
-- Admin dashboard stores `allOrders` and `allLeads` arrays, appending pages as loaded
-- Add a useEffect or button to load remaining pages after login succeeds
-- Stats cards use the `totalOrders`/`totalLeads` counts from the API response
+```typescript
+// NEW: Server-side prefix match, returns only matching rows
+const result = await supabase
+  .from("orders")
+  .select(selectFields)
+  .ilike("id", `${orderId}%`)
+  .in("status", ["delivered", "ready"])
+  .not("song_url", "is", null)
+  .limit(2);
+orders = result.data || [];
+```
+
+The `.limit(2)` preserves the existing collision safety check (if more than 1 match, return "Ambiguous ID" error).
