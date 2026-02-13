@@ -20,6 +20,7 @@ export default function SongPreview() {
   const { token } = useParams<{ token: string }>();
   const [searchParams] = useSearchParams();
   const isFollowup = searchParams.get("followup") === "true";
+  const isVday10 = searchParams.get("vday10") === "true";
   
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -258,6 +259,7 @@ export default function SongPreview() {
             previewToken: token,
             tier,
             applyFollowupDiscount: isFollowup,
+            applyVday10Discount: isVday10,
           }),
         }
       );
@@ -402,16 +404,27 @@ export default function SongPreview() {
           </div>
         </Card>
 
-        {/* Pricing Card - Single option at $49.99 */}
+        {/* Pricing Card - Single option */}
         <div className="space-y-4">
           <h3 className="text-xl font-semibold text-center">
             Unlock Your Full Song
           </h3>
 
-          {isFollowup && (
+          {isVday10 && (
             <div className="bg-accent/10 border border-accent rounded-lg p-4 text-center">
               <Badge className="bg-accent text-accent-foreground mb-2">
-                🎁 Bonus Applied
+                Valentine's Day Bonus
+              </Badge>
+              <p className="text-sm">
+                An extra $10 off has been applied automatically.
+              </p>
+            </div>
+          )}
+
+          {isFollowup && !isVday10 && (
+            <div className="bg-accent/10 border border-accent rounded-lg p-4 text-center">
+              <Badge className="bg-accent text-accent-foreground mb-2">
+                Bonus Applied
               </Badge>
               <p className="text-sm">
                 Your FULLSONG code gives you an extra $5 off!
@@ -427,7 +440,13 @@ export default function SongPreview() {
               <div>
                 <p className="text-sm text-muted-foreground line-through">$99.99</p>
                 <p className="text-3xl font-bold text-primary">
-                  {isFollowup ? "$44.99" : "$49.99"}
+                  {isVday10 && isFollowup
+                    ? "$34.99"
+                    : isVday10
+                    ? "$39.99"
+                    : isFollowup
+                    ? "$44.99"
+                    : "$49.99"}
                 </p>
               </div>
               <div>
@@ -436,15 +455,15 @@ export default function SongPreview() {
               </div>
               <ul className="text-sm space-y-2 text-left">
                 <li className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-primary" />
                   Full song access
                 </li>
                 <li className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
-                  Download & keep forever
+                  <Check className="h-4 w-4 text-primary" />
+                  Download and keep forever
                 </li>
                 <li className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-primary" />
                   Share with anyone
                 </li>
               </ul>
@@ -456,8 +475,14 @@ export default function SongPreview() {
 
           {/* Promo Badge */}
           <div className="text-center">
-            <Badge variant="outline" className="text-green-600 border-green-600">
-              💘 50% Off{isFollowup ? " + Extra $5" : ""} Auto-Applied
+            <Badge variant="outline" className="text-primary border-primary">
+              {isVday10
+                ? isFollowup
+                  ? "50% Off + $5 + $10 Bonus Applied"
+                  : "50% Off + $10 Valentine's Bonus Applied"
+                : isFollowup
+                ? "50% Off + Extra $5 Auto-Applied"
+                : "50% Off Auto-Applied"}
             </Badge>
           </div>
         </div>

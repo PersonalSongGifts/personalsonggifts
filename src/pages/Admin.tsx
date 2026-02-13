@@ -35,6 +35,7 @@ import { ConversionFunnel } from "@/components/admin/ConversionFunnel";
 import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
 import { FunnelInsights } from "@/components/admin/FunnelInsights";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
+import { ValentineRemarketingPanel } from "@/components/admin/ValentineRemarketingPanel";
 
 interface Order {
   id: string;
@@ -1487,6 +1488,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="emails" className="space-y-6">
+            <ValentineRemarketingPanel adminPassword={password} />
             <EmailTemplates adminPassword={password} />
           </TabsContent>
         </Tabs>

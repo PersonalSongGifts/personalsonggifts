@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Mail, ArrowLeft } from "lucide-react";
@@ -5,6 +6,22 @@ import { Mail, ArrowLeft } from "lucide-react";
 const Unsubscribe = () => {
   const [searchParams] = useSearchParams();
   const email = searchParams.get("email") || "";
+  const [suppressed, setSuppressed] = useState(false);
+
+  useEffect(() => {
+    if (!email) return;
+
+    // Fire-and-forget: insert into suppression table
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/unsubscribe-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    })
+      .then((res) => {
+        if (res.ok) setSuppressed(true);
+      })
+      .catch(console.error);
+  }, [email]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
