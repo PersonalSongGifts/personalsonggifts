@@ -818,7 +818,8 @@ Deno.serve(async (req) => {
         .not("resend_scheduled_at", "is", null)
         .lte("resend_scheduled_at", now)
         .eq("status", "delivered")
-        .not("song_url", "is", null);
+        .not("song_url", "is", null)
+        .limit(10);
 
       for (const order of resendOrders || []) {
         try {

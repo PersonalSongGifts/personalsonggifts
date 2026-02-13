@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
       .from(tableName)
       .select("*")
       .eq("id", entityId)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !rawEntity) {
       console.error(`[LYRICS] ${entityType} not found: ${entityId}`, fetchError);

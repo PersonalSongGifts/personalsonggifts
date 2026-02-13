@@ -367,7 +367,7 @@ Deno.serve(async (req) => {
         .from("leads")
         .select("id, status")
         .eq("email", normalizedEmail)
-        .single();
+        .maybeSingle();
 
       if (existingLead) {
         // Lead already exists - update it with latest info (unless already converted)
