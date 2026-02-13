@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Upload, CheckCircle, Video, Lightbulb, Mail, ArrowRight, Home } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,7 @@ const SubmitReaction = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [consentChecked, setConsentChecked] = useState(false);
 
   const handleLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,13 +254,21 @@ const SubmitReaction = () => {
                   </div>
                 )}
 
-                <p className="text-xs text-muted-foreground text-center">
-                  By submitting this video, you give permission to Personal Song Gifts to use this video.
-                </p>
+                <div className="flex items-start space-x-3">
+                  <Checkbox
+                    id="consent"
+                    checked={consentChecked}
+                    onCheckedChange={(checked) => setConsentChecked(checked === true)}
+                    disabled={isUploading}
+                  />
+                  <Label htmlFor="consent" className="text-xs text-muted-foreground leading-relaxed cursor-pointer">
+                    I grant Personal Song Gifts a perpetual, royalty-free, worldwide, irrevocable license to use, reproduce, edit, and distribute this video for any purpose, including but not limited to advertising, social media, website content, and promotional materials.
+                  </Label>
+                </div>
 
                 <Button
                   onClick={handleUpload}
-                  disabled={!selectedFile || isUploading}
+                  disabled={!selectedFile || isUploading || !consentChecked}
                   className="w-full gap-2"
                 >
                   {isUploading ? "Uploading..." : "Submit Reaction"}
