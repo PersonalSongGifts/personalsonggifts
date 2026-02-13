@@ -1,67 +1,68 @@
 
 
-## Fix: Songs Not Loading ("Song Not Found") for Many Customers
+## Implement Proactive Fixes 1-6
 
-### Root Cause
+Six targeted changes to prevent future customer service issues. All are safe, additive fixes.
 
-The song delivery page (`/song/:shortId`) uses 8-character short IDs to look up orders. The edge function currently fetches **all 1,052+ delivered orders** into memory, then filters by ID prefix in JavaScript. But Supabase has a **default 1,000-row query limit** -- so any order beyond row 1,000 silently vanishes, causing "Song not found."
+---
 
-As your order volume grew past 1,000 delivered orders, this started affecting more and more customers. It will only get worse as orders increase.
+### Fix 1: Admin GET endpoint -- add `.limit(1000)`
 
-### The Fix
+**File**: `supabase/functions/admin-orders/index.ts` (line 92)
 
-Replace the "fetch all, filter in JS" pattern with a **server-side prefix filter** using Postgres `ilike`. Instead of loading 1,000+ rows, it loads only the 1 matching row. This is both faster and has no row-limit issues.
+Add `.limit(1000)` to the GET query. This endpoint is a legacy fallback (the POST `action: "list"` with pagination is the primary path), so capping it prevents memory crashes if anything still hits it.
 
-```text
-Before:  SELECT * FROM orders WHERE status IN ('delivered','ready')  --> 1,052 rows --> JS filter
-After:   SELECT * FROM orders WHERE id::text ILIKE 'b15daeb8%'      --> 1 row
-```
+---
 
-### Files Changed
+### Fix 2: Resend queue -- add `.limit(10)`
 
-**1. `supabase/functions/get-song-page/index.ts`**
-- Replace the short ID branch: instead of fetching all orders and filtering, use `.ilike('id', orderId + '%')` with `.in("status", ["delivered", "ready"])` and `.not("song_url", "is", null)`
-- Add `.limit(2)` to remain collision-safe (if 2+ results, return "Ambiguous ID")
+**File**: `supabase/functions/process-scheduled-deliveries/index.ts` (line 815-821)
 
-**2. `supabase/functions/track-song-engagement/index.ts`**
-- Same fix: replace fetch-all + `.find()` with `.ilike('id', orderId + '%').limit(2)`
+Add `.limit(10)` to the resend orders query, matching the pattern already used by other delivery queues in the same function. Prevents bulk resend from overwhelming the cron run.
 
-**3. `supabase/functions/create-lyrics-checkout/index.ts`**
-- Same fix: replace fetch-all + `.filter()` with `.ilike('id', orderId + '%').limit(2)`
+---
 
-### What This Fixes
+### Fix 3: `capture-lead` -- `.single()` to `.maybeSingle()`
 
-- All existing delivered songs will immediately become accessible again
-- No data migration or manual restoration needed -- the songs and audio files are intact in storage, the lookup query was just failing to find them
-- Performance improves dramatically (1 row fetched vs 1,000+)
-- The fix scales to any number of orders
+**File**: `supabase/functions/capture-lead/index.ts` (line 366-370)
 
-### Technical Details
+Change `.single()` to `.maybeSingle()` on the existing-lead email lookup. The downstream code already handles `existingLead` being null, so no other changes needed.
 
-Each of the three edge functions has a `if (isShortId)` branch that will be updated from:
+---
 
-```typescript
-// OLD: Fetches up to 1,000 rows, misses orders beyond that
-const result = await supabase
-  .from("orders")
-  .select(selectFields)
-  .in("status", ["delivered", "ready"])
-  .not("song_url", "is", null);
-orders = result.data?.filter(o => o.id.startsWith(orderId)) || [];
-```
+### Fix 4: `automation-suno-callback` -- `.single()` to `.maybeSingle()`
+
+**File**: `supabase/functions/automation-suno-callback/index.ts` (lines 269-284)
+
+Change both `.single()` calls (lead lookup and order lookup) to `.maybeSingle()`. The existing null-check logic (`if (lead && !leadError)`) already handles the no-match case correctly.
+
+---
+
+### Fix 5: `automation-generate-lyrics` -- `.single()` to `.maybeSingle()`
+
+**File**: `supabase/functions/automation-generate-lyrics/index.ts` (line 189-193)
+
+Change `.single()` to `.maybeSingle()`. The existing `if (fetchError || !rawEntity)` guard already returns a clean 404.
+
+---
+
+### Fix 6: SongPlayer error state -- add support contact info
+
+**File**: `src/pages/SongPlayer.tsx` (lines 417-433)
+
+Enhance the "Song Not Found" error screen to include the short order ID and a support email link, so customers can self-serve when contacting support instead of just seeing a dead end.
+
+Change from:
+- Generic "Song Not Found" with "Go Home" button
 
 To:
+- Show the order ID reference code
+- Add "Contact support at [email] with reference code XXXXXXXX" message
+- Keep the "Go Home" button
 
-```typescript
-// NEW: Server-side prefix match, returns only matching rows
-const result = await supabase
-  .from("orders")
-  .select(selectFields)
-  .ilike("id", `${orderId}%`)
-  .in("status", ["delivered", "ready"])
-  .not("song_url", "is", null)
-  .limit(2);
-orders = result.data || [];
-```
+---
 
-The `.limit(2)` preserves the existing collision safety check (if more than 1 match, return "Ambiguous ID" error).
+### Deployment
+
+All three edge functions (`admin-orders`, `process-scheduled-deliveries`, `capture-lead`, `automation-suno-callback`, `automation-generate-lyrics`) will be redeployed after changes.
+
