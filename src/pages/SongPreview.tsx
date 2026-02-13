@@ -314,9 +314,9 @@ export default function SongPreview() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
       {/* Header */}
-      <div className="bg-primary text-primary-foreground py-8 px-4 text-center">
+      <div className={`${isVday10 ? "bg-gradient-to-r from-pink-600 to-rose-700" : "bg-primary"} text-primary-foreground py-8 px-4 text-center`}>
         <h1 className="text-2xl md:text-3xl font-bold mb-2">
-          🎵 Your Song is Ready!
+          {isVday10 ? "💘" : "🎵"} Your Song is Ready!
         </h1>
         <p className="text-primary-foreground/80">
           A personalized {previewData.occasion} song for {previewData.recipientName}
@@ -407,16 +407,16 @@ export default function SongPreview() {
         {/* Pricing Card - Single option */}
         <div className="space-y-4">
           <h3 className="text-xl font-semibold text-center">
-            Unlock Your Full Song
+            {isVday10 ? "💖 " : ""}Unlock Your Full Song
           </h3>
 
           {isVday10 && (
-            <div className="bg-accent/10 border border-accent rounded-lg p-4 text-center">
-              <Badge className="bg-accent text-accent-foreground mb-2">
-                Valentine's Day Bonus
+            <div className="bg-pink-50 border border-pink-300 rounded-lg p-4 text-center">
+              <Badge className="bg-pink-500 text-white mb-2">
+                Valentine's Day Special
               </Badge>
-              <p className="text-sm">
-                An extra $10 off has been applied automatically.
+              <p className="text-lg font-semibold">
+                $10 OFF — applied automatically at checkout 💖
               </p>
             </div>
           )}
@@ -433,13 +433,13 @@ export default function SongPreview() {
           )}
 
           <Card
-            className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary max-w-md mx-auto"
+            className={`cursor-pointer hover:shadow-lg transition-shadow border-2 max-w-md mx-auto ${isVday10 ? "hover:border-pink-500" : "hover:border-primary"}`}
             onClick={() => handlePurchase("standard")}
           >
             <CardContent className="p-6 text-center space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground line-through">$99.99</p>
-                <p className="text-3xl font-bold text-primary">
+                <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
                   {isVday10 && isFollowup
                     ? "$34.99"
                     : isVday10
@@ -467,7 +467,7 @@ export default function SongPreview() {
                   Share with anyone
                 </li>
               </ul>
-              <Button className="w-full" size="lg" disabled={purchasing}>
+              <Button className={`w-full ${isVday10 ? "bg-pink-600 hover:bg-pink-700" : ""}`} size="lg" disabled={purchasing}>
                 {purchasing ? "Loading..." : "Get Full Song"}
               </Button>
             </CardContent>
@@ -475,11 +475,11 @@ export default function SongPreview() {
 
           {/* Promo Badge */}
           <div className="text-center">
-            <Badge variant="outline" className="text-primary border-primary">
+            <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
               {isVday10
                 ? isFollowup
-                  ? "50% Off + $5 + $10 Bonus Applied"
-                  : "50% Off + $10 Valentine's Bonus Applied"
+                  ? "50% Off + $5 + $10 Valentine's Day Special"
+                  : "50% Off + $10 Valentine's Day Special"
                 : isFollowup
                 ? "50% Off + Extra $5 Auto-Applied"
                 : "50% Off Auto-Applied"}
