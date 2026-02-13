@@ -277,13 +277,19 @@ export default function Admin() {
     }
   };
 
-  const listOrders = async (status: string) => {
+  const [totalOrderCount, setTotalOrderCount] = useState(0);
+  const [totalLeadCount, setTotalLeadCount] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const listOrders = async (status: string, page = 0, pageSize = 200) => {
     return supabase.functions.invoke("admin-orders", {
       method: "POST",
       body: {
         action: "list",
         adminPassword: password,
         status,
+        page,
+        pageSize,
       },
     });
   };
@@ -316,29 +322,20 @@ export default function Admin() {
         // Continue anyway - the health endpoint might not be deployed yet
       }
 
-      // Step 2: Try actual login
-      const { data, error } = await listOrders("all");
+      // Step 2: Try actual login (fetch page 0 only)
+      const { data, error } = await listOrders("all", 0, 200);
 
       if (error) {
-        // Check for specific error types
         const errorMessage = error.message || String(error);
         
         if (errorMessage.includes("404") || errorMessage.includes("not found") || errorMessage.includes("NOT_FOUND")) {
-          toast({
-            title: "Backend Functions Not Deployed",
-            description: "The admin-orders function is not deployed. Please wait a few minutes for deployment to complete.",
-            variant: "destructive",
-          });
+          toast({ title: "Backend Functions Not Deployed", description: "The admin-orders function is not deployed. Please wait a few minutes for deployment to complete.", variant: "destructive" });
           setLoading(false);
           return;
         }
         
         if (errorMessage.includes("Failed to send") || errorMessage.includes("fetch")) {
-          toast({
-            title: "Backend Unavailable",
-            description: "Could not reach backend functions. They may be deploying. Try again in 2-3 minutes.",
-            variant: "destructive",
-          });
+          toast({ title: "Backend Unavailable", description: "Could not reach backend functions. They may be deploying. Try again in 2-3 minutes.", variant: "destructive" });
           setLoading(false);
           return;
         }
@@ -350,31 +347,45 @@ export default function Admin() {
       setOrders(data.orders || []);
       setAllOrders(data.orders || []);
       setLeads(data.leads || []);
+      setTotalOrderCount(data.totalOrders || 0);
+      setTotalLeadCount(data.totalLeads || 0);
+
+      // Auto-load remaining pages in background
+      const pageSize = data.pageSize || 200;
+      const totalOrders = data.totalOrders || 0;
+      const totalLeads = data.totalLeads || 0;
+      const maxPages = Math.max(
+        Math.ceil(totalOrders / pageSize),
+        Math.ceil(totalLeads / pageSize)
+      );
+
+      if (maxPages > 1) {
+        setLoadingMore(true);
+        let accOrders = [...(data.orders || [])];
+        let accLeads = [...(data.leads || [])];
+
+        for (let p = 1; p < maxPages; p++) {
+          try {
+            const { data: pageData, error: pageErr } = await listOrders("all", p, pageSize);
+            if (pageErr) break;
+            if (pageData.orders?.length) accOrders = accOrders.concat(pageData.orders);
+            if (pageData.leads?.length) accLeads = accLeads.concat(pageData.leads);
+            setOrders([...accOrders]);
+            setAllOrders([...accOrders]);
+            setLeads([...accLeads]);
+          } catch {
+            break;
+          }
+        }
+        setLoadingMore(false);
+      }
     } catch (err: unknown) {
-      // Surface actual error type to help debugging (no secrets included)
-      // eslint-disable-next-line no-console
       console.error("Admin login error:", err);
-
-      const message =
-        err instanceof Error
-          ? err.message
-          : typeof err === "string"
-            ? err
-            : "Request failed";
-
-      // Check if it's a 401 (actual wrong password) vs other errors
+      const message = err instanceof Error ? err.message : typeof err === "string" ? err : "Request failed";
       if (message.includes("401") || message.includes("Unauthorized")) {
-        toast({
-          title: "Wrong Password",
-          description: "The admin password is incorrect. Please try again.",
-          variant: "destructive",
-        });
+        toast({ title: "Wrong Password", description: "The admin password is incorrect. Please try again.", variant: "destructive" });
       } else {
-        toast({
-          title: "Login Failed",
-          description: `${message} (check console for details)`,
-          variant: "destructive",
-        });
+        toast({ title: "Login Failed", description: `${message} (check console for details)`, variant: "destructive" });
       }
     } finally {
       setLoading(false);
@@ -401,15 +412,42 @@ export default function Admin() {
 
     setLoading(true);
     try {
-      // Always fetch all orders - filtering is done client-side to support
-      // client-only filters like "auto_scheduled" and "needs_attention"
-      const { data, error } = await listOrders("all");
-
+      // Fetch page 0 first for fast response
+      const { data, error } = await listOrders("all", 0, 200);
       if (error) throw error;
-      setOrders(data.orders || []);
-      setAllOrders(data.orders || []);
-      // Always update leads regardless of filter (fixes stale UI bug)
-      setLeads(data.leads || []);
+
+      let accOrders = data.orders || [];
+      let accLeads = data.leads || [];
+      setOrders(accOrders);
+      setAllOrders(accOrders);
+      setLeads(accLeads);
+      setTotalOrderCount(data.totalOrders || 0);
+      setTotalLeadCount(data.totalLeads || 0);
+
+      // Load remaining pages in background
+      const pageSize = data.pageSize || 200;
+      const maxPages = Math.max(
+        Math.ceil((data.totalOrders || 0) / pageSize),
+        Math.ceil((data.totalLeads || 0) / pageSize)
+      );
+
+      if (maxPages > 1) {
+        setLoadingMore(true);
+        for (let p = 1; p < maxPages; p++) {
+          try {
+            const { data: pageData, error: pageErr } = await listOrders("all", p, pageSize);
+            if (pageErr) break;
+            if (pageData.orders?.length) accOrders = accOrders.concat(pageData.orders);
+            if (pageData.leads?.length) accLeads = accLeads.concat(pageData.leads);
+            setOrders([...accOrders]);
+            setAllOrders([...accOrders]);
+            setLeads([...accLeads]);
+          } catch {
+            break;
+          }
+        }
+        setLoadingMore(false);
+      }
     } catch {
       toast({
         title: "Error",

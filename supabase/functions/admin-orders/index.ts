@@ -105,62 +105,57 @@ Deno.serve(async (req) => {
     if (req.method === "POST") {
       if (body?.action === "list") {
         const status = typeof body.status === "string" ? body.status : "all";
+        const page = typeof body.page === "number" ? body.page : 0;
+        const pageSize = typeof body.pageSize === "number" ? body.pageSize : 200;
+        const rangeStart = page * pageSize;
+        const rangeEnd = rangeStart + pageSize - 1;
 
-        let query = supabase
+        // Fetch paginated orders
+        let orderQuery = supabase
           .from("orders")
           .select("*")
-          .order("created_at", { ascending: false });
-
+          .order("created_at", { ascending: false })
+          .range(rangeStart, rangeEnd);
         if (status && status !== "all") {
-          query = query.eq("status", status);
+          orderQuery = orderQuery.eq("status", status);
+        }
+        const { data: orders, error: orderErr } = await orderQuery;
+        if (orderErr) throw orderErr;
+
+        // Fetch paginated leads
+        const { data: leads, error: leadErr } = await supabase
+          .from("leads")
+          .select("*")
+          .order("captured_at", { ascending: false })
+          .range(rangeStart, rangeEnd);
+        if (leadErr) {
+          console.error("Failed to fetch leads page:", leadErr);
         }
 
-        // Paginate orders to bypass PostgREST 1000-row server limit
-        let allOrders: any[] = [];
-        let orderPage = 0;
-        const PAGE_SIZE = 1000;
-        while (true) {
-          let pageQuery = supabase
-            .from("orders")
-            .select("*")
-            .order("created_at", { ascending: false })
-            .range(orderPage * PAGE_SIZE, (orderPage + 1) * PAGE_SIZE - 1);
-          if (status && status !== "all") {
-            pageQuery = pageQuery.eq("status", status);
-          }
-          const { data: page, error: pageErr } = await pageQuery;
-          if (pageErr) throw pageErr;
-          if (!page || page.length === 0) break;
-          allOrders = allOrders.concat(page);
-          if (page.length < PAGE_SIZE) break;
-          orderPage++;
+        // Get total counts (head-only queries, no data loaded)
+        let orderCountQuery = supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true });
+        if (status && status !== "all") {
+          orderCountQuery = orderCountQuery.eq("status", status);
         }
-        const orders = allOrders;
+        const { count: totalOrders } = await orderCountQuery;
 
-        // Paginate leads to bypass PostgREST 1000-row server limit
-        let allLeads: any[] = [];
-        let leadPage = 0;
-        while (true) {
-          const { data: page, error: pageErr } = await supabase
-            .from("leads")
-            .select("*")
-            .order("captured_at", { ascending: false })
-            .range(leadPage * PAGE_SIZE, (leadPage + 1) * PAGE_SIZE - 1);
-          if (pageErr) {
-            console.error("Failed to fetch leads page:", pageErr);
-            break;
-          }
-          if (!page || page.length === 0) break;
-          allLeads = allLeads.concat(page);
-          if (page.length < PAGE_SIZE) break;
-          leadPage++;
-        }
-        const leads = allLeads;
+        const { count: totalLeads } = await supabase
+          .from("leads")
+          .select("id", { count: "exact", head: true });
 
-        console.log(`[ADMIN] Returning ${orders.length} orders, ${leads.length} leads`);
+        console.log(`[ADMIN] Returning page ${page}: ${(orders || []).length} orders, ${(leads || []).length} leads (total: ${totalOrders} orders, ${totalLeads} leads)`);
 
         return new Response(
-          JSON.stringify({ orders, leads: leads || [] }),
+          JSON.stringify({
+            orders: orders || [],
+            leads: leads || [],
+            totalOrders: totalOrders || 0,
+            totalLeads: totalLeads || 0,
+            page,
+            pageSize,
+          }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
