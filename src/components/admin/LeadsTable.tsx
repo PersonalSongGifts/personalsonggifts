@@ -197,6 +197,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       if (!searchQuery.trim()) return true;
       const searchLower = searchQuery.toLowerCase();
       return (
+        lead.id.toLowerCase().includes(searchLower) ||
         lead.customer_name.toLowerCase().includes(searchLower) ||
         lead.email.toLowerCase().includes(searchLower) ||
         lead.recipient_name.toLowerCase().includes(searchLower) ||
@@ -940,7 +941,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
             </SelectContent>
           </Select>
           <Input
-            placeholder="Search leads..."
+            placeholder="Search by name, email, or lead ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-64"

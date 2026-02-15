@@ -1128,7 +1128,7 @@ export default function Admin() {
                </SelectContent>
              </Select>
                <Input
-                placeholder="Search orders..."
+                placeholder="Search by name, email, or order ID..."
                 value={orderSearch}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -1201,17 +1201,18 @@ export default function Admin() {
                 // Then apply search filter
                 if (!orderSearch.trim()) return true;
                 const searchLower = orderSearch.toLowerCase();
-                return (
-                  order.customer_name.toLowerCase().includes(searchLower) ||
-                  order.customer_email.toLowerCase().includes(searchLower) ||
-                  order.recipient_name.toLowerCase().includes(searchLower) ||
-                  order.genre.toLowerCase().includes(searchLower) ||
-                  order.special_qualities.toLowerCase().includes(searchLower) ||
-                  order.favorite_memory.toLowerCase().includes(searchLower) ||
-                  (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
-                  (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
-                  order.occasion.toLowerCase().includes(searchLower)
-                );
+                 return (
+                   order.id.toLowerCase().includes(searchLower) ||
+                   order.customer_name.toLowerCase().includes(searchLower) ||
+                   order.customer_email.toLowerCase().includes(searchLower) ||
+                   order.recipient_name.toLowerCase().includes(searchLower) ||
+                   order.genre.toLowerCase().includes(searchLower) ||
+                   order.special_qualities.toLowerCase().includes(searchLower) ||
+                   order.favorite_memory.toLowerCase().includes(searchLower) ||
+                   (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
+                   (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
+                   order.occasion.toLowerCase().includes(searchLower)
+                 );
               });
               
               if (filteredOrders.length === 0) {
