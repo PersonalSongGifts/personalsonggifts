@@ -164,6 +164,10 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [editingLeadLyrics, setEditingLeadLyrics] = useState(false);
   const [editedLeadLyricsText, setEditedLeadLyricsText] = useState("");
   const [savingLeadLyrics, setSavingLeadLyrics] = useState(false);
+  // Song title editing state
+  const [editingLeadTitle, setEditingLeadTitle] = useState(false);
+  const [editedLeadTitle, setEditedLeadTitle] = useState("");
+  const [savingLeadTitle, setSavingLeadTitle] = useState(false);
   // Auto-open lead from external navigation (e.g., Hot Leads card)
   useEffect(() => {
     if (initialSelectedLeadId) {
@@ -1912,8 +1916,74 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   <div className="border-t pt-4">
                     <h4 className="font-medium mb-3">Song Details</h4>
                     <div className="space-y-2">
-                      {selectedLead.song_title && (
-                        <p className="text-sm"><strong>Title:</strong> {selectedLead.song_title}</p>
+                      <div className="flex items-center justify-between">
+                        <strong className="text-sm">Title:</strong>
+                        {!editingLeadTitle && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs gap-1"
+                            onClick={() => {
+                              setEditingLeadTitle(true);
+                              setEditedLeadTitle(selectedLead.song_title || "");
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" /> Edit
+                          </Button>
+                        )}
+                      </div>
+                      {editingLeadTitle ? (
+                        <div className="space-y-2">
+                          <Input
+                            value={editedLeadTitle}
+                            onChange={(e) => setEditedLeadTitle(e.target.value)}
+                            placeholder="Enter song title..."
+                            className="text-sm"
+                            maxLength={200}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingLeadTitle(false)}
+                              disabled={savingLeadTitle}
+                            >
+                              <X className="h-3 w-3 mr-1" /> Cancel
+                            </Button>
+                            <Button
+                              size="sm"
+                              disabled={savingLeadTitle}
+                              onClick={async () => {
+                                setSavingLeadTitle(true);
+                                try {
+                                  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      action: "update_lead_fields",
+                                      leadId: selectedLead.id,
+                                      updates: { song_title: editedLeadTitle },
+                                      adminPassword,
+                                    }),
+                                  });
+                                  if (!response.ok) throw new Error("Failed to save");
+                                  toast({ title: "Song title saved" });
+                                  setSelectedLead({ ...selectedLead, song_title: editedLeadTitle });
+                                  setEditingLeadTitle(false);
+                                  onRefresh?.();
+                                } catch {
+                                  toast({ title: "Failed to save title", variant: "destructive" });
+                                } finally {
+                                  setSavingLeadTitle(false);
+                                }
+                              }}
+                            >
+                              <Save className="h-3 w-3 mr-1" /> Save
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm">{selectedLead.song_title || <span className="italic text-muted-foreground">No title set</span>}</p>
                       )}
                       {selectedLead.preview_token && (
                         <p className="text-sm">
