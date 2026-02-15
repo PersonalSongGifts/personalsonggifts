@@ -1413,6 +1413,169 @@ Deno.serve(async (req) => {
         );
       }
 
+      // ===== REGENERATE WITH CURRENT LYRICS HANDLER =====
+      if (body?.action === "regenerate_with_lyrics") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+        const sendOption = typeof body.sendOption === "string" ? body.sendOption : "auto";
+        const scheduledAt = typeof body.scheduledAt === "string" ? body.scheduledAt : null;
+
+        const origin = req.headers.get("origin") || req.headers.get("referer") || "";
+        const env = origin.includes("id-preview--") ? "preview" : origin ? "published" : "unknown";
+
+        console.log("[REGENERATE_WITH_LYRICS] Handler entered", JSON.stringify({ orderId, leadId, sendOption, env }));
+
+        if ((!!orderId && !!leadId) || (!orderId && !leadId)) {
+          return new Response(
+            JSON.stringify({ error: "Must provide exactly one of orderId or leadId", env }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (sendOption === "scheduled") {
+          if (!scheduledAt) {
+            return new Response(
+              JSON.stringify({ error: "scheduledAt is required when sendOption is 'scheduled'", env }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          if (Number.isNaN(Date.parse(scheduledAt))) {
+            return new Response(
+              JSON.stringify({ error: "scheduledAt must be a valid ISO timestamp", env }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
+        const entityType = orderId ? "orders" : "leads";
+        const entityId = orderId || leadId;
+
+        const { data: entity, error: fetchError } = await supabase
+          .from(entityType)
+          .select("*")
+          .eq("id", entityId)
+          .maybeSingle();
+
+        if (fetchError) {
+          console.error("[REGENERATE_WITH_LYRICS] Fetch error:", fetchError);
+          return new Response(
+            JSON.stringify({ error: "Database error", env }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (!entity) {
+          return new Response(
+            JSON.stringify({ error: `${entityType === "orders" ? "Order" : "Lead"} not found`, env }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Validate that automation_lyrics exists
+        if (!entity.automation_lyrics || entity.automation_lyrics.trim().length === 0) {
+          return new Response(
+            JSON.stringify({ error: "No lyrics found on this record. Use 'Regenerate New Song' instead.", env }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        console.log(`[REGENERATE_WITH_LYRICS] Clearing audio artifacts, preserving lyrics for ${entityType} ${entityId}`);
+
+        // Clear ONLY audio artifacts - preserve lyrics, song_title, inputs_hash
+        const clearUpdates: Record<string, unknown> = {
+          automation_status: null,
+          automation_task_id: null,
+          automation_started_at: null,
+          automation_retry_count: 0,
+          automation_last_error: null,
+          automation_raw_callback: null,
+          automation_style_id: null,
+          automation_audio_url_source: null,
+          generated_at: null,
+          next_attempt_at: null,
+          // MUST clear this so automation-generate-audio doesn't block
+          automation_manual_override_at: null,
+        };
+
+        // Entity-specific audio clears
+        if (entityType === "orders") {
+          clearUpdates.song_url = null;
+          clearUpdates.cover_image_url = null;
+          clearUpdates.sent_at = null;
+          clearUpdates.delivery_status = "pending";
+        } else {
+          clearUpdates.preview_song_url = null;
+          clearUpdates.full_song_url = null;
+          clearUpdates.cover_image_url = null;
+          clearUpdates.preview_sent_at = null;
+          clearUpdates.preview_token = null;
+        }
+
+        // Compute target_send_at
+        const now = Date.now();
+        let targetSendAt: string;
+        switch (sendOption) {
+          case "immediate":
+            targetSendAt = new Date(now + 5 * 60 * 1000).toISOString();
+            break;
+          case "scheduled":
+            targetSendAt = scheduledAt || new Date(now + 12 * 60 * 60 * 1000).toISOString();
+            break;
+          case "auto":
+          default:
+            targetSendAt = new Date(now + 12 * 60 * 60 * 1000).toISOString();
+        }
+
+        clearUpdates.target_send_at = targetSendAt;
+        clearUpdates.earliest_generate_at = new Date(now + 1 * 60 * 1000).toISOString();
+
+        const { error: updateError } = await supabase
+          .from(entityType)
+          .update(clearUpdates)
+          .eq("id", entityId);
+
+        if (updateError) {
+          console.error("[REGENERATE_WITH_LYRICS] Update error:", updateError);
+          return new Response(
+            JSON.stringify({ error: "Failed to update entity", env }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Trigger automation with skipLyrics=true and forceRun=true
+        try {
+          const triggerBody = orderId
+            ? { orderId, forceRun: true, skipLyrics: true }
+            : { leadId, forceRun: true, skipLyrics: true };
+
+          const triggerRes = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify(triggerBody),
+          });
+
+          if (!triggerRes.ok) {
+            const text = await triggerRes.text().catch(() => "");
+            console.error("[REGENERATE_WITH_LYRICS] trigger returned non-2xx", JSON.stringify({ status: triggerRes.status, body: text?.slice(0, 2000) }));
+          } else {
+            console.log("[REGENERATE_WITH_LYRICS] trigger succeeded");
+          }
+        } catch (triggerError) {
+          console.error("[REGENERATE_WITH_LYRICS] Failed to trigger:", triggerError);
+        }
+
+        await logActivity(supabase, orderId ? "order" : "lead", entityId!, "song_regenerated_with_lyrics", "admin", `Regenerated with existing lyrics, sendOption=${sendOption}`);
+
+        console.log(`[REGENERATE_WITH_LYRICS] ✅ Success for ${entityType} ${entityId}`);
+
+        return new Response(
+          JSON.stringify({ success: true, targetSendAt, entityType, entityId, lyricsPreserved: true, env }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // ===== REGENERATE SONG HANDLER (Must run BEFORE legacy fallback) =====
       if (body?.action === "regenerate_song") {
         const orderId = typeof body.orderId === "string" ? body.orderId : null;
