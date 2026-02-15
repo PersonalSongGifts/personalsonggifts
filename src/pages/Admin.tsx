@@ -188,6 +188,7 @@ export default function Admin() {
   const [savingOrderLyrics, setSavingOrderLyrics] = useState(false);
   // Regenerate song state
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+  const [regenerateMode, setRegenerateMode] = useState<"new" | "with_lyrics">("new");
   const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
   const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
   const [regenerating, setRegenerating] = useState(false);
@@ -707,7 +708,7 @@ export default function Admin() {
     setIsEditingOrder(true);
   };
 
-  // Handler for regenerating song
+  // Handler for regenerating song (supports both modes)
   const handleRegenerateSong = async () => {
     if (!selectedOrder || !password) return;
     
@@ -716,7 +717,7 @@ export default function Admin() {
       const { data, error } = await supabase.functions.invoke("admin-orders", {
         method: "POST",
         body: {
-          action: "regenerate_song",
+          action: regenerateMode === "with_lyrics" ? "regenerate_with_lyrics" : "regenerate_song",
           orderId: selectedOrder.id,
           sendOption: regenerateSendOption,
           scheduledAt: regenerateSendOption === "scheduled" && regenerateScheduledAt 
@@ -729,11 +730,12 @@ export default function Admin() {
       if (error) throw error;
 
       toast({
-        title: "Regeneration Started",
+        title: regenerateMode === "with_lyrics" ? "Regeneration Started (Lyrics Preserved)" : "Regeneration Started",
         description: `Song for ${selectedOrder.recipient_name} is being regenerated. This will take 1-3 minutes.`,
       });
 
       setShowRegenerateDialog(false);
+      setRegenerateMode("new");
       setRegenerateSendOption("auto");
       setRegenerateScheduledAt(null);
       setSelectedOrder(null);
@@ -1895,18 +1897,47 @@ export default function Admin() {
                         </Button>
                       )}
 
-                      {/* Regenerate Song Button (safe - for pronunciation fixes) */}
+                      {/* Regenerate Song Buttons */}
                       {selectedOrder.song_url && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => setShowRegenerateDialog(true)}
-                          disabled={regenerating}
-                          className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                        >
-                          <Wand2 className="h-4 w-4 mr-2" />
-                          Regenerate Song
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => { setRegenerateMode("new"); setShowRegenerateDialog(true); }}
+                                disabled={regenerating}
+                                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                              >
+                                <Wand2 className="h-4 w-4 mr-2" />
+                                Regenerate New Song
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs text-center">
+                              Generates brand new lyrics AND a new melody from scratch. The entire song will be replaced.
+                            </TooltipContent>
+                          </Tooltip>
+                          
+                          {selectedOrder.automation_lyrics && selectedOrder.automation_lyrics.trim().length > 0 && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => { setRegenerateMode("with_lyrics"); setShowRegenerateDialog(true); }}
+                                  disabled={regenerating}
+                                  className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                >
+                                  <RefreshCw className="h-4 w-4 mr-2" />
+                                  Regenerate with Current Lyrics
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs text-center">
+                                Keeps the current lyrics but generates a completely new melody, tempo, and vocals. Use this after editing lyrics to fix mistakes.
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2492,6 +2523,7 @@ export default function Admin() {
       <Dialog open={showRegenerateDialog} onOpenChange={(open) => {
         if (!open) {
           setShowRegenerateDialog(false);
+          setRegenerateMode("new");
           setRegenerateSendOption("auto");
           setRegenerateScheduledAt(null);
         }
@@ -2499,13 +2531,27 @@ export default function Admin() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-purple-600" />
-              Regenerate Song
+              {regenerateMode === "with_lyrics" ? (
+                <><RefreshCw className="h-5 w-5 text-amber-600" /> Regenerate with Current Lyrics</>
+              ) : (
+                <><Wand2 className="h-5 w-5 text-purple-600" /> Regenerate New Song</>
+              )}
             </DialogTitle>
             <DialogDescription>
-              This will generate a new song using the current order details, including any pronunciation overrides. The existing song will be replaced.
+              {regenerateMode === "with_lyrics"
+                ? "This will keep the current lyrics but generate a completely new melody, tempo, and vocals. The song will sound entirely different from the original."
+                : "This will generate brand new lyrics AND a new melody from scratch. The entire song will be replaced."}
             </DialogDescription>
           </DialogHeader>
+
+          {regenerateMode === "with_lyrics" && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                <strong>Important:</strong> The melody will be completely different from the original. Only the lyrics text will be preserved.
+              </p>
+            </div>
+          )}
           
           <div className="space-y-4 py-4">
             <div className="space-y-3">
@@ -2574,17 +2620,22 @@ export default function Admin() {
             <Button 
               onClick={handleRegenerateSong} 
               disabled={regenerating || (regenerateSendOption === "scheduled" && !regenerateScheduledAt)}
-              className="bg-purple-600 hover:bg-purple-700"
+              className={regenerateMode === "with_lyrics" ? "bg-amber-600 hover:bg-amber-700" : "bg-purple-600 hover:bg-purple-700"}
             >
               {regenerating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Regenerating...
                 </>
+              ) : regenerateMode === "with_lyrics" ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Regenerate with Current Lyrics
+                </>
               ) : (
                 <>
                   <Wand2 className="h-4 w-4 mr-2" />
-                  Regenerate Song
+                  Regenerate New Song
                 </>
               )}
             </Button>

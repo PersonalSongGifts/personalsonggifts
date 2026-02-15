@@ -21,14 +21,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { leadId, orderId, forceRun = false } = await req.json();
+    const { leadId, orderId, forceRun = false, skipLyrics = false } = await req.json();
     
     // Determine entity type and ID
     const entityType = orderId ? "order" : "lead";
     const entityId = orderId || leadId;
     const tableName = entityType === "order" ? "orders" : "leads";
     
-    console.log(`[TRIGGER] Starting automation for ${entityType} ${entityId}, forceRun: ${forceRun}`);
+    console.log(`[TRIGGER] Starting automation for ${entityType} ${entityId}, forceRun: ${forceRun}, skipLyrics: ${skipLyrics}`);
     
     if (!entityId) {
       console.error("[TRIGGER] Missing entityId in request");
@@ -200,33 +200,50 @@ Deno.serve(async (req) => {
       })
       .eq("id", entityId);
 
-    // Step 1: Generate lyrics
-    console.log(`[TRIGGER] Step 1: Calling lyrics generation for ${entityType} ${entityId}`);
+    // Step 1: Generate lyrics (skip if skipLyrics is true)
+    let lyricsTitle = "(preserved)";
     
-    const lyricsBody = entityType === "order" 
-      ? { orderId: entityId }
-      : { leadId: entityId };
-    
-    const lyricsResponse = await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify(lyricsBody),
-    });
+    if (skipLyrics) {
+      // Validate that automation_lyrics exists when skipping lyrics generation
+      const existingLyrics = entity.automation_lyrics;
+      if (!existingLyrics || existingLyrics.trim().length === 0) {
+        console.error(`[TRIGGER] skipLyrics=true but no automation_lyrics found on ${entityType} ${entityId}`);
+        return new Response(
+          JSON.stringify({ error: "Cannot skip lyrics generation: no existing lyrics found on this record" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log(`[TRIGGER] Step 1: SKIPPED (skipLyrics=true, using existing lyrics)`);
+      lyricsTitle = entity.song_title || "(existing title)";
+    } else {
+      console.log(`[TRIGGER] Step 1: Calling lyrics generation for ${entityType} ${entityId}`);
+      
+      const lyricsBody = entityType === "order" 
+        ? { orderId: entityId }
+        : { leadId: entityId };
+      
+      const lyricsResponse = await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify(lyricsBody),
+      });
 
-    if (!lyricsResponse.ok) {
-      const error = await lyricsResponse.text();
-      console.error(`[TRIGGER] Lyrics generation failed: ${lyricsResponse.status}`, error);
-      return new Response(
-        JSON.stringify({ error: "Lyrics generation failed", details: error }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if (!lyricsResponse.ok) {
+        const error = await lyricsResponse.text();
+        console.error(`[TRIGGER] Lyrics generation failed: ${lyricsResponse.status}`, error);
+        return new Response(
+          JSON.stringify({ error: "Lyrics generation failed", details: error }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const lyricsResult = await lyricsResponse.json();
+      lyricsTitle = lyricsResult.title;
+      console.log(`[TRIGGER] Step 1 complete - Lyrics generated: "${lyricsTitle}"`);
     }
-
-    const lyricsResult = await lyricsResponse.json();
-    console.log(`[TRIGGER] Step 1 complete - Lyrics generated: "${lyricsResult.title}"`);
 
     // Step 2: Generate audio (will trigger callback when done)
     console.log(`[TRIGGER] Step 2: Calling audio generation for ${entityType} ${entityId}`);
@@ -257,7 +274,7 @@ Deno.serve(async (req) => {
     console.log(`[TRIGGER] Step 2 complete - Audio generation started, taskId: ${audioResult.taskId}`);
 
     console.log(`[TRIGGER] ✅ Pipeline started successfully for ${entityType} ${entityId}`);
-    console.log(`[TRIGGER] Lyrics: done, Audio: generating (callback will complete)`);
+    console.log(`[TRIGGER] Lyrics: ${skipLyrics ? "preserved" : "done"}, Audio: generating (callback will complete)`);
 
     return new Response(
       JSON.stringify({ 
@@ -266,8 +283,11 @@ Deno.serve(async (req) => {
         entityId,
         status: "audio_generating",
         taskId: audioResult.taskId,
-        lyricsTitle: lyricsResult.title,
-        message: "Song generation started. Audio will be ready in 1-3 minutes.",
+        lyricsTitle,
+        lyricsSkipped: skipLyrics,
+        message: skipLyrics 
+          ? "Audio generation started using existing lyrics. Ready in 1-3 minutes."
+          : "Song generation started. Audio will be ready in 1-3 minutes.",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

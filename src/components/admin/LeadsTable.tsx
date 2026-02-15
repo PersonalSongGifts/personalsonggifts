@@ -156,6 +156,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const { toast } = useToast();
   // Regenerate song state
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+  const [regenerateMode, setRegenerateMode] = useState<"new" | "with_lyrics">("new");
   const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
   const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
   const [regenerating, setRegenerating] = useState(false);
@@ -796,7 +797,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     setEditedLead({});
   };
 
-  // Handler for regenerating lead song
+  // Handler for regenerating lead song (supports both modes)
   const handleRegenerateLeadSong = async () => {
     if (!selectedLead || !adminPassword) return;
     
@@ -806,7 +807,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "regenerate_song",
+          action: regenerateMode === "with_lyrics" ? "regenerate_with_lyrics" : "regenerate_song",
           leadId: selectedLead.id,
           sendOption: regenerateSendOption,
           scheduledAt: regenerateSendOption === "scheduled" && regenerateScheduledAt 
@@ -822,11 +823,12 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       }
 
       toast({
-        title: "Regeneration Started",
+        title: regenerateMode === "with_lyrics" ? "Regeneration Started (Lyrics Preserved)" : "Regeneration Started",
         description: `Preview for ${selectedLead.recipient_name} is being regenerated. This will take 1-3 minutes.`,
       });
 
       setShowRegenerateDialog(false);
+      setRegenerateMode("new");
       setRegenerateSendOption("auto");
       setRegenerateScheduledAt(null);
       setSelectedLead(null);
@@ -1684,7 +1686,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                   </div>
                 )}
 
-                {/* Regenerate Song Button - for leads with existing song */}
+                {/* Regenerate Song Buttons - for leads with existing song */}
                 {selectedLead.preview_song_url && selectedLead.status !== "converted" && (
                   <div className="border-t pt-4">
                     <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900 rounded-lg p-4">
@@ -1693,17 +1695,45 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         <div className="flex-1">
                           <h4 className="font-medium text-purple-800 dark:text-purple-200">Regenerate Song</h4>
                           <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
-                            Use when pronunciation needs fixing. This will generate a new preview using current details including any pronunciation override.
+                            Generate a new version of this song. Choose whether to create entirely new lyrics or keep the current ones.
                           </p>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="mt-3 border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-900/50"
-                            onClick={() => setShowRegenerateDialog(true)}
-                          >
-                            <Wand2 className="h-4 w-4 mr-2" />
-                            Regenerate Song
-                          </Button>
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-900/50"
+                                  onClick={() => { setRegenerateMode("new"); setShowRegenerateDialog(true); }}
+                                >
+                                  <Wand2 className="h-4 w-4 mr-2" />
+                                  Regenerate New Song
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs text-center">
+                                Generates brand new lyrics AND a new melody from scratch. The entire song will be replaced.
+                              </TooltipContent>
+                            </Tooltip>
+                            
+                            {selectedLead.automation_lyrics && selectedLead.automation_lyrics.trim().length > 0 && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                                    onClick={() => { setRegenerateMode("with_lyrics"); setShowRegenerateDialog(true); }}
+                                  >
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Regenerate with Current Lyrics
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs text-center">
+                                  Keeps the current lyrics but generates a completely new melody, tempo, and vocals. Use this after editing lyrics to fix mistakes.
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2285,6 +2315,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       <Dialog open={showRegenerateDialog} onOpenChange={(open) => {
         if (!open) {
           setShowRegenerateDialog(false);
+          setRegenerateMode("new");
           setRegenerateSendOption("auto");
           setRegenerateScheduledAt(null);
         }
@@ -2292,13 +2323,27 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-purple-600" />
-              Regenerate Preview Song
+              {regenerateMode === "with_lyrics" ? (
+                <><RefreshCw className="h-5 w-5 text-amber-600" /> Regenerate with Current Lyrics</>
+              ) : (
+                <><Wand2 className="h-5 w-5 text-purple-600" /> Regenerate New Song</>
+              )}
             </DialogTitle>
             <DialogDescription>
-              This will generate a new 45-second preview using the current lead details, including any pronunciation overrides. The existing song will be replaced.
+              {regenerateMode === "with_lyrics"
+                ? "This will keep the current lyrics but generate a completely new melody, tempo, and vocals. The song will sound entirely different."
+                : "This will generate brand new lyrics AND a new melody from scratch. The existing song will be replaced."}
             </DialogDescription>
           </DialogHeader>
+
+          {regenerateMode === "with_lyrics" && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                <strong>Important:</strong> The melody will be completely different from the original. Only the lyrics text will be preserved.
+              </p>
+            </div>
+          )}
           
           <div className="space-y-4 py-4">
             <div className="space-y-3">
@@ -2373,17 +2418,22 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
             <Button 
               onClick={handleRegenerateLeadSong} 
               disabled={regenerating || (regenerateSendOption === "scheduled" && !regenerateScheduledAt)}
-              className="bg-purple-600 hover:bg-purple-700"
+              className={regenerateMode === "with_lyrics" ? "bg-amber-600 hover:bg-amber-700" : "bg-purple-600 hover:bg-purple-700"}
             >
               {regenerating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Regenerating...
                 </>
+              ) : regenerateMode === "with_lyrics" ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Regenerate with Current Lyrics
+                </>
               ) : (
                 <>
                   <Wand2 className="h-4 w-4 mr-2" />
-                  Regenerate Song
+                  Regenerate New Song
                 </>
               )}
             </Button>
