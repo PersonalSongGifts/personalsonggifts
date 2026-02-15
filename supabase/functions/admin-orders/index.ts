@@ -776,7 +776,8 @@ Deno.serve(async (req) => {
           "sms_opt_in",
           "delivery_status",
           "automation_lyrics",
-          "cover_image_url"
+          "cover_image_url",
+          "song_title"
         ];
 
         const safeUpdates: Record<string, unknown> = {};
@@ -912,7 +913,8 @@ Deno.serve(async (req) => {
           "lead_email_override", "lead_email_cc",
           "lyrics_language_code",
           "automation_lyrics",
-          "cover_image_url"
+          "cover_image_url",
+          "song_title"
         ];
 
         const safeUpdates: Record<string, unknown> = {};

@@ -186,6 +186,10 @@ export default function Admin() {
   const [editingOrderLyrics, setEditingOrderLyrics] = useState(false);
   const [editedOrderLyricsText, setEditedOrderLyricsText] = useState("");
   const [savingOrderLyrics, setSavingOrderLyrics] = useState(false);
+  // Song title editing state
+  const [editingOrderTitle, setEditingOrderTitle] = useState(false);
+  const [editedOrderTitle, setEditedOrderTitle] = useState("");
+  const [savingOrderTitle, setSavingOrderTitle] = useState(false);
   // Regenerate song state
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateMode, setRegenerateMode] = useState<"new" | "with_lyrics">("new");
@@ -1999,10 +2003,76 @@ export default function Admin() {
                   </div>
                 </div>
 
-                {selectedOrder.song_title && (
+                {(selectedOrder.song_title || selectedOrder.song_url) && (
                   <div className="border-t pt-4">
-                    <h4 className="font-medium mb-2">Song Title</h4>
-                    <p className="text-sm text-muted-foreground">{selectedOrder.song_title}</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium">Song Title</h4>
+                      {!editingOrderTitle && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={() => {
+                            setEditingOrderTitle(true);
+                            setEditedOrderTitle(selectedOrder.song_title || "");
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" /> Edit
+                        </Button>
+                      )}
+                    </div>
+                    {editingOrderTitle ? (
+                      <div className="space-y-2">
+                        <Input
+                          value={editedOrderTitle}
+                          onChange={(e) => setEditedOrderTitle(e.target.value)}
+                          placeholder="Enter song title..."
+                          className="text-sm"
+                          maxLength={200}
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingOrderTitle(false)}
+                            disabled={savingOrderTitle}
+                          >
+                            <X className="h-3 w-3 mr-1" /> Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={savingOrderTitle}
+                            onClick={async () => {
+                              setSavingOrderTitle(true);
+                              try {
+                                const { error } = await supabase.functions.invoke("admin-orders", {
+                                  method: "POST",
+                                  body: {
+                                    action: "update_order_fields",
+                                    orderId: selectedOrder.id,
+                                    updates: { song_title: editedOrderTitle },
+                                    adminPassword: password,
+                                  },
+                                });
+                                if (error) throw error;
+                                toast({ title: "Song title saved" });
+                                setSelectedOrder({ ...selectedOrder, song_title: editedOrderTitle });
+                                setEditingOrderTitle(false);
+                                fetchOrders();
+                              } catch {
+                                toast({ title: "Failed to save title", variant: "destructive" });
+                              } finally {
+                                setSavingOrderTitle(false);
+                              }
+                            }}
+                          >
+                            <Save className="h-3 w-3 mr-1" /> Save
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">{selectedOrder.song_title || <span className="italic">No title set</span>}</p>
+                    )}
                   </div>
                 )}
 
