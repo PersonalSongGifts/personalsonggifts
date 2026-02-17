@@ -63,7 +63,7 @@ const TOTAL_STEPS = 7;
 
 const stepTitles = [
   "Who Is This Song For?",
-  "Tell Us Their Name",
+  "Tell Us Who This Song Will Be For",
   "What's the Occasion?",
   "Choose a Genre",
   "Share Your Story",
