@@ -1,6 +1,5 @@
 import { FormData, FormErrors } from "@/pages/CreateSong";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 
 interface OccasionStepProps {
   formData: FormData;
@@ -9,17 +8,8 @@ interface OccasionStepProps {
   onAutoAdvance?: () => void;
 }
 
-// ========================================
-// CONFIGURABLE FEATURED OCCASION
-// Change this for seasonal promotions
-// ========================================
-const featuredOccasion = {
-  id: "valentines",
-  label: "Valentine's Day",
-  emoji: "❤️",
-};
-
 const occasions = [
+  { id: "valentines", label: "Valentine's Day" },
   { id: "wedding", label: "Wedding" },
   { id: "anniversary", label: "Anniversary" },
   { id: "baby", label: "Baby Lullaby" },
@@ -39,43 +29,12 @@ const occasions = [
 ];
 
 const OccasionStep = ({ formData, updateFormData, errors, onAutoAdvance }: OccasionStepProps) => {
-  const isFeaturedSelected = formData.occasion === featuredOccasion.id;
-
   return (
     <div className="space-y-8">
       {errors.occasion && (
         <p className="text-destructive text-sm text-center">{errors.occasion}</p>
       )}
-      {/* Featured Occasion Button */}
-      <div className="flex justify-center">
-        <Button
-          variant={isFeaturedSelected ? "default" : "outline"}
-          size="lg"
-          onClick={() => {
-            updateFormData({ occasion: featuredOccasion.id });
-            onAutoAdvance?.();
-          }}
-          className={`px-12 py-8 text-xl font-semibold transition-all duration-200 ${
-            isFeaturedSelected 
-              ? "ring-2 ring-primary ring-offset-2 bg-primary text-primary-foreground" 
-              : "hover:border-primary hover:bg-primary/5"
-          }`}
-        >
-          <span className="mr-2">{featuredOccasion.emoji}</span>
-          {featuredOccasion.label}
-          <span className="ml-2">{featuredOccasion.emoji}</span>
-        </Button>
-      </div>
-
-      {/* Divider */}
-      <div className="flex items-center gap-4">
-        <div className="flex-1 h-px bg-border" />
-        <span className="text-muted-foreground text-sm">or choose another occasion</span>
-        <div className="flex-1 h-px bg-border" />
-      </div>
-
-      {/* Other Occasions Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {occasions.map((occasion) => {
           const isSelected = formData.occasion === occasion.id;
           return (

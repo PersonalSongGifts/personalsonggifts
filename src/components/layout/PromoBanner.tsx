@@ -11,7 +11,7 @@ const PromoBanner = () => {
     <div className="bg-primary text-primary-foreground py-2.5 px-4 relative">
       <div className="container mx-auto flex items-center justify-center gap-2 text-sm md:text-base">
         <span className="font-medium">
-          💘 Valentine's Day Special – 50% Off! Hurry, Limited Time Offer!
+          🎵 50% Off Sale Ends Today!
         </span>
         <Link 
           to="/create" 
