@@ -96,6 +96,20 @@ const Confirmation = () => {
             </div>
           </Card>
 
+          {/* Spam folder warning */}
+          <div className="mb-8 rounded-lg border border-amber-200 bg-amber-50 p-5 text-left">
+            <div className="flex items-start gap-3">
+              <Mail className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <h4 className="font-semibold text-amber-900 mb-1">Don't miss your song!</h4>
+                <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside">
+                  <li>Check your <strong>spam/junk folder</strong> for emails from <strong>support@personalsonggifts.com</strong></li>
+                  <li>Add <strong>support@personalsonggifts.com</strong> to your contacts to ensure delivery</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Support note */}
           <p className="text-muted-foreground mb-8">
             Questions? Email us at{" "}
