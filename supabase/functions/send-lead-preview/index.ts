@@ -118,90 +118,54 @@ Deno.serve(async (req) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">We're Thrilled! Your Song is Ready 💝</h1>
-      <p style="color: #E0E0E0; margin: 10px 0 0 0; font-size: 16px;">A personalized song for ${lead.recipient_name}</p>
-    </div>
-    
-    <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-      <p style="color: #5D4E37; font-size: 18px; line-height: 1.6; margin-top: 0;">
-        Hi ${lead.customer_name},
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We're thrilled to share a personalized ${lead.occasion} song we created for <strong>${lead.recipient_name}</strong>!
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        This is a short preview so you can hear a sample of the full song. Once you complete your purchase, you will receive the complete version.
-      </p>
-      
-      <div style="text-align: center; margin: 40px 0;">
-        <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          Listen to Your Preview
-        </a>
-        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
-          <strong>Can't see the button?</strong> Copy this link:<br>
-          <a href="${previewUrl}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
-            ${previewUrl}
-          </a>
-        </p>
-      </div>
-      
-      <div style="background-color: #FFF8E7; border-left: 4px solid #FFA000; padding: 15px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
-        <p style="color: #5D4E37; margin: 0; font-size: 15px;">
-          <strong>50% Off Today Only!</strong> Complete your order now and get the full song at half price.
-        </p>
-      </div>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        This personalized song will make your gift truly memorable. We hope you love it!
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
-        Warm regards,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
-      </p>
-    </div>
-    
-    <div style="text-align: center; padding: 20px;">
-      <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        Personal Song Gifts<br>
-        2108 N ST STE N, SACRAMENTO, CA 95816<br>
-        <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
-      </p>
-      <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color: #999;">Unsubscribe from these emails</a>
-      </p>
-    </div>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${lead.customer_name},</p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      We created a personalized ${lead.occasion} song for ${lead.recipient_name} and wanted you to hear it first.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      This is a short preview. Once you complete your purchase, you'll receive the full song.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 8px 0;">
+      <strong>Listen to the preview:</strong>
+    </p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+      <a href="${previewUrl}" style="color: #1E3A5F;">${previewUrl}</a>
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
+      — The Personal Song Gifts Team
+    </p>
+
+    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
+    <p style="color: #999999; font-size: 12px; margin: 0 0 6px 0;">
+      Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816
+    </p>
+    <p style="color: #999999; font-size: 12px; margin: 0;">
+      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color: #999999;">Unsubscribe</a>
+    </p>
   </div>
 </body>
 </html>
     `;
 
-    const textContent = `We're Thrilled! Your Song for ${lead.recipient_name} is Ready
+    const textContent = `Hi ${lead.customer_name},
 
-Hi ${lead.customer_name},
+We created a personalized ${lead.occasion} song for ${lead.recipient_name} and wanted you to hear it first.
 
-We're thrilled to share a personalized ${lead.occasion} song we created for ${lead.recipient_name}!
+This is a short preview. Once you complete your purchase, you'll receive the full song.
 
-This is a short preview so you can hear a sample of the full song. Once you complete your purchase, you will receive the complete version.
+Listen to the preview here: ${previewUrl}
 
-Listen to your preview here: ${previewUrl}
-
-50% Off Today Only! Complete your order now and get the full song at half price.
-
-This personalized song will make your gift truly memorable. We hope you love it!
-
-Warm regards,
-The Personal Song Gifts Team
+— The Personal Song Gifts Team
 
 ---
 Personal Song Gifts
 2108 N ST STE N, SACRAMENTO, CA 95816
-https://personalsonggifts.lovable.app
 
 To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}
 `;
@@ -232,7 +196,6 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": lead.id,
-          "X-Priority": "1",
           "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
