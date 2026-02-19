@@ -37,6 +37,7 @@ import { FunnelInsights } from "@/components/admin/FunnelInsights";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 import { ValentineRemarketingPanel } from "@/components/admin/ValentineRemarketingPanel";
 import { CustomOccasionInsights } from "@/components/admin/CustomOccasionInsights";
+import { UnplayedResendPanel } from "@/components/admin/UnplayedResendPanel";
 import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 
 interface Order {
@@ -126,6 +127,8 @@ interface Order {
   prev_song_url?: string | null;
   prev_automation_lyrics?: string | null;
   prev_cover_image_url?: string | null;
+  // Unplayed re-send
+  unplayed_resend_sent_at?: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -1612,6 +1615,7 @@ export default function Admin() {
 
           <TabsContent value="automation" className="space-y-6">
             <AutomationDashboard adminPassword={password} onRefresh={fetchOrders} orders={allOrders} />
+            <UnplayedResendPanel adminPassword={password} allOrders={allOrders} />
           </TabsContent>
 
           <TabsContent value="emails" className="space-y-6">
@@ -2438,6 +2442,22 @@ export default function Admin() {
                           </>
                         ) : (
                           <span className="text-muted-foreground italic">Not yet</span>
+                        )}
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Follow-up Re-send:</span>{" "}
+                        {selectedOrder.unplayed_resend_sent_at ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            {formatAdminDate(selectedOrder.unplayed_resend_sent_at)}
+                            {selectedOrder.song_played_at &&
+                              new Date(selectedOrder.song_played_at) > new Date(selectedOrder.unplayed_resend_sent_at) && (
+                                <Badge variant="outline" className="ml-1 text-green-700 border-green-300 bg-green-50 text-xs">
+                                  ✓ Played after re-send
+                                </Badge>
+                              )}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground italic">Not sent</span>
                         )}
                       </div>
                     </div>
