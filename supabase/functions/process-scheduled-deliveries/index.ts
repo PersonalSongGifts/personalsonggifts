@@ -1185,12 +1185,23 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     const MAX_UNPLAYED_RESENDS_PER_RUN = 5;
 
     try {
-      const brevoApiKeyResend = Deno.env.get("BREVO_API_KEY");
-      const senderEmailResend = "support@personalsonggifts.com";
-      const senderNameResend = "Personal Song Gifts";
+      // Kill-switch: check admin_settings for unplayed_resend_enabled
+      const { data: resendSetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "unplayed_resend_enabled")
+        .maybeSingle();
 
-      if (!brevoApiKeyResend) {
-        console.error("[RESEND] BREVO_API_KEY not configured");
+      if (resendSetting?.value === "false") {
+        console.log("[RESEND] Skipped — disabled via admin settings");
+        results.unplayedResends = { skipped: true, reason: "disabled" };
+      } else {
+        const brevoApiKeyResend = Deno.env.get("BREVO_API_KEY");
+        const senderEmailResend = "support@personalsonggifts.com";
+        const senderNameResend = "Personal Song Gifts";
+
+        if (!brevoApiKeyResend) {
+          console.error("[RESEND] BREVO_API_KEY not configured");
       } else {
         // Get suppressed emails first
         const { data: suppressedEmails } = await supabase
@@ -1353,12 +1364,12 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         if (unplayedResendResults.length > 0) {
           console.log(`[RESEND] Processed ${unplayedResendResults.length} unplayed re-sends`);
         }
-      }
+        results.unplayedResends = unplayedResendResults;
+      } // end if brevoApiKeyResend
+      } // end kill-switch else
     } catch (e) {
       console.error("[RESEND] Unplayed re-send queue error:", e);
     }
-
-    results.unplayedResends = unplayedResendResults;
 
     return new Response(JSON.stringify(results), {
       status: 200,
