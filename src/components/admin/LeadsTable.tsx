@@ -80,6 +80,10 @@ export interface Lead {
   sms_sent_at?: string | null;
   sms_scheduled_for?: string | null;
   timezone?: string | null;
+  // Previous version backup
+  prev_song_url?: string | null;
+  prev_automation_lyrics?: string | null;
+  prev_cover_image_url?: string | null;
 }
 
 interface LeadsTableProps {
@@ -160,6 +164,9 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
   const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  // Restore previous version state
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [restoringPreviousVersion, setRestoringPreviousVersion] = useState(false);
   // Lyrics editing state
   const [editingLeadLyrics, setEditingLeadLyrics] = useState(false);
   const [editedLeadLyricsText, setEditedLeadLyricsText] = useState("");
@@ -847,6 +854,51 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       });
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  // Handler for restoring previous version of lead song
+  const handleRestoreLeadPreviousVersion = async () => {
+    if (!selectedLead || !adminPassword) return;
+    setRestoringPreviousVersion(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "restore_previous_version",
+          leadId: selectedLead.id,
+          adminPassword,
+        }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Restore failed");
+      }
+      const data = await response.json();
+      toast({
+        title: "Song Restored",
+        description: `Previous version of the song for ${selectedLead.recipient_name} has been restored.`,
+      });
+      setShowRestoreConfirm(false);
+      setSelectedLead({
+        ...selectedLead,
+        prev_song_url: null,
+        prev_automation_lyrics: null,
+        prev_cover_image_url: null,
+        full_song_url: data?.restoredUrl ?? selectedLead.full_song_url,
+        automation_lyrics: data?.lyricsRestored ? selectedLead.prev_automation_lyrics : selectedLead.automation_lyrics,
+      });
+      onRefresh?.();
+    } catch (err) {
+      console.error("Lead restore failed:", err);
+      toast({
+        title: "Restore Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRestoringPreviousVersion(false);
     }
   };
 
@@ -1738,6 +1790,27 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                                 </TooltipContent>
                               </Tooltip>
                             )}
+
+                            {/* Restore Previous Version Button */}
+                            {selectedLead.prev_song_url && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-teal-300 text-teal-700 hover:bg-teal-100 dark:border-teal-700 dark:text-teal-300 dark:hover:bg-teal-900/50"
+                                    onClick={() => setShowRestoreConfirm(true)}
+                                    disabled={restoringPreviousVersion}
+                                  >
+                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                    Restore Previous Version
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs text-center">
+                                  Revert to the version before the last regeneration. Only one previous version is kept — current song and lyrics will be replaced.
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2377,6 +2450,29 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
             <AlertDialogCancel disabled={convertingLead}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConvertToOrder} disabled={convertingLead}>
               {convertingLead ? "Converting..." : "Convert to Order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Restore Previous Version Confirmation Dialog */}
+      <AlertDialog open={showRestoreConfirm} onOpenChange={setShowRestoreConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore Previous Version?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revert the song and lyrics to the version before the last regeneration. Your <strong>current song and lyrics will be permanently replaced</strong>. Only one previous version is kept, so this cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={restoringPreviousVersion}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRestoreLeadPreviousVersion}
+              disabled={restoringPreviousVersion}
+              className="bg-teal-600 hover:bg-teal-700 text-white"
+            >
+              {restoringPreviousVersion ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+              {restoringPreviousVersion ? "Restoring..." : "Yes, Restore Previous Version"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
