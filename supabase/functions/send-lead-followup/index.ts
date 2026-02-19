@@ -117,91 +117,54 @@ Deno.serve(async (req) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Don't Forget ${lead.recipient_name}'s Song!</h1>
-    </div>
-    
-    <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-      <p style="color: #5D4E37; font-size: 18px; line-height: 1.6; margin-top: 0;">
-        Hi ${lead.customer_name},
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We noticed you listened to your preview but haven't completed your order yet. We understand - sometimes it takes a little time to decide!
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Here's a special code to help: <strong>Use FULLSONG to save an extra $5!</strong>
-      </p>
-      
-      <div style="background-color: #FFF3E0; border: 2px dashed #FF9800; padding: 20px; margin: 30px 0; border-radius: 8px; text-align: center;">
-        <p style="color: #E65100; margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">🎵 Limited Time Offer!</p>
-        <p style="color: #E65100; margin: 10px 0 0 0; font-size: 32px; font-weight: bold; letter-spacing: 3px;">FULLSONG</p>
-        <p style="color: #795548; margin: 10px 0 0 0; font-size: 14px;">Saves you $5 on top of any other discounts!</p>
-      </div>
-      
-      <div style="text-align: center; margin: 40px 0;">
-        <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          Listen Again & Complete Order
-        </a>
-        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
-          <strong>Can't see the button?</strong> Copy this link:<br>
-          <a href="${previewUrl}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
-            ${previewUrl}
-          </a>
-        </p>
-      </div>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Your personalized ${lead.occasion} song for <strong>${lead.recipient_name}</strong> is waiting for you!
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
-        Warm regards,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
-      </p>
-    </div>
-    
-    <div style="text-align: center; padding: 20px;">
-      <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        Personal Song Gifts<br>
-        2108 N ST STE N, SACRAMENTO, CA 95816<br>
-        <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
-      </p>
-      <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color: #999;">Unsubscribe from these emails</a>
-      </p>
-    </div>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${lead.customer_name},</p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      Just wanted to check in — your ${lead.occasion} song for ${lead.recipient_name} is still waiting for you.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      You can listen to the preview and complete your order here:
+    </p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+      <a href="${previewUrl}" style="color: #1E3A5F;">${previewUrl}</a>
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      Use code <strong>FULLSONG</strong> at checkout to save $5 on your order.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
+      — The Personal Song Gifts Team
+    </p>
+
+    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
+    <p style="color: #999999; font-size: 12px; margin: 0 0 6px 0;">
+      Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816
+    </p>
+    <p style="color: #999999; font-size: 12px; margin: 0;">
+      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color: #999999;">Unsubscribe</a>
+    </p>
   </div>
 </body>
 </html>
     `;
 
-    const textContent = `Don't Forget ${lead.recipient_name}'s Song!
+    const textContent = `Hi ${lead.customer_name},
 
-Hi ${lead.customer_name},
+Just wanted to check in — your ${lead.occasion} song for ${lead.recipient_name} is still waiting for you.
 
-We noticed you listened to your preview but haven't completed your order yet. We understand - sometimes it takes a little time to decide!
+You can listen to the preview and complete your order here: ${previewUrl}
 
-Here's a special code to help: Use FULLSONG to save an extra $5!
+Use code FULLSONG at checkout to save $5 on your order.
 
-Limited Time Offer!
-Your Code: FULLSONG
-Saves you $5 on top of any other discounts!
-
-Listen again and complete your order: ${previewUrl}
-
-Your personalized ${lead.occasion} song for ${lead.recipient_name} is waiting for you!
-
-Warm regards,
-The Personal Song Gifts Team
+— The Personal Song Gifts Team
 
 ---
 Personal Song Gifts
 2108 N ST STE N, SACRAMENTO, CA 95816
-https://personalsonggifts.lovable.app
 
 To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}
 `;
@@ -217,13 +180,12 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         sender: { name: senderName, email: senderEmail },
         replyTo: { email: senderEmail, name: senderName },
         to: [{ email: lead.email, name: lead.customer_name }],
-        subject: `Don't forget ${lead.recipient_name}'s song - extra $5 off inside`,
+        subject: `Your song for ${lead.recipient_name} is still waiting`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": lead.id,
-          "X-Priority": "1",
           "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"

@@ -64,95 +64,75 @@ Deno.serve(async (req) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">Order Confirmed!</h1>
-    </div>
-    
-    <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-      <p style="color: #5D4E37; font-size: 18px; line-height: 1.6; margin-top: 0;">
-        Dear ${customerName || "Valued Customer"},
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We're thrilled! Thank you for your order. We can't wait to create a personalized song for <strong>${recipientName}</strong>. Our team is already getting started!
-      </p>
-      
-      <div style="background-color: #F5F8FB; border-left: 4px solid #1E3A5F; padding: 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
-        <h2 style="color: #1E3A5F; margin: 0 0 15px 0; font-size: 18px;">Order Details</h2>
-        <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>Order ID:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${orderId.slice(0, 8).toUpperCase()}</td>
-          </tr>
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>For:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${recipientName}</td>
-          </tr>
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>Occasion:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${occasion}</td>
-          </tr>
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>Genre:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${genre}</td>
-          </tr>
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>Delivery:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${tierLabel}</td>
-          </tr>
-        </table>
-      </div>
-      
-      <div style="background-color: #EEF3F8; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
-        <p style="color: #1E3A5F; margin: 0; font-size: 14px;">
-          <strong>Expected Delivery:</strong><br>
-          <span style="font-size: 16px;">by ${deliveryDate}</span>
-        </p>
-      </div>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We will email you as soon as your song is ready. If you have any questions, just reply to this email!
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
-        Warm regards,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
-      </p>
-    </div>
-    
-    <div style="text-align: center; padding: 20px;">
-      <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        Personal Song Gifts<br>
-        2108 N ST STE N, SACRAMENTO, CA 95816<br>
-        <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
-      </p>
-      <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}" style="color: #999;">Unsubscribe</a>
-      </p>
-    </div>
+    <p style="color: #1E3A5F; font-size: 22px; font-weight: bold; margin: 0 0 30px 0;">Order Confirmed</p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      Dear ${customerName || "Valued Customer"},
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      Thank you for your order! We're creating a personalized ${occasion} song for <strong>${recipientName}</strong> and our team is already getting started.
+    </p>
+
+    <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+      <tr style="border-bottom: 1px solid #eeeeee;">
+        <td style="color: #555555; padding: 10px 0; font-size: 14px; width: 40%;"><strong>Order ID</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${orderId.slice(0, 8).toUpperCase()}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #eeeeee;">
+        <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Song for</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${recipientName}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #eeeeee;">
+        <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Occasion</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${occasion}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #eeeeee;">
+        <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Genre</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${genre}</td>
+      </tr>
+      <tr>
+        <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Delivery</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${tierLabel} — by ${deliveryDate}</td>
+      </tr>
+    </table>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
+      Warm regards,<br>
+      The Personal Song Gifts Team
+    </p>
+
+    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
+    <p style="color: #999999; font-size: 12px; margin: 0 0 6px 0;">
+      Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816
+    </p>
+    <p style="color: #999999; font-size: 12px; margin: 0;">
+      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}" style="color: #999999;">Unsubscribe</a>
+    </p>
   </div>
 </body>
 </html>
     `;
 
-const textContent = `Order Confirmed!
+const textContent = `Order Confirmed
 
 Dear ${customerName || "Valued Customer"},
 
-We're thrilled! Thank you for your order. We can't wait to create a personalized song for ${recipientName}. Our team is already getting started!
+Thank you for your order! We're creating a personalized ${occasion} song for ${recipientName} and our team is already getting started.
 
-Order Details:
-- Order ID: ${orderId.slice(0, 8).toUpperCase()}
-- For: ${recipientName}
-- Occasion: ${occasion}
-- Genre: ${genre}
-- Delivery: ${tierLabel}
+Order ID: ${orderId.slice(0, 8).toUpperCase()}
+Song for: ${recipientName}
+Occasion: ${occasion}
+Genre: ${genre}
+Delivery: ${tierLabel} — by ${deliveryDate}
 
-Expected Delivery: by ${deliveryDate}
-
-We will email you as soon as your song is ready. If you have any questions, just reply to this email!
+We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
 
 Warm regards,
 The Personal Song Gifts Team
@@ -160,7 +140,6 @@ The Personal Song Gifts Team
 ---
 Personal Song Gifts
 2108 N ST STE N, SACRAMENTO, CA 95816
-https://personalsonggifts.lovable.app
 
 To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}
 `;
@@ -188,7 +167,6 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": orderId,
-          "X-Priority": "1",
           "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"

@@ -59,6 +59,8 @@ Deno.serve(async (req) => {
 
     const messageId = `<${orderId}.delivery.${Date.now()}@personalsonggifts.com>`;
 
+    const songPageUrl = `https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}`;
+
     const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -66,91 +68,59 @@ Deno.serve(async (req) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: Georgia, 'Times New Roman', serif;">
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <div style="background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 32px; font-weight: normal;">${recipientName}'s Song is Complete!</h1>
-    </div>
-    
-    <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-      <p style="color: #5D4E37; font-size: 18px; line-height: 1.6; margin-top: 0;">
-        Dear ${customerName || "Valued Customer"},
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Your personalized ${occasion} song for <strong>${recipientName}</strong> is ready! It's time to share and make memories.
-      </p>
-      
-      <div style="text-align: center; margin: 40px 0;">
-        <a href="https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}" style="display: inline-block; background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); color: #FDF8F3; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(30, 58, 95, 0.3);">
-          Listen to Your Song
-        </a>
-        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
-          <strong>Can't see the button?</strong> Copy this link:<br>
-          <a href="https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
-            https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}
-          </a>
-        </p>
-      </div>
-      
-      <div style="background-color: #F5F8FB; border-radius: 8px; padding: 20px; margin: 30px 0;">
-        <h3 style="color: #1E3A5F; margin: 0 0 10px 0; font-size: 16px;">Ways to Share</h3>
-        <ul style="color: #5D4E37; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
-          <li>Play it at your next celebration or gathering</li>
-          <li>Send the link directly via text or messaging apps</li>
-          <li>Download and save it forever</li>
-          <li>Share on social media</li>
-        </ul>
-      </div>
-      
-      <div style="background-color: #EEF3F8; border-radius: 8px; padding: 15px; text-align: center; margin: 20px 0;">
-        <p style="color: #1E3A5F; margin: 0; font-size: 14px;">
-          <strong>Order ID:</strong> ${orderId.slice(0, 8).toUpperCase()}
-        </p>
-      </div>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We hope this song brings joy and unforgettable memories! If you love it, we'd be honored if you shared your experience with friends and family.
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
-        Warm regards,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
-      </p>
-    </div>
-    
-    <div style="text-align: center; padding: 20px;">
-      <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        Personal Song Gifts<br>
-        2108 N ST STE N, SACRAMENTO, CA 95816<br>
-        <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">Order another song</a>
-      </p>
-      <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}" style="color: #999;">Unsubscribe</a>
-      </p>
-    </div>
+    <p style="color: #1E3A5F; font-size: 22px; font-weight: bold; margin: 0 0 30px 0;">Your song is ready!</p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      Dear ${customerName || "Valued Customer"},
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      Your personalized ${occasion} song for <strong>${recipientName}</strong> is complete and ready to share!
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 8px 0;">
+      <strong>Listen here:</strong>
+    </p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+      <a href="${songPageUrl}" style="color: #1E3A5F;">${songPageUrl}</a>
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      From the song page you can listen, download, and share with friends and family. We hope it brings joy!
+    </p>
+
+    <p style="color: #555555; font-size: 14px; margin: 0 0 4px 0;"><strong>Order ID:</strong> ${orderId.slice(0, 8).toUpperCase()}</p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 30px 0 40px 0;">
+      Warm regards,<br>
+      The Personal Song Gifts Team
+    </p>
+
+    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
+    <p style="color: #999999; font-size: 12px; margin: 0 0 6px 0;">
+      Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816
+    </p>
+    <p style="color: #999999; font-size: 12px; margin: 0;">
+      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}" style="color: #999999;">Unsubscribe</a>
+    </p>
   </div>
 </body>
 </html>
     `;
 
-    const textContent = `${recipientName}'s Song is Complete!
+    const textContent = `Your song is ready!
 
 Dear ${customerName || "Valued Customer"},
 
-Your personalized ${occasion} song for ${recipientName} is ready! It's time to share and make memories.
+Your personalized ${occasion} song for ${recipientName} is complete and ready to share!
 
-Listen to your song here: https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}
-
-Ways to Share:
-- Play it at your next celebration or gathering
-- Send the link directly via text or messaging apps
-- Download and save it forever
-- Share on social media
+Listen here: ${songPageUrl}
 
 Order ID: ${orderId.slice(0, 8).toUpperCase()}
 
-We hope this song brings joy and unforgettable memories! If you love it, we'd be honored if you shared your experience with friends and family.
+We hope it brings joy!
 
 Warm regards,
 The Personal Song Gifts Team
@@ -158,7 +128,6 @@ The Personal Song Gifts Team
 ---
 Personal Song Gifts
 2108 N ST STE N, SACRAMENTO, CA 95816
-https://personalsonggifts.lovable.app
 
 To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}
 `;
@@ -187,7 +156,6 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": orderId,
-          "X-Priority": "1",
           "Precedence": "transactional",
           "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(customerEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"

@@ -34,69 +34,43 @@ const orderConfirmationHtml = `
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FDF8F3; margin: 0; font-size: 32px; font-weight: normal;">🎵 Order Confirmed!</h1>
-    </div>
-    
-    <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-      <p style="color: #5D4E37; font-size: 18px; line-height: 1.6; margin-top: 0;">
-        Dear ${sampleData.customerName},
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Thank you for your order! We're thrilled to create a personalized song for ${sampleData.recipientName}. Our talented musicians are already getting inspired.
-      </p>
-      
-      <div style="background-color: #F5F8FB; border-left: 4px solid #1E3A5F; padding: 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
-        <h2 style="color: #1E3A5F; margin: 0 0 15px 0; font-size: 18px;">Order Details</h2>
-        <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>Order ID:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${sampleData.orderId}</td>
-          </tr>
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>For:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${sampleData.recipientName}</td>
-          </tr>
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>Occasion:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${sampleData.occasion}</td>
-          </tr>
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>Genre:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${sampleData.genre}</td>
-          </tr>
-          <tr>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;"><strong>Delivery:</strong></td>
-            <td style="color: #5D4E37; padding: 8px 0; font-size: 14px;">${tierLabel}</td>
-          </tr>
-        </table>
-      </div>
-      
-      <div style="background-color: #EEF3F8; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
-        <p style="color: #1E3A5F; margin: 0; font-size: 14px;">
-          <strong>Expected Delivery:</strong><br>
-          <span style="font-size: 16px;">by ${deliveryDate}</span>
-        </p>
-      </div>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
-        With love,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong> 🎶
-      </p>
-    </div>
-    
-    <div style="text-align: center; padding: 20px;">
-      <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts. Made with ❤️
-      </p>
-    </div>
+    <p style="color: #1E3A5F; font-size: 22px; font-weight: bold; margin: 0 0 30px 0;">Order Confirmed</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Dear ${sampleData.customerName},</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      Thank you for your order! We're creating a personalized ${sampleData.occasion} song for <strong>${sampleData.recipientName}</strong> and our team is already getting started.
+    </p>
+    <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+      <tr style="border-bottom: 1px solid #eeeeee;">
+        <td style="color: #555555; padding: 10px 0; font-size: 14px; width: 40%;"><strong>Order ID</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${sampleData.orderId}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #eeeeee;">
+        <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Song for</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${sampleData.recipientName}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #eeeeee;">
+        <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Occasion</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${sampleData.occasion}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #eeeeee;">
+        <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Genre</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${sampleData.genre}</td>
+      </tr>
+      <tr>
+        <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Delivery</strong></td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${tierLabel} — by ${deliveryDate}</td>
+      </tr>
+    </table>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
+    </p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
+      Warm regards,<br>The Personal Song Gifts Team
+    </p>
+    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
+    <p style="color: #999999; font-size: 12px; margin: 0;">Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816</p>
   </div>
 </body>
 </html>
@@ -110,59 +84,26 @@ const songDeliveryHtml = `
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <div style="background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 32px; font-weight: normal;">🎉 Your Song is Ready!</h1>
-    </div>
-    
-    <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-      <p style="color: #5D4E37; font-size: 18px; line-height: 1.6; margin-top: 0;">
-        Dear ${sampleData.customerName},
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Great news! Your personalized ${sampleData.occasion} song for <strong>${sampleData.recipientName}</strong> is complete and ready to share!
-      </p>
-      
-      <div style="text-align: center; margin: 40px 0;">
-        <a href="${sampleData.songUrl}" style="display: inline-block; background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); color: #FDF8F3; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(30, 58, 95, 0.3);">
-          🎵 Listen to Your Song
-        </a>
-      </div>
-      
-      <div style="background-color: #F5F8FB; border-radius: 8px; padding: 20px; margin: 30px 0;">
-        <h3 style="color: #1E3A5F; margin: 0 0 10px 0; font-size: 16px;">💡 Tips for Sharing</h3>
-        <ul style="color: #5D4E37; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
-          <li>Play it at your next celebration or gathering</li>
-          <li>Send the link directly via text or messaging apps</li>
-          <li>Download and save it forever</li>
-          <li>Share on social media to spread the joy</li>
-        </ul>
-      </div>
-      
-      <div style="background-color: #EEF3F8; border-radius: 8px; padding: 15px; text-align: center; margin: 20px 0;">
-        <p style="color: #1E3A5F; margin: 0; font-size: 14px;">
-          <strong>Order ID:</strong> ${sampleData.orderId}
-        </p>
-      </div>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We hope this song brings joy and unforgettable memories! If you love it, we'd be honored if you shared your experience with friends and family.
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
-        With love and music,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong> 🎶
-      </p>
-    </div>
-    
-    <div style="text-align: center; padding: 20px;">
-      <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        © 2026 Personal Song Gifts. Made with ❤️<br>
-        <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">Order another song</a>
-      </p>
-    </div>
+    <p style="color: #1E3A5F; font-size: 22px; font-weight: bold; margin: 0 0 30px 0;">Your song is ready!</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Dear ${sampleData.customerName},</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      Your personalized ${sampleData.occasion} song for <strong>${sampleData.recipientName}</strong> is complete and ready to share!
+    </p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 8px 0;"><strong>Listen here:</strong></p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+      <a href="${sampleData.songUrl}" style="color: #1E3A5F;">${sampleData.songUrl}</a>
+    </p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      From the song page you can listen, download, and share with friends and family. We hope it brings joy!
+    </p>
+    <p style="color: #555555; font-size: 14px; margin: 0 0 4px 0;"><strong>Order ID:</strong> ${sampleData.orderId}</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 30px 0 40px 0;">
+      Warm regards,<br>The Personal Song Gifts Team
+    </p>
+    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
+    <p style="color: #999999; font-size: 12px; margin: 0;">Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816</p>
   </div>
 </body>
 </html>
