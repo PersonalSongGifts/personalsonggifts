@@ -1,132 +1,139 @@
 
+## Email Deliverability: Full Audit and Fix Plan
 
-## Song Version Restore for Orders and Leads
+### What's Actually Causing Spam Issues
 
-### Problem Summary
-
-When an admin clicks "Regenerate New Song" or "Regenerate with Current Lyrics", the current song file in storage is silently overwritten and the lyrics are erased with no way to go back. The waterlogged24@verizon.net situation is the perfect example — once regenerated, the previous audio is permanently gone.
-
-### Solution: Single-Slot Backup System
-
-Before any regeneration starts, automatically copy the current song file to a `-prev` slot in storage and snapshot the current lyrics to a backup database column. A "Restore Previous Version" button then appears in the admin panel, letting you swap back with one click.
+After reading every email template in the codebase against current spam filter research, here's the honest breakdown of what's working against you — and the real answer to "should we go plain text?"
 
 ---
 
-### Potential Problems Analyzed
+### Current State of Your Emails
 
-**1. Storage has no native copy/move operation**
-Supabase Storage doesn't have a built-in copy API. To copy `orders/B2E0F292-full.mp3` to `orders/B2E0F292-prev.mp3`, the Edge Function must download the file bytes and re-upload them. For a ~5 MB MP3 this is a safe in-memory operation, but it adds ~2-3 seconds to the regenerate flow. This is acceptable because the backup happens before regeneration starts.
+You have **4 distinct email types** across 5+ edge functions:
 
-**2. What if the backup download fails?**
-If the backup fails (network issue, storage issue), the regeneration should be blocked with an error. It's better to refuse to regenerate than to silently destroy the previous version. The handler will return a clear error: "Could not back up current song — regeneration blocked."
+1. **Order Confirmation** (`send-order-confirmation`) — sent to paying customers
+2. **Song Delivery** (`send-song-delivery`) — sent when the song is done
+3. **Lead Preview** (`send-lead-preview`) — sent to leads who haven't paid yet
+4. **Lead Follow-up** (`send-lead-followup`) — sent to leads who haven't converted
+5. **Valentine Remarketing** (`send-valentine-remarketing`) — bulk campaign
 
-**3. Leads have two files (full + preview), orders have one**
-For leads: back up both `leads/[ID]-full.mp3` and `leads/[ID]-preview.wav` to `leads/[ID]-prev-full.mp3` and `leads/[ID]-prev-preview.wav`. On restore, both are restored. The `prev_song_url` in the database will store the full song URL; the preview URL is reconstructed from the same pattern.
+What's important: emails 1 and 2 are **transactional** (someone paid, they're expecting them). Emails 3–5 are **marketing** (the person never paid, they may not be expecting them). These two categories should be treated very differently because spam filters treat them differently.
 
-**4. What if there's no current song to back up?**
-If `song_url` (orders) or `full_song_url` (leads) is null, skip the backup step entirely — no previous version to save, proceed with regeneration normally.
+---
 
-**5. File naming edge cases (AI-generated vs manual uploads use different paths)**
-AI-generated songs for orders go to `orders/[SHORTID]-full.mp3`. Manual uploads go to `[SHORTID].mp3` (no `orders/` prefix). The backup handler needs to parse the actual storage path from the current URL, not hardcode the path pattern. It extracts the path from the public URL by stripping the bucket base URL.
+### What's Triggering Spam Filters Right Now
 
-**6. Only one previous version is stored (not full history)**
-When a second regeneration happens, the existing `-prev` file is overwritten. This is intentional — we keep it simple and only guarantee "undo the last change." The admin UI will make this clear with a tooltip.
+**Problem 1: Promotional language in subject lines**
+- Lead preview subject: `"Your song for [name] is ready"` — acceptable
+- Follow-up subject: `"Don't forget [name]'s song - extra $5 off inside"` — the phrase "extra $5 off inside" is a textbook spam trigger. The word "inside" combined with a discount offer is one of the most reliably flagged combinations in email deliverability research.
 
-**7. Restore must also update the song player page**
-When restoring an order, the `song_url` database field must be updated to point to the restored file URL (with a cache-busting `?v=timestamp` suffix). The customer's song player page reads from this field, so it will automatically show the restored version.
+**Problem 2: "50% Off Today Only!" inside the lead preview email body**
+The lead preview HTML contains this exact block:
+```
+"50% Off Today Only! Complete your order now and get the full song at half price."
+```
+This is the single biggest deliverability problem in the entire system. "50% Off Today Only!" is on virtually every spam trigger word list. It appears in the HTML *and* the plain text version, so both get flagged. Gmail's spam classifiers are specifically trained on time-pressure discount language.
 
-**8. What about the cover image?**
-Cover art is stored separately and is not affected by regeneration (the regeneration handlers clear `cover_image_url` in the database, but the file stays in storage). On restore, the `cover_image_url` from before the regeneration is also restored from `prev_cover_image_url`.
+**Problem 3: The HTML structure signals "bulk promotional email"**
+Every email uses a dark colored gradient header (`linear-gradient(135deg, #1E3A5F...)`), colored backgrounds, `box-shadow`, and heavy `<div>` nesting. This exact pattern — colored banner at top, card with shadow, nested colored info boxes — is the template pattern used by bulk marketing tools like Mailchimp, Klaviyo, and Constant Contact. Gmail's machine learning has been trained on billions of these and routes them to Promotions or Spam. Even for transactional emails, this structure works against you.
+
+**Problem 4: `X-Priority: 1` header on all emails**
+Every email (including marketing ones) sends `"X-Priority": "1"`, which marks the email as "highest priority." This header is heavily abused by spammers and is considered a spam signal by many filters when present on bulk or promotional mail. For transactional emails it's borderline acceptable; for marketing emails it's a red flag.
+
+**Problem 5: The same sending domain for all email types**
+`support@personalsonggifts.com` sends everything — transactional confirmations AND marketing recovery emails. If a recipient marks a follow-up email as spam, it damages the sender reputation for the entire domain, including your order confirmations. Ideally, marketing emails would come from a subdomain like `hello@mail.personalsonggifts.com` — but that's a larger infrastructure change.
+
+---
+
+### Should You Go Full Plain Text?
+
+**The short answer: yes for marketing emails, no for transactional ones. But "plain text" doesn't mean what most people think.**
+
+Here's the nuance:
+
+- The **Valentine remarketing** campaign already uses near-plain-text HTML (minimal styling, white background, no header image, simple links). That's the right approach for unsolicited marketing.
+- Order confirmations and song delivery emails are **expected by the customer** — they just paid. A completely unstyled plain text email for these would feel low-quality and erode trust. The goal here isn't to go fully plain, it's to remove the specific spam triggers while keeping a clean, readable design.
+- The **lead preview and follow-up** are the sweet spot for going plain — these people haven't paid, they may not remember filling out a form, and the styled "marketing email" look immediately signals "promotional." Plain-text style here would dramatically improve deliverability.
+
+---
+
+### The Fix Plan
+
+#### Email 1 & 2: Order Confirmation + Song Delivery (Keep styled, remove triggers)
+These are true transactional emails to paying customers. Keep some styling but simplify:
+- Remove `box-shadow` from the card wrapper
+- Remove the dark gradient header — replace with simple text header in the brand color
+- Remove all colored info boxes — use simple text tables or plain paragraphs instead
+- Keep `Precedence: transactional` header
+- **Remove `X-Priority: 1`** — this is a spam signal and adds no deliverability benefit for Brevo-sent email
+
+#### Email 3: Lead Preview (Strip down aggressively)
+This is the most important fix. Apply the same plain approach as the Valentine remarketing email:
+- **Remove `"50% Off Today Only!"`** — this is the single highest-risk phrase in the system. Replace with something softer like `"Special offer available for a limited time"` or nothing at all.
+- Remove the dark gradient header
+- Remove colored boxes and shadows
+- Use the Valentine-remarketing style: white background, system font, simple link, minimal structure
+
+**New subject line direction:** Keep `"Your song for [name] is ready"` — this is clean and passes filters.
+
+#### Email 4: Lead Follow-up (Strip down aggressively)
+- **Change subject** from `"Don't forget [name]'s song - extra $5 off inside"` → Something like `"Your song is still waiting for you"` — remove the discount mention from the subject entirely. Mention FULLSONG code in the body instead.
+- Apply the same plain style as the valentine remarketing email
+- Remove the FULLSONG promo box styling — just mention it in plain text: `"Use code FULLSONG at checkout to save $5."`
+
+#### All Emails: Remove `X-Priority: 1`
+This header appears in every single edge function. It should be removed from all of them.
 
 ---
 
 ### Files to Change
 
-**1. Database Migration — add backup columns**
-
-New columns on both `orders` and `leads` tables:
-- `prev_song_url TEXT` — URL of the song before the last regeneration
-- `prev_automation_lyrics TEXT` — lyrics text before the last regeneration  
-- `prev_cover_image_url TEXT` — cover art URL before the last regeneration
-
-**2. `supabase/functions/admin-orders/index.ts` — 3 additions**
-
-*Addition A: Backup logic at the top of both `regenerate_song` and `regenerate_with_lyrics` handlers*
-
-Before clearing anything, if a current song file exists:
-```
-1. Extract the storage path from the current song URL
-2. Download the file bytes (fetch the public URL)
-3. Re-upload to the -prev slot (upsert: true)
-4. Save current song_url, automation_lyrics, cover_image_url into prev_* columns
-5. Only then proceed with the existing clear-and-regenerate logic
-```
-
-*Addition B: New `restore_previous_version` action handler*
-
-Steps:
-1. Fetch the entity, verify `prev_song_url` is not null
-2. Extract the `-prev` file path from the `prev_song_url`
-3. Download the `-prev` file bytes  
-4. Upload those bytes back to the main slot (the original path, upsert: true) with a new cache-busting suffix
-5. Update the database: `song_url = new_public_url`, `automation_lyrics = prev_automation_lyrics`, `cover_image_url = prev_cover_image_url`
-6. Clear the `prev_*` columns (so "Restore" disappears after use)
-7. Log activity: `song_restored`
-
-**3. `src/pages/Admin.tsx` — Orders UI**
-
-- Add `prev_song_url` and `prev_automation_lyrics` to the `Order` interface
-- Add `restoringPreviousVersion` state boolean
-- Add a "Restore Previous Version" button in the Automation Controls section, conditionally rendered when `selectedOrder.prev_song_url` is set
-- Button is styled in green/teal with a `RotateCcw` icon
-- Clicking triggers a confirmation AlertDialog: "This will revert to the previous audio and lyrics. Your current version will be lost."
-- On confirm, calls `restore_previous_version` action with `orderId`
-- On success: updates `selectedOrder` state and calls `fetchOrders()`
-
-**4. `src/components/admin/LeadsTable.tsx` — Leads UI**
-
-- Add `prev_song_url` and `prev_automation_lyrics` to the `Lead` interface
-- Add `restoringPreviousVersion` state boolean
-- Add the same "Restore Previous Version" button in the Regenerate Song section, conditionally rendered when `selectedLead.prev_song_url` is set
-- Same confirmation dialog pattern
-- On success: updates `selectedLead` state and calls `onRefresh?.()`
-
----
-
-### UI Placement
-
-**In Orders (Admin.tsx):** The "Restore Previous Version" button appears inside the existing "Automation Controls" section, next to the Regenerate buttons. It only shows when `prev_song_url` is non-null.
-
-**In Leads (LeadsTable.tsx):** The button appears inside the existing purple "Regenerate Song" card, next to the existing Regenerate buttons. Same conditional display.
-
----
-
-### What the Button Looks Like
-
-```
-[ RotateCcw icon ]  Restore Previous Version
-```
-- Color: green/teal outline button
-- Tooltip: "Revert to the version before the last regeneration. Your current song and lyrics will be replaced."
-- After restore: button disappears (prev_song_url is cleared)
-- If no backup exists (first-time regeneration): button doesn't show
-
----
-
-### Activity Log Events
-
-Two new events added to the activity log:
-- `song_backup_created` — logged when a backup is made before regeneration
-- `song_restored` — logged when admin clicks Restore Previous Version
-
----
-
-### Summary of Files Changed
-
 | File | Change |
 |---|---|
-| New migration | Add `prev_song_url`, `prev_automation_lyrics`, `prev_cover_image_url` to `orders` + `leads` |
-| `admin-orders/index.ts` | Backup logic in both regen handlers + new `restore_previous_version` handler |
-| `src/pages/Admin.tsx` | Interface update + Restore button + confirmation dialog |
-| `src/components/admin/LeadsTable.tsx` | Interface update + Restore button + confirmation dialog |
+| `supabase/functions/send-order-confirmation/index.ts` | Remove dark gradient header, remove colored boxes, remove `X-Priority: 1`, simplify HTML to minimal structure |
+| `supabase/functions/send-song-delivery/index.ts` | Same structural simplification, remove `X-Priority: 1` |
+| `supabase/functions/send-lead-preview/index.ts` | Remove `"50% Off Today Only!"`, strip to valentine-remarketing style HTML, remove `X-Priority: 1` |
+| `supabase/functions/send-lead-followup/index.ts` | Change subject line, strip to plain style, remove promo box styling, remove `X-Priority: 1` |
+| `supabase/functions/send-test-email/index.ts` | Update the template preview functions to match new templates |
+| `src/components/admin/EmailTemplates.tsx` | Update the HTML preview strings to match the new cleaner templates |
+
+---
+
+### What This Looks Like in Practice
+
+**Order Confirmation (stays styled, but cleaner):**
+- White background throughout
+- Bold text heading instead of dark gradient banner
+- Simple table for order details — no colored boxes
+- Plain paragraph sign-off
+- Still branded, still readable, no spam signals
+
+**Lead Preview + Follow-up (plain personal style like valentine campaign):**
+- White background, system font (Arial/Helvetica), no header graphic
+- Opens with: `"Hi [name],"` on its own line
+- 2-3 short paragraphs
+- A bare hyperlink (not a big styled button) plus the URL written out
+- Promo code mentioned in plain text
+- Closes with `"— The Personal Song Gifts Team"`
+- Looks like a personal email from a real person
+
+---
+
+### What This Will and Won't Fix
+
+**Will help significantly:**
+- Removing "50% Off Today Only!" is the single highest-impact change
+- Removing the discount mention from the follow-up subject line
+- Removing `X-Priority: 1` from all emails
+- Simplifying HTML structure so Gmail doesn't auto-route to Promotions
+
+**Won't fully fix (but nothing in code can):**
+- If recipients have previously marked emails from your domain as spam, that history affects future delivery — only good sending behavior over time rebuilds reputation
+- Verizon.net (AOL/Yahoo infrastructure) and Comcast are notoriously aggressive spam filters that sometimes block even authenticated, clean emails — no code change fixes their filtering policies
+- Gmail's Promotions tab is not the same as spam — most order confirmations land there for Gmail users. The tab is not spam; the email is still delivered and visible
+
+**Recommend checking in Brevo dashboard:**
+- Your domain spam complaint rate (should be under 0.1%)
+- Your bounce rate (high bounces tank sender reputation)
+- Whether SPF/DKIM/DMARC are all confirmed active on Brevo
 
