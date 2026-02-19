@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy, Calendar } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
 import { ActivityLog } from "@/components/admin/ActivityLog";
@@ -36,6 +36,8 @@ import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
 import { FunnelInsights } from "@/components/admin/FunnelInsights";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 import { ValentineRemarketingPanel } from "@/components/admin/ValentineRemarketingPanel";
+import { CustomOccasionInsights } from "@/components/admin/CustomOccasionInsights";
+import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 
 interface Order {
   id: string;
@@ -206,6 +208,29 @@ export default function Admin() {
  // Source filter for direct vs lead conversion orders
   const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
   const [pendingLeadId, setPendingLeadId] = useState<string | null>(null);
+  // Analytics date range filter
+  type DatePreset = "7d" | "14d" | "30d" | "90d" | "all" | "custom";
+  const [analyticsPreset, setAnalyticsPreset] = useState<DatePreset>("30d");
+  const [analyticsFrom, setAnalyticsFrom] = useState<string>("");
+  const [analyticsTo, setAnalyticsTo] = useState<string>("");
+
+  // Derive filtered orders for analytics charts based on date range
+  const analyticsOrders = (() => {
+    if (analyticsPreset === "all") return allOrders;
+    if (analyticsPreset === "custom") {
+      if (!analyticsFrom && !analyticsTo) return allOrders;
+      return allOrders.filter((o) => {
+        const d = parseISO(o.created_at);
+        const from = analyticsFrom ? startOfDay(parseISO(analyticsFrom)) : new Date(0);
+        const to = analyticsTo ? endOfDay(parseISO(analyticsTo)) : new Date();
+        return isWithinInterval(d, { start: from, end: to });
+      });
+    }
+    const days = analyticsPreset === "7d" ? 7 : analyticsPreset === "14d" ? 14 : analyticsPreset === "90d" ? 90 : 30;
+    const cutoff = startOfDay(subDays(new Date(), days - 1));
+    return allOrders.filter((o) => parseISO(o.created_at) >= cutoff);
+  })();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -1082,29 +1107,83 @@ export default function Admin() {
           </TabsList>
 
           <TabsContent value="analytics" className="space-y-6">
-            <StatsCards orders={allOrders} leads={leads} />
+            {/* === DATE RANGE FILTER === */}
+            <div className="flex items-center gap-3 flex-wrap p-4 bg-muted/40 rounded-lg border">
+              <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground">Date range:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {(["7d", "14d", "30d", "90d", "all"] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setAnalyticsPreset(p)}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                      analyticsPreset === p
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background border hover:bg-muted text-foreground"
+                    }`}
+                  >
+                    {p === "7d" ? "Last 7 days" : p === "14d" ? "Last 14 days" : p === "30d" ? "Last 30 days" : p === "90d" ? "Last 90 days" : "All time"}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setAnalyticsPreset("custom")}
+                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                    analyticsPreset === "custom"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background border hover:bg-muted text-foreground"
+                  }`}
+                >
+                  Custom
+                </button>
+              </div>
+              {analyticsPreset === "custom" && (
+                <div className="flex items-center gap-2 ml-1">
+                  <input
+                    type="date"
+                    value={analyticsFrom}
+                    onChange={(e) => setAnalyticsFrom(e.target.value)}
+                    className="text-xs border rounded px-2 py-1 bg-background text-foreground"
+                  />
+                  <span className="text-xs text-muted-foreground">to</span>
+                  <input
+                    type="date"
+                    value={analyticsTo}
+                    onChange={(e) => setAnalyticsTo(e.target.value)}
+                    className="text-xs border rounded px-2 py-1 bg-background text-foreground"
+                  />
+                </div>
+              )}
+              <span className="text-xs text-muted-foreground ml-auto">
+                {analyticsOrders.length} orders in range
+              </span>
+            </div>
+
+            <StatsCards orders={analyticsOrders} leads={leads} />
             
             <SalesVelocity orders={allOrders} />
             
-            <ConversionFunnel orders={allOrders} leads={leads} />
+            <ConversionFunnel orders={analyticsOrders} leads={leads} />
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <RevenueChart orders={allOrders} />
-              <OrdersChart orders={allOrders} />
+              <RevenueChart orders={analyticsOrders} />
+              <OrdersChart orders={analyticsOrders} />
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <StatusChart orders={allOrders} />
-              <GenreChart orders={allOrders} />
+              <StatusChart orders={analyticsOrders} />
+              <GenreChart orders={analyticsOrders} />
             </div>
             
-            <SalesHeatmap orders={allOrders} />
+            <SalesHeatmap orders={analyticsOrders} />
             
             {/* Source Analytics */}
-            <SourceAnalytics orders={allOrders} leads={leads} />
+            <SourceAnalytics orders={analyticsOrders} leads={leads} />
 
             {/* Device & Speed Insights */}
-            <FunnelInsights orders={allOrders} leads={leads} />
+            <FunnelInsights orders={analyticsOrders} leads={leads} />
+
+            {/* Custom Occasion Insights */}
+            <CustomOccasionInsights orders={analyticsOrders} />
 
             {/* Hot Leads - most engaged unconverted */}
             <HotLeadsCard
