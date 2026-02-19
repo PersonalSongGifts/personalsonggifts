@@ -1,148 +1,130 @@
 
-## Spam-Optimized Unplayed Song Re-send: Complete Implementation Plan
+## Unplayed Song Re-send: Admin Visibility, Controls & Stats
 
-### What the User Asked For
-Build a re-send system that automatically emails customers whose song was delivered but never played — using a maximally deliverable, plain-text email. The request is also to add an email whitelist notice to the confirmation page.
+### The Problem
+The unplayed re-send system is **fully automated and invisible** right now. It fires every cron run with no admin awareness of:
+- Whether it's currently active or paused
+- How many re-sends have gone out
+- Whether those re-sends worked (did they lead to plays?)
+- Which specific orders were re-sent to
 
-### What Was Already Done (Previous Approved Plan)
-The previous round of email improvements updated `send-order-confirmation`, `send-song-delivery`, `send-lead-followup`, and `send-test-email`. Those are already clean.
-
-### What's Still Broken (Discovered During Investigation)
-
-The lead preview email **inside `process-scheduled-deliveries` section 6** (lines 957–1020) was **NOT updated** by the previous plan — it still has:
-- The dark gradient header (`linear-gradient(135deg, #1E3A5F...)`)
-- A large green button with `box-shadow`
-- `"Special offer inside!"` language
-- **`"X-Priority": "1"` header** (line 1059) — the exact spam signal we just removed from the standalone function
-
-This is the email that actually goes to customers (it's what the cron sends), not the standalone `send-lead-preview` function. So leads are still getting the old spam-triggering template. This must be fixed as part of this work.
+Admins need a control panel for this — similar to how the Valentine Remarketing Panel works — so they can pause/resume it, see aggregate stats, and see the list of orders where a re-send went out and whether the customer then played the song.
 
 ---
 
-### All Changes in This Plan
+### What Will Be Built
 
-#### 1. Database Migration — Add `unplayed_resend_sent_at` column
+#### 1. On/Off Toggle via `admin_settings`
 
-```sql
-ALTER TABLE orders ADD COLUMN unplayed_resend_sent_at timestamptz;
-```
+The cron function currently has no kill switch for the unplayed re-send queue. The fix: at the start of Section 8, fetch `admin_settings` key `unplayed_resend_enabled`. If the value is `"false"`, skip the entire section. This is the same pattern used by the Valentine remarketing kill switch.
 
-One nullable timestamp. When null = eligible for re-send (after 24h). When set = never re-send again for this order.
+The `admin_settings` table already exists and is fully wired to the `automation-get-settings` edge function (GET/POST). No new edge function or migration needed.
 
-#### 2. Fix Lead Preview Email in `process-scheduled-deliveries` (Section 6)
+#### 2. New `UnplayedResendPanel` Component
 
-Replace the old HTML (dark gradient, green button, box-shadow, `X-Priority: 1`) with the same clean plain-text style used by the Valentine remarketing campaign. This is the biggest remaining deliverability issue.
+A new admin component rendered inside the **Automation tab** (below `AutomationDashboard`). It mirrors the `ValentineRemarketingPanel` structure with:
 
-The new template follows the valentine remarketing style exactly:
-- White background, system font stack
-- Plain `Hi [name],` opening
-- 2-3 short paragraphs
-- Bare hyperlink URL written out (no styled button)
-- Remove `X-Priority: 1` entirely
-- Clean sign-off
+**Control row:**
+- Toggle switch: "Unplayed Re-send" — enabled / paused
+- When paused, shows a yellow "Paused" badge. When enabled, shows a green "Active" badge.
 
-#### 3. New Section 8 in `process-scheduled-deliveries` — Unplayed Song Re-send Queue
+**Stats row (computed from `allOrders`):**
+These are computed client-side from the already-fetched orders data — no new API calls needed.
 
-Inserted just before the final `return new Response(...)` at line 1216.
-
-**Query logic:**
-```
-status = 'delivered'
-AND delivery_status = 'sent'  
-AND song_url IS NOT NULL
-AND song_played_at IS NULL          -- never played
-AND sent_at <= now() - interval '24 hours'   -- been 24h since delivery
-AND unplayed_resend_sent_at IS NULL  -- re-send hasn't fired yet
-AND dismissed_at IS NULL
-AND email NOT IN email_suppressions  -- suppression check
-```
-
-**Sends limit:** Max 5 per cron run to prevent accidental bulk behavior.
-
-**Email template — the most spam-resistant possible:**
-
-The email uses the exact same HTML structure as the Valentine remarketing campaign (which is the highest-deliverability template in the system). Key choices and why:
-
-- **Subject line: `"Did you get your song for [recipient_name]?"` — why this works:**
-  - No punctuation pressure ("!!!"), no urgency words ("last chance", "don't miss"), no discount mentions
-  - Personalized with recipient name — personalized subjects have measurably lower spam rates
-  - Reads like a genuine follow-up from a person, not a broadcast
-  - Question format triggers natural curiosity without being manipulative
-
-- **From name stays `Personal Song Gifts`** — consistent with original delivery, recipient recognizes it
-
-- **`Precedence: transactional`** — tells mail servers this is expected mail, not bulk
-
-- **No `X-Priority` header** — removed entirely (spam signal)
-
-- **Plain URL written out** alongside the anchor tag — some spam filters penalize emails with only hyperlinked text and no visible URL
-
-- **No images, no tracking pixels, no styled buttons** — every one of these adds rendering overhead that spam filters penalize for cold/marketing mail
-
-- **Both `htmlContent` and `textContent`** — multipart MIME is required; a text-only email actually looks MORE suspicious to modern filters because it skips the standard format
-
-The exact body text (per the user's request):
-
-```
-Hi [first_name],
-
-We sent your song earlier, but it looks like it hasn't been played yet. We just want to make sure you have it in time for your special moment.
-
-You can listen to your song here:
-[song_link]
-
-Thank you for letting us be part of something meaningful with you and your loved one.
-
-We truly hope you love it.
-
-Warmly,
-Personal Song Gifts
-```
-
-**After successful send:**
-- Sets `unplayed_resend_sent_at = now()` on the order row
-- Logs activity via `logActivity()` so it's visible in the admin panel
-- Adds result to `results.unplayedResends` in cron output
-
-**Safety guards:**
-- `unplayed_resend_sent_at IS NULL` — fires at most once per order, ever
-- Suppression table check before query (join filter)
-- Max 5 per run
-- Skips if `dismissed_at IS NOT NULL`
-- Skips if no `song_url`
-- No CC email on re-sends (only primary recipient)
-
-#### 4. Confirmation Page Email Notice (`src/pages/PaymentSuccess.tsx`)
-
-Added below the delivery estimate card (line 322), only for non-lead-conversion orders (the `!isLeadConversion` branch). Shows a clean notice using the existing `Mail` icon already imported.
-
-Text:
-> Your song will be delivered via email from **support@personalsonggifts.com**. Be sure to add this address to your contacts so it doesn't go to your spam folder.
->
-> If you have questions or concerns, reach out to us at support@personalsonggifts.com
-
-Uses amber/yellow background styling consistent with the existing spam awareness notice on `Confirmation.tsx`.
-
----
-
-### Files Changed
-
-| File | What Changes |
+| Stat | Source |
 |---|---|
-| Migration | Add `unplayed_resend_sent_at timestamptz` column to `orders` |
-| `supabase/functions/process-scheduled-deliveries/index.ts` | (1) Strip section 6 lead preview email to plain style + remove `X-Priority: 1`; (2) Add new section 8 unplayed re-send queue |
-| `src/pages/PaymentSuccess.tsx` | Add email whitelist notice below delivery estimate card |
+| Eligible | `status=delivered`, `delivery_status=sent`, `song_played_at IS NULL`, `sent_at > 24h ago`, `unplayed_resend_sent_at IS NULL` |
+| Re-sends Sent | `unplayed_resend_sent_at IS NOT NULL` count |
+| Played After Re-send | `unplayed_resend_sent_at IS NOT NULL` AND `song_played_at IS NOT NULL` AND `song_played_at > unplayed_resend_sent_at` |
+| Recovery Rate | Played After Re-send ÷ Re-sends Sent |
+
+**Re-send List (scrollable table):**
+Shows all orders where `unplayed_resend_sent_at IS NOT NULL`, sorted by most recent re-send first. Columns:
+- Customer name
+- Recipient name  
+- Re-send sent timestamp
+- Song played after? (yes ✓ with timestamp / not yet ✗)
+- A small badge showing play count if > 0
+
+This gives admins the ability to answer: "Did the re-send actually work?"
+
+#### 3. Wire `unplayed_resend_sent_at` into the Order Interface
+
+The `Order` interface in `Admin.tsx` doesn't currently include `unplayed_resend_sent_at`. It needs to be added so the component can compute stats and render the list from the already-fetched `allOrders` data. The field exists in the DB (migration already applied) and in `types.ts`.
+
+Also need to ensure the admin orders `GET` query (in `admin-orders/index.ts`) includes `unplayed_resend_sent_at` in the `select()` fields so it's actually returned.
+
+#### 4. Show Re-send Status in Individual Order Detail
+
+In the "Customer Engagement" section of the order detail dialog (the section that already shows `song_played_at`, `song_play_count`, and `song_downloaded_at`), add a row for:
+
+- **"Follow-up Re-send:"** — `formatAdminDate(unplayed_resend_sent_at)` or "Not sent" 
+- If played after re-send: shows a green ✓ indicating the re-send successfully recovered the play
 
 ---
 
-### What This Does NOT Do
-- Does not re-send if the song has been played (`song_played_at IS NOT NULL`)
-- Does not re-send more than once per order (`unplayed_resend_sent_at` lock)
-- Does not send to suppressed emails
-- Does not affect CC recipients on re-sends (primary delivery email only)
-- Does not change the original delivery email template (already clean)
+### Files to Change
+
+| File | Change |
+|---|---|
+| `supabase/functions/process-scheduled-deliveries/index.ts` | Add kill-switch check at start of Section 8 using `admin_settings.unplayed_resend_enabled` |
+| `supabase/functions/admin-orders/index.ts` | Add `unplayed_resend_sent_at` to the GET select fields |
+| `src/pages/Admin.tsx` | (1) Add `unplayed_resend_sent_at` to Order interface; (2) render `<UnplayedResendPanel>` inside Automation tab; (3) add re-send row in order detail engagement section |
+| `src/components/admin/UnplayedResendPanel.tsx` | New component — toggle, stats cards, scrollable re-send list |
 
 ---
 
-### Why 24 Hours (Not Less)?
-Sending a "did you get it?" within a few hours looks automated and desperate to both humans and spam filters. 24 hours reads as a genuine check-in from a person who noticed. It also gives customers time to check email on their own schedule — many people don't check email immediately.
+### How the Kill Switch Works
+
+**In `process-scheduled-deliveries` Section 8:**
+```
+const { data: resendSetting } = await supabase
+  .from("admin_settings")
+  .select("value")
+  .eq("key", "unplayed_resend_enabled")
+  .maybeSingle();
+
+if (resendSetting?.value === "false") {
+  console.log("[RESEND] Skipped — disabled via admin settings");
+  // skip section entirely
+}
+```
+
+**In the panel (toggle handler):**
+Posts to `automation-get-settings` with `key: "unplayed_resend_enabled"` and `value: "true"` or `"false"`. Same pattern as the Valentine remarketing pause toggle.
+
+---
+
+### Stats Logic (Client-Side, No New API)
+
+All stats come from `allOrders` (already fetched). The component receives `allOrders` as a prop.
+
+```typescript
+const resendsSent = allOrders.filter(o => o.unplayed_resend_sent_at);
+const playedAfterResend = resendsSent.filter(o => 
+  o.song_played_at && 
+  new Date(o.song_played_at) > new Date(o.unplayed_resend_sent_at!)
+);
+const eligible = allOrders.filter(o =>
+  o.status === "delivered" &&
+  o.delivery_status === "sent" &&
+  !o.song_played_at &&
+  !o.unplayed_resend_sent_at &&
+  o.sent_at &&
+  new Date(o.sent_at) < new Date(Date.now() - 24 * 60 * 60 * 1000)
+);
+const recoveryRate = resendsSent.length > 0
+  ? Math.round((playedAfterResend.length / resendsSent.length) * 100)
+  : 0;
+```
+
+---
+
+### Where It Appears in the Admin UI
+
+- **Automation tab** → below `AutomationDashboard` component
+- Title: "Unplayed Song Re-send" with a toggle and status badge
+- Scrollable order list (max-height with overflow-y-auto) showing each re-sent order and whether it was played afterward
+- **Order detail dialog** → inside the existing "Customer Engagement" block, a new "Follow-up Re-send" row
+
+This follows the same visual language as `AutomationDashboard` and `ValentineRemarketingPanel` so it feels native to the admin.
