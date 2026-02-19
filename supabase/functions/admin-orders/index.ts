@@ -1415,6 +1415,226 @@ Deno.serve(async (req) => {
         );
       }
 
+      // ===== HELPER: BACKUP SONG FILE TO -prev SLOT =====
+      async function backupSongFile(
+        supabaseUrl: string,
+        supabaseServiceKey: string,
+        supabase: ReturnType<typeof createClient>,
+        entityType: "orders" | "leads",
+        entityId: string,
+        entity: Record<string, unknown>
+      ): Promise<{ backed_up: boolean; prev_song_url?: string | null; prev_automation_lyrics?: string | null; prev_cover_image_url?: string | null }> {
+        // Determine current song URL based on entity type
+        const currentSongUrl = entityType === "orders"
+          ? (entity.song_url as string | null)
+          : (entity.full_song_url as string | null);
+
+        if (!currentSongUrl) {
+          console.log(`[BACKUP] No current song for ${entityType} ${entityId}, skipping backup`);
+          return { backed_up: false };
+        }
+
+        // Extract path from public URL: strip everything up to and including /object/public/songs/
+        const bucketBase = `${supabaseUrl}/storage/v1/object/public/songs/`;
+        const path = currentSongUrl.includes(bucketBase)
+          ? currentSongUrl.slice(bucketBase.length).split("?")[0]  // strip query params
+          : null;
+
+        if (!path) {
+          console.warn(`[BACKUP] Could not extract storage path from URL: ${currentSongUrl}`);
+          return { backed_up: false };
+        }
+
+        // Derive prev path: insert -prev before the extension
+        const lastDot = path.lastIndexOf(".");
+        const ext = lastDot !== -1 ? path.slice(lastDot) : ".mp3";
+        const basePath = lastDot !== -1 ? path.slice(0, lastDot) : path;
+        const prevPath = `${basePath}-prev${ext}`;
+
+        console.log(`[BACKUP] Copying ${path} → ${prevPath}`);
+
+        // Download current file
+        let fileBytes: ArrayBuffer;
+        try {
+          const downloadRes = await fetch(currentSongUrl);
+          if (!downloadRes.ok) {
+            throw new Error(`Download failed: ${downloadRes.status}`);
+          }
+          fileBytes = await downloadRes.arrayBuffer();
+        } catch (e) {
+          console.error(`[BACKUP] Failed to download song for backup:`, e);
+          throw new Error("Could not back up current song — regeneration blocked.");
+        }
+
+        // Upload to -prev slot
+        const { error: uploadError } = await supabase.storage
+          .from("songs")
+          .upload(prevPath, fileBytes, {
+            contentType: "audio/mpeg",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error(`[BACKUP] Failed to upload backup:`, uploadError);
+          throw new Error("Could not upload song backup — regeneration blocked.");
+        }
+
+        // Build public URL for the prev file
+        const prevPublicUrl = `${supabaseUrl}/storage/v1/object/public/songs/${prevPath}`;
+
+        console.log(`[BACKUP] ✅ Backup created at ${prevPath}`);
+
+        return {
+          backed_up: true,
+          prev_song_url: prevPublicUrl,
+          prev_automation_lyrics: (entity.automation_lyrics as string | null) || null,
+          prev_cover_image_url: (entity.cover_image_url as string | null) || null,
+        };
+      }
+
+      // ===== RESTORE PREVIOUS VERSION HANDLER =====
+      if (body?.action === "restore_previous_version") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+
+        if ((!!orderId && !!leadId) || (!orderId && !leadId)) {
+          return new Response(
+            JSON.stringify({ error: "Must provide exactly one of orderId or leadId" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const entityType = orderId ? "orders" : "leads";
+        const entityId = orderId || leadId;
+
+        const { data: entity, error: fetchError } = await supabase
+          .from(entityType)
+          .select("*")
+          .eq("id", entityId!)
+          .maybeSingle();
+
+        if (fetchError) throw fetchError;
+        if (!entity) {
+          return new Response(
+            JSON.stringify({ error: `${entityType === "orders" ? "Order" : "Lead"} not found` }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const prevSongUrl = entity.prev_song_url as string | null;
+        if (!prevSongUrl) {
+          return new Response(
+            JSON.stringify({ error: "No previous version available to restore." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Extract prev file path from prev_song_url
+        const bucketBase = `${supabaseUrl}/storage/v1/object/public/songs/`;
+        const prevPath = prevSongUrl.includes(bucketBase)
+          ? prevSongUrl.slice(bucketBase.length).split("?")[0]
+          : null;
+
+        if (!prevPath) {
+          return new Response(
+            JSON.stringify({ error: "Could not parse previous song path from URL." }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Derive main path (remove -prev before extension)
+        const prevExt = prevPath.lastIndexOf(".");
+        const ext = prevExt !== -1 ? prevPath.slice(prevExt) : ".mp3";
+        const baseWithoutExt = prevExt !== -1 ? prevPath.slice(0, prevExt) : prevPath;
+        // Remove trailing -prev suffix
+        const mainBasePath = baseWithoutExt.endsWith("-prev")
+          ? baseWithoutExt.slice(0, -5)
+          : baseWithoutExt;
+        const mainPath = `${mainBasePath}${ext}`;
+
+        console.log(`[RESTORE] Restoring ${prevPath} → ${mainPath}`);
+
+        // Download prev file
+        let fileBytes: ArrayBuffer;
+        try {
+          const downloadRes = await fetch(prevSongUrl);
+          if (!downloadRes.ok) throw new Error(`Download failed: ${downloadRes.status}`);
+          fileBytes = await downloadRes.arrayBuffer();
+        } catch (e) {
+          console.error(`[RESTORE] Failed to download prev song:`, e);
+          return new Response(
+            JSON.stringify({ error: "Could not download previous song file." }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Re-upload to main slot with cache-busting suffix
+        const { error: uploadError } = await supabase.storage
+          .from("songs")
+          .upload(mainPath, fileBytes, {
+            contentType: "audio/mpeg",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error(`[RESTORE] Upload failed:`, uploadError);
+          return new Response(
+            JSON.stringify({ error: "Failed to restore song file to storage." }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const cacheBust = `?v=${Date.now()}`;
+        const restoredUrl = `${supabaseUrl}/storage/v1/object/public/songs/${mainPath}${cacheBust}`;
+
+        const prevLyrics = entity.prev_automation_lyrics as string | null;
+        const prevCoverImageUrl = entity.prev_cover_image_url as string | null;
+
+        // Build restore DB update
+        const restoreUpdate: Record<string, unknown> = {
+          prev_song_url: null,
+          prev_automation_lyrics: null,
+          prev_cover_image_url: null,
+          cover_image_url: prevCoverImageUrl,
+          automation_lyrics: prevLyrics,
+        };
+
+        if (entityType === "orders") {
+          restoreUpdate.song_url = restoredUrl;
+        } else {
+          restoreUpdate.full_song_url = restoredUrl;
+        }
+
+        const { error: updateError } = await supabase
+          .from(entityType)
+          .update(restoreUpdate)
+          .eq("id", entityId!);
+
+        if (updateError) {
+          console.error(`[RESTORE] DB update failed:`, updateError);
+          return new Response(
+            JSON.stringify({ error: "Failed to update database after restore." }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        await logActivity(
+          supabase,
+          orderId ? "order" : "lead",
+          entityId!,
+          "song_restored",
+          "admin",
+          `Previous version restored from ${prevPath}`
+        );
+
+        console.log(`[RESTORE] ✅ Restore complete for ${entityType} ${entityId}`);
+
+        return new Response(
+          JSON.stringify({ success: true, restoredUrl, lyricsRestored: !!prevLyrics }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // ===== REGENERATE WITH CURRENT LYRICS HANDLER =====
       if (body?.action === "regenerate_with_lyrics") {
         const orderId = typeof body.orderId === "string" ? body.orderId : null;
@@ -1477,6 +1697,26 @@ Deno.serve(async (req) => {
           return new Response(
             JSON.stringify({ error: "No lyrics found on this record. Use 'Regenerate New Song' instead.", env }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // ===== BACKUP CURRENT SONG BEFORE OVERWRITING =====
+        try {
+          const backup = await backupSongFile(supabaseUrl, supabaseServiceKey, supabase, entityType as "orders" | "leads", entityId!, entity as Record<string, unknown>);
+          if (backup.backed_up) {
+            await supabase.from(entityType).update({
+              prev_song_url: backup.prev_song_url,
+              prev_automation_lyrics: backup.prev_automation_lyrics,
+              prev_cover_image_url: backup.prev_cover_image_url,
+            }).eq("id", entityId!);
+            await logActivity(supabase, orderId ? "order" : "lead", entityId!, "song_backup_created", "admin", `Backup created before regenerate_with_lyrics`);
+            console.log(`[REGENERATE_WITH_LYRICS] Backup saved to prev slot`);
+          }
+        } catch (backupErr) {
+          console.error("[REGENERATE_WITH_LYRICS] Backup failed, blocking regeneration:", backupErr);
+          return new Response(
+            JSON.stringify({ error: (backupErr as Error).message || "Backup failed — regeneration blocked.", env }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
@@ -1671,6 +1911,29 @@ Deno.serve(async (req) => {
         }
 
         console.log(`[REGENERATE] Found entity: ${entityType} ${entityId}, status=${entity.status || entity.automation_status}`);
+
+        // ===== BACKUP CURRENT SONG BEFORE OVERWRITING =====
+        try {
+          const backup = await backupSongFile(supabaseUrl, supabaseServiceKey, supabase, entityType as "orders" | "leads", entityId!, entity as Record<string, unknown>);
+          if (backup.backed_up) {
+            await supabase.from(entityType).update({
+              prev_song_url: backup.prev_song_url,
+              prev_automation_lyrics: backup.prev_automation_lyrics,
+              prev_cover_image_url: backup.prev_cover_image_url,
+            }).eq("id", entityId!);
+            await logActivity(supabase, orderId ? "order" : "lead", entityId!, "song_backup_created", "admin", `Backup created before regenerate_song`);
+            console.log(`[REGENERATE] Backup saved to prev slot`);
+          }
+        } catch (backupErr) {
+          console.error("[REGENERATE] Backup failed, blocking regeneration:", backupErr);
+          return new Response(
+            JSON.stringify({
+              error: (backupErr as Error).message || "Backup failed — regeneration blocked.",
+              entityType, entityId, env,
+            }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
 
         // Clear generation artifacts but preserve identity and inputs
         const clearUpdates: Record<string, unknown> = {

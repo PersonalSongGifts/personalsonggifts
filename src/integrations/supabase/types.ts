@@ -85,6 +85,9 @@ export type Database = {
           order_id: string | null
           phone: string | null
           phone_e164: string | null
+          prev_automation_lyrics: string | null
+          prev_cover_image_url: string | null
+          prev_song_url: string | null
           preview_opened_at: string | null
           preview_play_count: number | null
           preview_played_at: string | null
@@ -153,6 +156,9 @@ export type Database = {
           order_id?: string | null
           phone?: string | null
           phone_e164?: string | null
+          prev_automation_lyrics?: string | null
+          prev_cover_image_url?: string | null
+          prev_song_url?: string | null
           preview_opened_at?: string | null
           preview_play_count?: number | null
           preview_played_at?: string | null
@@ -221,6 +227,9 @@ export type Database = {
           order_id?: string | null
           phone?: string | null
           phone_e164?: string | null
+          prev_automation_lyrics?: string | null
+          prev_cover_image_url?: string | null
+          prev_song_url?: string | null
           preview_opened_at?: string | null
           preview_play_count?: number | null
           preview_played_at?: string | null
@@ -346,6 +355,9 @@ export type Database = {
           notes: string | null
           occasion: string
           phone_e164: string | null
+          prev_automation_lyrics: string | null
+          prev_cover_image_url: string | null
+          prev_song_url: string | null
           price: number
           price_cents: number | null
           pricing_tier: string
@@ -425,6 +437,9 @@ export type Database = {
           notes?: string | null
           occasion: string
           phone_e164?: string | null
+          prev_automation_lyrics?: string | null
+          prev_cover_image_url?: string | null
+          prev_song_url?: string | null
           price: number
           price_cents?: number | null
           pricing_tier: string
@@ -504,6 +519,9 @@ export type Database = {
           notes?: string | null
           occasion?: string
           phone_e164?: string | null
+          prev_automation_lyrics?: string | null
+          prev_cover_image_url?: string | null
+          prev_song_url?: string | null
           price?: number
           price_cents?: number | null
           pricing_tier?: string
@@ -684,6 +702,9 @@ export type Database = {
           notes: string | null
           occasion: string
           phone_e164: string | null
+          prev_automation_lyrics: string | null
+          prev_cover_image_url: string | null
+          prev_song_url: string | null
           price: number
           price_cents: number | null
           pricing_tier: string

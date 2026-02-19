@@ -120,6 +120,10 @@ interface Order {
   // Lyrics unlock
   lyrics_unlocked_at?: string | null;
   lyrics_price_cents?: number | null;
+  // Previous version backup
+  prev_song_url?: string | null;
+  prev_automation_lyrics?: string | null;
+  prev_cover_image_url?: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -196,6 +200,9 @@ export default function Admin() {
   const [regenerateSendOption, setRegenerateSendOption] = useState<"immediate" | "scheduled" | "auto">("auto");
   const [regenerateScheduledAt, setRegenerateScheduledAt] = useState<Date | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  // Restore previous version state
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [restoringPreviousVersion, setRestoringPreviousVersion] = useState(false);
  // Source filter for direct vs lead conversion orders
   const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
   const [pendingLeadId, setPendingLeadId] = useState<string | null>(null);
@@ -787,6 +794,40 @@ export default function Admin() {
       });
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  // Handler for restoring previous version
+  const handleRestorePreviousVersion = async () => {
+    if (!selectedOrder || !password) return;
+    setRestoringPreviousVersion(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "restore_previous_version",
+          orderId: selectedOrder.id,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      toast({
+        title: "Song Restored",
+        description: `Previous version of the song for ${selectedOrder.recipient_name} has been restored.`,
+      });
+      setShowRestoreConfirm(false);
+      const updatedOrder = { ...selectedOrder, prev_song_url: null, prev_automation_lyrics: null, prev_cover_image_url: null, song_url: data?.restoredUrl ?? selectedOrder.song_url, automation_lyrics: data?.lyricsRestored ? selectedOrder.prev_automation_lyrics : selectedOrder.automation_lyrics };
+      setSelectedOrder(updatedOrder as Order);
+      fetchOrders();
+    } catch (err) {
+      console.error("Restore failed:", err);
+      toast({
+        title: "Restore Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRestoringPreviousVersion(false);
     }
   };
 
@@ -1944,6 +1985,27 @@ export default function Admin() {
                           )}
                         </div>
                       )}
+
+                      {/* Restore Previous Version Button */}
+                      {selectedOrder.prev_song_url && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowRestoreConfirm(true)}
+                              disabled={restoringPreviousVersion}
+                              className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 border-teal-300"
+                            >
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Restore Previous Version
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs text-center">
+                            Revert to the version before the last regeneration. Only one previous version is kept — current song and lyrics will be replaced.
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2585,6 +2647,29 @@ export default function Admin() {
               className="bg-red-600 hover:bg-red-700"
             >
               {resettingAutomation ? "Deleting..." : "Delete & Reset"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Restore Previous Version Confirmation Dialog */}
+      <AlertDialog open={showRestoreConfirm} onOpenChange={setShowRestoreConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore Previous Version?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revert the song and lyrics to the version before the last regeneration. Your <strong>current song and lyrics will be permanently replaced</strong>. Only one previous version is kept, so this cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={restoringPreviousVersion}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRestorePreviousVersion}
+              disabled={restoringPreviousVersion}
+              className="bg-teal-600 hover:bg-teal-700 text-white"
+            >
+              {restoringPreviousVersion ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+              {restoringPreviousVersion ? "Restoring..." : "Yes, Restore Previous Version"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
