@@ -321,6 +321,27 @@ const PaymentSuccess = () => {
             </Card>
           )}
 
+          {/* Email whitelist notice — only for new orders, not instant lead conversions */}
+          {!isLeadConversion && (
+            <div className="flex gap-3 p-4 mb-8 rounded-lg text-left" style={{ backgroundColor: "hsl(48 100% 96%)", border: "1px solid hsl(48 60% 80%)" }}>
+              <Mail className="h-5 w-5 shrink-0 mt-0.5" style={{ color: "hsl(32 95% 44%)" }} />
+              <div className="text-sm" style={{ color: "hsl(30 50% 20%)" }}>
+                <p className="font-semibold mb-1">Watch for your song email</p>
+                <p className="mb-2">
+                  Your song will be delivered via email from{" "}
+                  <strong>support@personalsonggifts.com</strong>. Be sure to add this address
+                  to your contacts so it doesn't go to your spam folder.
+                </p>
+                <p>
+                  If you have questions or concerns, reach out to us at{" "}
+                  <a href="mailto:support@personalsonggifts.com" className="underline font-medium">
+                    support@personalsonggifts.com
+                  </a>
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* CTA */}
           <Button asChild size="lg">
             <Link to="/">Return Home</Link>

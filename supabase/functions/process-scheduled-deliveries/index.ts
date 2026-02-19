@@ -954,67 +954,38 @@ Deno.serve(async (req) => {
 
             const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}`;
 
-            const emailHtml = `
-<!DOCTYPE html>
+            const emailHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #FDF8F3; font-family: 'Georgia', serif;">
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <div style="background: linear-gradient(135deg, #1E3A5F 0%, #2C4A6E 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
-      <h1 style="color: #FFFFFF; margin: 0; font-size: 28px; font-weight: normal;">Your Song for ${lead.recipient_name} is Ready!</h1>
-    </div>
-    
-    <div style="background-color: #FFFBF5; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-      <p style="color: #5D4E37; font-size: 18px; line-height: 1.6; margin-top: 0;">
-        Hi ${lead.customer_name}!
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        Great news! We've created a beautiful personalized ${lead.occasion} song just for <strong>${lead.recipient_name}</strong>.
-      </p>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6;">
-        We're so excited for you to hear it! Listen to a preview below:
-      </p>
-      
-      <div style="text-align: center; margin: 40px 0;">
-        <a href="${previewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%); color: #FFFFFF; text-decoration: none; padding: 18px 40px; font-size: 18px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);">
-          Listen to Your Preview
-        </a>
-        <p style="text-align: center; margin-top: 15px; font-size: 13px; color: #666;">
-          <strong>Can't see the button?</strong> Copy this link:<br>
-          <a href="${previewUrl}" style="color: #1E3A5F; word-break: break-all; font-size: 12px;">
-            ${previewUrl}
-          </a>
-        </p>
-      </div>
-      
-      <div style="background-color: #FFF8E7; border-left: 4px solid #FFA000; padding: 15px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
-        <p style="color: #5D4E37; margin: 0; font-size: 15px;">
-       <strong>Special offer inside!</strong><br>
-          Complete your order now to unlock the full-length song and download.
-        </p>
-      </div>
-      
-      <p style="color: #5D4E37; font-size: 16px; line-height: 1.6; margin-bottom: 0;">
-        With love and music,<br>
-        <strong style="color: #1E3A5F;">The Personal Song Gifts Team</strong>
-      </p>
-    </div>
-    
-    <div style="text-align: center; padding: 20px;">
-      <p style="color: #6B7B8C; font-size: 12px; margin: 0;">
-        Personal Song Gifts<br>
-        2108 N ST STE N, SACRAMENTO, CA 95816<br>
-        <a href="https://personalsonggifts.lovable.app" style="color: #1E3A5F;">personalsonggifts.com</a>
-      </p>
-      <p style="color: #999; font-size: 11px; margin-top: 10px;">
-        <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}" style="color: #999;">Unsubscribe</a>
-      </p>
-    </div>
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 16px 0;">Hi ${lead.customer_name},</p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 16px 0;">
+      Your personalized ${lead.occasion} song for ${lead.recipient_name} is ready for you to hear.
+    </p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 16px 0;">
+      Listen to your preview here:<br>
+      <a href="${previewUrl}" style="color: #1a73e8;">${previewUrl}</a>
+    </p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 16px 0;">
+      We'd love for you to hear the full song — if you like the preview, you can unlock it directly from the page above.
+    </p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 32px 0;">
+      Warmly,<br>
+      Personal Song Gifts
+    </p>
+
+    <p style="font-size: 12px; color: #888888; margin: 0;">
+      Personal Song Gifts &middot; 2108 N ST STE N, Sacramento, CA 95816<br>
+      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}" style="color: #888888;">Unsubscribe</a>
+    </p>
   </div>
 </body>
 </html>`;
@@ -1032,31 +1003,25 @@ Deno.serve(async (req) => {
                 to: [{ email: lead.lead_email_override || lead.email, name: lead.customer_name }],
                 subject: `Your song for ${lead.recipient_name} is ready`,
                 htmlContent: emailHtml,
-                textContent: `Your Song for ${lead.recipient_name} is Ready!
+                textContent: `Hi ${lead.customer_name},
 
-Hi ${lead.customer_name}!
+Your personalized ${lead.occasion} song for ${lead.recipient_name} is ready.
 
-Great news! We've created a beautiful personalized ${lead.occasion} song just for ${lead.recipient_name}.
+Listen to your preview here: ${previewUrl}
 
-We're so excited for you to hear it! Listen to a preview here: ${previewUrl}
+We'd love for you to hear the full song — if you like the preview, you can unlock it directly from the page above.
 
-Special offer inside!
-Complete your order now to unlock the full-length song and download.
-
-With love and music,
-The Personal Song Gifts Team
+Warmly,
+Personal Song Gifts
 
 ---
-Personal Song Gifts
-2108 N ST STE N, SACRAMENTO, CA 95816
-https://personalsonggifts.lovable.app
+Personal Song Gifts · 2108 N ST STE N, Sacramento, CA 95816
 
 To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}
 `,
                 headers: {
                   "Message-ID": `<${lead.id}.${Date.now()}@personalsonggifts.com>`,
                   "X-Entity-Ref-ID": lead.id,
-                  "X-Priority": "1",
                   "Precedence": "transactional",
                   "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}>`,
                   "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
@@ -1212,6 +1177,188 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     }
 
     results.scheduledSms = scheduledSmsResults;
+
+    // ======= 8. UNPLAYED SONG RE-SEND QUEUE =======
+    // For orders delivered 24h+ ago where the song page has never been played,
+    // send a plain-text follow-up email (fires at most once per order).
+    const unplayedResendResults: Array<{ orderId: string; success: boolean; error?: string }> = [];
+    const MAX_UNPLAYED_RESENDS_PER_RUN = 5;
+
+    try {
+      const brevoApiKeyResend = Deno.env.get("BREVO_API_KEY");
+      const senderEmailResend = "support@personalsonggifts.com";
+      const senderNameResend = "Personal Song Gifts";
+
+      if (!brevoApiKeyResend) {
+        console.error("[RESEND] BREVO_API_KEY not configured");
+      } else {
+        // Get suppressed emails first
+        const { data: suppressedEmails } = await supabase
+          .from("email_suppressions")
+          .select("email");
+        const suppressedSet = new Set((suppressedEmails || []).map((s: { email: string }) => s.email.toLowerCase()));
+
+        const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+        const { data: unplayedOrders } = await supabase
+          .from("orders")
+          .select("id, customer_name, customer_email, customer_email_override, recipient_name, song_url, sent_at")
+          .eq("status", "delivered")
+          .eq("delivery_status", "sent")
+          .not("song_url", "is", null)
+          .is("song_played_at", null)
+          .is("unplayed_resend_sent_at", null)
+          .is("dismissed_at", null)
+          .lte("sent_at", cutoff24h)
+          .order("sent_at", { ascending: true })
+          .limit(MAX_UNPLAYED_RESENDS_PER_RUN);
+
+        console.log(`[RESEND] Found ${unplayedOrders?.length || 0} orders eligible for unplayed re-send`);
+
+        for (const order of unplayedOrders || []) {
+          try {
+            const effectiveEmail = order.customer_email_override || order.customer_email;
+
+            // Skip suppressed emails
+            if (suppressedSet.has(effectiveEmail.toLowerCase())) {
+              console.log(`[RESEND] Skipping suppressed email for order ${order.id}`);
+              unplayedResendResults.push({ orderId: order.id, success: false, error: "Email suppressed" });
+              continue;
+            }
+
+            const shortId = order.id.slice(0, 8).toUpperCase();
+            const songLink = `https://personalsonggifts.lovable.app/song/${shortId}`;
+            const firstName = order.customer_name?.split(" ")[0] || order.customer_name || "there";
+
+            const resendHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 16px 0;">Hi ${firstName},</p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 16px 0;">
+      We sent your song earlier, but it looks like it hasn't been played yet. We just want to make sure you have it in time for your special moment.
+    </p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 8px 0;">You can listen to your song here:</p>
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 16px 0;">
+      <a href="${songLink}" style="color: #1a73e8;">${songLink}</a>
+    </p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 16px 0;">
+      Thank you for letting us be part of something meaningful with you and your loved one.
+    </p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 32px 0;">
+      We truly hope you love it.
+    </p>
+
+    <p style="font-size: 16px; line-height: 1.6; color: #222222; margin: 0 0 32px 0;">
+      Warmly,<br>
+      Personal Song Gifts
+    </p>
+
+    <p style="font-size: 12px; color: #888888; margin: 0;">
+      Personal Song Gifts &middot; 2108 N ST STE N, Sacramento, CA 95816<br>
+      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}" style="color: #888888;">Unsubscribe</a>
+    </p>
+  </div>
+</body>
+</html>`;
+
+            const resendText = `Hi ${firstName},
+
+We sent your song earlier, but it looks like it hasn't been played yet. We just want to make sure you have it in time for your special moment.
+
+You can listen to your song here:
+${songLink}
+
+Thank you for letting us be part of something meaningful with you and your loved one.
+
+We truly hope you love it.
+
+Warmly,
+Personal Song Gifts
+
+---
+Personal Song Gifts · 2108 N ST STE N, Sacramento, CA 95816
+
+To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}
+`;
+
+            const resendResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+              method: "POST",
+              headers: {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "api-key": brevoApiKeyResend,
+              },
+              body: JSON.stringify({
+                sender: { name: senderNameResend, email: senderEmailResend },
+                replyTo: { email: senderEmailResend, name: senderNameResend },
+                to: [{ email: effectiveEmail, name: order.customer_name }],
+                subject: `Did you get your song for ${order.recipient_name}?`,
+                htmlContent: resendHtml,
+                textContent: resendText,
+                headers: {
+                  "Message-ID": `<resend.${order.id}.${Date.now()}@personalsonggifts.com>`,
+                  "X-Entity-Ref-ID": order.id,
+                  "Precedence": "transactional",
+                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}>`,
+                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                }
+              }),
+            });
+
+            if (!resendResponse.ok) {
+              const errorText = await resendResponse.text();
+              console.error(`[RESEND] Email failed for order ${order.id}:`, errorText);
+              unplayedResendResults.push({ orderId: order.id, success: false, error: errorText });
+              continue;
+            }
+
+            // Mark re-send as sent (permanent lock — will never fire again for this order)
+            await supabase
+              .from("orders")
+              .update({ unplayed_resend_sent_at: new Date().toISOString() })
+              .eq("id", order.id);
+
+            // Log to activity log for admin visibility
+            try {
+              await supabase.from("order_activity_log").insert({
+                entity_type: "order",
+                entity_id: order.id,
+                event_type: "unplayed_resend_sent",
+                actor: "system",
+                details: `Unplayed re-send delivered to ${effectiveEmail}`,
+              });
+            } catch (_logErr) { /* never let logging break the flow */ }
+
+            console.log(`[RESEND] ✅ Unplayed re-send sent for order ${order.id} → ${effectiveEmail}`);
+            unplayedResendResults.push({ orderId: order.id, success: true });
+          } catch (orderErr) {
+            console.error(`[RESEND] Error for order ${order.id}:`, orderErr);
+            unplayedResendResults.push({
+              orderId: order.id,
+              success: false,
+              error: orderErr instanceof Error ? orderErr.message : "Unknown error",
+            });
+          }
+        }
+
+        if (unplayedResendResults.length > 0) {
+          console.log(`[RESEND] Processed ${unplayedResendResults.length} unplayed re-sends`);
+        }
+      }
+    } catch (e) {
+      console.error("[RESEND] Unplayed re-send queue error:", e);
+    }
+
+    results.unplayedResends = unplayedResendResults;
 
     return new Response(JSON.stringify(results), {
       status: 200,

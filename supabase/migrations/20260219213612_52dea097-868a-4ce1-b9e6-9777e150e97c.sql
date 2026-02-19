@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN unplayed_resend_sent_at timestamptz;
