@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, status, delivered_at, automation_lyrics, lyrics_unlocked_at";
+    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at";
 
     let orders: any[] | null = null;
     let error: any = null;
@@ -122,10 +122,21 @@ Deno.serve(async (req) => {
       lyrics_unlocked: lyricsUnlocked,
     };
 
+    // Auto-swap phonetic name with actual name in displayed lyrics
+    const shouldSwapName = order.recipient_name_pronunciation
+      && order.recipient_name_pronunciation.trim() !== ""
+      && order.recipient_name_pronunciation.toLowerCase() !== order.recipient_name.toLowerCase();
+
+    const swapName = (text: string): string => {
+      if (!shouldSwapName) return text;
+      const escaped = order.recipient_name_pronunciation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return text.replace(new RegExp(escaped, "gi"), order.recipient_name);
+    };
+
     if (hasLyrics && lyricsUnlocked) {
-      response.lyrics = order.automation_lyrics;
+      response.lyrics = swapName(order.automation_lyrics);
     } else if (hasLyrics && !lyricsUnlocked) {
-      response.lyrics_preview = generateLyricsPreview(order.automation_lyrics);
+      response.lyrics_preview = swapName(generateLyricsPreview(order.automation_lyrics));
     }
 
     return new Response(
