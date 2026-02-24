@@ -287,6 +287,12 @@ const PaymentSuccess = () => {
                 <span className="text-muted-foreground">Package:</span>
                 <span className="text-foreground capitalize">{orderDetails.pricingTier}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Price paid:</span>
+                <span className="text-foreground font-medium">
+                  ${(orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99)).toFixed(2)}
+                </span>
+              </div>
             </div>
           </Card>
 
