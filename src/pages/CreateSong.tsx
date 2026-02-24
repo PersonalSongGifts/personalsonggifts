@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { validateStep } from "@/lib/songFormValidation";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
+import { useTikTokPixel } from "@/hooks/useTikTokPixel";
 import { useUtmCapture, getStoredUtmParams } from "@/hooks/useUtmCapture";
 
 // Form step components
@@ -77,6 +78,7 @@ const CreateSong = () => {
   const navigate = useNavigate();
   const { trackEvent: trackMetaEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
+  const { trackEvent: trackTikTokEvent } = useTikTokPixel();
   const hasTrackedViewContent = useRef(false);
   
   // Capture UTM parameters on this page too (in case user lands here directly)
@@ -124,17 +126,12 @@ const CreateSong = () => {
   // Track ViewContent once when user starts song creation
   useEffect(() => {
     if (!hasTrackedViewContent.current) {
-      // Meta Pixel
-      trackMetaEvent('ViewContent', {
-        content_category: 'Custom Song',
-      });
-      // Google Analytics
-      trackGAEvent('song_creation_start', {
-        content_category: 'Custom Song',
-      });
+      trackMetaEvent('ViewContent', { content_category: 'Custom Song' });
+      trackGAEvent('song_creation_start', { content_category: 'Custom Song' });
+      trackTikTokEvent('ViewContent', { content_type: 'product', content_name: 'Custom Song' });
       hasTrackedViewContent.current = true;
     }
-  }, [trackMetaEvent, trackGAEvent]);
+  }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   const progress = (currentStep / TOTAL_STEPS) * 100;
 
@@ -239,13 +236,13 @@ const CreateSong = () => {
       trackMetaEvent('AddToCart', {
         content_name: formData.recipientName,
         content_category: formData.occasion,
-        value: 49, // Base price
+        value: 49,
         currency: 'USD',
-        em: formData.yourEmail, // Meta will hash this
-        ph: formData.phoneNumber || undefined, // Meta will hash this
+        em: formData.yourEmail,
+        ph: formData.phoneNumber || undefined,
       });
       
-      // Fire add_to_cart event (Google Analytics)
+      // Google Analytics
       trackGAEvent('add_to_cart', {
         currency: 'USD',
         value: 49,
@@ -255,6 +252,14 @@ const CreateSong = () => {
           price: 49,
           quantity: 1,
         }],
+      });
+
+      // TikTok
+      trackTikTokEvent('AddToCart', {
+        content_type: 'product',
+        content_name: `Custom Song for ${formData.recipientName}`,
+        value: 49,
+        currency: 'USD',
       });
       
       // Submit form - go to checkout

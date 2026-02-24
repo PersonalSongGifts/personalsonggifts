@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.send-valentine-remarketing]
 verify_jwt = false
+
+[functions.tiktok-track-event]
+verify_jwt = false

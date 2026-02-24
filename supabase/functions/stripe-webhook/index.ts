@@ -354,6 +354,29 @@ Deno.serve(async (req) => {
         console.error("Failed to send confirmation email:", emailError);
       }
 
+      // TikTok server-side CompletePayment event (non-blocking)
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/tiktok-track-event`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            event: "CompletePayment",
+            email: metadata.customerEmail || session.customer_email || "",
+            phone: metadata.phoneE164 || metadata.customerPhone || undefined,
+            orderId: newOrder.id,
+            value: priceCents / 100,
+            currency: "USD",
+            contentId: newOrder.id,
+          }),
+        });
+        console.log(`[TIKTOK] Server event sent for order ${newOrder.id}`);
+      } catch (tiktokError) {
+        console.error("[TIKTOK] Failed to send server event:", tiktokError);
+      }
+
       // Sync order to Zapier → Google Sheets (non-blocking)
       const zapierWebhookUrl = Deno.env.get("ZAPIER_WEBHOOK_URL");
       if (zapierWebhookUrl) {
@@ -366,7 +389,7 @@ Deno.serve(async (req) => {
               createdAt: new Date().toISOString(),
               status: "paid",
               pricingTier: newOrder.pricing_tier,
-              price: priceCents / 100, // canonical cents → dollars for external sync
+              price: priceCents / 100,
               expectedDelivery: newOrder.expected_delivery,
               customerName: metadata.customerName || "",
               customerEmail: newOrder.customer_email,

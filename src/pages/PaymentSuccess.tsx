@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Check, Clock, Mail, Music, Loader2, AlertCircle } from "lucide-react";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
+import { useTikTokPixel } from "@/hooks/useTikTokPixel";
 
 interface OrderDetails {
   orderId: string;
@@ -28,6 +29,7 @@ const PaymentSuccess = () => {
   const source = searchParams.get("source"); // "lead" if from lead conversion
   const { trackEvent: trackMetaEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
+  const { trackEvent: trackTikTokEvent } = useTikTokPixel();
   const hasTrackedPurchase = useRef(false);
   
   const [loading, setLoading] = useState(true);
@@ -40,17 +42,14 @@ const PaymentSuccess = () => {
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
     if (hasTrackedPurchase.current) return;
     
-    // Use real stored price from server (canonical price_cents / 100), fallback to legacy tier guess
     const purchaseValue = data.price ?? (data.pricingTier === "priority" ? 79 : 49);
     
-    // Meta Pixel Purchase
     trackMetaEvent('Purchase', {
       value: purchaseValue,
       currency: 'USD',
       transaction_id: data.orderId,
     });
     
-    // Google Analytics Purchase
     trackGAEvent('purchase', {
       transaction_id: data.orderId,
       value: purchaseValue,
@@ -62,9 +61,16 @@ const PaymentSuccess = () => {
         quantity: 1,
       }],
     });
+
+    trackTikTokEvent('CompletePayment', {
+      content_type: 'product',
+      content_id: data.orderId,
+      value: purchaseValue,
+      currency: 'USD',
+    });
     
     hasTrackedPurchase.current = true;
-  }, [trackMetaEvent, trackGAEvent]);
+  }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   useEffect(() => {
     if (!sessionId) {

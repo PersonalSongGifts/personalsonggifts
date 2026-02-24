@@ -22,6 +22,7 @@ import ValentineDeliveryNotice from "@/components/checkout/ValentineDeliveryNoti
 import { useToast } from "@/hooks/use-toast";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
+import { useTikTokPixel } from "@/hooks/useTikTokPixel";
 import { getStoredUtmParams } from "@/hooks/useUtmCapture";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 
@@ -74,6 +75,7 @@ const Checkout = () => {
   const { toast } = useToast();
   const { trackEvent: trackMetaEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
+  const { trackEvent: trackTikTokEvent } = useTikTokPixel();
   const formData = location.state?.formData as FormData | undefined;
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -211,6 +213,12 @@ const Checkout = () => {
         price: checkoutValue,
         quantity: 1,
       }],
+    });
+
+    trackTikTokEvent('InitiateCheckout', {
+      content_type: 'product',
+      value: checkoutValue,
+      currency: 'USD',
     });
     
     try {
