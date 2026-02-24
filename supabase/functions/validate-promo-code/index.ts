@@ -10,6 +10,7 @@ const TEST_CODES: Record<string, number> = {
   "HYPERDRIVETEST": 100,
   "HYPERDRIVEFREE2026": 100,
   "HYPERDRIVEFREE2026!": 100,
+  "BRIANNAWARREN": 100,
 };
 
 Deno.serve(async (req) => {
