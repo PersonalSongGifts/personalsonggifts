@@ -1,38 +1,28 @@
 
 
-# TikTok Pixel + Events API Implementation
+# Display Price Paid on Thank You Page
 
-## Step 1: Store Secrets
-Request your **TikTok Events API Access Token** via the secure secrets tool, stored as `TIKTOK_EVENTS_API_TOKEN`.
+## What Changes
+Add a "Price paid" row to the Order Details card on the payment success page, showing the actual amount the customer was charged (e.g., `$49.99`).
 
-## Step 2: Add TikTok Pixel to index.html
-Insert the exact TikTok pixel snippet you provided (Pixel ID: `D6F0ED3C77U0SFL8LB60`) into the `<head>` section, alongside your existing Meta Pixel and Google Analytics scripts.
+## How Promo Codes Are Handled
+The price displayed will always be correct regardless of promo codes. Here's why:
+- The backend stores `price_cents` directly from Stripe's `session.amount_total`, which is the final charge after all discounts
+- The `price` field returned to the frontend is `price_cents / 100`
+- So if someone pays $49.99, or uses a 10% coupon and pays $44.99, or uses a 100% code and pays $0.00 -- it all shows correctly
 
-## Step 3: Create `useTikTokPixel` Hook
-New file: `src/hooks/useTikTokPixel.ts` -- mirrors your existing `useMetaPixel` pattern.
+## Change Details
 
-## Step 4: Add Browser-Side Funnel Events
-Wire up TikTok tracking events in:
-- **CreateSong.tsx** -- `ViewContent` when song creation starts
-- **Checkout.tsx** -- `AddToCart` on page view, `InitiateCheckout` on payment button click
-- **PaymentSuccess.tsx** -- `CompletePayment` on successful purchase
+**File: `src/pages/PaymentSuccess.tsx`**
 
-## Step 5: Create Server-Side Edge Function
-New file: `supabase/functions/tiktok-track-event/index.ts` -- sends conversion events to TikTok's Events API with SHA-256 hashed customer data.
+Add a new row after the "Package" row in the Order Details card:
 
-## Step 6: Update Stripe Webhook
-Add a non-blocking call to `tiktok-track-event` in `stripe-webhook/index.ts` after successful order creation -- fires server-side `CompletePayment`.
+```
+Price paid:    $49.99
+```
 
-## Step 7: Register Edge Function
-Add `tiktok-track-event` entry to `supabase/config.toml`.
-
-## Files Changed
-- `index.html` (modified)
-- `src/hooks/useTikTokPixel.ts` (new)
-- `src/pages/CreateSong.tsx` (modified)
-- `src/pages/Checkout.tsx` (modified)
-- `src/pages/PaymentSuccess.tsx` (modified)
-- `supabase/functions/tiktok-track-event/index.ts` (new)
-- `supabase/functions/stripe-webhook/index.ts` (modified)
-- `supabase/config.toml` (modified)
+- Uses `orderDetails.price` (already in the interface and returned by the backend)
+- Falls back to tier-based default ($79.99 / $49.99) only if the field is somehow missing
+- Formats with `toFixed(2)` for consistent decimal display
+- Shows `$0.00` for free test code orders
 
