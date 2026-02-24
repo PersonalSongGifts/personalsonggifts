@@ -1,4 +1,5 @@
 import Stripe from "npm:stripe@18.5.0";
+import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,6 +39,12 @@ const FREE_TEST_CODES: Record<string, boolean> = {
   "HYPERDRIVETEST": true,
   "HYPERDRIVEFREE2026": true,
   "HYPERDRIVEFREE2026!": true,
+  "BRIANNAWARREN": true,
+};
+
+// Codes with a usage limit tracked in admin_settings
+const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = {
+  "BRIANNAWARREN": { maxUses: 5, settingsKey: "briannawarren_usage_count" },
 };
 
 // Base prices in cents
@@ -188,11 +195,34 @@ Deno.serve(async (req) => {
 
     // Check for free test codes (100% override - applies to the additional code)
     if (FREE_TEST_CODES[upperAdditional]) {
+      // Check usage limit if applicable
+      const limit = LIMITED_CODES[upperAdditional];
+      if (limit) {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        const { data } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", limit.settingsKey)
+          .maybeSingle();
+        const currentUses = parseInt(data?.value || "0", 10);
+        if (currentUses >= limit.maxUses) {
+          return new Response(
+            JSON.stringify({ error: "This promo code has reached its usage limit" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        // Increment usage count
+        await supabase
+          .from("admin_settings")
+          .update({ value: String(currentUses + 1), updated_at: new Date().toISOString() })
+          .eq("key", limit.settingsKey);
+      }
+
       unitAmount = 0;
       metadata.promoCode = upperAdditional;
-      // Store the calculated charge amount in metadata as a fallback.
-      // Canonical price source downstream is session.amount_total (Stripe's actual charge in cents).
-      // This metadata field is only used if amount_total is somehow unavailable (legacy sessions).
       metadata.amount_total_cents = "0";
     } else {
       // Look up additional coupon in Stripe if provided

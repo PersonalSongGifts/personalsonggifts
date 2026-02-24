@@ -1,4 +1,5 @@
 import Stripe from "npm:stripe@18.5.0";
+import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,11 @@ const TEST_CODES: Record<string, number> = {
   "HYPERDRIVEFREE2026": 100,
   "HYPERDRIVEFREE2026!": 100,
   "BRIANNAWARREN": 100,
+};
+
+// Codes with a usage limit tracked in admin_settings
+const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = {
+  "BRIANNAWARREN": { maxUses: 5, settingsKey: "briannawarren_usage_count" },
 };
 
 Deno.serve(async (req) => {
@@ -38,6 +44,27 @@ Deno.serve(async (req) => {
 
     // Check hardcoded test codes first
     if (TEST_CODES[upperCode]) {
+      // Check usage limit if applicable
+      const limit = LIMITED_CODES[upperCode];
+      if (limit) {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        const { data } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", limit.settingsKey)
+          .maybeSingle();
+        const currentUses = parseInt(data?.value || "0", 10);
+        if (currentUses >= limit.maxUses) {
+          return new Response(
+            JSON.stringify({ valid: false, error: "This code has reached its usage limit" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
       return new Response(
         JSON.stringify({
           valid: true,
@@ -48,7 +75,6 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
     // Don't allow re-applying the seasonal promo as an additional code
     if (upperCode === "VALENTINES50" || upperCode === "WELCOME50") {
       return new Response(
