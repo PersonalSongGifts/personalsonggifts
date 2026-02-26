@@ -57,7 +57,7 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
     try {
       const { data, error } = await supabase.functions.invoke("admin-orders", {
         method: "POST",
-        body: { action: "cs_lookup", email: email.trim(), adminPassword },
+        body: { action: "cs_lookup", search: email.trim(), adminPassword },
       });
       if (error) throw error;
       setOrders(data.orders || []);
@@ -189,7 +189,7 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
             className="flex gap-2"
           >
             <Input
-              placeholder="Customer email address..."
+              placeholder="Email address or name..."
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="flex-1"
@@ -223,7 +223,10 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               {orders.length === 0 && leads.length === 0 && (
-                <p className="text-muted-foreground text-sm">No orders or leads found for this email.</p>
+                <div className="text-sm space-y-1">
+                  <p className="text-muted-foreground">No orders or leads found for this search.</p>
+                  <p className="text-muted-foreground italic">💡 The customer may have used a different email at checkout. Try searching by name instead, or ask them which email they used to place the order.</p>
+                </div>
               )}
 
               {/* Order Cards */}
@@ -266,12 +269,13 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
                       </a>
                       <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
+                        variant="default"
+                        size="sm"
+                        className="h-6 px-2 text-xs font-medium gap-1"
                         onClick={() => copyToClipboard(order.song_url, "Song URL")}
                       >
                         <Copy className="h-3 w-3" />
+                        Copy Link
                       </Button>
                     </div>
                   )}
