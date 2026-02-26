@@ -353,9 +353,11 @@ export type Database = {
           lyrics_unlock_payment_intent_id: string | null
           lyrics_unlock_session_id: string | null
           lyrics_unlocked_at: string | null
+          max_revisions: number | null
           next_attempt_at: string | null
           notes: string | null
           occasion: string
+          pending_revision: boolean | null
           phone_e164: string | null
           prev_automation_lyrics: string | null
           prev_cover_image_url: string | null
@@ -369,6 +371,11 @@ export type Database = {
           recipient_name_pronunciation: string | null
           recipient_type: string
           resend_scheduled_at: string | null
+          revision_count: number | null
+          revision_reason: string | null
+          revision_requested_at: string | null
+          revision_status: string | null
+          revision_token: string | null
           scheduled_delivery_at: string | null
           sent_at: string | null
           sent_to_emails: Json | null
@@ -438,9 +445,11 @@ export type Database = {
           lyrics_unlock_payment_intent_id?: string | null
           lyrics_unlock_session_id?: string | null
           lyrics_unlocked_at?: string | null
+          max_revisions?: number | null
           next_attempt_at?: string | null
           notes?: string | null
           occasion: string
+          pending_revision?: boolean | null
           phone_e164?: string | null
           prev_automation_lyrics?: string | null
           prev_cover_image_url?: string | null
@@ -454,6 +463,11 @@ export type Database = {
           recipient_name_pronunciation?: string | null
           recipient_type: string
           resend_scheduled_at?: string | null
+          revision_count?: number | null
+          revision_reason?: string | null
+          revision_requested_at?: string | null
+          revision_status?: string | null
+          revision_token?: string | null
           scheduled_delivery_at?: string | null
           sent_at?: string | null
           sent_to_emails?: Json | null
@@ -523,9 +537,11 @@ export type Database = {
           lyrics_unlock_payment_intent_id?: string | null
           lyrics_unlock_session_id?: string | null
           lyrics_unlocked_at?: string | null
+          max_revisions?: number | null
           next_attempt_at?: string | null
           notes?: string | null
           occasion?: string
+          pending_revision?: boolean | null
           phone_e164?: string | null
           prev_automation_lyrics?: string | null
           prev_cover_image_url?: string | null
@@ -539,6 +555,11 @@ export type Database = {
           recipient_name_pronunciation?: string | null
           recipient_type?: string
           resend_scheduled_at?: string | null
+          revision_count?: number | null
+          revision_reason?: string | null
+          revision_requested_at?: string | null
+          revision_status?: string | null
+          revision_token?: string | null
           scheduled_delivery_at?: string | null
           sent_at?: string | null
           sent_to_emails?: Json | null
@@ -612,6 +633,104 @@ export type Database = {
           user_agent?: string | null
         }
         Relationships: []
+      }
+      revision_requests: {
+        Row: {
+          admin_modifications: Json | null
+          anything_else: string | null
+          changes_summary: string
+          customer_name: string | null
+          delivery_email: string | null
+          favorite_memory: string | null
+          fields_changed: Json
+          genre: string | null
+          id: string
+          is_pre_delivery: boolean
+          language: string | null
+          occasion: string | null
+          order_id: string
+          original_values: Json
+          recipient_name: string | null
+          recipient_name_pronunciation: string | null
+          recipient_type: string | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          singer_preference: string | null
+          special_message: string | null
+          special_qualities: string | null
+          status: string
+          style_notes: string | null
+          submitted_at: string
+          tempo: string | null
+        }
+        Insert: {
+          admin_modifications?: Json | null
+          anything_else?: string | null
+          changes_summary?: string
+          customer_name?: string | null
+          delivery_email?: string | null
+          favorite_memory?: string | null
+          fields_changed?: Json
+          genre?: string | null
+          id?: string
+          is_pre_delivery?: boolean
+          language?: string | null
+          occasion?: string | null
+          order_id: string
+          original_values?: Json
+          recipient_name?: string | null
+          recipient_name_pronunciation?: string | null
+          recipient_type?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          singer_preference?: string | null
+          special_message?: string | null
+          special_qualities?: string | null
+          status?: string
+          style_notes?: string | null
+          submitted_at?: string
+          tempo?: string | null
+        }
+        Update: {
+          admin_modifications?: Json | null
+          anything_else?: string | null
+          changes_summary?: string
+          customer_name?: string | null
+          delivery_email?: string | null
+          favorite_memory?: string | null
+          fields_changed?: Json
+          genre?: string | null
+          id?: string
+          is_pre_delivery?: boolean
+          language?: string | null
+          occasion?: string | null
+          order_id?: string
+          original_values?: Json
+          recipient_name?: string | null
+          recipient_name_pronunciation?: string | null
+          recipient_type?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          singer_preference?: string | null
+          special_message?: string | null
+          special_qualities?: string | null
+          status?: string
+          style_notes?: string | null
+          submitted_at?: string
+          tempo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revision_requests_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       song_styles: {
         Row: {
@@ -709,9 +828,11 @@ export type Database = {
           lyrics_unlock_payment_intent_id: string | null
           lyrics_unlock_session_id: string | null
           lyrics_unlocked_at: string | null
+          max_revisions: number | null
           next_attempt_at: string | null
           notes: string | null
           occasion: string
+          pending_revision: boolean | null
           phone_e164: string | null
           prev_automation_lyrics: string | null
           prev_cover_image_url: string | null
@@ -725,6 +846,11 @@ export type Database = {
           recipient_name_pronunciation: string | null
           recipient_type: string
           resend_scheduled_at: string | null
+          revision_count: number | null
+          revision_reason: string | null
+          revision_requested_at: string | null
+          revision_status: string | null
+          revision_token: string | null
           scheduled_delivery_at: string | null
           sent_at: string | null
           sent_to_emails: Json | null
