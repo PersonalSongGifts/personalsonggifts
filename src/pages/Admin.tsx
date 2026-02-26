@@ -38,6 +38,7 @@ import { genreOptions, singerOptions, occasionOptions, languageOptions, getLangu
 import { ValentineRemarketingPanel } from "@/components/admin/ValentineRemarketingPanel";
 import { CustomOccasionInsights } from "@/components/admin/CustomOccasionInsights";
 import { UnplayedResendPanel } from "@/components/admin/UnplayedResendPanel";
+import { CSAssistant } from "@/components/admin/CSAssistant";
 import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 
 interface Order {
@@ -1080,7 +1081,7 @@ export default function Admin() {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-3xl grid-cols-6">
+          <TabsList className="grid w-full max-w-4xl grid-cols-7">
             <TabsTrigger value="analytics" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Analytics
@@ -1104,6 +1105,10 @@ export default function Admin() {
             <TabsTrigger value="emails" className="gap-2">
               <Mail className="h-4 w-4" />
               Emails
+            </TabsTrigger>
+            <TabsTrigger value="cs" className="gap-2">
+              <Send className="h-4 w-4" />
+              CS Assistant
             </TabsTrigger>
           </TabsList>
 
@@ -1619,6 +1624,10 @@ export default function Admin() {
           <TabsContent value="emails" className="space-y-6">
             <ValentineRemarketingPanel adminPassword={password} />
             <EmailTemplates adminPassword={password} />
+          </TabsContent>
+
+          <TabsContent value="cs" className="space-y-6">
+            <CSAssistant adminPassword={password} />
           </TabsContent>
         </Tabs>
       </main>

@@ -1,0 +1,365 @@
+import { useState, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useToast } from "@/hooks/use-toast";
+import { Search, Copy, ExternalLink, RefreshCw, Loader2, AlertTriangle, CheckCircle, Clock, Send } from "lucide-react";
+import { formatAdminDate } from "@/lib/utils";
+
+interface CSAssistantProps {
+  adminPassword: string;
+}
+
+const statusColors: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800",
+  paid: "bg-blue-100 text-blue-800",
+  in_progress: "bg-purple-100 text-purple-800",
+  ready: "bg-amber-100 text-amber-800",
+  completed: "bg-green-100 text-green-800",
+  delivered: "bg-emerald-100 text-emerald-800",
+  cancelled: "bg-red-100 text-red-800",
+  failed: "bg-red-100 text-red-800",
+  needs_review: "bg-orange-100 text-orange-800",
+};
+
+const automationStatusColors: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800",
+  lyrics_generating: "bg-blue-100 text-blue-800",
+  lyrics_ready: "bg-indigo-100 text-indigo-800",
+  audio_generating: "bg-purple-100 text-purple-800",
+  completed: "bg-green-100 text-green-800",
+  failed: "bg-red-100 text-red-800",
+};
+
+export function CSAssistant({ adminPassword }: CSAssistantProps) {
+  const [email, setEmail] = useState("");
+  const [orders, setOrders] = useState<any[]>([]);
+  const [leads, setLeads] = useState<any[]>([]);
+  const [lookupDone, setLookupDone] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [customerMessage, setCustomerMessage] = useState("");
+  const [draftResponse, setDraftResponse] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const { toast } = useToast();
+
+  const handleLookup = useCallback(async () => {
+    if (!email.trim()) return;
+    setLookingUp(true);
+    setLookupDone(false);
+    setOrders([]);
+    setLeads([]);
+    setDraftResponse("");
+
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: { action: "cs_lookup", email: email.trim(), adminPassword },
+      });
+      if (error) throw error;
+      setOrders(data.orders || []);
+      setLeads(data.leads || []);
+      setLookupDone(true);
+    } catch (err) {
+      toast({ title: "Lookup failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setLookingUp(false);
+    }
+  }, [email, adminPassword, toast]);
+
+  const handleDraft = useCallback(async () => {
+    if (!customerMessage.trim()) return;
+    setDrafting(true);
+    setDraftResponse("");
+
+    try {
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cs-draft-reply`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ adminPassword, customerMessage: customerMessage.trim(), orders, leads }),
+        }
+      );
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `Error ${resp.status}`);
+      }
+
+      const reader = resp.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              fullText += content;
+              setDraftResponse(fullText);
+            }
+          } catch {
+            buffer = line + "\n" + buffer;
+            break;
+          }
+        }
+      }
+
+      // Flush remaining buffer
+      if (buffer.trim()) {
+        for (let raw of buffer.split("\n")) {
+          if (!raw || raw.startsWith(":") || raw.trim() === "" || !raw.startsWith("data: ")) continue;
+          const jsonStr = raw.slice(6).trim();
+          if (jsonStr === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              fullText += content;
+              setDraftResponse(fullText);
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (err) {
+      toast({ title: "Draft failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setDrafting(false);
+    }
+  }, [customerMessage, adminPassword, orders, leads, toast]);
+
+  const copyToClipboard = useCallback((text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: `${label} copied!` });
+  }, [toast]);
+
+  const copyDraftOnly = useCallback(() => {
+    // Extract only the draft response portion after "✉️ Draft Response:"
+    const marker = "✉️ Draft Response:";
+    const idx = draftResponse.indexOf(marker);
+    const draftOnly = idx !== -1 ? draftResponse.slice(idx + marker.length).trim() : draftResponse;
+    copyToClipboard(draftOnly, "Draft response");
+  }, [draftResponse, copyToClipboard]);
+
+  const isOverdue = (order: any) => {
+    if (order.sent_at) return false;
+    if (!order.target_send_at) return false;
+    return new Date(order.target_send_at) < new Date();
+  };
+
+  const needsAttention = (order: any) => {
+    return order.status === "failed" || order.status === "needs_review" || isOverdue(order);
+  };
+
+  const customerName = orders[0]?.customer_name || leads[0]?.customer_name || "";
+
+  return (
+    <div className="space-y-6">
+      {/* Email Search */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Customer Lookup</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleLookup(); }}
+            className="flex gap-2"
+          >
+            <Input
+              placeholder="Customer email address..."
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="flex-1"
+            />
+            <Button type="submit" disabled={lookingUp || !email.trim()}>
+              {lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Lookup
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {lookupDone && (
+        <>
+          {/* Customer Context */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <CardTitle className="text-lg">
+                  {customerName || email}
+                </CardTitle>
+                {orders.length > 1 && (
+                  <Badge className="bg-amber-500 text-white">
+                    ⭐ Repeat customer ({orders.length} orders)
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {orders.length} order{orders.length !== 1 ? "s" : ""} · {leads.length} lead{leads.length !== 1 ? "s" : ""}
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {orders.length === 0 && leads.length === 0 && (
+                <p className="text-muted-foreground text-sm">No orders or leads found for this email.</p>
+              )}
+
+              {/* Order Cards */}
+              {orders.map((order: any) => (
+                <div
+                  key={order.id}
+                  className={`border rounded-lg p-4 space-y-2 ${needsAttention(order) ? "border-red-300 bg-red-50/50" : ""}`}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-sm font-medium">{order.id.substring(0, 8)}</span>
+                    <span className="text-xs text-muted-foreground">{formatAdminDate(order.created_at)}</span>
+                    <Badge className={statusColors[order.status] || "bg-gray-100 text-gray-800"}>
+                      {order.status}
+                    </Badge>
+                    {order.automation_status && (
+                      <Badge className={automationStatusColors[order.automation_status] || "bg-gray-100 text-gray-800"} variant="outline">
+                        🤖 {order.automation_status}
+                      </Badge>
+                    )}
+                    {needsAttention(order) && (
+                      <Badge variant="destructive" className="gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {order.status === "failed" ? "Failed" : order.status === "needs_review" ? "Needs Review" : "Overdue"}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                    <div><span className="text-muted-foreground">Occasion:</span> {order.occasion}</div>
+                    <div><span className="text-muted-foreground">Recipient:</span> {order.recipient_name}</div>
+                    <div><span className="text-muted-foreground">Genre:</span> {order.genre}</div>
+                    <div><span className="text-muted-foreground">Tier:</span> {order.pricing_tier === "rush" ? "$79 Rush" : "$49 Standard"}</div>
+                  </div>
+
+                  {order.song_url && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Song:</span>
+                      <a href={order.song_url} target="_blank" rel="noopener noreferrer" className="text-primary underline truncate max-w-xs">
+                        {order.song_title || "Listen"}
+                      </a>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => copyToClipboard(order.song_url, "Song URL")}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    {order.sent_at ? (
+                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-green-600" /> Sent {formatAdminDate(order.sent_at)}</span>
+                    ) : order.target_send_at ? (
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Scheduled {formatAdminDate(order.target_send_at)}</span>
+                    ) : (
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Not scheduled</span>
+                    )}
+                    {order.delivery_status && (
+                      <span>Delivery: {order.delivery_status}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Lead Cards */}
+              {leads.length > 0 && (
+                <div className="pt-2">
+                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Leads</h4>
+                  {leads.map((lead: any) => (
+                    <div key={lead.id} className="border rounded-lg p-3 space-y-1 text-sm mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs">{lead.id.substring(0, 8)}</span>
+                        <span className="text-xs text-muted-foreground">{formatAdminDate(lead.captured_at)}</span>
+                        <Badge variant="outline" className="text-xs">{lead.status}</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {lead.occasion} · {lead.recipient_name} · {lead.genre}
+                      </div>
+                      {lead.preview_song_url && (
+                        <div className="flex items-center gap-1 text-xs">
+                          <a href={lead.preview_song_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                            Preview
+                          </a>
+                          <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Draft Reply */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Draft Reply</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                placeholder="Paste the customer's email message here..."
+                value={customerMessage}
+                onChange={(e) => setCustomerMessage(e.target.value)}
+                rows={5}
+              />
+              <div className="flex gap-2">
+                <Button onClick={handleDraft} disabled={drafting || !customerMessage.trim()}>
+                  {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Draft Reply
+                </Button>
+                {draftResponse && (
+                  <Button variant="outline" onClick={() => { setDraftResponse(""); handleDraft(); }} disabled={drafting}>
+                    <RefreshCw className="h-4 w-4" />
+                    Regenerate
+                  </Button>
+                )}
+              </div>
+
+              {draftResponse && (
+                <div className="space-y-3">
+                  <ScrollArea className="h-[400px] border rounded-lg p-4">
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed">{draftResponse}</div>
+                  </ScrollArea>
+                  <Button variant="outline" onClick={copyDraftOnly}>
+                    <Copy className="h-4 w-4" />
+                    Copy Draft to Clipboard
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}

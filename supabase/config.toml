@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.tiktok-track-event]
 verify_jwt = false
+
+[functions.cs-draft-reply]
+verify_jwt = false
