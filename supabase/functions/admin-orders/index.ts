@@ -160,12 +160,12 @@ Deno.serve(async (req) => {
         );
       }
 
-      // CS Assistant: lookup customer by email
+      // CS Assistant: lookup customer by email or name
       if (body?.action === "cs_lookup") {
-        const email = typeof body.email === "string" ? body.email.trim() : "";
-        if (!email) {
+        const search = (typeof body.search === "string" ? body.search.trim() : "") || (typeof body.email === "string" ? body.email.trim() : "");
+        if (!search) {
           return new Response(
-            JSON.stringify({ error: "email required" }),
+            JSON.stringify({ error: "search term required" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
         const { data: orders, error: orderErr } = await supabase
           .from("orders")
           .select("*")
-          .ilike("customer_email", `%${email}%`)
+          .or(`customer_email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
           .order("created_at", { ascending: false })
           .limit(50);
         if (orderErr) throw orderErr;
@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
         const { data: leads, error: leadErr } = await supabase
           .from("leads")
           .select("*")
-          .ilike("email", `%${email}%`)
+          .or(`email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
           .order("captured_at", { ascending: false })
           .limit(50);
         if (leadErr) throw leadErr;
