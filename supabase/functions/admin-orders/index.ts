@@ -160,6 +160,38 @@ Deno.serve(async (req) => {
         );
       }
 
+      // CS Assistant: lookup customer by email
+      if (body?.action === "cs_lookup") {
+        const email = typeof body.email === "string" ? body.email.trim() : "";
+        if (!email) {
+          return new Response(
+            JSON.stringify({ error: "email required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: orders, error: orderErr } = await supabase
+          .from("orders")
+          .select("*")
+          .ilike("customer_email", `%${email}%`)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        if (orderErr) throw orderErr;
+
+        const { data: leads, error: leadErr } = await supabase
+          .from("leads")
+          .select("*")
+          .ilike("email", `%${email}%`)
+          .order("captured_at", { ascending: false })
+          .limit(50);
+        if (leadErr) throw leadErr;
+
+        return new Response(
+          JSON.stringify({ orders: orders || [], leads: leads || [] }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Get activity log for an entity
       if (body?.action === "get_activity_log") {
         const entityId = typeof body.entityId === "string" ? body.entityId : null;
