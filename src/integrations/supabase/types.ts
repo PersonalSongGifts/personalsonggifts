@@ -323,6 +323,8 @@ export type Database = {
           automation_status: string | null
           automation_style_id: string | null
           automation_task_id: string | null
+          billing_country_code: string | null
+          billing_country_name: string | null
           cover_image_url: string | null
           created_at: string
           customer_email: string
@@ -406,6 +408,8 @@ export type Database = {
           automation_status?: string | null
           automation_style_id?: string | null
           automation_task_id?: string | null
+          billing_country_code?: string | null
+          billing_country_name?: string | null
           cover_image_url?: string | null
           created_at?: string
           customer_email: string
@@ -489,6 +493,8 @@ export type Database = {
           automation_status?: string | null
           automation_style_id?: string | null
           automation_task_id?: string | null
+          billing_country_code?: string | null
+          billing_country_name?: string | null
           cover_image_url?: string | null
           created_at?: string
           customer_email?: string
@@ -673,6 +679,8 @@ export type Database = {
           automation_status: string | null
           automation_style_id: string | null
           automation_task_id: string | null
+          billing_country_code: string | null
+          billing_country_name: string | null
           cover_image_url: string | null
           created_at: string
           customer_email: string
