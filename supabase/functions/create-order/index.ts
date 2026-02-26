@@ -132,6 +132,19 @@ Deno.serve(async (req) => {
     const price = input.pricingTier === "priority" ? 79 : 49;
     const expectedDelivery = calculateExpectedDelivery(input.pricingTier);
 
+    // Read max_revisions_per_order from admin_settings
+    let maxRevisions = 1;
+    try {
+      const { data: revSetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "max_revisions_per_order")
+        .maybeSingle();
+      if (revSetting?.value) {
+        maxRevisions = parseInt(revSetting.value, 10) || 1;
+      }
+    } catch { /* use default */ }
+
     // Insert order using service role (bypasses RLS)
     const { data, error } = await supabase
       .from("orders")
@@ -151,6 +164,7 @@ Deno.serve(async (req) => {
         favorite_memory: input.favoriteMemory.trim(),
         special_message: input.specialMessage?.trim() || null,
         device_type: input.deviceType || null,
+        max_revisions: maxRevisions,
       })
       .select("id")
       .single();

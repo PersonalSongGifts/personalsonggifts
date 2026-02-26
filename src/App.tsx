@@ -17,6 +17,7 @@ import SubmitReaction from "./pages/SubmitReaction";
 import Unsubscribe from "./pages/Unsubscribe";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
+import SongRevision from "./pages/SongRevision";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/song/:orderId" element={<SongPlayer />} />
           <Route path="/preview/:token" element={<SongPreview />} />
           <Route path="/submit-reaction" element={<SubmitReaction />} />
+          <Route path="/song/revision/:token" element={<SongRevision />} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />

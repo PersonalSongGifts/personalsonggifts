@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at";
+    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at";
 
     let orders: any[] | null = null;
     let error: any = null;
@@ -112,6 +112,28 @@ Deno.serve(async (req) => {
     const hasLyrics = !!order.automation_lyrics && order.automation_lyrics.trim().length > 0;
     const lyricsUnlocked = !!order.lyrics_unlocked_at;
 
+    // Check if revisions feature is enabled
+    let revisionAvailable = false;
+    let selfServiceEnabled = false;
+    try {
+      const { data: revSetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "self_service_revisions_enabled")
+        .maybeSingle();
+      selfServiceEnabled = revSetting?.value === "true";
+    } catch { /* ignore */ }
+
+    if (selfServiceEnabled && order.revision_token) {
+      const isPreDelivery = !order.sent_at;
+      const hasRevisionsLeft = (order.revision_count || 0) < (order.max_revisions || 1);
+      revisionAvailable = isPreDelivery || hasRevisionsLeft;
+      // Don't show if already pending or processing
+      if (order.revision_status === "pending" || order.revision_status === "processing") {
+        revisionAvailable = false;
+      }
+    }
+
     const response: Record<string, any> = {
       song_url: order.song_url,
       song_title: order.song_title,
@@ -120,6 +142,9 @@ Deno.serve(async (req) => {
       recipient_name: order.recipient_name,
       has_lyrics: hasLyrics,
       lyrics_unlocked: lyricsUnlocked,
+      revision_token: order.revision_token || null,
+      revision_available: revisionAvailable,
+      revision_status: order.revision_status || null,
     };
 
     // Auto-swap phonetic name with actual name in displayed lyrics

@@ -86,3 +86,9 @@ verify_jwt = false
 
 [functions.cs-draft-reply]
 verify_jwt = false
+
+[functions.get-revision-page]
+verify_jwt = false
+
+[functions.submit-revision]
+verify_jwt = false
