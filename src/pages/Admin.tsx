@@ -322,7 +322,7 @@ export default function Admin() {
   const [totalLeadCount, setTotalLeadCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const listOrders = async (status: string, page = 0, pageSize = 200) => {
+  const listOrders = async (status: string, page = 0, pageSize = 1000) => {
     return supabase.functions.invoke("admin-orders", {
       method: "POST",
       body: {
@@ -392,7 +392,7 @@ export default function Admin() {
       setTotalLeadCount(data.totalLeads || 0);
 
       // Auto-load remaining pages in background
-      const pageSize = data.pageSize || 200;
+      const pageSize = data.pageSize || 1000;
       const totalOrders = data.totalOrders || 0;
       const totalLeads = data.totalLeads || 0;
       const maxPages = Math.max(
@@ -406,7 +406,6 @@ export default function Admin() {
         let accLeads = [...(data.leads || [])];
 
         for (let p = 1; p < maxPages; p++) {
-          await new Promise(r => setTimeout(r, 100));
           try {
             const { data: pageData, error: pageErr } = await listOrders("all", p, pageSize);
             if (pageErr) {
@@ -481,7 +480,7 @@ export default function Admin() {
       setTotalLeadCount(data.totalLeads || 0);
 
       // Load remaining pages in background
-      const pageSize = data.pageSize || 200;
+      const pageSize = data.pageSize || 1000;
       const maxPages = Math.max(
         Math.ceil((data.totalOrders || 0) / pageSize),
         Math.ceil((data.totalLeads || 0) / pageSize)
@@ -490,7 +489,6 @@ export default function Admin() {
       if (maxPages > 1) {
         setLoadingMore(true);
         for (let p = 1; p < maxPages; p++) {
-          await new Promise(r => setTimeout(r, 100));
           try {
             const { data: pageData, error: pageErr } = await listOrders("all", p, pageSize);
             if (pageErr) {
