@@ -1,137 +1,47 @@
 
 
-# CS Assistant Tab — Phase 1: Lookup + Smart Draft Reply
+# CS Assistant Updates: Real-World Patterns + Name Search
 
-## Overview
-
-A new "CS Assistant" tab in the admin panel with customer email lookup and AI-powered draft response generation. Includes email triage logic, structured reasoning output, quick-copy song URL buttons, and repeat customer detection.
-
-No Gmail integration, no Slack, no auto-sending. All drafts are for human review and copy-paste.
+Three targeted changes to make the CS Assistant match real support patterns.
 
 ---
 
-## Files to Create/Modify
+## Changes
 
-| File | Action |
-|------|--------|
-| `supabase/functions/admin-orders/index.ts` | Add `cs_lookup` action (~25 lines) |
-| `supabase/functions/cs-draft-reply/index.ts` | New edge function for AI draft generation |
-| `supabase/config.toml` | Add cs-draft-reply function config |
-| `src/components/admin/CSAssistant.tsx` | New component -- full CS assistant UI |
-| `src/pages/Admin.tsx` | Add CS Assistant tab (line ~1083: grid-cols-6 to grid-cols-7, new TabsTrigger + TabsContent) |
+### 1. Update System Prompt in `cs-draft-reply/index.ts`
 
----
+Add real-world pattern knowledge to the system prompt:
 
-## 1. Backend: `cs_lookup` action in admin-orders
+- **Spam folder priority**: Add a dedicated section explaining that 60-70% of emails are about songs going to spam. When `sent_at` is populated and customer says they didn't receive it, ALWAYS use the specific language: "We've had a few reports that different email carriers are marking the song delivery email as spam. Here is a direct link to your song so you can listen right away: [song_url]". Tone should be reassuring, not apologetic.
+- **Name pronunciation**: Add scenario for name/word pronunciation issues. Draft should ask for phonetic spelling with an example like "Mee-SHELL vs MI-chelle". Explain we rewrite lyrics with phonetic spelling so it's sung correctly.
+- **Post-purchase detail additions**: When customer replies to add more story details, warmly acknowledge and confirm it's been noted.
+- **Wrong email on file**: When lookup returns no results (empty orders/leads arrays), suggest customer may have used a different email at checkout.
+- **Silent chargebacks**: Reinforce the existing ESCALATE rule for Stripe disputes.
+- **Excited/emotional customers**: Brief warm acknowledgment, no action needed.
 
-Add a new action handler inside the existing edge function (same auth pattern):
+### 2. Add Name Search to `cs_lookup` in `admin-orders/index.ts`
 
-- Accepts `{ action: "cs_lookup", email: "...", adminPassword: "..." }`
-- Queries `orders` where `customer_email ILIKE '%email%'`, sorted by `created_at DESC`, limit 50
-- Queries `leads` where `email ILIKE '%email%'`, same treatment
-- Returns `{ orders: [...], leads: [...] }`
+Expand the existing `cs_lookup` action (lines 164-193) to also search by `customer_name` and `recipient_name`:
 
-No new tables, no new RPC functions.
+- Query orders where `customer_email ILIKE '%search%'` OR `customer_name ILIKE '%search%'` OR `recipient_name ILIKE '%search%'`
+- Query leads where `email ILIKE '%search%'` OR `customer_name ILIKE '%search%'` OR `recipient_name ILIKE '%search%'`
+- Since Supabase JS SDK doesn't support OR across different columns with ILIKE easily, use `.or()` filter: `.or(`customer_email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)`
+- Rename the body parameter from `email` to `search` internally (keep backward compat by accepting either)
 
-## 2. Backend: New `cs-draft-reply` edge function
+### 3. Make Song URL Copy Button More Prominent in `CSAssistant.tsx`
 
-Streaming edge function using Lovable AI (`google/gemini-3-flash-preview`):
-
-- Accepts: `{ adminPassword, customerMessage, orders: [...], leads: [...] }`
-- Validates admin password (same pattern as admin-orders)
-- Builds a system prompt with all order/lead context + brand voice + triage rules
-- Calls `https://ai.gateway.lovable.dev/v1/chat/completions` with `stream: true`
-- Streams SSE response back to the client
-- Handles 429/402 rate limit errors
-
-### System Prompt -- Triage Logic
-
-The system prompt will instruct the AI to:
-
-**First, classify the email and check for special cases:**
-
-- "Unsubscribe" or similar --> output: "No response needed -- this is an unsubscribe request. Archive it."
-- Stripe automated notification (payout, payment received) --> output: "No response needed -- this is an automated Stripe notification."
-- Dispute/chargeback/Stripe dispute --> output: "ESCALATE: This is a payment dispute. Do not respond -- flag for owner review."
-- Legal threats, BBB, attorney --> output: "ESCALATE: This requires owner review before any response."
-- Abusive/profanity --> prefix draft with: "NOTE: Customer tone is hostile. Suggested response is measured. Review before sending."
-- Unreasonable/scam pattern (claimed non-receipt of confirmed-delivered song, refund after download, vague repeated complaints) --> prefix draft with: "FLAG: This request may be unreasonable. Here's why: [reason]. Recommended approach: [approach]."
-
-**Then, for all normal cases, output in this structured format:**
-
-```
-Assessment: [What kind of email this is]
-Flags: [Any concerns, or "None"]
-Plan: [What the response will do]
+- Change the small ghost icon button to a more visible button with "Copy Link" text and a distinct color
+- Update the search input placeholder to indicate it accepts names too: "Email address or name..."
+- Update the `handleLookup` to pass `search` (keeping backward compat with the renamed parameter)
+- When no results are found, show a helpful message suggesting the customer may have used a different email
 
 ---
 
-Draft Response:
-[The actual email draft]
-```
+## Files Changed
 
-**Brand voice rules:**
-- Warm, personal, empathetic, small-business feel
-- Never mention AI, automation, Suno, Gemini, Kie.ai
-- Always frame as "our team" or "our songwriters"
-- Sign off warmly as "The PersonalSongGifts Team"
+| File | What Changes |
+|------|-------------|
+| `supabase/functions/cs-draft-reply/index.ts` | System prompt updated with real-world patterns (spam folder language, name pronunciation, post-purchase details, wrong email, excited customers) |
+| `supabase/functions/admin-orders/index.ts` | `cs_lookup` action expanded to search by customer_name and recipient_name in addition to email |
+| `src/components/admin/CSAssistant.tsx` | Search placeholder updated, song URL copy button made prominent, "no results" message suggests trying different email |
 
-**Scenario-specific handling:**
-- "Where is my song?" -- check sent_at, provide song_url, suggest spam/promotions folder
-- "Change request" -- check automation_status to determine if update or regeneration needed
-- "Not happy" -- offer revision, ask what to change, never jump to refund
-- "Refund request" -- acknowledge frustration, offer revision first
-- "Thank you" -- short warm acknowledgment
-- "Status inquiry" -- clear timeline from order data
-- "Pre-purchase question" -- answer from FAQ knowledge (pricing: $49 standard / $79 rush, delivery timing, process)
-
-## 3. Frontend: `CSAssistant.tsx` Component
-
-### Layout (top to bottom):
-
-**A. Email Search Bar**
-- Input field + "Lookup" button
-- Triggers `cs_lookup` action
-
-**B. Customer Context Panel** (appears after lookup)
-
-- **Repeat customer badge**: If orders.length > 1, show "Repeat customer (X orders)" badge prominently at the top in a distinct color
-- **Summary header**: Customer name, email, total orders + leads count
-
-- **Order cards** (most recent first), each showing:
-  - Order ID (short 8 chars), created date
-  - Status badge + automation status badge (color-coded)
-  - Occasion, recipient name, genre, pricing tier ($49/$79)
-  - Song URL as clickable link with a **small copy icon button** next to it for one-click copy
-  - Delivery info: sent_at, target_send_at, delivery_status
-  - **Attention flags**: Red badge if status is `failed`, `needs_review`, or delivery is overdue (target_send_at is past and sent_at is null)
-
-- **Lead cards** (smaller, below orders):
-  - Lead ID (short), captured date, status, occasion, recipient, genre
-  - Preview URL if exists
-
-**C. Draft Reply Section** (appears after lookup)
-
-- Textarea: "Paste the customer's email message here"
-- "Draft Reply" button
-- Streaming response area showing the AI's structured output (Assessment / Flags / Plan / Draft) as it generates
-- "Copy Draft to Clipboard" button (copies only the draft response portion)
-- "Regenerate" button to re-run with same inputs
-
-## 4. Admin.tsx Integration
-
-- Import `CSAssistant` component
-- Line ~1083: Change `grid-cols-6` to `grid-cols-7`
-- Add new `TabsTrigger` with `MessageSquare` icon and "CS Assistant" label
-- Add `TabsContent` rendering `<CSAssistant adminPassword={password} />`
-- Pass the admin password prop so the component can authenticate API calls
-
----
-
-## What This Does NOT Change
-
-- No existing admin tabs, automation, or customer-facing pages modified
-- No database schema changes
-- No new tables
-- No Gmail or Slack integration (deferred)
-- No auto-sending -- everything is copy-paste for human review
