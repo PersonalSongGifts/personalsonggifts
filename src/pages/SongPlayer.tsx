@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
-import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check } from "lucide-react";
+import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
@@ -63,6 +63,9 @@ interface SongData {
   lyrics_unlocked: boolean;
   lyrics?: string;
   lyrics_preview?: string;
+  revision_token?: string;
+  revision_available?: boolean;
+  revision_status?: string;
 }
 
 const SongPlayer = () => {
@@ -603,6 +606,18 @@ const SongPlayer = () => {
             Copy Link
           </Button>
         </div>
+
+        {/* Revision Button */}
+        {songData.revision_available && songData.revision_token && (
+          <div className="text-center mb-6">
+            <Link to={`/song/revision/${songData.revision_token}`}>
+              <Button variant="outline" className="gap-2 text-primary border-primary/30 hover:bg-primary/5">
+                <Pencil className="h-4 w-4" />
+                Need changes? Request a revision
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {/* Lyrics Section */}
         {songData && (() => {
