@@ -1,17 +1,33 @@
 
 
-## Fix: "Failed to load revisions" in CS Assistant tab
+## Fix: Revision Approve Not Working + logActivity Crash
 
-### Root Cause
-The `list_pending_revisions` and `review_revision` action handlers in `admin-orders/index.ts` are placed **after** the legacy fallback block (line 2094) which catches any unrecognized action and returns a `400 "Unknown action"` error. Since the legacy fallback runs first, the revision handlers at lines 2467-2636 are **unreachable**.
+### Problem
+When you approve a revision in the CS Assistant tab, two issues prevent it from working properly:
 
-### Fix
-Move both revision handlers (`list_pending_revisions` at line 2467 and `review_revision` at line 2504) to **before** the legacy fallback block (before line 2089). This ensures they're evaluated before the catch-all "Unknown action" response.
+1. **logActivity call crashes** -- The `review_revision` handler calls `logActivity` with an object argument (`logActivity(supabase, { entityId, entityType, ... })`), but the actual function expects **positional arguments** (`logActivity(supabase, entityType, entityId, eventType, actor, details, metadata)`). This causes a database error (`null value in column "entity_id"`) visible in the postgres logs. While the error is caught and doesn't crash the function, it may interfere with the response.
 
-### File Changed
-- `supabase/functions/admin-orders/index.ts` -- relocate the two revision handler blocks (lines 2466-2636) to just before the legacy fallback section (before line 2089)
+2. **No logging for debugging** -- The review_revision handler has zero `console.log` statements, making it impossible to see what's happening in the backend function logs.
+
+3. **Missing field mappings** -- `style_notes`, `tempo`, and `anything_else` are tracked in revision requests but aren't mapped to order columns, so changes to those fields are silently dropped on approve.
+
+### Fix Plan
+
+**File: `supabase/functions/admin-orders/index.ts`**
+
+1. Fix both `logActivity` calls in the review_revision handler to use positional arguments instead of an object:
+   - `logActivity(supabase, "order", rev.order_id, "revision_rejected", "admin", details)` 
+   - `logActivity(supabase, "order", rev.order_id, "revision_approved", "admin", details, metadata)`
+
+2. Add `console.log` statements at key points (entry, approve path, reject path) for future debugging.
+
+3. Add missing field mappings for `style_notes` (to `notes`), `tempo`, and `anything_else` (to `notes` or appropriate columns) -- or document that these are intentionally excluded.
 
 ### What This Fixes
-- CS Assistant tab will load without the "Failed to load revisions" error toast
-- Pending Revisions card will correctly show "No pending revision requests" when the queue is empty
-- The approve/reject revision flow will also work correctly
+- The approve action will complete cleanly without the entity_id null constraint violation
+- Activity log entries will be properly recorded for approved/rejected revisions
+- Backend logs will show revision review actions for future debugging
+- Your test order 5BF67D34 should work correctly after this fix
+
+### Note About "Nothing Happened"
+When a revision is approved that includes content fields (recipient name, story, genre, etc.), the order status changes to `needs_review` -- meaning it's flagged for song regeneration. You'd then need to trigger regeneration from the admin Orders tab. If only non-content fields changed (like delivery email), the order status stays the same but the field values are updated.
