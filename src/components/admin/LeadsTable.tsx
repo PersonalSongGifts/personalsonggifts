@@ -202,7 +202,9 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     })
     .filter((lead) => {
       if (!searchQuery.trim()) return true;
-      const searchLower = searchQuery.toLowerCase();
+      const rawSearch = searchQuery.trim();
+      const urlMatch = rawSearch.match(/\/(?:preview|song)\/([A-Za-z0-9_-]+)/);
+      const searchLower = (urlMatch ? urlMatch[1] : rawSearch).toLowerCase();
       return (
         lead.id.toLowerCase().includes(searchLower) ||
         lead.customer_name.toLowerCase().includes(searchLower) ||
@@ -213,7 +215,10 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
         lead.favorite_memory.toLowerCase().includes(searchLower) ||
         (lead.special_message?.toLowerCase().includes(searchLower) ?? false) ||
         (lead.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
-        lead.occasion.toLowerCase().includes(searchLower)
+        lead.occasion.toLowerCase().includes(searchLower) ||
+        (lead.preview_song_url?.toLowerCase().includes(searchLower) ?? false) ||
+        (lead.preview_token?.toLowerCase().includes(searchLower) ?? false) ||
+        (lead.cover_image_url?.toLowerCase().includes(searchLower) ?? false)
       );
     })
     .sort((a, b) => {
@@ -993,7 +998,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
             </SelectContent>
           </Select>
           <Input
-            placeholder="Search by name, email, or lead ID..."
+            placeholder="Search by name, email, lead ID, or song link..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-64"
