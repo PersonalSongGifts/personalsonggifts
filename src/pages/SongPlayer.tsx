@@ -613,7 +613,7 @@ const SongPlayer = () => {
             <Link to={`/song/revision/${songData.revision_token}`}>
               <Button variant="outline" className="gap-2 text-primary border-primary/30 hover:bg-primary/5">
                 <Pencil className="h-4 w-4" />
-                Need changes? Request a revision
+                🤔 Need changes? Request a revision
               </Button>
             </Link>
           </div>
