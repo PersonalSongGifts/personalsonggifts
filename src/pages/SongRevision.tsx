@@ -34,11 +34,6 @@ const recipientTypeOptions = [
   { id: "other", label: "Other" },
 ];
 
-const tempoOptions = [
-  { id: "faster", label: "Faster" },
-  { id: "keep", label: "Keep the same" },
-  { id: "slower", label: "Slower" },
-];
 
 interface OrderData {
   id: string;
@@ -400,10 +395,6 @@ const SongRevision = () => {
                     <RadioGroupItem value="female" id="singer-female" />
                     <Label htmlFor="singer-female" className="text-sm cursor-pointer">Female</Label>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="no-preference" id="singer-none" />
-                    <Label htmlFor="singer-none" className="text-sm cursor-pointer">No preference</Label>
-                  </div>
                 </RadioGroup>
               </CardContent>
             </Card>
@@ -424,7 +415,7 @@ const SongRevision = () => {
               editing={editingFields.has("recipient_name_pronunciation")}
               onToggle={() => toggleField("recipient_name_pronunciation")}
               onChange={(v) => updateField("recipient_name_pronunciation", v)}
-              helperText="How should this name sound? Spell it out how it should be pronounced. Example: 'Mee-SHELL' instead of 'Michelle'"
+              helperText="How should this name sound? Spell it out how it should be pronounced. Example: 'Mishell' instead of 'Michelle'"
               secondaryHelper="Not sure how to spell it? Just describe how it sounds — for example, 'the A sounds like the A in day' or 'rhymes with tall'"
             />
 
@@ -463,24 +454,6 @@ const SongRevision = () => {
               placeholder="Describe any changes to the feel, energy, or style you'd like..."
             />
 
-            {/* Tempo */}
-            <Card>
-              <CardContent className="pt-4 pb-4">
-                <Label className="text-sm font-medium text-foreground mb-3 block">Tempo</Label>
-                <RadioGroup
-                  value={formValues.tempo || "keep"}
-                  onValueChange={(v) => updateField("tempo", v)}
-                  className="flex gap-4"
-                >
-                  {tempoOptions.map((opt) => (
-                    <div key={opt.id} className="flex items-center gap-2">
-                      <RadioGroupItem value={opt.id} id={`tempo-${opt.id}`} />
-                      <Label htmlFor={`tempo-${opt.id}`} className="text-sm cursor-pointer">{opt.label}</Label>
-                    </div>
-                  ))}
-                </RadioGroup>
-              </CardContent>
-            </Card>
 
             {/* Anything else */}
             <TextAreaField
@@ -510,7 +483,11 @@ const SongRevision = () => {
                         htmlFor={`disclaimer-${d.id}`}
                         className="text-sm text-muted-foreground cursor-pointer leading-relaxed"
                       >
-                        {d.label}
+                        {d.id === "tos" ? (
+                          <>I agree to the <Link to="/terms-of-service" target="_blank" className="text-primary underline hover:text-primary/80">Terms of Service</Link></>
+                        ) : (
+                          d.label
+                        )}
                       </Label>
                     </div>
                   ))}
