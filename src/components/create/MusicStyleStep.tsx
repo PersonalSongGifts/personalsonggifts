@@ -48,6 +48,7 @@ const languageOptions = [
   { id: "ko", label: "Korean" },
   { id: "sr", label: "Serbian" },
   { id: "hr", label: "Croatian" },
+  { id: "hi", label: "Hindi" },
 ];
 
 const MusicStyleStep = ({ formData, updateFormData, errors, onAutoAdvance }: MusicStyleStepProps) => {
