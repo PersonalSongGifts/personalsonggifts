@@ -371,7 +371,7 @@ export default function Admin() {
       }
 
       // Step 2: Try actual login (fetch page 0 only)
-      const { data, error } = await listOrders("all", 0, 200);
+const { data, error } = await listOrders("all", 0, 1000);
 
       if (error) {
         const errorMessage = error.message || String(error);
@@ -467,7 +467,7 @@ export default function Admin() {
     setLoading(true);
     try {
       // Fetch page 0 first for fast response
-      const { data, error } = await listOrders("all", 0, 200);
+      const { data, error } = await listOrders("all", 0, 1000);
       if (error) throw error;
 
       let accOrders = data.orders || [];
