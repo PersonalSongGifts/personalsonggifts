@@ -2462,6 +2462,7 @@ Deno.serve(async (req) => {
 
     // List pending revision requests
     if (body?.action === "list_pending_revisions") {
+      console.log("[ADMIN] Fetching pending revisions");
       const { data: revisions, error: revErr } = await supabase
         .from("revision_requests")
         .select("*")
