@@ -1,33 +1,76 @@
 
 
-## Fix: Revision Approve Not Working + logActivity Crash
+## Add "Sender Context" to Revision Form + Wire It Into Lyrics Prompt
 
 ### Problem
-When you approve a revision in the CS Assistant tab, two issues prevent it from working properly:
+The lyrics AI has no concept of sender gender. It infers from recipient type ("wife" = male sender), producing lines like "you make me a better man" for a woman writing to her wife. The revision form has `style_notes` and `anything_else` fields, but these are never fed into the lyrics generation prompt.
 
-1. **logActivity call crashes** -- The `review_revision` handler calls `logActivity` with an object argument (`logActivity(supabase, { entityId, entityType, ... })`), but the actual function expects **positional arguments** (`logActivity(supabase, entityType, entityId, eventType, actor, details, metadata)`). This causes a database error (`null value in column "entity_id"`) visible in the postgres logs. While the error is caught and doesn't crash the function, it may interfere with the response.
+### Solution
+Add a dedicated **"Song Perspective" field** to the revision form and wire all revision-specific notes into the lyrics prompt.
 
-2. **No logging for debugging** -- The review_revision handler has zero `console.log` statements, making it impossible to see what's happening in the backend function logs.
+---
 
-3. **Missing field mappings** -- `style_notes`, `tempo`, and `anything_else` are tracked in revision requests but aren't mapped to order columns, so changes to those fields are silently dropped on approve.
+### Changes
 
-### Fix Plan
+#### 1. Add `sender_context` column to `revision_requests` table
+A new nullable text column to store the sender's self-description (e.g., "I'm a woman writing to my wife").
 
-**File: `supabase/functions/admin-orders/index.ts`**
+#### 2. Add `sender_context` column to `orders` table
+So it persists after approval and is available during lyrics regeneration.
 
-1. Fix both `logActivity` calls in the review_revision handler to use positional arguments instead of an object:
-   - `logActivity(supabase, "order", rev.order_id, "revision_rejected", "admin", details)` 
-   - `logActivity(supabase, "order", rev.order_id, "revision_approved", "admin", details, metadata)`
+#### 3. Update the Revision Form (`src/pages/SongRevision.tsx`)
+Add a new field between "Singer Voice Preference" and "Language" with:
+- Label: **"Song Perspective / Sender Context"**
+- Helper text: "Tell us about yourself so the lyrics fit. Example: 'I'm a woman writing to my wife' or 'I'm their daughter, not their son'"
+- Text input, max 200 characters
+- Only shown for post-delivery redos (not pre-delivery updates, since the song hasn't been generated yet -- actually, show it for both since it helps initial generation too)
 
-2. Add `console.log` statements at key points (entry, approve path, reject path) for future debugging.
+#### 4. Update `submit-revision` edge function
+Accept `sender_context` from the form, store it in the `revision_requests` row, and include it in `fields_changed`.
 
-3. Add missing field mappings for `style_notes` (to `notes`), `tempo`, and `anything_else` (to `notes` or appropriate columns) -- or document that these are intentionally excluded.
+#### 5. Update `review_revision` handler in `admin-orders`
+Map `sender_context` from revision request to the order's `sender_context` column on approval. Add it to `contentFields` so it triggers regeneration.
 
-### What This Fixes
-- The approve action will complete cleanly without the entity_id null constraint violation
-- Activity log entries will be properly recorded for approved/rejected revisions
-- Backend logs will show revision review actions for future debugging
-- Your test order 5BF67D34 should work correctly after this fix
+#### 6. Update Lyrics Generation Prompt (`automation-generate-lyrics`)
+- Read `sender_context` (or `notes` as fallback) from the order/lead
+- If present, add a block to the user prompt:
 
-### Note About "Nothing Happened"
-When a revision is approved that includes content fields (recipient name, story, genre, etc.), the order status changes to `needs_review` -- meaning it's flagged for song regeneration. You'd then need to trigger regeneration from the admin Orders tab. If only non-content fields changed (like delivery email), the order status stays the same but the field values are updated.
+```
+SenderContext: "I'm a woman writing to my wife"
+
+IMPORTANT: The sender has provided context about themselves.
+Use this to ensure correct gender references and perspective in the lyrics.
+Never assume the sender's gender from the recipient type alone.
+```
+
+#### 7. Update the System Prompt
+Add a new rule to the SYSTEM_PROMPT:
+
+```
+# Sender Context
+- If SenderContext is provided, use it to determine the correct gender perspective
+- NEVER assume sender gender from RecipientType alone
+  (e.g., "wife" does not mean the sender is male)
+- When no SenderContext is given, keep gender references neutral
+  or use universal phrases like "you make me better" instead of "you make me a better man"
+```
+
+This last point is a general improvement -- even without sender context, the AI should default to gender-neutral phrasing unless it has explicit info.
+
+---
+
+### Technical Details
+
+**Database migrations:**
+- `ALTER TABLE revision_requests ADD COLUMN sender_context text;`
+- `ALTER TABLE orders ADD COLUMN sender_context text;`
+
+**Files modified:**
+1. `src/pages/SongRevision.tsx` -- add sender_context field to form
+2. `supabase/functions/submit-revision/index.ts` -- accept and store sender_context
+3. `supabase/functions/admin-orders/index.ts` -- map sender_context on approval
+4. `supabase/functions/automation-generate-lyrics/index.ts` -- read sender_context, update system prompt and user prompt
+5. `supabase/functions/get-revision-page/index.ts` -- include sender_context in order data returned to form
+
+**No changes to the main order form** -- this keeps the initial ordering flow simple. Sender context is only available via the revision/redo form and admin panel.
+
