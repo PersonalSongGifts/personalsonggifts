@@ -2118,8 +2118,35 @@ Deno.serve(async (req) => {
           });
         }
 
+        // Fetch auto-approve setting
+        const { data: autoApproveSetting } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", "revision_auto_approve_enabled")
+          .maybeSingle();
+
         return new Response(
-          JSON.stringify({ revisions: enriched }),
+          JSON.stringify({ revisions: enriched, auto_approve_enabled: autoApproveSetting?.value === "true" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Set revision auto-approve toggle
+      if (body?.action === "set_revision_auto_approve") {
+        const enabled = body.enabled === true;
+        const { error: upsertErr } = await supabase
+          .from("admin_settings")
+          .upsert({
+            key: "revision_auto_approve_enabled",
+            value: enabled ? "true" : "false",
+            updated_at: new Date().toISOString(),
+          });
+
+        if (upsertErr) throw upsertErr;
+
+        console.log("[ADMIN] Auto-approve set to:", enabled);
+        return new Response(
+          JSON.stringify({ success: true, enabled }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -2232,8 +2259,56 @@ Deno.serve(async (req) => {
         const needsRegeneration = fieldsChanged.some(f => contentFields.includes(f));
 
         if (needsRegeneration) {
+          // === AUTO-REGENERATE: backup, clear, trigger ===
+          // Fetch full order for backup
+          const { data: fullOrder } = await supabase
+            .from("orders")
+            .select("song_url, automation_lyrics, cover_image_url")
+            .eq("id", rev.order_id)
+            .maybeSingle();
+
+          // Backup current song
+          if (fullOrder?.song_url) {
+            try {
+              const backup = await backupSongFile(supabaseUrl, supabaseServiceKey, supabase, "orders", rev.order_id, fullOrder as Record<string, unknown>);
+              if (backup.backed_up) {
+                orderUpdate.prev_song_url = backup.prev_song_url;
+                orderUpdate.prev_automation_lyrics = backup.prev_automation_lyrics;
+                orderUpdate.prev_cover_image_url = backup.prev_cover_image_url;
+              }
+            } catch (backupErr) {
+              console.error("[REVISION-APPROVE] Backup failed:", backupErr);
+            }
+          }
+
+          // Merge regeneration clears into orderUpdate
+          orderUpdate.automation_status = null;
+          orderUpdate.automation_task_id = null;
+          orderUpdate.automation_lyrics = null;
+          orderUpdate.automation_started_at = null;
+          orderUpdate.automation_retry_count = 0;
+          orderUpdate.automation_last_error = null;
+          orderUpdate.automation_raw_callback = null;
+          orderUpdate.automation_style_id = null;
+          orderUpdate.automation_audio_url_source = null;
+          orderUpdate.generated_at = null;
           orderUpdate.inputs_hash = null;
-          orderUpdate.status = "needs_review";
+          orderUpdate.next_attempt_at = null;
+          orderUpdate.automation_manual_override_at = null;
+          orderUpdate.lyrics_language_qa = null;
+          orderUpdate.lyrics_raw_attempt_1 = null;
+          orderUpdate.lyrics_raw_attempt_2 = null;
+          orderUpdate.song_url = null;
+          orderUpdate.song_title = null;
+          orderUpdate.cover_image_url = null;
+          orderUpdate.delivery_status = "pending";
+          orderUpdate.sent_at = null;
+          orderUpdate.unplayed_resend_sent_at = null;
+
+          const regenNow = Date.now();
+          orderUpdate.earliest_generate_at = new Date(regenNow + 1 * 60 * 1000).toISOString();
+          orderUpdate.target_send_at = new Date(regenNow + 12 * 60 * 60 * 1000).toISOString();
+          // Don't change order status — keep as-is
         }
 
         await supabase.from("orders").update(orderUpdate).eq("id", rev.order_id);
@@ -2244,11 +2319,32 @@ Deno.serve(async (req) => {
           reviewed_by: "admin",
         }).eq("id", revisionId);
 
+        // Fire automation trigger if regeneration needed
+        if (needsRegeneration) {
+          try {
+            const triggerRes = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ orderId: rev.order_id, forceRun: true }),
+            });
+            if (!triggerRes.ok) {
+              console.error("[REVISION-APPROVE] automation-trigger non-2xx:", triggerRes.status);
+            } else {
+              console.log("[REVISION-APPROVE] automation-trigger succeeded");
+            }
+          } catch (triggerErr) {
+            console.error("[REVISION-APPROVE] Failed to trigger automation:", triggerErr);
+          }
+        }
+
         console.log("[ADMIN] Approved revision for order:", rev.order_id, "fields:", fieldsChanged, "needsRegen:", needsRegeneration);
-        await logActivity(supabase, "order", rev.order_id, "revision_approved", "admin", `Approved: ${fieldsChanged.length} field(s) updated${needsRegeneration ? " — needs regeneration" : ""}`, { fields_changed: fieldsChanged });
+        await logActivity(supabase, "order", rev.order_id, needsRegeneration ? "revision_approved_regenerating" : "revision_approved", "admin", `Approved: ${fieldsChanged.length} field(s) updated${needsRegeneration ? " — auto-regenerating" : ""}`, { fields_changed: fieldsChanged });
 
         const message = needsRegeneration
-          ? "Revision approved. Order moved to Needs Review for regeneration."
+          ? "Revision approved. Song regeneration started automatically."
           : "Revision approved. Non-content fields updated.";
 
         return new Response(

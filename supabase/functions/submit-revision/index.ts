@@ -314,9 +314,154 @@ Deno.serve(async (req) => {
       }
     }
 
+    // === AUTO-APPROVE CHECK ===
+    const { data: autoApproveSetting } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "revision_auto_approve_enabled")
+      .maybeSingle();
+
+    const autoApproveEnabled = autoApproveSetting?.value === "true";
+
+    // Low-risk: no language change, no occasion change, fewer than 4 fields
+    const highRiskFields = ["language", "occasion"];
+    const isHighRisk = fieldsChanged.some(f => highRiskFields.includes(f)) || fieldsChanged.length >= 4;
+    const shouldAutoApprove = autoApproveEnabled && !isHighRisk && fieldsChanged.length > 0;
+
+    if (shouldAutoApprove) {
+      console.log("[SUBMIT-REVISION] Auto-approving low-risk revision for order:", order.id);
+
+      // Approve the revision request
+      const { data: insertedRevision } = await supabase
+        .from("revision_requests")
+        .select("id")
+        .eq("order_id", order.id)
+        .eq("status", "pending")
+        .order("submitted_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (insertedRevision) {
+        await supabase.from("revision_requests").update({
+          status: "approved",
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: "auto",
+        }).eq("id", insertedRevision.id);
+      }
+
+      // Apply field updates to order
+      const fieldMapping: Record<string, string> = {
+        recipient_name: "recipient_name",
+        customer_name: "customer_name",
+        delivery_email: "customer_email",
+        recipient_type: "recipient_type",
+        occasion: "occasion",
+        genre: "genre",
+        singer_preference: "singer_preference",
+        language: "lyrics_language_code",
+        recipient_name_pronunciation: "recipient_name_pronunciation",
+        special_qualities: "special_qualities",
+        favorite_memory: "favorite_memory",
+        special_message: "special_message",
+        style_notes: "notes",
+        tempo: "notes",
+        anything_else: "notes",
+        sender_context: "sender_context",
+      };
+
+      const autoOrderUpdate: Record<string, any> = {
+        revision_status: "approved",
+        pending_revision: false,
+      };
+
+      const notesFields = ["style_notes", "tempo", "anything_else"];
+      for (const field of fieldsChanged) {
+        if (notesFields.includes(field)) continue;
+        const orderField = fieldMapping[field];
+        if (orderField && fields[field] !== undefined && fields[field] !== null) {
+          autoOrderUpdate[orderField] = fields[field];
+        }
+      }
+
+      // Notes fields
+      const notesParts: string[] = [];
+      for (const nf of notesFields) {
+        if (fieldsChanged.includes(nf) && fields[nf]) {
+          notesParts.push(`${nf}: ${fields[nf]}`);
+        }
+      }
+      if (notesParts.length > 0) {
+        autoOrderUpdate.notes = notesParts.join(" | ");
+      }
+
+      // Check if content fields changed — needs regeneration
+      const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language", "style_notes", "tempo", "sender_context"];
+      const needsRegen = fieldsChanged.some(f => contentFields.includes(f));
+
+      if (needsRegen) {
+        // Clear automation for regeneration
+        autoOrderUpdate.automation_status = null;
+        autoOrderUpdate.automation_task_id = null;
+        autoOrderUpdate.automation_lyrics = null;
+        autoOrderUpdate.automation_started_at = null;
+        autoOrderUpdate.automation_retry_count = 0;
+        autoOrderUpdate.automation_last_error = null;
+        autoOrderUpdate.automation_raw_callback = null;
+        autoOrderUpdate.automation_style_id = null;
+        autoOrderUpdate.automation_audio_url_source = null;
+        autoOrderUpdate.generated_at = null;
+        autoOrderUpdate.inputs_hash = null;
+        autoOrderUpdate.next_attempt_at = null;
+        autoOrderUpdate.automation_manual_override_at = null;
+        autoOrderUpdate.lyrics_language_qa = null;
+        autoOrderUpdate.lyrics_raw_attempt_1 = null;
+        autoOrderUpdate.lyrics_raw_attempt_2 = null;
+        autoOrderUpdate.song_url = null;
+        autoOrderUpdate.song_title = null;
+        autoOrderUpdate.cover_image_url = null;
+        autoOrderUpdate.delivery_status = "pending";
+        autoOrderUpdate.sent_at = null;
+        autoOrderUpdate.unplayed_resend_sent_at = null;
+
+        const regenNow = Date.now();
+        autoOrderUpdate.earliest_generate_at = new Date(regenNow + 1 * 60 * 1000).toISOString();
+        autoOrderUpdate.target_send_at = new Date(regenNow + 12 * 60 * 60 * 1000).toISOString();
+      }
+
+      await supabase.from("orders").update(autoOrderUpdate).eq("id", order.id);
+
+      // Fire automation trigger if regeneration needed
+      if (needsRegen) {
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({ orderId: order.id, forceRun: true }),
+          });
+        } catch (triggerErr) {
+          console.error("[SUBMIT-REVISION] Auto-approve trigger error:", triggerErr);
+        }
+      }
+
+      // Log activity
+      try {
+        await supabase.from("order_activity_log").insert({
+          entity_type: "order",
+          entity_id: order.id,
+          event_type: "revision_auto_approved",
+          actor: "system",
+          details: `Auto-approved: ${fieldsChanged.length} field(s)${needsRegen ? " — regenerating" : ""}`,
+          metadata: { fields_changed: fieldsChanged },
+        });
+      } catch (_) {}
+    }
+
     // Update order
     const orderUpdate: Record<string, any> = {
-      revision_status: "pending",
+      revision_status: shouldAutoApprove ? "approved" : "pending",
       revision_requested_at: new Date().toISOString(),
       revision_reason: changesSummary,
       unplayed_resend_sent_at: null,

@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -13,7 +14,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, RefreshCw, CheckCircle, XCircle, Pencil, Clock, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle, XCircle, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { formatAdminDate } from "@/lib/utils";
 
 interface PendingRevisionsProps {
@@ -80,6 +81,8 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [togglingAutoApprove, setTogglingAutoApprove] = useState(false);
   const { toast } = useToast();
 
   const fetchRevisions = useCallback(async () => {
@@ -91,6 +94,9 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
       });
       if (error) throw error;
       setRevisions(data.revisions || []);
+      if (data.auto_approve_enabled !== undefined) {
+        setAutoApprove(data.auto_approve_enabled);
+      }
     } catch (err) {
       toast({ title: "Failed to load revisions", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
@@ -99,6 +105,23 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
   }, [adminPassword, toast]);
 
   useEffect(() => { fetchRevisions(); }, [fetchRevisions]);
+
+  const handleToggleAutoApprove = useCallback(async (enabled: boolean) => {
+    setTogglingAutoApprove(true);
+    try {
+      const { error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: { action: "set_revision_auto_approve", adminPassword, enabled },
+      });
+      if (error) throw error;
+      setAutoApprove(enabled);
+      toast({ title: enabled ? "Auto-approve enabled" : "Auto-approve disabled" });
+    } catch (err) {
+      toast({ title: "Failed to update setting", variant: "destructive" });
+    } finally {
+      setTogglingAutoApprove(false);
+    }
+  }, [adminPassword, toast]);
 
   const handleAction = useCallback(async (revisionId: string, action: "approve" | "reject", rejectionReason?: string) => {
     setProcessing(true);
@@ -156,10 +179,26 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">Pending Revisions</CardTitle>
-            <Button variant="ghost" size="sm" onClick={fetchRevisions} disabled={loading}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="auto-approve-empty"
+                  checked={autoApprove}
+                  onCheckedChange={handleToggleAutoApprove}
+                  disabled={togglingAutoApprove}
+                />
+                <Label htmlFor="auto-approve-empty" className="text-xs text-muted-foreground cursor-pointer">
+                  Auto-Approve
+                </Label>
+              </div>
+              <Button variant="ghost" size="sm" onClick={fetchRevisions} disabled={loading}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
+          {autoApprove && (
+            <p className="text-xs text-muted-foreground mt-1">Low-risk revisions are approved automatically</p>
+          )}
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">No pending revision requests.</p>
@@ -179,10 +218,26 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
                 <Badge variant="destructive" className="rounded-full">{revisions.length}</Badge>
               )}
             </div>
-            <Button variant="ghost" size="sm" onClick={fetchRevisions} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            </Button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="auto-approve"
+                  checked={autoApprove}
+                  onCheckedChange={handleToggleAutoApprove}
+                  disabled={togglingAutoApprove}
+                />
+                <Label htmlFor="auto-approve" className="text-xs text-muted-foreground cursor-pointer">
+                  Auto-Approve
+                </Label>
+              </div>
+              <Button variant="ghost" size="sm" onClick={fetchRevisions} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
+          {autoApprove && (
+            <p className="text-xs text-muted-foreground mt-1">Low-risk revisions are approved automatically</p>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           {revisions.map((rev) => (
