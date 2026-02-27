@@ -1,60 +1,42 @@
 
 
-## Fix Admin Panel Loading Speed
+## Show Country Info for Both Orders and Leads
 
-### Root Cause
-
-Two compounding issues are making everything extremely slow:
-
-**1. Page size mismatch creates 44+ parallel requests instead of 9**
-
-The initial login/refresh call uses `pageSize: 200` for a fast first render. But the background loading reuses that same pageSize (200) for all remaining pages. With 8,800+ leads, that means `Math.ceil(8800/200) - 1 = 43` parallel edge function calls instead of ~9. Each call cold-boots the function, so you're hammering 43 concurrent requests at once.
-
-**2. Orders still fetch ALL columns (`SELECT *`)**
-
-The leads query was optimized to fetch only needed columns, but the orders query still does `select("*")`, pulling heavy text blobs like `automation_lyrics`, `automation_raw_callback`, `lyrics_raw_attempt_1/2`, etc. for every order.
+### Problem
+Country information isn't displayed anywhere in the admin panel -- not for orders (which have `billing_country_code`/`billing_country_name` from Stripe) and not for leads (which don't have country columns at all).
 
 ### Solution
 
-**Fix 1: Use pageSize=1000 for background loading (regardless of initial page size)**
+**For Orders**: Display `billing_country_name` (with country code) directly from the existing database fields -- no schema changes needed.
 
-In both `handleLogin` and `fetchOrders` in `Admin.tsx`, hardcode the background page size to 1000 instead of reusing the initial response's pageSize. This drops 43 parallel requests down to 9.
+**For Leads**: Derive country from the `timezone` field that's already captured from the browser (e.g., "America/New_York" -> "United States", "Europe/London" -> "United Kingdom"). Create a small utility that maps IANA timezones to country names.
 
+### Changes
+
+**1. Create a timezone-to-country utility (`src/lib/timezoneCountry.ts`)**
+
+A lightweight lookup map that converts IANA timezone strings to country names. Covers all major timezone prefixes (America, Europe, Asia, Africa, Australia, Pacific, etc.). This avoids adding new database columns or API calls for leads.
+
+**2. Show country in Order detail view (`src/pages/Admin.tsx`, ~line 1780)**
+
+After the phone number in the customer info section, add:
 ```
-// Before (broken):
-const pageSize = data.pageSize || 1000;  // returns 200 from initial call
-
-// After (fixed):
-const bgPageSize = 1000; // Always use large pages for background loading
-const maxPages = Math.max(
-  Math.ceil((data.totalOrders || 0) / bgPageSize),
-  Math.ceil((data.totalLeads || 0) / bgPageSize)
-);
-// Use bgPageSize for all subsequent calls
+Country: United States (US)
 ```
+Uses `billing_country_name` and `billing_country_code` from the order record. Falls back to timezone-derived country if billing country isn't available.
 
-**Fix 2: Apply lean column selection to orders too**
+**3. Show country in Lead detail view (`src/components/admin/LeadsTable.tsx`, ~line 1484)**
 
-Replace `select("*")` on the orders query with specific columns, excluding the same heavy fields:
-- `automation_raw_callback`
-- `automation_lyrics`
-- `lyrics_raw_attempt_1`
-- `lyrics_raw_attempt_2`
-- `automation_audio_url_source`
-- `lyrics_language_qa`
-- `prev_automation_lyrics`
-- `prev_cover_image_url`
-
-### Expected Impact
-
-- **43 parallel requests down to 9** -- massive reduction in edge function cold boots and concurrent load
-- **~50% smaller order payloads** -- faster network transfer and JSON parsing
-- Combined: admin panel should load in 5-10 seconds instead of 60+
+After the phone number in the lead customer info section, add:
+```
+Location: United States (from timezone)
+```
+Derived from the lead's `timezone` field using the utility. Shown with a subtle "(from timezone)" note since it's inferred rather than from billing data.
 
 ### Files Modified
 
 | File | Changes |
 |------|---------|
-| `src/pages/Admin.tsx` | Use bgPageSize=1000 for background page loading in both `handleLogin` and `fetchOrders` |
-| `supabase/functions/admin-orders/index.ts` | Replace `select("*")` with specific column list for orders pagination query |
-
+| `src/lib/timezoneCountry.ts` | New file -- timezone-to-country mapping utility |
+| `src/pages/Admin.tsx` | Add country display to order detail customer info section |
+| `src/components/admin/LeadsTable.tsx` | Add timezone-derived country display to lead detail customer info section |
