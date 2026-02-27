@@ -1,44 +1,44 @@
 
 
-## Add Hindi Language Support
+## Add Bollywood/Hindi as a Music Genre
 
 ### Overview
-Add Hindi (`hi`) as a supported language across the entire system -- customer-facing form, revision/redo form, admin panel, and backend lyrics generation pipeline.
+Add "Bollywood / Hindi" as a new genre option across the customer-facing form, revision/redo flow, admin panel, and the audio generation pipeline. Also insert two new rows (male + female) into the `song_styles` database table with the Suno prompts you provided.
 
 ### Changes
 
-#### 1. Shared dropdown options (`src/components/admin/adminDropdownOptions.ts`)
-Add `{ id: "hi", label: "Hindi" }` to the `languageOptions` array. This automatically propagates to:
-- Admin order editing (Admin.tsx)
-- Admin lead editing (LeadsTable.tsx)
-- Revision/redo form (SongRevision.tsx)
+#### 1. Database: Insert 2 new song_styles rows
+Insert male and female Bollywood style entries into the `song_styles` table:
+- **Male**: `genre_match = "bollywood"`, `vocal_gender = "male"`, `label = "Bollywood Male"`, with the male Suno prompt you provided (adding "solo male singer only, no duet..." directive to match existing patterns)
+- **Female**: `genre_match = "bollywood"`, `vocal_gender = "female"`, `label = "Bollywood Female"`, with the female Suno prompt (adding "solo female singer only, no duet..." directive)
 
-#### 2. Customer-facing form (`src/components/create/MusicStyleStep.tsx`)
-Add `{ id: "hi", label: "Hindi" }` to the local `languageOptions` array (this file has its own copy).
+#### 2. Customer-facing genre cards (`src/components/create/MusicStyleStep.tsx`)
+Add `{ id: "bollywood", label: "Bollywood / Hindi" }` to the `genres` array.
 
-#### 3. Backend language utilities (`supabase/functions/_shared/language-utils.ts`)
-- Add `hi: "Hindi"` to `LANGUAGE_LABELS`
-- Add Devanagari script detection pattern (`[\u0900-\u097F]`) to `detectByScript()` so the QA system can verify Hindi lyrics
-- Add Hindi-specific rules to `LANGUAGE_SPECIFIC_RULES` (e.g., use conversational Hindi, avoid overly Sanskritized/formal phrasing, Devanagari script preferred)
-- Add Hindi word markers to `LANGUAGE_MARKERS` for mixed-language detection on romanized Hindi
+#### 3. Shared admin dropdown options (`src/components/admin/adminDropdownOptions.ts`)
+Add `{ id: "bollywood", label: "Bollywood / Hindi" }` to the `genreOptions` array. This automatically propagates to:
+- Admin order editing
+- Admin lead editing
+- Revision/redo form (SongRevision.tsx imports `genreOptions` from this file)
+
+#### 4. Audio generation genre map (`supabase/functions/automation-generate-audio/index.ts`)
+Add mappings to the `genreMap` object:
+- `"bollywood": "bollywood"` (slug format)
+- `"Bollywood / Hindi": "bollywood"` (display label backward compat)
+- `"Bollywood": "bollywood"` (short label backward compat)
 
 ### What does NOT need to change
-- **No database migration needed** -- `lyrics_language_code` is a plain text column, any value works
-- **No edge function logic changes** -- the lyrics generator and audio generator read from the language-utils constants; adding Hindi there is sufficient
-- **No revision flow changes** -- the revision form already imports `languageOptions` from the shared file, so it picks up Hindi automatically
-- **No risk of stalling** -- the automation pipeline treats unknown languages gracefully (falls back to the code as-is), and adding Hindi to the known set only improves QA accuracy
+- **No database migration for schema** -- just inserting rows into existing `song_styles` table
+- **No revision form code changes** -- it imports `genreOptions` from the shared file
+- **No lyrics generation changes** -- the lyrics pipeline is genre-agnostic
+- **No risk of stalling** -- the genre map ensures "bollywood" resolves to the correct `song_styles` rows; if for any reason it didn't match, the existing pop fallback would kick in
 
 ### Technical Details
 
 **Files modified:**
-1. `src/components/admin/adminDropdownOptions.ts` -- add Hindi to languageOptions
-2. `src/components/create/MusicStyleStep.tsx` -- add Hindi to local languageOptions
-3. `supabase/functions/_shared/language-utils.ts` -- add Hindi to LANGUAGE_LABELS, LANGUAGE_SPECIFIC_RULES, script detection (Devanagari), and LANGUAGE_MARKERS
+1. `src/components/create/MusicStyleStep.tsx` -- add Bollywood to genres array
+2. `src/components/admin/adminDropdownOptions.ts` -- add Bollywood to genreOptions
+3. `supabase/functions/automation-generate-audio/index.ts` -- add bollywood mappings to genreMap
 
-**Devanagari script detection** will use Unicode range `\u0900-\u097F` which covers all standard Hindi characters. This gives the QA system high-confidence detection for Hindi lyrics written in Devanagari, similar to how Japanese/Korean/Cyrillic are already handled.
-
-**Hindi-specific prompt rules** will instruct the AI to:
-- Use conversational Hindi (not overly formal or Sanskritized)
-- Write in Devanagari script
-- Keep names in their original Latin characters
-- Embrace natural Hindi emotional expressions and idioms
+**Database insert (via migration tool):**
+Two rows into `song_styles` with `genre_match = 'bollywood'`, one male and one female, using the exact Suno prompts provided but with the standard solo-singer directive appended.
