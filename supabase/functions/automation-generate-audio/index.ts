@@ -172,9 +172,12 @@ Deno.serve(async (req) => {
        "Latin": "latin-pop",
        "Latin Pop": "latin-pop",
        "K-Pop": "k-pop",
-       "EDM / Dance": "edm",
-       "EDM": "edm",
-    };
+        "EDM / Dance": "edm",
+        "EDM": "edm",
+        "bollywood": "bollywood",
+        "Bollywood / Hindi": "bollywood",
+        "Bollywood": "bollywood",
+     };
 
      const normalizedGenre = genreMap[entity.genre];
      if (!normalizedGenre) {
