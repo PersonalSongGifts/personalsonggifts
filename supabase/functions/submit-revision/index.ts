@@ -9,7 +9,7 @@ const EDITABLE_FIELDS = [
   "recipient_name", "customer_name", "delivery_email", "recipient_type",
   "occasion", "genre", "singer_preference", "language",
   "recipient_name_pronunciation", "special_qualities", "favorite_memory",
-  "special_message", "style_notes", "tempo", "anything_else",
+  "special_message", "style_notes", "tempo", "anything_else", "sender_context",
 ] as const;
 
 // Map revision field names to order column names
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
 
     // Validate field lengths
     const longFields = ["style_notes", "anything_else"];
-    const shortFields = ["recipient_name", "customer_name", "delivery_email", "recipient_type", "occasion", "genre", "singer_preference", "language", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "tempo"];
+    const shortFields = ["recipient_name", "customer_name", "delivery_email", "recipient_type", "occasion", "genre", "singer_preference", "language", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "tempo", "sender_context"];
 
     for (const f of longFields) {
       if (!validateLength(fields[f], 500)) {

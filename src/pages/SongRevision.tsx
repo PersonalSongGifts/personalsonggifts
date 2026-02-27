@@ -108,6 +108,7 @@ const SongRevision = () => {
           if (rev.style_notes) initial.style_notes = rev.style_notes;
           if (rev.tempo) initial.tempo = rev.tempo;
           if (rev.anything_else) initial.anything_else = rev.anything_else;
+          if (rev.sender_context) initial.sender_context = rev.sender_context;
         }
         initial.style_notes = initial.style_notes || "";
         initial.tempo = initial.tempo || "";
@@ -427,6 +428,25 @@ const SongRevision = () => {
                     <Label htmlFor="singer-female" className="text-sm cursor-pointer">Female</Label>
                   </div>
                 </RadioGroup>
+              </CardContent>
+            </Card>
+
+            {/* Song Perspective / Sender Context */}
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <Label className="text-sm font-medium text-foreground mb-1 block">Song Perspective / Sender Context</Label>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Tell us about yourself so the lyrics fit. Example: "I'm a woman writing to my wife" or "I'm their daughter, not their son"
+                </p>
+                <Input
+                  value={formValues.sender_context || ""}
+                  onChange={(e) => updateField("sender_context", e.target.value)}
+                  maxLength={200}
+                  placeholder="e.g. I'm a woman writing to my wife"
+                />
+                <p className="text-xs text-muted-foreground mt-1 text-right">
+                  {(formValues.sender_context || "").length}/200
+                </p>
               </CardContent>
             </Card>
 

@@ -95,6 +95,13 @@ Target a typical 3:00-3:30 song. Keep line lengths short and singable (4-10 word
 - Avoid overusing punctuation
 - You may use repetitions for hooks and vocalizations (oh, ooooh, la la la)
 
+# Sender Context
+- If SenderContext is provided, use it to determine the correct gender perspective
+- NEVER assume sender gender from RecipientType alone
+  (e.g., "wife" does not mean the sender is male)
+- When no SenderContext is given, keep gender references neutral
+  or use universal phrases like "you make me better" instead of "you make me a better man"
+
 # Rules
 - If input has typos/fragments, infer meaning and clean up spelling/grammar, but NEVER change the meaning of what happened
 - Prioritize safety and wholesome tone
@@ -116,6 +123,8 @@ interface EntityData {
   automation_manual_override_at?: string | null;
   automation_retry_count?: number | null;
   lyrics_language_code: string;
+  sender_context?: string | null;
+  notes?: string | null;
 }
 
 function normalizeEntityData(entity: Record<string, unknown>): EntityData {
@@ -133,6 +142,8 @@ function normalizeEntityData(entity: Record<string, unknown>): EntityData {
     automation_manual_override_at: entity.automation_manual_override_at as string | null,
     automation_retry_count: entity.automation_retry_count as number | null,
     lyrics_language_code: (entity.lyrics_language_code as string) || "en",
+    sender_context: entity.sender_context as string | null,
+    notes: entity.notes as string | null,
   };
 }
 
@@ -285,6 +296,12 @@ This spelling is intentional for correct pronunciation and must be followed.`
     // Add language-specific prompt block
     const languagePromptBlock = buildLanguagePromptBlock(languageCode);
 
+    // Build sender context block if available
+    const senderCtx = entity.sender_context || entity.notes || "";
+    const senderContextBlock = senderCtx
+      ? `\nSenderContext: "${senderCtx}"\n\nIMPORTANT: The sender has provided context about themselves.\nUse this to ensure correct gender references and perspective in the lyrics.\nNever assume the sender's gender from the recipient type alone.`
+      : "";
+
     const userPrompt = `Write Suno-ready song lyrics only, no explanations.
 
 RecipientType: ${entity.recipient_type}
@@ -296,6 +313,7 @@ SpecialQualities: "${entity.special_qualities}"
 FavoriteMemory: "${entity.favorite_memory}"
 SpecialMessage: "${entity.special_message || ""}"
 ${pronunciationInstruction}
+${senderContextBlock}
 ${languagePromptBlock}
 
 Remember:
@@ -364,6 +382,7 @@ SpecialQualities: "${entity.special_qualities}"
 FavoriteMemory: "${entity.favorite_memory}"
 SpecialMessage: "${entity.special_message || ""}"
 ${pronunciationInstruction}
+${senderContextBlock}
 ${retryLanguageBlock}
 
 Remember:

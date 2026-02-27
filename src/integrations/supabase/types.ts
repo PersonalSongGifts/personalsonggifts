@@ -377,6 +377,7 @@ export type Database = {
           revision_status: string | null
           revision_token: string | null
           scheduled_delivery_at: string | null
+          sender_context: string | null
           sent_at: string | null
           sent_to_emails: Json | null
           singer_preference: string
@@ -469,6 +470,7 @@ export type Database = {
           revision_status?: string | null
           revision_token?: string | null
           scheduled_delivery_at?: string | null
+          sender_context?: string | null
           sent_at?: string | null
           sent_to_emails?: Json | null
           singer_preference: string
@@ -561,6 +563,7 @@ export type Database = {
           revision_status?: string | null
           revision_token?: string | null
           scheduled_delivery_at?: string | null
+          sender_context?: string | null
           sent_at?: string | null
           sent_to_emails?: Json | null
           singer_preference?: string
@@ -656,6 +659,7 @@ export type Database = {
           rejection_reason: string | null
           reviewed_at: string | null
           reviewed_by: string | null
+          sender_context: string | null
           singer_preference: string | null
           special_message: string | null
           special_qualities: string | null
@@ -685,6 +689,7 @@ export type Database = {
           rejection_reason?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          sender_context?: string | null
           singer_preference?: string | null
           special_message?: string | null
           special_qualities?: string | null
@@ -714,6 +719,7 @@ export type Database = {
           rejection_reason?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          sender_context?: string | null
           singer_preference?: string | null
           special_message?: string | null
           special_qualities?: string | null
@@ -852,6 +858,7 @@ export type Database = {
           revision_status: string | null
           revision_token: string | null
           scheduled_delivery_at: string | null
+          sender_context: string | null
           sent_at: string | null
           sent_to_emails: Json | null
           singer_preference: string
