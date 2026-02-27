@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
         // Fetch paginated leads
         const { data: leads, error: leadErr } = await supabase
           .from("leads")
-          .select("*")
+          .select("id, email, phone, customer_name, recipient_name, recipient_type, recipient_name_pronunciation, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, captured_at, converted_at, order_id, quality_score, preview_song_url, full_song_url, song_title, cover_image_url, preview_token, preview_sent_at, preview_opened_at, preview_played_at, preview_play_count, preview_scheduled_at, follow_up_sent_at, dismissed_at, utm_source, utm_medium, utm_campaign, automation_status, automation_started_at, automation_retry_count, automation_last_error, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, sent_at, lead_email_override, lead_email_cc, preview_sent_to_emails, sms_opt_in, sms_sent_at, sms_scheduled_for, phone_e164, sms_status, lyrics_language_code, inputs_hash, prev_song_url")
           .order("captured_at", { ascending: false })
           .range(rangeStart, rangeEnd);
         if (leadErr) {

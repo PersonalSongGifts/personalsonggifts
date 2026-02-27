@@ -408,27 +408,19 @@ export default function Admin() {
         let accOrders = [...(data.orders || [])];
         let accLeads = [...(data.leads || [])];
 
-        for (let p = 1; p < maxPages; p++) {
-          try {
-            const { data: pageData, error: pageErr } = await listOrders("all", p, pageSize);
-            if (pageErr) {
-              console.error(`Page ${p} returned error:`, pageErr);
-              continue;
-            }
-            if (pageData.orders?.length) accOrders = accOrders.concat(pageData.orders);
-            if (pageData.leads?.length) accLeads = accLeads.concat(pageData.leads);
-          } catch (pageLoadErr) {
-            console.error(`Failed to load page ${p}, retrying...`, pageLoadErr);
-            try {
-              await new Promise(r => setTimeout(r, 500));
-              const { data: retryData, error: retryErr } = await listOrders("all", p, pageSize);
-              if (!retryErr && retryData) {
-                if (retryData.orders?.length) accOrders = accOrders.concat(retryData.orders);
-                if (retryData.leads?.length) accLeads = accLeads.concat(retryData.leads);
-              }
-            } catch {
-              console.error(`Page ${p} retry also failed, continuing to next page`);
-            }
+        // Fire all remaining pages in parallel
+        const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
+          listOrders("all", i + 1, pageSize)
+        );
+        const results = await Promise.allSettled(pagePromises);
+
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value.data) {
+            const pd = result.value.data;
+            if (pd.orders?.length) accOrders = accOrders.concat(pd.orders);
+            if (pd.leads?.length) accLeads = accLeads.concat(pd.leads);
+          } else if (result.status === "rejected") {
+            console.error("Page fetch failed:", result.reason);
           }
         }
         // Batch update: set state once after all pages loaded
@@ -491,27 +483,20 @@ export default function Admin() {
 
       if (maxPages > 1) {
         setLoadingMore(true);
-        for (let p = 1; p < maxPages; p++) {
-          try {
-            const { data: pageData, error: pageErr } = await listOrders("all", p, pageSize);
-            if (pageErr) {
-              console.error(`Page ${p} returned error:`, pageErr);
-              continue;
-            }
-            if (pageData.orders?.length) accOrders = accOrders.concat(pageData.orders);
-            if (pageData.leads?.length) accLeads = accLeads.concat(pageData.leads);
-          } catch (pageLoadErr) {
-            console.error(`Failed to load page ${p}, retrying...`, pageLoadErr);
-            try {
-              await new Promise(r => setTimeout(r, 500));
-              const { data: retryData, error: retryErr } = await listOrders("all", p, pageSize);
-              if (!retryErr && retryData) {
-                if (retryData.orders?.length) accOrders = accOrders.concat(retryData.orders);
-                if (retryData.leads?.length) accLeads = accLeads.concat(retryData.leads);
-              }
-            } catch {
-              console.error(`Page ${p} retry also failed, continuing to next page`);
-            }
+
+        // Fire all remaining pages in parallel
+        const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
+          listOrders("all", i + 1, pageSize)
+        );
+        const results = await Promise.allSettled(pagePromises);
+
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value.data) {
+            const pd = result.value.data;
+            if (pd.orders?.length) accOrders = accOrders.concat(pd.orders);
+            if (pd.leads?.length) accLeads = accLeads.concat(pd.leads);
+          } else if (result.status === "rejected") {
+            console.error("Page fetch failed:", result.reason);
           }
         }
         // Batch update: set state once after all pages loaded
