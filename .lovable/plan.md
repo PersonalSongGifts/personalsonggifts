@@ -1,24 +1,17 @@
 
 
-## Fix TOS Link and Add Important Highlights to Revision Page
+## Fix: "Failed to load revisions" in CS Assistant tab
 
-### 1. Fix Terms of Service link (404 fix)
-The link currently points to `/terms-of-service` but the actual route is `/terms`. Update line 487 in `SongRevision.tsx` to use `/terms` instead.
+### Root Cause
+The `list_pending_revisions` and `review_revision` action handlers in `admin-orders/index.ts` are placed **after** the legacy fallback block (line 2094) which catches any unrecognized action and returns a `400 "Unknown action"` error. Since the legacy fallback runs first, the revision handlers at lines 2467-2636 are **unreachable**.
 
-### 2. Add "Important -- please read before submitting" highlights box
-For the **post-delivery redo** form, add a prominent warning card (amber/yellow styled, matching the existing amber alert pattern) below the header and above the editable fields. This mirrors the competitor reference screenshot and clearly sets expectations.
+### Fix
+Move both revision handlers (`list_pending_revisions` at line 2467 and `review_revision` at line 2504) to **before** the legacy fallback block (before line 2089). This ensures they're evaluated before the catch-all "Unknown action" response.
 
-The highlights will include:
-- Your original song will be permanently replaced with a new version
-- You get 1 redo -- it cannot be undone
-- Each remake is uniquely generated and will sound different from the original
-- We can only rework what was in your original order -- new details (names, stories, etc.) can't be guaranteed and the song will sound materially different
-- If your requested changes don't all fit, some content may be trimmed
+### File Changed
+- `supabase/functions/admin-orders/index.ts` -- relocate the two revision handler blocks (lines 2466-2636) to just before the legacy fallback section (before line 2089)
 
-This box appears only for post-delivery redo forms (not pre-delivery updates, which are low-stakes edits).
-
-### 3. Keep the disclaimer checkboxes as-is
-The checkboxes at the bottom of the form stay -- they serve as explicit confirmation before submit (the user likes this pattern).
-
-### Files changed
-- `src/pages/SongRevision.tsx` -- fix TOS link path, add highlights card for post-delivery
+### What This Fixes
+- CS Assistant tab will load without the "Failed to load revisions" error toast
+- Pending Revisions card will correctly show "No pending revision requests" when the queue is empty
+- The approve/reject revision flow will also work correctly
