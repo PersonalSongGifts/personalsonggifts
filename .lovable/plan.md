@@ -1,68 +1,36 @@
 
 
-## Auto-Regenerate on Revision Approval + Auto-Approve Toggle
+## Add Song Link Search to Orders and Leads Tabs
 
 ### What This Does
+Lets you paste a song link (or just the ending part like `w5UZxRyMrxCbgaay`) into the search box on the Orders tab or Leads tab and find the matching record -- same as the CS Assistant already does.
 
-Three changes to make revision approval a single-click action that automatically regenerates and schedules the song:
+### Changes
 
-1. **When an admin approves a revision with content changes**, the system automatically backs up the current song, clears automation artifacts, and kicks off regeneration -- no second "Approve for Delivery" or "Regenerate" step needed. The send time is automatically set to 12 hours from now (matching your standard delivery window).
+**File 1: `src/pages/Admin.tsx`** (Orders tab search filter, ~lines 1329-1343)
 
-2. **An "Auto-Approve" toggle** in the Pending Revisions card header lets admins enable automatic approval of low-risk revisions. When on, the `submit-revision` function checks if the revision is low-risk (no language/occasion change, fewer than 4 fields changed) and auto-approves + regenerates immediately. High-risk changes always go to the manual queue.
+Add song_url matching to the client-side filter. Before the existing search logic, extract a token/path fragment from URLs (same regex: `/\/(?:preview|song)\/([A-Za-z0-9_-]+)/`). Then include `song_url` in the match fields:
 
-3. **Correct scheduled send time** is set automatically: `target_send_at` = 12 hours from now, `earliest_generate_at` = 1 minute from now.
+- `order.song_url?.toLowerCase().includes(searchLower)`
+- `order.cover_image_url?.toLowerCase().includes(searchLower)`
 
----
+Also update the placeholder text to: "Search by name, email, order ID, or song link..."
 
-### Technical Details
+**File 2: `src/components/admin/LeadsTable.tsx`** (Leads tab search filter, ~lines 203-217)
 
-**File 1: `supabase/functions/admin-orders/index.ts`** (lines 2234-2257)
+Same approach -- add these fields to the client-side filter:
 
-Replace the current `needsRegeneration` block that sets `status: "needs_review"` with the full regeneration flow:
+- `lead.preview_song_url?.toLowerCase().includes(searchLower)`
+- `lead.preview_token?.toLowerCase().includes(searchLower)`
+- `lead.cover_image_url?.toLowerCase().includes(searchLower)`
 
-- Fetch the full order record (need `song_url`, `automation_lyrics`, `cover_image_url` for backup)
-- Call `backupSongFile()` to preserve current song in `prev_*` slot
-- Merge revision field updates with regeneration clears:
-  - Null out: `automation_status`, `automation_task_id`, `automation_lyrics`, `automation_started_at`, `automation_retry_count` (0), `automation_last_error`, `automation_raw_callback`, `automation_style_id`, `automation_audio_url_source`, `generated_at`, `inputs_hash`, `next_attempt_at`, `automation_manual_override_at`, `lyrics_language_qa`, `lyrics_raw_attempt_1`, `lyrics_raw_attempt_2`
-  - Null out: `song_url`, `song_title`, `cover_image_url`
-  - Set: `delivery_status: "pending"`, `sent_at: null`, `unplayed_resend_sent_at: null`
-  - Set: `earliest_generate_at` = 1 min from now, `target_send_at` = 12 hours from now
-  - Keep order `status` as-is (don't change to "needs_review")
-- Fire `automation-trigger` with `{ orderId, forceRun: true }`
-- Log activity as `revision_approved_regenerating`
+Also update the placeholder text to: "Search by name, email, lead ID, or song link..."
 
-When `needsRegeneration` is false (e.g. only `delivery_email` changed): keep current behavior, just update fields.
-
-**File 2: `supabase/functions/admin-orders/index.ts`** -- new action `set_revision_auto_approve`
-
-Add a handler that upserts the `revision_auto_approve_enabled` key in `admin_settings`.
-
-Also modify `list_pending_revisions` to return the current auto-approve setting value.
-
-**File 3: `supabase/functions/submit-revision/index.ts`**
-
-After inserting the revision request, check `revision_auto_approve_enabled` from `admin_settings`. If enabled and revision is low-risk (no language change, no occasion change, fewer than 4 fields changed), automatically:
-- Set revision status to "approved"
-- Apply field updates to the order
-- Trigger regeneration (same backup + clear + trigger flow)
-- Log as `revision_auto_approved`
-
-High-risk revisions always go to manual queue regardless of toggle.
-
-**File 4: `src/components/admin/PendingRevisions.tsx`**
-
-- Add a `Switch` toggle in the card header: "Auto-Approve"
-- Fetch auto-approve setting from `list_pending_revisions` response
-- When toggled, call `set_revision_auto_approve` action
-- When ON, show small info text: "Low-risk revisions are approved automatically"
-
----
+Both filters will also strip the URL prefix first (extract the token from a full URL) so pasting `https://www.personalsonggifts.com/preview/w5UZxRyMrxCbgaay` works the same as pasting just `w5UZxRyMrxCbgaay`.
 
 ### Files Modified
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/admin-orders/index.ts` | Auto-regenerate on approve; new `set_revision_auto_approve` action; return setting in `list_pending_revisions` |
-| `supabase/functions/submit-revision/index.ts` | Check auto-approve setting; auto-approve + regenerate low-risk revisions |
-| `src/components/admin/PendingRevisions.tsx` | Add Switch toggle for auto-approve with persistence |
-
+| `src/pages/Admin.tsx` | Add song_url matching + URL extraction to Orders search filter |
+| `src/components/admin/LeadsTable.tsx` | Add preview_song_url/preview_token matching + URL extraction to Leads search filter |
