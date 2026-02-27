@@ -161,9 +161,9 @@ Deno.serve(async (req) => {
         );
       }
 
-      // CS Assistant: lookup customer by email or name
+      // CS Assistant: lookup customer by email, name, order ID, preview token, or song URL fragment
       if (body?.action === "cs_lookup") {
-        const search = (typeof body.search === "string" ? body.search.trim() : "") || (typeof body.email === "string" ? body.email.trim() : "");
+        let search = (typeof body.search === "string" ? body.search.trim() : "") || (typeof body.email === "string" ? body.email.trim() : "");
         if (!search) {
           return new Response(
             JSON.stringify({ error: "search term required" }),
@@ -171,24 +171,95 @@ Deno.serve(async (req) => {
           );
         }
 
-        const { data: orders, error: orderErr } = await supabase
-          .from("orders")
-          .select("*")
-          .or(`customer_email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
-          .order("created_at", { ascending: false })
-          .limit(50);
-        if (orderErr) throw orderErr;
+        // Extract token/path fragment from URLs like personalsonggifts.com/preview/TOKEN or /song/SHORTID
+        const urlMatch = search.match(/\/(?:preview|song)\/([A-Za-z0-9_-]+)/);
+        if (urlMatch) {
+          search = urlMatch[1];
+        }
 
-        const { data: leads, error: leadErr } = await supabase
-          .from("leads")
-          .select("*")
-          .or(`email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
-          .order("captured_at", { ascending: false })
-          .limit(50);
-        if (leadErr) throw leadErr;
+        // Check if search looks like a preview token (non-UUID, alphanumeric, 10+ chars)
+        const isTokenLike = /^[A-Za-z0-9_-]{10,}$/.test(search) && !/^[0-9a-f]{8}$/i.test(search);
+        // Check if search looks like a short order ID (8 hex chars)
+        const isShortId = /^[0-9a-fA-F]{6,8}$/.test(search);
+
+        let orders: any[] = [];
+        let leads: any[] = [];
+
+        if (isTokenLike) {
+          // Search by preview_token on leads
+          const { data: tokenLeads, error: tokenErr } = await supabase
+            .from("leads")
+            .select("*")
+            .eq("preview_token", search)
+            .limit(10);
+          if (tokenErr) throw tokenErr;
+          leads = tokenLeads || [];
+
+          // Also check song_url on orders (song URL contains the order ID in the path)
+          const { data: songOrders, error: songErr } = await supabase
+            .from("orders")
+            .select("*")
+            .ilike("song_url", `%${search}%`)
+            .limit(10);
+          if (songErr) throw songErr;
+          orders = songOrders || [];
+        } else if (isShortId) {
+          // Search by short order ID prefix
+          const { data: idOrders, error: idErr } = await supabase
+            .from("orders")
+            .select("*")
+            .ilike("id", `${search}%`)
+            .order("created_at", { ascending: false })
+            .limit(10);
+          if (idErr) throw idErr;
+          orders = idOrders || [];
+
+          // Also do standard name/email search
+          const { data: nameOrders, error: nameErr } = await supabase
+            .from("orders")
+            .select("*")
+            .or(`customer_email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
+            .order("created_at", { ascending: false })
+            .limit(50);
+          if (nameErr) throw nameErr;
+
+          // Merge without duplicates
+          const existingIds = new Set(orders.map((o: any) => o.id));
+          for (const o of (nameOrders || [])) {
+            if (!existingIds.has(o.id)) orders.push(o);
+          }
+
+          const { data: nameLeads, error: leadErr } = await supabase
+            .from("leads")
+            .select("*")
+            .or(`email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
+            .order("captured_at", { ascending: false })
+            .limit(50);
+          if (leadErr) throw leadErr;
+          leads = nameLeads || [];
+        } else {
+          // Standard email/name search
+          const { data: stdOrders, error: orderErr } = await supabase
+            .from("orders")
+            .select("*")
+            .or(`customer_email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
+            .order("created_at", { ascending: false })
+            .limit(50);
+          if (orderErr) throw orderErr;
+          orders = stdOrders || [];
+
+          const { data: stdLeads, error: leadErr } = await supabase
+            .from("leads")
+            .select("*")
+            .or(`email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
+            .order("captured_at", { ascending: false })
+            .limit(50);
+          if (leadErr) throw leadErr;
+          leads = stdLeads || [];
+        }
 
         return new Response(
-          JSON.stringify({ orders: orders || [], leads: leads || [] }),
+          JSON.stringify({ orders, leads }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
