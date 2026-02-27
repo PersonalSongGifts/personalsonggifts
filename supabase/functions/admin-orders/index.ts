@@ -1322,6 +1322,7 @@ Deno.serve(async (req) => {
                 occasion: order.occasion,
                 songUrl: order.song_url,
                 ccEmail: ccEmail !== effectiveEmail ? ccEmail : null,
+                revisionToken: order.revision_token,
               }),
             }
           );
@@ -2203,6 +2204,7 @@ Deno.serve(async (req) => {
                 recipientName: order.recipient_name,
                 occasion: order.occasion,
                 songUrl: order.song_url,
+                revisionToken: order.revision_token,
               }),
             }
           );

@@ -269,6 +269,7 @@ Deno.serve(async (req) => {
           recipientName: lead.recipient_name,
           occasion: lead.occasion,
           songUrl: lead.full_song_url,
+          revisionToken: newOrder.revision_token,
         }),
       });
       console.log("Full song delivery email sent");

@@ -15,6 +15,7 @@ interface SongDeliveryRequest {
   occasion: string;
   songUrl: string;
   ccEmail?: string | null;
+  revisionToken?: string | null;
   // SMS fields
   phoneE164?: string | null;
   smsOptIn?: boolean;
@@ -44,6 +45,7 @@ Deno.serve(async (req) => {
       occasion,
       songUrl,
       ccEmail,
+      revisionToken,
       phoneE164,
       smsOptIn,
       timezone,
@@ -93,6 +95,11 @@ Deno.serve(async (req) => {
 
     <p style="color: #555555; font-size: 14px; margin: 0 0 4px 0;"><strong>Order ID:</strong> ${orderId.slice(0, 8).toUpperCase()}</p>
 
+    ${revisionToken ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 16px 0;">
+      <strong>Want changes?</strong> You can request a revision here:
+      <a href="https://personalsonggifts.lovable.app/song/revision/${revisionToken}" style="color: #1E3A5F;">Request a revision</a>
+    </p>` : ''}
+
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 30px 0 40px 0;">
       Warm regards,<br>
       The Personal Song Gifts Team
@@ -119,7 +126,7 @@ Your personalized ${occasion} song for ${recipientName} is complete and ready to
 Listen here: ${songPageUrl}
 
 Order ID: ${orderId.slice(0, 8).toUpperCase()}
-
+${revisionToken ? `\nWant changes? Request a revision: https://personalsonggifts.lovable.app/song/revision/${revisionToken}\n` : ''}
 We hope it brings joy!
 
 Warm regards,

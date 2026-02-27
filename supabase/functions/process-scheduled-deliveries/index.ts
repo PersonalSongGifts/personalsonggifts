@@ -637,6 +637,7 @@ Deno.serve(async (req) => {
                 occasion: order.occasion,
                 songUrl: order.song_url,
                 ccEmail: order.customer_email_cc,
+                revisionToken: order.revision_token,
                 // SMS fields
                 phoneE164: order.phone_e164,
                 smsOptIn: order.sms_opt_in,
@@ -760,6 +761,7 @@ Deno.serve(async (req) => {
               occasion: order.occasion,
               songUrl: order.song_url,
               ccEmail: order.customer_email_cc,
+              revisionToken: order.revision_token,
             }),
           });
 
@@ -849,6 +851,7 @@ Deno.serve(async (req) => {
               occasion: order.occasion,
               songUrl: order.song_url,
               ccEmail: order.customer_email_cc,
+              revisionToken: order.revision_token,
               // SMS fields for resend
               phoneE164: order.phone_e164,
               smsOptIn: order.sms_opt_in,

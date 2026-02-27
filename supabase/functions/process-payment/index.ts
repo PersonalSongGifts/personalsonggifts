@@ -271,6 +271,7 @@ Deno.serve(async (req) => {
           genre: newOrder.genre,
           pricingTier: newOrder.pricing_tier,
           expectedDelivery: newOrder.expected_delivery,
+          revisionToken: newOrder.revision_token,
         }),
       });
     } catch (emailError) {
@@ -323,6 +324,7 @@ Deno.serve(async (req) => {
         customerEmail: newOrder.customer_email,
         expectedDelivery: newOrder.expected_delivery,
         price: newOrder.price_cents != null ? newOrder.price_cents / 100 : priceCents / 100,
+        revisionToken: newOrder.revision_token,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
