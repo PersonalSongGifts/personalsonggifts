@@ -371,7 +371,7 @@ export default function Admin() {
       }
 
       // Step 2: Try actual login (fetch page 0 only)
-const { data, error } = await listOrders("all", 0, 1000);
+const { data, error } = await listOrders("all", 0, 500);
 
       if (error) {
         const errorMessage = error.message || String(error);
@@ -399,7 +399,7 @@ const { data, error } = await listOrders("all", 0, 1000);
       setTotalLeadCount(data.totalLeads || 0);
 
       // Auto-load remaining pages in background
-      const bgPageSize = 1000; // Always use large pages for background loading
+      const bgPageSize = 500;
       const totalOrders = data.totalOrders || 0;
       const totalLeads = data.totalLeads || 0;
       const maxPages = Math.max(
@@ -467,7 +467,7 @@ const { data, error } = await listOrders("all", 0, 1000);
     setLoading(true);
     try {
       // Fetch page 0 first for fast response
-      const { data, error } = await listOrders("all", 0, 1000);
+      const { data, error } = await listOrders("all", 0, 500);
       if (error) throw error;
 
       let accOrders = data.orders || [];
@@ -479,7 +479,7 @@ const { data, error } = await listOrders("all", 0, 1000);
       setTotalLeadCount(data.totalLeads || 0);
 
       // Load remaining pages in background
-      const bgPageSize = 1000; // Always use large pages for background loading
+      const bgPageSize = 500;
       const maxPages = Math.max(
         Math.ceil((data.totalOrders || 0) / bgPageSize),
         Math.ceil((data.totalLeads || 0) / bgPageSize)
