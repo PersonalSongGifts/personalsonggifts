@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Search, Copy, ExternalLink, RefreshCw, Loader2, AlertTriangle, CheckCircle, Clock, Send } from "lucide-react";
 import { formatAdminDate } from "@/lib/utils";
+import { PendingRevisions } from "./PendingRevisions";
 
 interface CSAssistantProps {
   adminPassword: string;
@@ -178,6 +179,9 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
 
   return (
     <div className="space-y-6">
+      {/* Pending Revisions Queue */}
+      <PendingRevisions adminPassword={adminPassword} />
+
       {/* Email Search */}
       <Card>
         <CardHeader className="pb-3">
