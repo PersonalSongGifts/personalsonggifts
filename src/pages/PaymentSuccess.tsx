@@ -357,9 +357,19 @@ const PaymentSuccess = () => {
 
           {/* Revision link — show for new orders with a revision token */}
           {!isLeadConversion && orderDetails.revisionToken && (
-            <div className="mb-6">
-              <p className="text-sm text-muted-foreground mb-3">
-                Need to update details before your song is created?
+            <Card
+              className="p-6 mb-8 text-center"
+              style={{
+                background: "linear-gradient(135deg, hsl(220 30% 97%), hsl(210 25% 94%))",
+                border: "1px solid hsl(220 20% 90%)",
+              }}
+            >
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Pencil className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-foreground">Need to Make Changes?</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Update your song details before we start creating it.
               </p>
               <Button asChild variant="outline" size="sm">
                 <Link to={`/song/revision/${orderDetails.revisionToken}`}>
@@ -367,7 +377,7 @@ const PaymentSuccess = () => {
                   Edit Song Details
                 </Link>
               </Button>
-            </div>
+            </Card>
           )}
 
           {/* CTA */}
