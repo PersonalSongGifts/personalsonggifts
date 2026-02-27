@@ -2086,6 +2086,169 @@ Deno.serve(async (req) => {
         );
       }
 
+      // List pending revision requests
+      if (body?.action === "list_pending_revisions") {
+        console.log("[ADMIN] Fetching pending revisions");
+        const { data: revisions, error: revErr } = await supabase
+          .from("revision_requests")
+          .select("*")
+          .eq("status", "pending")
+          .order("submitted_at", { ascending: true })
+          .limit(100);
+
+        if (revErr) throw revErr;
+
+        // Enrich with order context
+        const enriched = [];
+        for (const rev of (revisions || [])) {
+          const { data: order } = await supabase
+            .from("orders")
+            .select("id, recipient_name, customer_name, occasion, status")
+            .eq("id", rev.order_id)
+            .maybeSingle();
+
+          enriched.push({
+            ...rev,
+            order_short_id: order?.id?.substring(0, 8) || "?",
+            order_recipient_name: order?.recipient_name,
+            order_customer_name: order?.customer_name,
+            order_occasion: order?.occasion,
+            order_status: order?.status,
+          });
+        }
+
+        return new Response(
+          JSON.stringify({ revisions: enriched }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Review (approve/reject) a revision request
+      if (body?.action === "review_revision") {
+        const revisionId = typeof body.revisionId === "string" ? body.revisionId : null;
+        const decision = typeof body.decision === "string" ? body.decision : null;
+        const rejectionReason = typeof body.rejectionReason === "string" ? body.rejectionReason : null;
+
+        if (!revisionId || !["approve", "reject"].includes(decision || "")) {
+          return new Response(
+            JSON.stringify({ error: "revisionId and decision (approve|reject) required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: rev, error: revErr } = await supabase
+          .from("revision_requests")
+          .select("*")
+          .eq("id", revisionId)
+          .maybeSingle();
+
+        if (revErr || !rev) {
+          return new Response(
+            JSON.stringify({ error: "Revision request not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (rev.status !== "pending") {
+          return new Response(
+            JSON.stringify({ error: `Revision already ${rev.status}` }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const now = new Date().toISOString();
+
+        if (decision === "reject") {
+          await supabase.from("revision_requests").update({
+            status: "rejected",
+            reviewed_at: now,
+            reviewed_by: "admin",
+            rejection_reason: rejectionReason || null,
+          }).eq("id", revisionId);
+
+          await supabase.from("orders").update({
+            revision_status: "rejected",
+            pending_revision: false,
+          }).eq("id", rev.order_id);
+
+          await logActivity(supabase, {
+            entityId: rev.order_id,
+            entityType: "order",
+            eventType: "revision_rejected",
+            actor: "admin",
+            details: rejectionReason ? `Rejected: ${rejectionReason}` : "Revision request rejected",
+          });
+
+          return new Response(
+            JSON.stringify({ success: true, message: "Revision rejected" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // === APPROVE ===
+        const fieldsChanged: string[] = Array.isArray(rev.fields_changed) ? rev.fields_changed : [];
+        const orderUpdate: Record<string, any> = {
+          revision_status: "approved",
+          pending_revision: false,
+        };
+
+        const fieldMapping: Record<string, string> = {
+          recipient_name: "recipient_name",
+          customer_name: "customer_name",
+          delivery_email: "customer_email",
+          recipient_type: "recipient_type",
+          occasion: "occasion",
+          genre: "genre",
+          singer_preference: "singer_preference",
+          language: "lyrics_language_code",
+          recipient_name_pronunciation: "recipient_name_pronunciation",
+          special_qualities: "special_qualities",
+          favorite_memory: "favorite_memory",
+          special_message: "special_message",
+        };
+
+        for (const field of fieldsChanged) {
+          const orderField = fieldMapping[field];
+          if (orderField && rev[field] !== undefined && rev[field] !== null) {
+            orderUpdate[orderField] = rev[field];
+          }
+        }
+
+        const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language"];
+        const needsRegeneration = fieldsChanged.some(f => contentFields.includes(f));
+
+        if (needsRegeneration) {
+          orderUpdate.inputs_hash = null;
+          orderUpdate.status = "needs_review";
+        }
+
+        await supabase.from("orders").update(orderUpdate).eq("id", rev.order_id);
+
+        await supabase.from("revision_requests").update({
+          status: "approved",
+          reviewed_at: now,
+          reviewed_by: "admin",
+        }).eq("id", revisionId);
+
+        await logActivity(supabase, {
+          entityId: rev.order_id,
+          entityType: "order",
+          eventType: "revision_approved",
+          actor: "admin",
+          details: `Approved: ${fieldsChanged.length} field(s) updated${needsRegeneration ? " — needs regeneration" : ""}`,
+          metadata: { fields_changed: fieldsChanged },
+        });
+
+        const message = needsRegeneration
+          ? "Revision approved. Order moved to Needs Review for regeneration."
+          : "Revision approved. Non-content fields updated.";
+
+        return new Response(
+          JSON.stringify({ success: true, message, needs_regeneration: needsRegeneration }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // ===== LEGACY UPDATE FALLBACK (only when no action is provided) =====
       // Extract action to gate this block
       const action = typeof body?.action === "string" ? body.action : null;
@@ -2459,178 +2622,6 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, fixed, permanentlyFailed }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // List pending revision requests
-    if (body?.action === "list_pending_revisions") {
-      console.log("[ADMIN] Fetching pending revisions");
-      const { data: revisions, error: revErr } = await supabase
-        .from("revision_requests")
-        .select("*")
-        .eq("status", "pending")
-        .order("submitted_at", { ascending: true })
-        .limit(100);
-
-      if (revErr) throw revErr;
-
-      // Enrich with order context
-      const enriched = [];
-      for (const rev of (revisions || [])) {
-        const { data: order } = await supabase
-          .from("orders")
-          .select("id, recipient_name, customer_name, occasion, status")
-          .eq("id", rev.order_id)
-          .maybeSingle();
-
-        enriched.push({
-          ...rev,
-          order_short_id: order?.id?.substring(0, 8) || "?",
-          order_recipient_name: order?.recipient_name,
-          order_customer_name: order?.customer_name,
-          order_occasion: order?.occasion,
-          order_status: order?.status,
-        });
-      }
-
-      return new Response(
-        JSON.stringify({ revisions: enriched }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Review (approve/reject) a revision request
-    if (body?.action === "review_revision") {
-      const revisionId = typeof body.revisionId === "string" ? body.revisionId : null;
-      const decision = typeof body.decision === "string" ? body.decision : null;
-      const rejectionReason = typeof body.rejectionReason === "string" ? body.rejectionReason : null;
-
-      if (!revisionId || !["approve", "reject"].includes(decision || "")) {
-        return new Response(
-          JSON.stringify({ error: "revisionId and decision (approve|reject) required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Fetch the revision request
-      const { data: rev, error: revErr } = await supabase
-        .from("revision_requests")
-        .select("*")
-        .eq("id", revisionId)
-        .maybeSingle();
-
-      if (revErr || !rev) {
-        return new Response(
-          JSON.stringify({ error: "Revision request not found" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      if (rev.status !== "pending") {
-        return new Response(
-          JSON.stringify({ error: `Revision already ${rev.status}` }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const now = new Date().toISOString();
-
-      if (decision === "reject") {
-        // Update revision_request status
-        await supabase.from("revision_requests").update({
-          status: "rejected",
-          reviewed_at: now,
-          reviewed_by: "admin",
-          rejection_reason: rejectionReason || null,
-        }).eq("id", revisionId);
-
-        // Update order revision_status
-        await supabase.from("orders").update({
-          revision_status: "rejected",
-          pending_revision: false,
-        }).eq("id", rev.order_id);
-
-        await logActivity(supabase, {
-          entityId: rev.order_id,
-          entityType: "order",
-          eventType: "revision_rejected",
-          actor: "admin",
-          details: rejectionReason ? `Rejected: ${rejectionReason}` : "Revision request rejected",
-        });
-
-        return new Response(
-          JSON.stringify({ success: true, message: "Revision rejected" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // === APPROVE ===
-      // Apply the changed fields to the order
-      const fieldsChanged: string[] = Array.isArray(rev.fields_changed) ? rev.fields_changed : [];
-      const orderUpdate: Record<string, any> = {
-        revision_status: "approved",
-        pending_revision: false,
-      };
-
-      // Map revision fields to order fields
-      const fieldMapping: Record<string, string> = {
-        recipient_name: "recipient_name",
-        customer_name: "customer_name",
-        delivery_email: "customer_email",
-        recipient_type: "recipient_type",
-        occasion: "occasion",
-        genre: "genre",
-        singer_preference: "singer_preference",
-        language: "lyrics_language_code",
-        recipient_name_pronunciation: "recipient_name_pronunciation",
-        special_qualities: "special_qualities",
-        favorite_memory: "favorite_memory",
-        special_message: "special_message",
-      };
-
-      for (const field of fieldsChanged) {
-        const orderField = fieldMapping[field];
-        if (orderField && rev[field] !== undefined && rev[field] !== null) {
-          orderUpdate[orderField] = rev[field];
-        }
-      }
-
-      // Check if content-affecting fields changed (need regeneration)
-      const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language"];
-      const needsRegeneration = fieldsChanged.some(f => contentFields.includes(f));
-
-      if (needsRegeneration) {
-        // Clear inputs_hash to force regeneration detection
-        orderUpdate.inputs_hash = null;
-        // Mark as needs_review so admin can trigger regeneration
-        orderUpdate.status = "needs_review";
-      }
-
-      await supabase.from("orders").update(orderUpdate).eq("id", rev.order_id);
-
-      // Update revision_request
-      await supabase.from("revision_requests").update({
-        status: "approved",
-        reviewed_at: now,
-        reviewed_by: "admin",
-      }).eq("id", revisionId);
-
-      await logActivity(supabase, {
-        entityId: rev.order_id,
-        entityType: "order",
-        eventType: "revision_approved",
-        actor: "admin",
-        details: `Approved: ${fieldsChanged.length} field(s) updated${needsRegeneration ? " — needs regeneration" : ""}`,
-        metadata: { fields_changed: fieldsChanged },
-      });
-
-      const message = needsRegeneration
-        ? "Revision approved. Order moved to Needs Review for regeneration."
-        : "Revision approved. Non-content fields updated.";
-
-      return new Response(
-        JSON.stringify({ success: true, message, needs_regeneration: needsRegeneration }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
