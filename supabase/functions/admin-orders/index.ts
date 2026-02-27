@@ -2205,6 +2205,7 @@ Deno.serve(async (req) => {
           style_notes: "notes",
           tempo: "notes",
           anything_else: "notes",
+          sender_context: "sender_context",
         };
 
         const notesFields = ["style_notes", "tempo", "anything_else"];
@@ -2227,7 +2228,7 @@ Deno.serve(async (req) => {
           orderUpdate.notes = notesParts.join(" | ");
         }
 
-        const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language", "style_notes", "tempo"];
+        const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language", "style_notes", "tempo", "sender_context"];
         const needsRegeneration = fieldsChanged.some(f => contentFields.includes(f));
 
         if (needsRegeneration) {

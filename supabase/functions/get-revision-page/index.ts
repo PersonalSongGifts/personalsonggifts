@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     // Look up order by revision_token
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, created_at, price_cents, status, sent_at, revision_token, revision_count, max_revisions, revision_requested_at, revision_status, recipient_name, customer_name, customer_email, recipient_type, occasion, genre, singer_preference, lyrics_language_code, recipient_name_pronunciation, special_qualities, favorite_memory, special_message, pricing_tier")
+      .select("id, created_at, price_cents, status, sent_at, revision_token, revision_count, max_revisions, revision_requested_at, revision_status, recipient_name, customer_name, customer_email, recipient_type, occasion, genre, singer_preference, lyrics_language_code, recipient_name_pronunciation, special_qualities, favorite_memory, special_message, pricing_tier, sender_context")
       .eq("revision_token", token)
       .maybeSingle();
 
@@ -214,5 +214,6 @@ function buildOrderData(order: any) {
     favorite_memory: order.favorite_memory,
     special_message: order.special_message || "",
     pricing_tier: order.pricing_tier,
+    sender_context: order.sender_context || "",
   };
 }
