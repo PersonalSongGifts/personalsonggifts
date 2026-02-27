@@ -14,6 +14,7 @@ export const LANGUAGE_LABELS: Record<string, string> = {
   ko: "Korean",
   sr: "Serbian",
   hr: "Croatian",
+  hi: "Hindi",
 };
 
 export const SUPPORTED_LANGUAGE_CODES = Object.keys(LANGUAGE_LABELS);
@@ -51,6 +52,11 @@ const LANGUAGE_SPECIFIC_RULES: Record<string, string> = {
   hr: `- Write in Latin script
 - Use natural Croatian phrasing
 - Keep Southern Slavic warmth and expressiveness`,
+  hi: `- Use conversational Hindi (not overly formal or Sanskritized)
+- Write in Devanagari script
+- Keep names in their original Latin characters (do not transliterate)
+- Embrace natural Hindi emotional expressions and idioms
+- Use natural Hindi grammar and sentence structure, not translated English`,
 };
 
 // Script detection markers
@@ -59,6 +65,7 @@ const HIRAGANA_PATTERN = /[\u3040-\u309F]/;
 const KATAKANA_PATTERN = /[\u30A0-\u30FF]/;
 const KANJI_PATTERN = /[\u4E00-\u9FAF]/;
 const HANGUL_PATTERN = /[\uAC00-\uD7AF\u1100-\u11FF]/;
+const DEVANAGARI_PATTERN = /[\u0900-\u097F]/;
 
 // Language markers for Latin script languages
 const LANGUAGE_MARKERS: Record<string, RegExp[]> = {
@@ -91,6 +98,9 @@ const LANGUAGE_MARKERS: Record<string, RegExp[]> = {
   ],
   en: [
     /\b(the|and|you|for|are|but|not|with|have|this|will|your|from|they|been|would|there|their|what|about)\b/gi,
+  ],
+  hi: [
+    /\b(hai|hain|ka|ki|ke|se|ko|ne|par|mein|kya|aur|ya|nahi|nahin|bhi|jo|yeh|woh|tera|mera|tumhara|pyaar|dil|zindagi|khushi)\b/gi,
   ],
 };
 
@@ -136,6 +146,7 @@ export function detectByScript(text: string): { language: string; confidence: "h
   const katakanaCount = (text.match(KATAKANA_PATTERN) || []).length;
   const kanjiCount = (text.match(KANJI_PATTERN) || []).length;
   const hangulCount = (text.match(HANGUL_PATTERN) || []).length;
+  const devanagariCount = (text.match(DEVANAGARI_PATTERN) || []).length;
   
   const japaneseCount = hiraganaCount + katakanaCount + kanjiCount;
   
@@ -152,6 +163,10 @@ export function detectByScript(text: string): { language: string; confidence: "h
   
   if (cyrillicCount >= threshold) {
     return { language: "sr", confidence: "high" }; // Cyrillic = Serbian
+  }
+  
+  if (devanagariCount >= threshold) {
+    return { language: "hi", confidence: "high" };
   }
   
   return null;
