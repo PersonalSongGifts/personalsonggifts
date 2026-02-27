@@ -105,10 +105,10 @@ Deno.serve(async (req) => {
       We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
     </p>
 
-    ${revisionToken ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">
+    ${revisionToken ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 0 0 8px 0;">
       <strong>Need to make changes?</strong> You can update your song details anytime before delivery:
-      <a href="https://personalsonggifts.lovable.app/song/revision/${revisionToken}" style="color: #1E3A5F;">Update your order</a>
-    </p>` : ''}
+    </p>
+    <a href="https://personalsonggifts.lovable.app/song/revision/${revisionToken}" style="display: inline-block; padding: 10px 24px; background-color: #1E3A5F; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600; margin: 0 0 16px 0;">✏️ Edit Song Details</a>` : ''}
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
       Warm regards,<br>

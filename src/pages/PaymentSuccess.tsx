@@ -3,7 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Check, Clock, Mail, Music, Loader2, AlertCircle } from "lucide-react";
+import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil } from "lucide-react";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
@@ -357,13 +357,16 @@ const PaymentSuccess = () => {
 
           {/* Revision link — show for new orders with a revision token */}
           {!isLeadConversion && orderDetails.revisionToken && (
-            <div className="text-sm text-muted-foreground mb-6">
-              <p>
-                Need to update details before your song is created?{" "}
-                <Link to={`/song/revision/${orderDetails.revisionToken}`} className="text-primary underline">
-                  Make changes here
-                </Link>
+            <div className="mb-6">
+              <p className="text-sm text-muted-foreground mb-3">
+                Need to update details before your song is created?
               </p>
+              <Button asChild variant="outline" size="sm">
+                <Link to={`/song/revision/${orderDetails.revisionToken}`}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit Song Details
+                </Link>
+              </Button>
             </div>
           )}
 
