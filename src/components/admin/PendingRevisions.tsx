@@ -49,6 +49,7 @@ interface RevisionRequest {
   order_short_id?: string;
   order_recipient_name?: string;
   order_customer_name?: string;
+  order_customer_email?: string;
   order_occasion?: string;
   order_status?: string;
 }
@@ -199,6 +200,12 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
                     <span className="font-mono text-xs text-muted-foreground">{rev.order_short_id}</span>
                     <span className="mx-1 text-muted-foreground">·</span>
                     <span className="text-sm font-medium">{rev.order_recipient_name || "Unknown"}</span>
+                    {rev.order_customer_email && (
+                      <>
+                        <span className="mx-1 text-muted-foreground">·</span>
+                        <span className="text-xs text-muted-foreground">{rev.order_customer_email}</span>
+                      </>
+                    )}
                     <span className="mx-1 text-muted-foreground">·</span>
                     <span className="text-xs text-muted-foreground">{rev.fields_changed?.length || 0} field{(rev.fields_changed?.length || 0) !== 1 ? "s" : ""} changed</span>
                   </div>

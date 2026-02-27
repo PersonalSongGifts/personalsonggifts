@@ -2103,7 +2103,7 @@ Deno.serve(async (req) => {
         for (const rev of (revisions || [])) {
           const { data: order } = await supabase
             .from("orders")
-            .select("id, recipient_name, customer_name, occasion, status")
+            .select("id, recipient_name, customer_name, customer_email, occasion, status")
             .eq("id", rev.order_id)
             .maybeSingle();
 
@@ -2112,6 +2112,7 @@ Deno.serve(async (req) => {
             order_short_id: order?.id?.substring(0, 8) || "?",
             order_recipient_name: order?.recipient_name,
             order_customer_name: order?.customer_name,
+            order_customer_email: order?.customer_email,
             order_occasion: order?.occasion,
             order_status: order?.status,
           });
