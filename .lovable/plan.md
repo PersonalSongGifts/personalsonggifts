@@ -1,30 +1,15 @@
 
 
-## UI Improvements to Song Revision Page and Thank You Page
+## Style the Edit Song Details section with a subtle gradient card
 
-### Changes
+### Change
+Wrap the revision link section (lines 359-371 in `PaymentSuccess.tsx`) in a styled Card with a soft gradient background, similar to the Expected Delivery and Watch for your song email cards but with a different subtle color -- a light lavender/blue-gray gradient that complements the existing cream/navy palette.
 
-**1. Remove Tempo section from SongRevision.tsx**
-- Delete the Tempo radio group card (lines 466-483) and the `tempoOptions` array (lines 37-41)
+### Implementation
+- Replace the plain `<div className="mb-6">` wrapper with a `<Card>` that has a subtle gradient using inline styles (e.g., a soft blue-gray: `background: linear-gradient(135deg, hsl(220 30% 97%), hsl(210 25% 94%))`  with a matching light border)
+- Keep the text and button inside, centered
+- This creates visual consistency with the other info cards on the page while using a distinct, subtle color
 
-**2. Remove "No preference" option from Singer Voice Preference**
-- Delete the third radio option for "no-preference" (lines 402-406) in SongRevision.tsx
+### File
+- `src/pages/PaymentSuccess.tsx` -- lines 359-371 only
 
-**3. Update pronunciation example text**
-- Change `'Mee-SHELL' instead of 'Michelle'` to `'Mishell' instead of 'Michelle'` (line 427)
-- Update the secondary helper text to match Suno-friendly phonetic style (line 428)
-
-**4. Link "Terms of Service" in disclaimers**
-- In the disclaimers rendering (lines 509-514), make the "Terms of Service" text in the TOS disclaimer a clickable link to `/terms-of-service`
-
-**5. Make revision link a styled button on PaymentSuccess.tsx**
-- Replace the plain text link (lines 359-368) with a proper outlined Button component with a pencil/edit icon, making it more visually prominent
-
-**6. Make revision link a button in confirmation email (send-order-confirmation)**
-- Update the email template's revision link to use a styled button instead of a plain hyperlink
-
-### Technical Details
-
-- **SongRevision.tsx**: Remove tempo block, remove "no-preference" radio, update pronunciation helper text, render TOS disclaimer label with an inline `<a>` link
-- **PaymentSuccess.tsx**: Replace the `<div>` with text link to a `<Button variant="outline">` wrapped in a `<Link>`
-- **send-order-confirmation/index.ts**: Style the revision link as an HTML button in the email template
