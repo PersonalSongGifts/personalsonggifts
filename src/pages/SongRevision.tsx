@@ -298,6 +298,37 @@ const SongRevision = () => {
             </div>
           )}
 
+          {isPostDelivery && (
+            <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-5">
+              <h3 className="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                Important — please read before submitting
+              </h3>
+              <ul className="space-y-2 text-sm text-amber-800">
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                  Your original song will be <strong>permanently replaced</strong> with a new version
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                  You get <strong>1 redo</strong> — it cannot be undone
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                  Each remake is uniquely generated and <strong>will sound different</strong> from the original
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                  We can only rework what was in your original order — new details (names, stories, etc.) can't be guaranteed
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                  If your requested changes don't all fit, some content may be trimmed
+                </li>
+              </ul>
+            </div>
+          )}
+
           {emptyFieldWarnings.length > 0 && !confirmedEmpty && (
             <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
               <p className="text-sm font-medium text-destructive mb-2">
@@ -484,7 +515,7 @@ const SongRevision = () => {
                         className="text-sm text-muted-foreground cursor-pointer leading-relaxed"
                       >
                         {d.id === "tos" ? (
-                          <>I agree to the <Link to="/terms-of-service" target="_blank" className="text-primary underline hover:text-primary/80">Terms of Service</Link></>
+                          <>I agree to the <Link to="/terms" target="_blank" className="text-primary underline hover:text-primary/80">Terms of Service</Link></>
                         ) : (
                           d.label
                         )}
