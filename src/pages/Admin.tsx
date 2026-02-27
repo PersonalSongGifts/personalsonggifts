@@ -1256,7 +1256,7 @@ export default function Admin() {
                </SelectContent>
              </Select>
                <Input
-                placeholder="Search by name, email, or order ID..."
+                placeholder="Search by name, email, order ID, or song link..."
                 value={orderSearch}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -1326,9 +1326,12 @@ export default function Admin() {
                  if (orderSource !== sourceFilter) return false;
                }
                
-                // Then apply search filter
+                 // Then apply search filter
                 if (!orderSearch.trim()) return true;
-                const searchLower = orderSearch.toLowerCase();
+                const rawSearch = orderSearch.trim();
+                // Extract token from pasted URLs like https://…/preview/ABC or /song/ABC
+                const urlMatch = rawSearch.match(/\/(?:preview|song)\/([A-Za-z0-9_-]+)/);
+                const searchLower = (urlMatch ? urlMatch[1] : rawSearch).toLowerCase();
                  return (
                    order.id.toLowerCase().includes(searchLower) ||
                    order.customer_name.toLowerCase().includes(searchLower) ||
@@ -1339,7 +1342,9 @@ export default function Admin() {
                    order.favorite_memory.toLowerCase().includes(searchLower) ||
                    (order.special_message?.toLowerCase().includes(searchLower) ?? false) ||
                    (order.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
-                   order.occasion.toLowerCase().includes(searchLower)
+                   order.occasion.toLowerCase().includes(searchLower) ||
+                   (order.song_url?.toLowerCase().includes(searchLower) ?? false) ||
+                   (order.cover_image_url?.toLowerCase().includes(searchLower) ?? false)
                  );
               });
               
