@@ -18,6 +18,7 @@ import { LeadPreviewTimingPicker, type LeadPreviewTimingMode } from "@/component
 import { createAudioPreview } from "@/lib/audioClipper";
 import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
+import { getCountryFromTimezone } from "@/lib/timezoneCountry";
 
 export interface Lead {
   id: string;
@@ -1481,6 +1482,12 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         )}
                         {selectedLead.phone && (
                           <p className="text-sm text-muted-foreground"><strong>Phone:</strong> {selectedLead.phone}</p>
+                        )}
+                        {getCountryFromTimezone(selectedLead.timezone) && (
+                          <p className="text-sm text-muted-foreground">
+                            🌍 {getCountryFromTimezone(selectedLead.timezone)}
+                            <span className="text-xs text-muted-foreground ml-1">(from timezone)</span>
+                          </p>
                         )}
                       </>
                     )}
