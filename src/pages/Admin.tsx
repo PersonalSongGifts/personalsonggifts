@@ -1259,14 +1259,15 @@ const { data, error } = await listOrders("all", 0, 1000);
                 className="w-64"
                />
                <span className="text-sm text-muted-foreground whitespace-nowrap">
-                 {orders.length} order{orders.length !== 1 ? "s" : ""}
-                 {loadingMore && (
-                   <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground/70">
-                     <Loader2 className="h-3 w-3 animate-spin" />
-                     loading more…
-                   </span>
-                 )}
-               </span>
+                 {loadingMore ? (
+                    <span className="inline-flex items-center gap-1">
+                      {orders.length} of {totalOrderCount} orders loaded
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    </span>
+                  ) : (
+                    <>{orders.length} order{orders.length !== 1 ? "s" : ""}</>
+                  )}
+                </span>
              </div>
 
             {(() => {
