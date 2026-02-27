@@ -347,6 +347,7 @@ Deno.serve(async (req) => {
             genre: newOrder.genre,
             pricingTier: newOrder.pricing_tier,
             expectedDelivery: newOrder.expected_delivery,
+            revisionToken: newOrder.revision_token,
           }),
         });
         console.log(`Confirmation email sent for order ${newOrder.id}`);

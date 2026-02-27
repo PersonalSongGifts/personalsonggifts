@@ -12,6 +12,7 @@ interface OrderConfirmationRequest {
   genre: string;
   pricingTier: string;
   expectedDelivery: string;
+  revisionToken?: string;
 }
 
 Deno.serve(async (req) => {
@@ -37,6 +38,7 @@ Deno.serve(async (req) => {
       genre,
       pricingTier,
       expectedDelivery,
+      revisionToken,
     }: OrderConfirmationRequest = await req.json();
 
     if (!customerEmail || !orderId) {
@@ -103,6 +105,11 @@ Deno.serve(async (req) => {
       We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
     </p>
 
+    ${revisionToken ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">
+      <strong>Need to make changes?</strong> You can update your song details anytime before delivery:
+      <a href="https://personalsonggifts.lovable.app/song/revision/${revisionToken}" style="color: #1E3A5F;">Update your order</a>
+    </p>` : ''}
+
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
       Warm regards,<br>
       The Personal Song Gifts Team
@@ -133,7 +140,7 @@ Genre: ${genre}
 Delivery: ${tierLabel} — by ${deliveryDate}
 
 We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
-
+${revisionToken ? `\nNeed to make changes? Update your order: https://personalsonggifts.lovable.app/song/revision/${revisionToken}\n` : ''}
 Warm regards,
 The Personal Song Gifts Team
 

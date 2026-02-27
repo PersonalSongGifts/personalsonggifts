@@ -307,26 +307,40 @@ Deno.serve(async (req) => {
 
     // ======= IDEMPOTENCY GUARDS =======
     
-    // Guard 1: Already has song URL (skip unless force reprocess)
+    // Guard 1: Pending revision — discard stale audio, restart generation
+    if (entityType === "order" && entity.pending_revision) {
+      console.log(`[CALLBACK] ⚠️ Pending revision for order ${entityId}, discarding stale audio callback`);
+      await supabase
+        .from("orders")
+        .update({
+          automation_status: "failed",
+          automation_last_error: "[CALLBACK] Discarded: revision pending, stale audio result",
+          automation_task_id: null,
+        })
+        .eq("id", entityId);
+      return new Response("Revision pending, discarded", { status: 200, headers: corsHeaders });
+    }
+
+    // Guard 2: Already has song URL (skip unless force reprocess)
     const existingSongUrl = entityType === "order" ? entity.song_url : entity.preview_song_url;
     if (existingSongUrl) {
       console.log(`[CALLBACK] Entity ${entityId} already has song URL, skipping (idempotent)`);
       return new Response("Already processed", { status: 200, headers: corsHeaders });
     }
 
-    // Guard 2: Already sent (never overwrite after delivery)
+    // Guard 3: Already sent (never overwrite after delivery)
     if (entity.sent_at || entity.preview_sent_at) {
       console.log(`[CALLBACK] Entity ${entityId} already sent, ignoring callback (idempotent)`);
       return new Response("Already sent", { status: 200, headers: corsHeaders });
     }
 
-    // Guard 3: Manual override active (admin took over)
+    // Guard 4: Manual override active (admin took over)
     if (entity.automation_manual_override_at) {
       console.log(`[CALLBACK] Manual override active for ${entityType} ${entityId}, ignoring callback`);
       return new Response("Manual override active", { status: 200, headers: corsHeaders });
     }
 
-    // Guard 4: Verify status is in expected state
+    // Guard 5: Verify status is in expected state
     if (entity.automation_status !== "audio_generating") {
       console.log(`[CALLBACK] Unexpected status ${entity.automation_status} for ${entityType} ${entityId}`);
       return new Response("Unexpected status", { status: 200, headers: corsHeaders });

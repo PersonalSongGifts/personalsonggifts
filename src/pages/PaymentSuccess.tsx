@@ -17,7 +17,8 @@ interface OrderDetails {
   customerEmail: string;
   expectedDelivery?: string;
   songUrl?: string;
-  price?: number; // actual charged amount in dollars (from price_cents / 100)
+  price?: number;
+  revisionToken?: string;
 }
 
 const MAX_POLL_ATTEMPTS = 10;
@@ -351,6 +352,18 @@ const PaymentSuccess = () => {
                   </a>
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Revision link — show for new orders with a revision token */}
+          {!isLeadConversion && orderDetails.revisionToken && (
+            <div className="text-sm text-muted-foreground mb-6">
+              <p>
+                Need to update details before your song is created?{" "}
+                <Link to={`/song/revision/${orderDetails.revisionToken}`} className="text-primary underline">
+                  Make changes here
+                </Link>
+              </p>
             </div>
           )}
 

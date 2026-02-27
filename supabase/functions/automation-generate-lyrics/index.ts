@@ -236,6 +236,23 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Guard: Pending revision — discard stale lyrics generation
+    if (entityType === "order" && rawEntity.pending_revision) {
+      console.log(`[LYRICS] ⚠️ Pending revision for order ${entity.id}, discarding stale lyrics generation`);
+      await supabase
+        .from("orders")
+        .update({
+          automation_status: "failed",
+          automation_last_error: "[LYRICS] Discarded: revision pending, stale lyrics result",
+          automation_task_id: null,
+        })
+        .eq("id", entity.id);
+      return new Response(
+        JSON.stringify({ error: "Revision pending, discarding stale generation" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Guard: never regenerate lyrics when audio already exists — would create a mismatch
     const audioUrl = rawEntity.song_url || rawEntity.full_song_url;
     if (audioUrl) {
