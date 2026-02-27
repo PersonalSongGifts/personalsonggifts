@@ -272,7 +272,7 @@ Deno.serve(async (req) => {
           utm_content: metadata.utmContent || null,
           utm_term: metadata.utmTerm || null,
         })
-        .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
+        .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, revision_token")
         .single();
 
       // Handle unique constraint violation (race condition) - return existing order

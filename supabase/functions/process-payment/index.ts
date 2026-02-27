@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
 
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
       .eq("notes", `stripe_session:${sessionId}`)
       .single();
 
@@ -117,6 +117,7 @@ Deno.serve(async (req) => {
           customerEmail: existingOrder.customer_email,
           expectedDelivery: existingOrder.expected_delivery,
           price: existingOrder.price_cents != null ? existingOrder.price_cents / 100 : undefined,
+          revisionToken: existingOrder.revision_token,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -189,7 +190,7 @@ Deno.serve(async (req) => {
         inputs_hash: inputsHash,
         delivery_status: "pending",
       })
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
       .single();
 
     // Handle unique constraint violation (race condition) - re-query for existing order
@@ -199,7 +200,7 @@ Deno.serve(async (req) => {
         console.log(`Race condition detected for session ${sessionId}, fetching existing order`);
         const { data: raceOrder } = await supabase
           .from("orders")
-          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
           .eq("notes", `stripe_session:${sessionId}`)
           .single();
 
@@ -214,6 +215,7 @@ Deno.serve(async (req) => {
               customerEmail: raceOrder.customer_email,
               expectedDelivery: raceOrder.expected_delivery,
               price: raceOrder.price_cents != null ? raceOrder.price_cents / 100 : undefined,
+              revisionToken: raceOrder.revision_token,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
