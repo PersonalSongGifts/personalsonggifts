@@ -1,27 +1,30 @@
 
 
-## Fix: Revision token not appearing on thank-you page
+## UI Improvements to Song Revision Page and Thank You Page
 
-### Problem
-The "Make changes here" revision link is already coded into the PaymentSuccess page, but it never shows because the `revision_token` is not being selected from the database after order creation.
+### Changes
 
-In `stripe-webhook/index.ts` line 275, the `.select()` clause only picks specific columns and omits `revision_token`:
-```
-.select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery")
-```
+**1. Remove Tempo section from SongRevision.tsx**
+- Delete the Tempo radio group card (lines 466-483) and the `tempoOptions` array (lines 37-41)
 
-The database auto-generates `revision_token` via `DEFAULT gen_random_uuid()`, but since it's not in the select, it's never returned -- so it can't be passed to the confirmation email or to `process-payment`.
+**2. Remove "No preference" option from Singer Voice Preference**
+- Delete the third radio option for "no-preference" (lines 402-406) in SongRevision.tsx
 
-### Fix (1 line change)
-Update the `.select()` in `supabase/functions/stripe-webhook/index.ts` (line 275) to include `revision_token`:
-```
-.select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, revision_token")
-```
+**3. Update pronunciation example text**
+- Change `'Mee-SHELL' instead of 'Michelle'` to `'Mishell' instead of 'Michelle'` (line 427)
+- Update the secondary helper text to match Suno-friendly phonetic style (line 428)
 
-Similarly, in `process-payment/index.ts`, verify the select clause when fetching existing orders also includes `revision_token` (it likely queries from the orders table too).
+**4. Link "Terms of Service" in disclaimers**
+- In the disclaimers rendering (lines 509-514), make the "Terms of Service" text in the TOS disclaimer a clickable link to `/terms-of-service`
 
-### Result
-- The thank-you page will show: "Need to update details before your song is created? Make changes here"
-- The confirmation email will include the revision link
-- No database changes needed -- the column already exists with a default value
+**5. Make revision link a styled button on PaymentSuccess.tsx**
+- Replace the plain text link (lines 359-368) with a proper outlined Button component with a pencil/edit icon, making it more visually prominent
 
+**6. Make revision link a button in confirmation email (send-order-confirmation)**
+- Update the email template's revision link to use a styled button instead of a plain hyperlink
+
+### Technical Details
+
+- **SongRevision.tsx**: Remove tempo block, remove "no-preference" radio, update pronunciation helper text, render TOS disclaimer label with an inline `<a>` link
+- **PaymentSuccess.tsx**: Replace the `<div>` with text link to a `<Button variant="outline">` wrapped in a `<Link>`
+- **send-order-confirmation/index.ts**: Style the revision link as an HTML button in the email template
