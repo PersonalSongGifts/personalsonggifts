@@ -1,3 +1,4 @@
+// Build: 2026-02-27T18:00 force-redeploy-v2
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
