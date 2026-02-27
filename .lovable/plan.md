@@ -1,42 +1,99 @@
 
 
-## Show Country Info for Both Orders and Leads
+## Fix: Admin Dashboard Only Loading 200 of 754 Orders
 
-### Problem
-Country information isn't displayed anywhere in the admin panel -- not for orders (which have `billing_country_code`/`billing_country_name` from Stripe) and not for leads (which don't have country columns at all).
+### Root Cause
 
-### Solution
+The recent optimization introduced a mismatch between the initial page fetch and the background loading logic:
 
-**For Orders**: Display `billing_country_name` (with country code) directly from the existing database fields -- no schema changes needed.
+1. **Page 0** fetches `pageSize=200` (rows 0--199)
+2. Background loading calculates `maxPages = Math.ceil(754 / 1000) = 1`
+3. Since `maxPages` is NOT greater than 1, **no background pages are fetched at all**
+4. Result: Only 200 orders and ~200 leads are loaded -- all stats, charts, and revenue totals are based on incomplete data
 
-**For Leads**: Derive country from the `timezone` field that's already captured from the browser (e.g., "America/New_York" -> "United States", "Europe/London" -> "United Kingdom"). Create a small utility that maps IANA timezones to country names.
+Even if there were enough records for `maxPages > 1`, page 1 with `bgPageSize=1000` would start at offset 1000, **skipping rows 200--999**.
 
-### Changes
+### Fix
 
-**1. Create a timezone-to-country utility (`src/lib/timezoneCountry.ts`)**
+Change the background loading logic in both `handleLogin` and `fetchOrders` to:
 
-A lightweight lookup map that converts IANA timezone strings to country names. Covers all major timezone prefixes (America, Europe, Asia, Africa, Australia, Pacific, etc.). This avoids adding new database columns or API calls for leads.
+1. Calculate remaining records after the initial 200-row fetch
+2. Fetch remaining records using `bgPageSize=1000`, starting from offset 200 (not offset 1000)
 
-**2. Show country in Order detail view (`src/pages/Admin.tsx`, ~line 1780)**
+### Technical Details
 
-After the phone number in the customer info section, add:
+**File: `src/pages/Admin.tsx`** (two locations: ~line 401 and ~line 482)
+
+Replace the background loading block in both `handleLogin` and `fetchOrders`:
+
+```typescript
+// Current (broken):
+const bgPageSize = 1000;
+const maxPages = Math.max(
+  Math.ceil(totalOrders / bgPageSize),
+  Math.ceil(totalLeads / bgPageSize)
+);
+if (maxPages > 1) {
+  const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
+    listOrders("all", i + 1, bgPageSize)
+  );
+  // ...
+}
+
+// Fixed:
+const initialPageSize = 200;
+const bgPageSize = 1000;
+const remainingOrders = Math.max(0, totalOrders - initialPageSize);
+const remainingLeads = Math.max(0, totalLeads - initialPageSize);
+const bgPages = Math.max(
+  Math.ceil(remainingOrders / bgPageSize),
+  Math.ceil(remainingLeads / bgPageSize)
+);
+if (bgPages > 0) {
+  // Each background page fetches from offset = initialPageSize + (i * bgPageSize)
+  const pagePromises = Array.from({ length: bgPages }, (_, i) => {
+    const offset = initialPageSize + i * bgPageSize;
+    // We pass page/pageSize such that range = offset to offset+bgPageSize-1
+    // Since the API uses: rangeStart = page * pageSize, we set page = offset/bgPageSize is wrong
+    // Instead, we need to pass raw offset. Simplest fix: pass page as the raw start offset divided by pageSize
+    // But the API computes rangeStart = page * pageSize, so we need page = offset / bgPageSize... 
+    // This won't work cleanly. Better approach: just use the list function with correct math.
+  });
+}
 ```
-Country: United States (US)
-```
-Uses `billing_country_name` and `billing_country_code` from the order record. Falls back to timezone-derived country if billing country isn't available.
 
-**3. Show country in Lead detail view (`src/components/admin/LeadsTable.tsx`, ~line 1484)**
+Since the API calculates `rangeStart = page * pageSize`, the cleanest approach is to **make the initial fetch also use pageSize=1000** but only render the first response immediately. This way page math stays consistent:
 
-After the phone number in the lead customer info section, add:
+```typescript
+// Simplest correct fix: use bgPageSize for ALL fetches including page 0
+const { data, error } = await listOrders("all", 0, 1000);
+// ... set state immediately for fast render ...
+
+const bgPageSize = 1000;
+const maxPages = Math.max(
+  Math.ceil((data.totalOrders || 0) / bgPageSize),
+  Math.ceil((data.totalLeads || 0) / bgPageSize)
+);
+if (maxPages > 1) {
+  const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
+    listOrders("all", i + 1, bgPageSize)
+  );
+  // ... same parallel fetch logic ...
+}
 ```
-Location: United States (from timezone)
-```
-Derived from the lead's `timezone` field using the utility. Shown with a subtle "(from timezone)" note since it's inferred rather than from billing data.
+
+This is the simplest, most reliable fix. Page 0 with 1000 rows is still fast (~1-2 seconds), and the page math is now correct: with 754 orders, `maxPages = 1`, so no background loading needed (all orders fit in page 0). With 1200 leads, `maxPages = 2`, so one background page fetches leads 1000-1199.
 
 ### Files Modified
 
 | File | Changes |
 |------|---------|
-| `src/lib/timezoneCountry.ts` | New file -- timezone-to-country mapping utility |
-| `src/pages/Admin.tsx` | Add country display to order detail customer info section |
-| `src/components/admin/LeadsTable.tsx` | Add timezone-derived country display to lead detail customer info section |
+| `src/pages/Admin.tsx` | Change initial `listOrders` call from `pageSize=200` to `pageSize=1000` in both `handleLogin` (~line 374) and `fetchOrders` (~line 470) |
+
+### Expected Impact
+
+- All 754 orders loaded instead of just 200
+- All 1200 leads loaded (page 0 gets 1000, page 1 gets remaining 200)
+- Revenue, charts, and all analytics reflect complete data
+- No change in perceived load speed (1000-row fetch is still fast)
+
