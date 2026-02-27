@@ -2126,6 +2126,7 @@ Deno.serve(async (req) => {
 
       // Review (approve/reject) a revision request
       if (body?.action === "review_revision") {
+        console.log("[ADMIN] review_revision called", { revisionId: body.revisionId, decision: body.decision });
         const revisionId = typeof body.revisionId === "string" ? body.revisionId : null;
         const decision = typeof body.decision === "string" ? body.decision : null;
         const rejectionReason = typeof body.rejectionReason === "string" ? body.rejectionReason : null;
@@ -2160,6 +2161,7 @@ Deno.serve(async (req) => {
         const now = new Date().toISOString();
 
         if (decision === "reject") {
+          console.log("[ADMIN] Rejecting revision for order:", rev.order_id);
           await supabase.from("revision_requests").update({
             status: "rejected",
             reviewed_at: now,
@@ -2172,13 +2174,7 @@ Deno.serve(async (req) => {
             pending_revision: false,
           }).eq("id", rev.order_id);
 
-          await logActivity(supabase, {
-            entityId: rev.order_id,
-            entityType: "order",
-            eventType: "revision_rejected",
-            actor: "admin",
-            details: rejectionReason ? `Rejected: ${rejectionReason}` : "Revision request rejected",
-          });
+          await logActivity(supabase, "order", rev.order_id, "revision_rejected", "admin", rejectionReason ? `Rejected: ${rejectionReason}` : "Revision request rejected");
 
           return new Response(
             JSON.stringify({ success: true, message: "Revision rejected" }),
@@ -2206,16 +2202,32 @@ Deno.serve(async (req) => {
           special_qualities: "special_qualities",
           favorite_memory: "favorite_memory",
           special_message: "special_message",
+          style_notes: "notes",
+          tempo: "notes",
+          anything_else: "notes",
         };
 
+        const notesFields = ["style_notes", "tempo", "anything_else"];
         for (const field of fieldsChanged) {
+          if (notesFields.includes(field)) continue; // handled separately below
           const orderField = fieldMapping[field];
           if (orderField && rev[field] !== undefined && rev[field] !== null) {
             orderUpdate[orderField] = rev[field];
           }
         }
 
-        const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language"];
+        // For notes-mapped fields, concatenate rather than overwrite
+        const notesParts: string[] = [];
+        for (const nf of ["style_notes", "tempo", "anything_else"]) {
+          if (fieldsChanged.includes(nf) && rev[nf]) {
+            notesParts.push(`${nf}: ${rev[nf]}`);
+          }
+        }
+        if (notesParts.length > 0) {
+          orderUpdate.notes = notesParts.join(" | ");
+        }
+
+        const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language", "style_notes", "tempo"];
         const needsRegeneration = fieldsChanged.some(f => contentFields.includes(f));
 
         if (needsRegeneration) {
@@ -2231,14 +2243,8 @@ Deno.serve(async (req) => {
           reviewed_by: "admin",
         }).eq("id", revisionId);
 
-        await logActivity(supabase, {
-          entityId: rev.order_id,
-          entityType: "order",
-          eventType: "revision_approved",
-          actor: "admin",
-          details: `Approved: ${fieldsChanged.length} field(s) updated${needsRegeneration ? " — needs regeneration" : ""}`,
-          metadata: { fields_changed: fieldsChanged },
-        });
+        console.log("[ADMIN] Approved revision for order:", rev.order_id, "fields:", fieldsChanged, "needsRegen:", needsRegeneration);
+        await logActivity(supabase, "order", rev.order_id, "revision_approved", "admin", `Approved: ${fieldsChanged.length} field(s) updated${needsRegeneration ? " — needs regeneration" : ""}`, { fields_changed: fieldsChanged });
 
         const message = needsRegeneration
           ? "Revision approved. Order moved to Needs Review for regeneration."
