@@ -13,6 +13,7 @@ export const genreOptions = [
   { id: "latin", label: "Latin" },
   { id: "kpop", label: "K-Pop" },
   { id: "edm-dance", label: "EDM / Dance" },
+  { id: "bollywood", label: "Bollywood / Hindi" },
 ];
 
 export const singerOptions = [
