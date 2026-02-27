@@ -130,6 +130,8 @@ interface Order {
   prev_cover_image_url?: string | null;
   // Unplayed re-send
   unplayed_resend_sent_at?: string | null;
+  // Revision
+  revision_token?: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -1650,6 +1652,16 @@ export default function Admin() {
                       Order ID: {selectedOrder.id.slice(0, 8).toUpperCase()}
                       {selectedOrder.status === "delivered" && selectedOrder.song_url && (
                         <> · <a href={`/song/${selectedOrder.id.slice(0, 8)}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View Song Page ↗</a></>
+                      )}
+                      {selectedOrder.revision_token && (
+                        <> · <button
+                          className="text-blue-600 hover:underline inline"
+                          onClick={() => {
+                            const url = `${window.location.origin}/song/revision/${selectedOrder.revision_token}`;
+                            navigator.clipboard.writeText(url);
+                            toast({ title: "Revision link copied to clipboard!" });
+                          }}
+                        >Copy Revision Link 📋</button></>
                       )}
                     </DialogDescription>
                   </div>
