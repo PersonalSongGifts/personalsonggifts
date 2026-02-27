@@ -395,12 +395,12 @@ export default function Admin() {
       setTotalLeadCount(data.totalLeads || 0);
 
       // Auto-load remaining pages in background
-      const pageSize = data.pageSize || 1000;
+      const bgPageSize = 1000; // Always use large pages for background loading
       const totalOrders = data.totalOrders || 0;
       const totalLeads = data.totalLeads || 0;
       const maxPages = Math.max(
-        Math.ceil(totalOrders / pageSize),
-        Math.ceil(totalLeads / pageSize)
+        Math.ceil(totalOrders / bgPageSize),
+        Math.ceil(totalLeads / bgPageSize)
       );
 
       if (maxPages > 1) {
@@ -410,7 +410,7 @@ export default function Admin() {
 
         // Fire all remaining pages in parallel
         const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
-          listOrders("all", i + 1, pageSize)
+          listOrders("all", i + 1, bgPageSize)
         );
         const results = await Promise.allSettled(pagePromises);
 
@@ -475,10 +475,10 @@ export default function Admin() {
       setTotalLeadCount(data.totalLeads || 0);
 
       // Load remaining pages in background
-      const pageSize = data.pageSize || 1000;
+      const bgPageSize = 1000; // Always use large pages for background loading
       const maxPages = Math.max(
-        Math.ceil((data.totalOrders || 0) / pageSize),
-        Math.ceil((data.totalLeads || 0) / pageSize)
+        Math.ceil((data.totalOrders || 0) / bgPageSize),
+        Math.ceil((data.totalLeads || 0) / bgPageSize)
       );
 
       if (maxPages > 1) {
@@ -486,7 +486,7 @@ export default function Admin() {
 
         // Fire all remaining pages in parallel
         const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
-          listOrders("all", i + 1, pageSize)
+          listOrders("all", i + 1, bgPageSize)
         );
         const results = await Promise.allSettled(pagePromises);
 
