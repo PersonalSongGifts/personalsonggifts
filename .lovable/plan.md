@@ -1,73 +1,60 @@
 
 
-## Speed Up Admin Leads Loading
+## Fix Admin Panel Loading Speed
 
-### Problem
-The admin dashboard is loading 8,800+ leads by making ~9 sequential edge function calls (1,000 leads per page). Each call fetches ALL columns for every lead, and each call has to cold-boot the edge function. This results in 30-60+ seconds of loading time.
+### Root Cause
 
-### Solution: Parallel fetching + lean lead columns
+Two compounding issues are making everything extremely slow:
 
-Two changes to dramatically speed this up:
+**1. Page size mismatch creates 44+ parallel requests instead of 9**
 
-**1. Fetch lead pages in parallel (not sequentially)**
+The initial login/refresh call uses `pageSize: 200` for a fast first render. But the background loading reuses that same pageSize (200) for all remaining pages. With 8,800+ leads, that means `Math.ceil(8800/200) - 1 = 43` parallel edge function calls instead of ~9. Each call cold-boots the function, so you're hammering 43 concurrent requests at once.
 
-Currently the frontend loops through pages one at a time (`for (let p = 1; p < maxPages; p++)`). Instead, fire all page requests simultaneously using `Promise.allSettled()`. This alone should cut loading time by 5-8x since all pages load concurrently.
+**2. Orders still fetch ALL columns (`SELECT *`)**
 
-**2. Fetch only the columns the Leads table actually needs**
+The leads query was optimized to fetch only needed columns, but the orders query still does `select("*")`, pulling heavy text blobs like `automation_lyrics`, `automation_raw_callback`, `lyrics_raw_attempt_1/2`, etc. for every order.
 
-The edge function currently does `SELECT *` on leads, returning ~70 columns per lead including large text blobs like `automation_lyrics`, `automation_raw_callback`, `lyrics_raw_attempt_1`, `lyrics_raw_attempt_2`, etc. The leads table UI only needs about 30 columns. Switching to a specific column list will reduce payload size by roughly 50-60%.
+### Solution
 
-### Technical Details
+**Fix 1: Use pageSize=1000 for background loading (regardless of initial page size)**
 
-**File 1: `supabase/functions/admin-orders/index.ts`** (~line 127-131)
+In both `handleLogin` and `fetchOrders` in `Admin.tsx`, hardcode the background page size to 1000 instead of reusing the initial response's pageSize. This drops 43 parallel requests down to 9.
 
-Replace `select("*")` for the paginated leads query with a specific column list:
 ```
-id, email, phone, customer_name, recipient_name, recipient_type, 
-recipient_name_pronunciation, occasion, genre, singer_preference, 
-special_qualities, favorite_memory, special_message, status, 
-captured_at, converted_at, order_id, quality_score, 
-preview_song_url, full_song_url, song_title, cover_image_url, 
-preview_token, preview_sent_at, preview_opened_at, preview_played_at,
-preview_play_count, preview_scheduled_at, follow_up_sent_at, 
-dismissed_at, utm_source, utm_medium, utm_campaign,
-automation_status, automation_started_at, automation_retry_count,
-automation_last_error, automation_task_id, automation_style_id,
-earliest_generate_at, target_send_at, generated_at, sent_at,
-lead_email_override, lead_email_cc, preview_sent_to_emails,
-sms_opt_in, sms_sent_at, sms_scheduled_for, phone_e164, sms_status,
-lyrics_language_code, inputs_hash, prev_song_url
-```
+// Before (broken):
+const pageSize = data.pageSize || 1000;  // returns 200 from initial call
 
-This excludes the heavy columns: `automation_raw_callback`, `automation_lyrics`, `lyrics_raw_attempt_1`, `lyrics_raw_attempt_2`, `automation_audio_url_source`, `lyrics_language_qa`, `prev_automation_lyrics`, `prev_cover_image_url`.
-
-**File 2: `src/pages/Admin.tsx`** (~lines 406-438 and ~lines 492-516)
-
-Replace the sequential `for` loop with parallel fetching in both `handleLogin` and `fetchOrders`:
-
-```typescript
-// Fire all remaining pages in parallel
-const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
-  listOrders("all", i + 1, pageSize)
+// After (fixed):
+const bgPageSize = 1000; // Always use large pages for background loading
+const maxPages = Math.max(
+  Math.ceil((data.totalOrders || 0) / bgPageSize),
+  Math.ceil((data.totalLeads || 0) / bgPageSize)
 );
-const results = await Promise.allSettled(pagePromises);
-
-for (const result of results) {
-  if (result.status === "fulfilled" && result.value.data) {
-    const pd = result.value.data;
-    if (pd.orders?.length) accOrders = accOrders.concat(pd.orders);
-    if (pd.leads?.length) accLeads = accLeads.concat(pd.leads);
-  }
-}
+// Use bgPageSize for all subsequent calls
 ```
+
+**Fix 2: Apply lean column selection to orders too**
+
+Replace `select("*")` on the orders query with specific columns, excluding the same heavy fields:
+- `automation_raw_callback`
+- `automation_lyrics`
+- `lyrics_raw_attempt_1`
+- `lyrics_raw_attempt_2`
+- `automation_audio_url_source`
+- `lyrics_language_qa`
+- `prev_automation_lyrics`
+- `prev_cover_image_url`
 
 ### Expected Impact
-- **Parallel fetching**: Loading 9 pages concurrently instead of sequentially -- total time drops from ~45s to ~5-8s
-- **Lean columns**: ~50% smaller response payloads per page, faster JSON parsing
+
+- **43 parallel requests down to 9** -- massive reduction in edge function cold boots and concurrent load
+- **~50% smaller order payloads** -- faster network transfer and JSON parsing
+- Combined: admin panel should load in 5-10 seconds instead of 60+
 
 ### Files Modified
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/admin-orders/index.ts` | Replace `select("*")` with specific columns for leads pagination |
-| `src/pages/Admin.tsx` | Replace sequential page loop with `Promise.allSettled()` parallel fetch in both login and refresh flows |
+| `src/pages/Admin.tsx` | Use bgPageSize=1000 for background page loading in both `handleLogin` and `fetchOrders` |
+| `supabase/functions/admin-orders/index.ts` | Replace `select("*")` with specific column list for orders pagination query |
+
