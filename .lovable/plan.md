@@ -1,35 +1,44 @@
 
 
-## Add Revision Link to Admin Order Dialog + Emoji Update
+## Add Hindi Language Support
+
+### Overview
+Add Hindi (`hi`) as a supported language across the entire system -- customer-facing form, revision/redo form, admin panel, and backend lyrics generation pipeline.
 
 ### Changes
 
-#### 1. Add revision link to Admin Order Details dialog (`src/pages/Admin.tsx`)
-In the `DialogDescription` area (line ~1650), next to the existing "View Song Page" link, add a "Revision Link" that shows whenever the order has a `revision_token`. Clicking it copies the full URL to clipboard. Format:
+#### 1. Shared dropdown options (`src/components/admin/adminDropdownOptions.ts`)
+Add `{ id: "hi", label: "Hindi" }` to the `languageOptions` array. This automatically propagates to:
+- Admin order editing (Admin.tsx)
+- Admin lead editing (LeadsTable.tsx)
+- Revision/redo form (SongRevision.tsx)
 
-```
-Order ID: C36052E8 · View Song Page ↗ · Copy Revision Link 📋
-```
+#### 2. Customer-facing form (`src/components/create/MusicStyleStep.tsx`)
+Add `{ id: "hi", label: "Hindi" }` to the local `languageOptions` array (this file has its own copy).
 
-The revision link will be: `https://www.personalsonggifts.com/song/revision/{revision_token}`
+#### 3. Backend language utilities (`supabase/functions/_shared/language-utils.ts`)
+- Add `hi: "Hindi"` to `LANGUAGE_LABELS`
+- Add Devanagari script detection pattern (`[\u0900-\u097F]`) to `detectByScript()` so the QA system can verify Hindi lyrics
+- Add Hindi-specific rules to `LANGUAGE_SPECIFIC_RULES` (e.g., use conversational Hindi, avoid overly Sanskritized/formal phrasing, Devanagari script preferred)
+- Add Hindi word markers to `LANGUAGE_MARKERS` for mixed-language detection on romanized Hindi
 
-This uses `window.location.origin` so it works in any environment. On click, it copies to clipboard and shows a toast confirmation.
-
-#### 2. Add emoji to revision button on Song Player (`src/pages/SongPlayer.tsx`)
-Update line 616 to include a thinking emoji alongside the pencil icon:
-
-```
-Need changes? Request a revision
-```
-becomes:
-```
-🤔 Need changes? Request a revision
-```
+### What does NOT need to change
+- **No database migration needed** -- `lyrics_language_code` is a plain text column, any value works
+- **No edge function logic changes** -- the lyrics generator and audio generator read from the language-utils constants; adding Hindi there is sufficient
+- **No revision flow changes** -- the revision form already imports `languageOptions` from the shared file, so it picks up Hindi automatically
+- **No risk of stalling** -- the automation pipeline treats unknown languages gracefully (falls back to the code as-is), and adding Hindi to the known set only improves QA accuracy
 
 ### Technical Details
 
 **Files modified:**
-1. `src/pages/Admin.tsx` (line ~1649-1654) -- add a "Copy Revision Link" button next to "View Song Page" link, visible when `selectedOrder.revision_token` exists
-2. `src/pages/SongPlayer.tsx` (line ~614-617) -- add the thinking emoji to the revision button text
+1. `src/components/admin/adminDropdownOptions.ts` -- add Hindi to languageOptions
+2. `src/components/create/MusicStyleStep.tsx` -- add Hindi to local languageOptions
+3. `supabase/functions/_shared/language-utils.ts` -- add Hindi to LANGUAGE_LABELS, LANGUAGE_SPECIFIC_RULES, script detection (Devanagari), and LANGUAGE_MARKERS
 
-Both are small, targeted UI changes with no backend modifications needed.
+**Devanagari script detection** will use Unicode range `\u0900-\u097F` which covers all standard Hindi characters. This gives the QA system high-confidence detection for Hindi lyrics written in Devanagari, similar to how Japanese/Korean/Cyrillic are already handled.
+
+**Hindi-specific prompt rules** will instruct the AI to:
+- Use conversational Hindi (not overly formal or Sanskritized)
+- Write in Devanagari script
+- Keep names in their original Latin characters
+- Embrace natural Hindi emotional expressions and idioms
