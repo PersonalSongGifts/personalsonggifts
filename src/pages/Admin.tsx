@@ -40,6 +40,7 @@ import { CustomOccasionInsights } from "@/components/admin/CustomOccasionInsight
 import { UnplayedResendPanel } from "@/components/admin/UnplayedResendPanel";
 import { CSAssistant } from "@/components/admin/CSAssistant";
 import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
+import { getCountryFromTimezone } from "@/lib/timezoneCountry";
 
 interface Order {
   id: string;
@@ -132,6 +133,9 @@ interface Order {
   unplayed_resend_sent_at?: string | null;
   // Revision
   revision_token?: string | null;
+  // Billing country
+  billing_country_code?: string | null;
+  billing_country_name?: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -1777,6 +1781,17 @@ export default function Admin() {
                         )}
                         {selectedOrder.customer_phone && (
                           <p className="text-sm text-muted-foreground">{selectedOrder.customer_phone}</p>
+                        )}
+                        {(selectedOrder.billing_country_name || selectedOrder.billing_country_code || getCountryFromTimezone(selectedOrder.timezone)) && (
+                          <p className="text-sm text-muted-foreground">
+                            🌍 {selectedOrder.billing_country_name || getCountryFromTimezone(selectedOrder.timezone)}
+                            {selectedOrder.billing_country_code && (
+                              <span className="text-xs ml-1">({selectedOrder.billing_country_code})</span>
+                            )}
+                            {!selectedOrder.billing_country_name && !selectedOrder.billing_country_code && getCountryFromTimezone(selectedOrder.timezone) && (
+                              <span className="text-xs text-muted-foreground ml-1">(from timezone)</span>
+                            )}
+                          </p>
                         )}
                       </>
                     )}
