@@ -14,7 +14,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, RefreshCw, CheckCircle, XCircle, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle, XCircle, ChevronDown, ChevronUp, ExternalLink, Pencil } from "lucide-react";
+import { RevisionEditDialog } from "./RevisionEditDialog";
 import { formatAdminDate } from "@/lib/utils";
 
 interface PendingRevisionsProps {
@@ -84,6 +85,7 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
   const [processing, setProcessing] = useState(false);
   const [autoApprove, setAutoApprove] = useState(false);
   const [togglingAutoApprove, setTogglingAutoApprove] = useState(false);
+  const [editingRevision, setEditingRevision] = useState<RevisionRequest | null>(null);
   const { toast } = useToast();
 
   const fetchRevisions = useCallback(async () => {
@@ -124,7 +126,7 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
     }
   }, [adminPassword, toast]);
 
-  const handleAction = useCallback(async (revisionId: string, action: "approve" | "reject", rejectionReason?: string) => {
+  const handleAction = useCallback(async (revisionId: string, action: "approve" | "reject", rejectionReason?: string, adminModifications?: Record<string, string>) => {
     setProcessing(true);
     try {
       const { data, error } = await supabase.functions.invoke("admin-orders", {
@@ -135,6 +137,7 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
           revisionId,
           decision: action,
           rejectionReason: rejectionReason || undefined,
+          adminModifications: adminModifications && Object.keys(adminModifications).length > 0 ? adminModifications : undefined,
         },
       });
       if (error) throw error;
@@ -142,6 +145,7 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
       setSelectedRevision(null);
       setShowRejectDialog(false);
       setRejectReason("");
+      setEditingRevision(null);
       fetchRevisions();
     } catch (err) {
       toast({ title: "Action failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
@@ -302,6 +306,16 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
                     </Button>
                     <Button
                       size="sm"
+                      variant="secondary"
+                      onClick={() => setEditingRevision(rev)}
+                      disabled={processing}
+                      className="gap-1"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      Edit &amp; Approve
+                    </Button>
+                    <Button
+                      size="sm"
                       variant="destructive"
                       onClick={() => { setSelectedRevision(rev); setShowRejectDialog(true); }}
                       disabled={processing}
@@ -357,6 +371,14 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Edit & Approve Dialog */}
+      <RevisionEditDialog
+        revision={editingRevision}
+        editableFields={EDITABLE_FIELDS}
+        processing={processing}
+        onClose={() => setEditingRevision(null)}
+        onSave={(revisionId, modifications) => handleAction(revisionId, "approve", undefined, modifications)}
+      />
     </>
   );
 }
