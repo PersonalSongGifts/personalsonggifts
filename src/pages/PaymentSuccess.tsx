@@ -25,6 +25,8 @@ const MAX_POLL_ATTEMPTS = 10;
 const POLL_INTERVAL_MS = 1500;
 
 const PaymentSuccess = () => {
+  // Clean up persisted form data after successful purchase
+  useEffect(() => { sessionStorage.removeItem("songFormData"); }, []);
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("session_id");
   const source = searchParams.get("source"); // "lead" if from lead conversion
