@@ -53,6 +53,7 @@ interface RevisionRequest {
   order_customer_email?: string;
   order_occasion?: string;
   order_status?: string;
+  order_revision_token?: string;
 }
 
 const EDITABLE_FIELDS = [
@@ -312,7 +313,11 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => window.open(`/song/revision/${rev.order_id}`, "_blank")}
+                      onClick={() => {
+                        const token = rev.order_revision_token;
+                        if (token) window.open(`/song/revision/${token}`, "_blank");
+                        else toast({ title: "No revision token", description: "This order doesn't have a revision token.", variant: "destructive" });
+                      }}
                       className="gap-1 ml-auto"
                     >
                       <ExternalLink className="h-3 w-3" />
