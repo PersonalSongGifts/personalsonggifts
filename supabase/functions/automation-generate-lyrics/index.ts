@@ -297,7 +297,7 @@ This spelling is intentional for correct pronunciation and must be followed.`
     const languagePromptBlock = buildLanguagePromptBlock(languageCode);
 
     // Build sender context block if available
-    const senderCtx = entity.sender_context || entity.notes || "";
+    const senderCtx = [entity.sender_context, entity.notes].filter(Boolean).join("\n\n");
     const senderContextBlock = senderCtx
       ? `\nSenderContext: "${senderCtx}"\n\nIMPORTANT: The sender has provided context about themselves.\nUse this to ensure correct gender references and perspective in the lyrics.\nNever assume the sender's gender from the recipient type alone.`
       : "";
