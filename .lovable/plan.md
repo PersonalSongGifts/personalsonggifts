@@ -1,64 +1,78 @@
 
 
-## Fix "View Form" Link + Ensure Customer Notes Reach Gemini
+## Add Admin Override for Revision Request Fields
 
-### Issue 1: "View Form" Link Broken
+### What This Does
 
-**Root cause:** The "View Form" button constructs the URL using `rev.order_id` (a UUID like `6096f0fd-...`), but the revision page expects a `revision_token` (a different value). The `get-revision-page` function looks up orders by `revision_token`, not by `id`, so the link always results in "not found."
+Adds an "Edit & Approve" flow to the Pending Revisions queue in the CS Assistant. Admins will be able to click into any revision request, modify the submitted values (e.g., fix a typo in a name, adjust genre, tweak special qualities), and then approve with those overrides applied instead of the raw customer submission.
 
-**Fix (2 changes):**
+### How It Works
 
-1. **Backend** (`supabase/functions/admin-orders/index.ts`, ~line 2183): Add `revision_token` to the order select in `list_pending_revisions`:
-   ```
-   .select("id, recipient_name, customer_name, customer_email, occasion, status, revision_token")
-   ```
+Currently, clicking "Approve" takes the customer's submitted values verbatim and applies them to the order. This change adds an intermediate editing step.
 
-2. **Frontend** (`src/components/admin/PendingRevisions.tsx`, ~line 315): Update the URL to use the revision token:
-   ```typescript
-   // Before:
-   onClick={() => window.open(`/song/revision/${rev.order_id}`, "_blank")}
-   // After:  
-   onClick={() => {
-     const token = (rev as any).order_revision_token;
-     if (token) window.open(`/song/revision/${token}`, "_blank");
-     else toast({ title: "No revision token", description: "This order doesn't have a revision token.", variant: "destructive" });
-   }}
-   ```
+### Changes
 
-   Also add `order_revision_token` to the enrichment block (~line 2194) and the `RevisionRequest` interface.
+#### 1. Frontend: Add Edit Dialog (`src/components/admin/PendingRevisions.tsx`)
 
----
+- Add a new "Edit & Approve" button alongside the existing "Approve" and "Reject" buttons
+- Clicking it opens a Dialog pre-populated with all the revision's submitted values (only for fields the customer actually changed)
+- Each changed field shows as an editable input/textarea with the original value displayed as reference
+- A "Save & Approve" button submits the modified values to the backend
+- The dialog uses the existing `EDITABLE_FIELDS` array for labels
 
-### Issue 2: Customer Notes Being Ignored by Gemini
-
-**Root cause:** In `automation-generate-lyrics/index.ts` line 300:
-```typescript
-const senderCtx = entity.sender_context || entity.notes || "";
+UI layout inside the dialog:
+```text
++------------------------------------------+
+|  Edit Revision - [order short id]        |
++------------------------------------------+
+|  Recipient Name                          |
+|  Was: "John"                             |
+|  [  Jonathan  ]  (editable input)        |
+|                                          |
+|  Special Qualities                       |
+|  Was: "He loves fishing"                 |
+|  [ He loves fishing and camping ]        |
+|                                          |
+|  [Cancel]              [Save & Approve]  |
++------------------------------------------+
 ```
 
-This uses `||`, so if `sender_context` has any value (e.g., "I'm a man writing to my girlfriend"), the `notes` field (which contains the customer's `anything_else` input like "add travelling together...") is **completely skipped**.
+#### 2. Backend: Accept admin modifications (`supabase/functions/admin-orders/index.ts`)
 
-**Fix:** Change the logic to concatenate both fields so Gemini sees everything:
-```typescript
-const senderCtx = [entity.sender_context, entity.notes].filter(Boolean).join("\n\n");
-```
-
-This ensures:
-- If only `sender_context` exists, Gemini gets that
-- If only `notes` exists, Gemini gets that  
-- If both exist (like in this screenshot), Gemini gets both separated by a newline
-
----
+- In the `review_revision` handler, accept an optional `adminModifications` object in the request body
+- When present, store it on the revision record's `admin_modifications` column for audit trail
+- Override the revision's field values with admin modifications before applying to the order
+- This means if the customer submitted `recipient_name: "Jon"` but the admin changes it to `"Jonathan"`, the order gets `"Jonathan"`
 
 ### Files Modified
 
 | File | Change |
 |------|--------|
-| `supabase/functions/admin-orders/index.ts` | Add `revision_token` to order select in `list_pending_revisions`; include it in enriched response |
-| `src/components/admin/PendingRevisions.tsx` | Update "View Form" URL to use `order_revision_token`; add field to interface |
-| `supabase/functions/automation-generate-lyrics/index.ts` | Change `||` to concatenation so both `sender_context` and `notes` reach Gemini |
+| `src/components/admin/PendingRevisions.tsx` | Add edit dialog with editable fields, "Edit & Approve" button, and local state for modifications |
+| `supabase/functions/admin-orders/index.ts` | Accept `adminModifications` in `review_revision`, store on revision record, apply overrides to order update |
 
-### Impact
+### Technical Details
 
-- CS team can click "View Form" and see the actual revision page the customer used
-- All customer notes (style requests, story additions, etc.) will be included as context for Gemini during lyrics generation, alongside the sender context
+**Frontend state management:**
+- `editingRevision`: tracks which revision is being edited (null when closed)
+- `editedValues`: `Record<string, string>` initialized from the revision's changed fields
+- Only fields in `fields_changed` are shown as editable
+- Uses existing Input/Textarea components based on field type (short fields get Input, long text fields like special_qualities/favorite_memory/special_message get Textarea)
+
+**Backend logic (in review_revision handler, ~line 2290):**
+```
+// After fetching the revision, before applying to order:
+if (adminModifications && typeof adminModifications === 'object') {
+  // Store for audit
+  await supabase.from("revision_requests").update({ admin_modifications: adminModifications }).eq("id", revisionId);
+  // Override rev values with admin edits
+  for (const [key, val] of Object.entries(adminModifications)) {
+    if (fieldMapping[key] !== undefined) {
+      rev[key] = val;
+    }
+  }
+}
+```
+
+The existing field-mapping and regeneration logic then processes the overridden values naturally -- no changes needed to the approval pipeline itself.
+
