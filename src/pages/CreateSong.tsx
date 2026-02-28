@@ -262,6 +262,8 @@ const CreateSong = () => {
         currency: 'USD',
       });
       
+      // Persist form data so it survives Stripe redirect back-button
+      sessionStorage.setItem("songFormData", JSON.stringify(formData));
       // Submit form - go to checkout
       navigate("/checkout", { state: { formData } });
     }

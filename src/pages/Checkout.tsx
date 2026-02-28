@@ -76,7 +76,15 @@ const Checkout = () => {
   const { trackEvent: trackMetaEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const { trackEvent: trackTikTokEvent } = useTikTokPixel();
-  const formData = location.state?.formData as FormData | undefined;
+  const formData = useMemo(() => {
+    const stateData = location.state?.formData as FormData | undefined;
+    if (stateData) return stateData;
+    try {
+      const stored = sessionStorage.getItem("songFormData");
+      if (stored) return JSON.parse(stored) as FormData;
+    } catch { /* ignore parse errors */ }
+    return undefined;
+  }, [location.state]);
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [promoCode, setPromoCode] = useState("");
