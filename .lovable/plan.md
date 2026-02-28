@@ -1,53 +1,64 @@
 
 
-## Fix CS Lookup and Order Refresh Failures
+## Fix "View Form" Link + Ensure Customer Notes Reach Gemini
 
-### Problem
+### Issue 1: "View Form" Link Broken
 
-Two related issues reported by CS team:
+**Root cause:** The "View Form" button constructs the URL using `rev.order_id` (a UUID like `6096f0fd-...`), but the revision page expects a `revision_token` (a different value). The `get-revision-page` function looks up orders by `revision_token`, not by `id`, so the link always results in "not found."
 
-1. **CS Lookup not finding emails** -- Searching by email returns no results for emails that should exist in leads/orders
-2. **Order/Lead refresh failing** -- Fetch errors when refreshing the admin dashboard
+**Fix (2 changes):**
 
-### Root Cause
+1. **Backend** (`supabase/functions/admin-orders/index.ts`, ~line 2183): Add `revision_token` to the order select in `list_pending_revisions`:
+   ```
+   .select("id, recipient_name, customer_name, customer_email, occasion, status, revision_token")
+   ```
 
-The edge function is likely timing out due to:
+2. **Frontend** (`src/components/admin/PendingRevisions.tsx`, ~line 315): Update the URL to use the revision token:
+   ```typescript
+   // Before:
+   onClick={() => window.open(`/song/revision/${rev.order_id}`, "_blank")}
+   // After:  
+   onClick={() => {
+     const token = (rev as any).order_revision_token;
+     if (token) window.open(`/song/revision/${token}`, "_blank");
+     else toast({ title: "No revision token", description: "This order doesn't have a revision token.", variant: "destructive" });
+   }}
+   ```
 
-1. **CS Lookup uses `select("*")`** -- Fetches ALL columns including heavy blobs (`automation_raw_callback` which stores full Suno callback JSON, `automation_lyrics`, `lyrics_raw_attempt_1/2`, etc.). As the database grows (1200+ leads, 754+ orders), this becomes too slow.
+   Also add `order_revision_token` to the enrichment block (~line 2194) and the `RevisionRequest` interface.
 
-2. **List action runs 4 sequential database queries** -- orders, leads, order count, lead count -- all in a single edge function invocation. With 500-row pages, this can exceed the edge function timeout.
+---
 
-### Solution
+### Issue 2: Customer Notes Being Ignored by Gemini
 
-#### 1. Optimize CS Lookup query (`supabase/functions/admin-orders/index.ts`)
+**Root cause:** In `automation-generate-lyrics/index.ts` line 300:
+```typescript
+const senderCtx = entity.sender_context || entity.notes || "";
+```
 
-Replace `select("*")` in all cs_lookup queries with a lean column set (same columns used by the list action). This dramatically reduces response size and query time.
+This uses `||`, so if `sender_context` has any value (e.g., "I'm a man writing to my girlfriend"), the `notes` field (which contains the customer's `anything_else` input like "add travelling together...") is **completely skipped**.
 
-For orders in cs_lookup (~lines 201-206, 210-216, 220-225, 244-251):
-- Replace `.select("*")` with `.select(orderColumns)` using the same lean column string already defined in the list action
+**Fix:** Change the logic to concatenate both fields so Gemini sees everything:
+```typescript
+const senderCtx = [entity.sender_context, entity.notes].filter(Boolean).join("\n\n");
+```
 
-For leads in cs_lookup (~lines 192-198, 234-241, 253-260):
-- Replace `.select("*")` with `.select(leadColumns)` using the same lean column string already defined in the list action
+This ensures:
+- If only `sender_context` exists, Gemini gets that
+- If only `notes` exists, Gemini gets that  
+- If both exist (like in this screenshot), Gemini gets both separated by a newline
 
-#### 2. Reduce initial page size to 250 (`src/pages/Admin.tsx`)
-
-Drop from 500 to 250 for the initial fetch to stay well within timeout limits. The background loading will fetch remaining pages.
-
-Update in three places:
-- `listOrders` default parameter (~line 332): `pageSize = 250`
-- `handleLogin` call (~line 374): `listOrders("all", 0, 250)`
-- `fetchOrders` call (~line 470): `listOrders("all", 0, 250)`
-- Both `bgPageSize` values (~lines 402, 482): change from 500 to 250
+---
 
 ### Files Modified
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/admin-orders/index.ts` | Replace `select("*")` with lean column selection in cs_lookup action |
-| `src/pages/Admin.tsx` | Reduce page sizes from 500 to 250 to prevent timeouts |
+| File | Change |
+|------|--------|
+| `supabase/functions/admin-orders/index.ts` | Add `revision_token` to order select in `list_pending_revisions`; include it in enriched response |
+| `src/components/admin/PendingRevisions.tsx` | Update "View Form" URL to use `order_revision_token`; add field to interface |
+| `supabase/functions/automation-generate-lyrics/index.ts` | Change `||` to concatenation so both `sender_context` and `notes` reach Gemini |
 
-### Expected Impact
+### Impact
 
-- CS lookup will return results quickly by not fetching heavy blob columns
-- Dashboard refresh will succeed by staying within edge function timeout limits
-- Background loading handles the full dataset in smaller, reliable chunks
+- CS team can click "View Form" and see the actual revision page the customer used
+- All customer notes (style requests, story additions, etc.) will be included as context for Gemini during lyrics generation, alongside the sender context
