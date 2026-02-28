@@ -1,34 +1,56 @@
 
 
-## Implement "Edit & Approve" for Revision Requests
+## Persist Form Data Across Stripe Redirect
 
-The backend already accepts `adminModifications` (implemented in the previous session). This plan covers the remaining frontend work.
+### Problem
+
+Form data is passed to the checkout page via React Router's `location.state`, which is lost when the user navigates to Stripe's external checkout page and clicks the browser back button. They see "No order found" and have to start over.
+
+### Solution
+
+Save form data to `sessionStorage` at two points, and restore it on the checkout page when `location.state` is empty. This way, if someone clicks back from Stripe, their order details are still there.
 
 ### Changes
 
-#### 1. New file: `src/components/admin/RevisionEditDialog.tsx`
+#### 1. `src/pages/CreateSong.tsx`
 
-A dialog component that:
-- Takes a revision and displays editable fields for each changed field
-- Shows "Was: ..." reference text above each input
-- Uses Input for short fields, Textarea for long text fields (special_qualities, favorite_memory, etc.)
-- Has "Cancel" and "Save & Approve" buttons
-- Only sends fields the admin actually modified (compares against customer's original submission)
+- Save form data to `sessionStorage` right before navigating to checkout (alongside the existing `navigate("/checkout", { state: { formData } })` call)
+- Key: `"songFormData"`
+- Value: JSON-serialized form data
 
-#### 2. Update: `src/components/admin/PendingRevisions.tsx`
+#### 2. `src/pages/Checkout.tsx`
 
-- Import and render `RevisionEditDialog`
-- Add state: `editingRevision` (which revision is being edited)
-- Add an "Edit & Approve" button (with pencil icon) in the action buttons row alongside Approve/Reject
-- Update `handleAction` to accept optional `adminModifications` parameter and pass it to the backend
-- When "Save & Approve" is clicked in the dialog, call `handleAction` with the modifications
+- When `location.state?.formData` is missing, attempt to restore from `sessionStorage` before showing the "No order found" screen
+- Clear `sessionStorage` on successful redirect to Stripe (after receiving the checkout URL) so stale data doesn't persist indefinitely
+- This requires converting the `formData` from a simple `const` derived from location state into component state that can be set from either source
+
+### How It Works
+
+```text
+User fills form --> CreateSong saves to sessionStorage + navigates to /checkout
+                    --> Checkout reads from location.state (primary) or sessionStorage (fallback)
+                        --> User clicks "Purchase" --> saves to sessionStorage again, redirects to Stripe
+                            --> User clicks browser back --> Checkout restores from sessionStorage
+```
+
+### Technical Details
+
+**CreateSong.tsx** (1 change near line 266):
+- Add `sessionStorage.setItem("songFormData", JSON.stringify(formData))` before `navigate("/checkout", ...)`
+
+**Checkout.tsx** (3 changes):
+1. Replace the simple `const formData = location.state?.formData` with a state variable initialized from either `location.state` or `sessionStorage`
+2. In `handleCheckout`, after receiving the Stripe URL and before redirecting, re-save to sessionStorage (it's already there from CreateSong, but this ensures the selected tier is also preserved if needed)
+3. Clear sessionStorage key `"songFormData"` only on the PaymentSuccess page (not on checkout) so the data persists through the Stripe round-trip
+
+**PaymentSuccess.tsx** (1 small addition):
+- Add `sessionStorage.removeItem("songFormData")` on mount to clean up after successful purchase
 
 ### Files Modified
 
 | File | Change |
 |------|--------|
-| `src/components/admin/RevisionEditDialog.tsx` | New component with edit dialog UI |
-| `src/components/admin/PendingRevisions.tsx` | Add Edit & Approve button, wire up dialog, pass modifications to backend |
-
-No backend changes needed -- the `adminModifications` handling is already deployed.
+| `src/pages/CreateSong.tsx` | Save formData to sessionStorage before navigating to checkout |
+| `src/pages/Checkout.tsx` | Fall back to sessionStorage when location.state is empty |
+| `src/pages/PaymentSuccess.tsx` | Clear sessionStorage on successful payment |
 
