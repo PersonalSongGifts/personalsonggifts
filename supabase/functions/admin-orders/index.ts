@@ -2288,6 +2288,19 @@ Deno.serve(async (req) => {
         }
 
         // === APPROVE ===
+        // Apply admin modifications if provided
+        const adminModifications = body.adminModifications && typeof body.adminModifications === 'object' ? body.adminModifications : null;
+        if (adminModifications) {
+          console.log("[ADMIN] Applying admin modifications to revision:", Object.keys(adminModifications));
+          await supabase.from("revision_requests").update({ admin_modifications: adminModifications }).eq("id", revisionId);
+          // Override revision values with admin edits
+          for (const [key, val] of Object.entries(adminModifications)) {
+            if (typeof val === 'string') {
+              (rev as any)[key] = val;
+            }
+          }
+        }
+
         const fieldsChanged: string[] = Array.isArray(rev.fields_changed) ? rev.fields_changed : [];
         const orderUpdate: Record<string, any> = {
           revision_status: "approved",
