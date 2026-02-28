@@ -329,7 +329,7 @@ export default function Admin() {
   const [totalLeadCount, setTotalLeadCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const listOrders = async (status: string, page = 0, pageSize = 1000) => {
+  const listOrders = async (status: string, page = 0, pageSize = 250) => {
     return supabase.functions.invoke("admin-orders", {
       method: "POST",
       body: {
@@ -371,7 +371,7 @@ export default function Admin() {
       }
 
       // Step 2: Try actual login (fetch page 0 only)
-const { data, error } = await listOrders("all", 0, 500);
+const { data, error } = await listOrders("all", 0, 250);
 
       if (error) {
         const errorMessage = error.message || String(error);
@@ -399,7 +399,7 @@ const { data, error } = await listOrders("all", 0, 500);
       setTotalLeadCount(data.totalLeads || 0);
 
       // Auto-load remaining pages in background
-      const bgPageSize = 500;
+      const bgPageSize = 250;
       const totalOrders = data.totalOrders || 0;
       const totalLeads = data.totalLeads || 0;
       const maxPages = Math.max(
@@ -467,7 +467,7 @@ const { data, error } = await listOrders("all", 0, 500);
     setLoading(true);
     try {
       // Fetch page 0 first for fast response
-      const { data, error } = await listOrders("all", 0, 500);
+      const { data, error } = await listOrders("all", 0, 250);
       if (error) throw error;
 
       let accOrders = data.orders || [];
@@ -479,7 +479,7 @@ const { data, error } = await listOrders("all", 0, 500);
       setTotalLeadCount(data.totalLeads || 0);
 
       // Load remaining pages in background
-      const bgPageSize = 500;
+      const bgPageSize = 250;
       const maxPages = Math.max(
         Math.ceil((data.totalOrders || 0) / bgPageSize),
         Math.ceil((data.totalLeads || 0) / bgPageSize)

@@ -187,11 +187,15 @@ Deno.serve(async (req) => {
         let orders: any[] = [];
         let leads: any[] = [];
 
+        // Lean column sets (same as list action — excludes heavy blobs like automation_raw_callback, automation_lyrics, lyrics_raw_attempt_*)
+        const csOrderColumns = "id, created_at, status, pricing_tier, price, price_cents, customer_name, customer_email, customer_email_cc, customer_email_override, customer_phone, recipient_name, recipient_name_pronunciation, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, song_url, song_title, cover_image_url, notes, device_type, expected_delivery, delivered_at, sent_at, sent_to_emails, reaction_video_url, reaction_submitted_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term, automation_status, automation_started_at, automation_retry_count, automation_last_error, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, next_attempt_at, inputs_hash, delivery_status, delivery_last_error, delivery_retry_count, source, lyrics_language_code, phone_e164, sms_opt_in, sms_sent_at, sms_scheduled_for, sms_status, sms_last_error, timezone, lyrics_unlocked_at, lyrics_price_cents, scheduled_delivery_at, song_played_at, song_play_count, song_downloaded_at, song_download_count, unplayed_resend_sent_at, resend_scheduled_at, revision_token, revision_count, max_revisions, revision_requested_at, pending_revision, revision_status, revision_reason, sender_context, prev_song_url, billing_country_code, billing_country_name, dismissed_at, automation_manual_override_at";
+        const csLeadColumns = "id, email, phone, customer_name, recipient_name, recipient_type, recipient_name_pronunciation, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, captured_at, converted_at, order_id, quality_score, preview_song_url, full_song_url, song_title, cover_image_url, preview_token, preview_sent_at, preview_opened_at, preview_played_at, preview_play_count, preview_scheduled_at, follow_up_sent_at, dismissed_at, utm_source, utm_medium, utm_campaign, automation_status, automation_started_at, automation_retry_count, automation_last_error, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, sent_at, lead_email_override, lead_email_cc, preview_sent_to_emails, sms_opt_in, sms_sent_at, sms_scheduled_for, phone_e164, sms_status, lyrics_language_code, inputs_hash, prev_song_url";
+
         if (isTokenLike) {
           // Search by preview_token on leads
           const { data: tokenLeads, error: tokenErr } = await supabase
             .from("leads")
-            .select("*")
+            .select(csLeadColumns)
             .eq("preview_token", search)
             .limit(10);
           if (tokenErr) throw tokenErr;
@@ -200,7 +204,7 @@ Deno.serve(async (req) => {
           // Also check song_url on orders (song URL contains the order ID in the path)
           const { data: songOrders, error: songErr } = await supabase
             .from("orders")
-            .select("*")
+            .select(csOrderColumns)
             .ilike("song_url", `%${search}%`)
             .limit(10);
           if (songErr) throw songErr;
@@ -209,7 +213,7 @@ Deno.serve(async (req) => {
           // Search by short order ID prefix
           const { data: idOrders, error: idErr } = await supabase
             .from("orders")
-            .select("*")
+            .select(csOrderColumns)
             .ilike("id", `${search}%`)
             .order("created_at", { ascending: false })
             .limit(10);
@@ -219,7 +223,7 @@ Deno.serve(async (req) => {
           // Also do standard name/email search
           const { data: nameOrders, error: nameErr } = await supabase
             .from("orders")
-            .select("*")
+            .select(csOrderColumns)
             .or(`customer_email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
             .order("created_at", { ascending: false })
             .limit(50);
@@ -233,7 +237,7 @@ Deno.serve(async (req) => {
 
           const { data: nameLeads, error: leadErr } = await supabase
             .from("leads")
-            .select("*")
+            .select(csLeadColumns)
             .or(`email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
             .order("captured_at", { ascending: false })
             .limit(50);
@@ -243,7 +247,7 @@ Deno.serve(async (req) => {
           // Standard email/name search
           const { data: stdOrders, error: orderErr } = await supabase
             .from("orders")
-            .select("*")
+            .select(csOrderColumns)
             .or(`customer_email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
             .order("created_at", { ascending: false })
             .limit(50);
@@ -252,7 +256,7 @@ Deno.serve(async (req) => {
 
           const { data: stdLeads, error: leadErr } = await supabase
             .from("leads")
-            .select("*")
+            .select(csLeadColumns)
             .or(`email.ilike.%${search}%,customer_name.ilike.%${search}%,recipient_name.ilike.%${search}%`)
             .order("captured_at", { ascending: false })
             .limit(50);
