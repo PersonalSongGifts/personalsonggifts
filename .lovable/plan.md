@@ -1,56 +1,81 @@
 
 
-## Persist Form Data Across Stripe Redirect
+## Fix: Orders/Leads With Songs But Missing Lyrics
 
 ### Problem
 
-Form data is passed to the checkout page via React Router's `location.state`, which is lost when the user navigates to Stripe's external checkout page and clicks the browser back button. They see "No order found" and have to start over.
+Some orders and leads have audio files (`song_url` / `full_song_url`) but no `automation_lyrics`. The lyrics section in the admin panel shows empty for these entries, even though the songs are clearly playable.
+
+### Root Cause
+
+Two guards in `automation-generate-lyrics` block lyrics generation when audio already exists:
+
+1. **Line 242**: Manual override guard -- `upload-song` sets `automation_manual_override_at` before triggering lyrics, so the lyrics function immediately aborts
+2. **Line 268**: Audio guard -- `song_url` / `full_song_url` exists, so lyrics are "locked" to prevent mismatch
+
+These guards serve a valid purpose (preventing lyrics/audio mismatch during normal pipeline flow), but they also block legitimate cases where we need lyrics generated *after* a song is manually uploaded or already exists.
 
 ### Solution
 
-Save form data to `sessionStorage` at two points, and restore it on the checkout page when `location.state` is empty. This way, if someone clicks back from Stripe, their order details are still there.
+Add a `force` parameter to `automation-generate-lyrics` that bypasses both guards. Use it in the two callers that need it.
 
-### Changes
+### Detailed Changes
 
-#### 1. `src/pages/CreateSong.tsx`
+#### 1. `supabase/functions/automation-generate-lyrics/index.ts` (3 changes)
 
-- Save form data to `sessionStorage` right before navigating to checkout (alongside the existing `navigate("/checkout", { state: { formData } })` call)
-- Key: `"songFormData"`
-- Value: JSON-serialized form data
+- **Parse `force` from request body** (line ~198): Add `force` alongside `leadId` and `orderId` in the destructured body, defaulting to `false`
+- **Skip manual override guard when forced** (line ~242): Wrap the existing check with `if (!force)`
+- **Skip audio guard when forced** (line ~268): Wrap the existing check with `if (!force)`
+- **Prevent status regression** (line ~480): When `force` is true AND the entity already has audio, do NOT set `automation_status` to `"lyrics_ready"` -- instead keep it as `"completed"` (or current value). This prevents delivered/completed orders from regressing to an active pipeline state, which would confuse the admin dashboard and potentially trigger unwanted audio generation
+- Add console log noting when force flag is used for audit trail
 
-#### 2. `src/pages/Checkout.tsx`
+#### 2. `supabase/functions/upload-song/index.ts` (1 change)
 
-- When `location.state?.formData` is missing, attempt to restore from `sessionStorage` before showing the "No order found" screen
-- Clear `sessionStorage` on successful redirect to Stripe (after receiving the checkout URL) so stale data doesn't persist indefinitely
-- This requires converting the `formData` from a simple `const` derived from location state into component state that can be set from either source
+- **Line ~312**: Add `force: true` to the JSON body of the fire-and-forget lyrics generation call, so the lyrics function won't be blocked by the manual override that `upload-song` just set
 
-### How It Works
+#### 3. `supabase/functions/process-lead-payment/index.ts` (1 change)
 
-```text
-User fills form --> CreateSong saves to sessionStorage + navigates to /checkout
-                    --> Checkout reads from location.state (primary) or sessionStorage (fallback)
-                        --> User clicks "Purchase" --> saves to sessionStorage again, redirects to Stripe
-                            --> User clicks browser back --> Checkout restores from sessionStorage
-```
+- **Line ~210**: Change condition from `if (!lead.automation_lyrics && !lead.full_song_url)` to `if (!lead.automation_lyrics)` -- trigger lyrics generation even when audio exists. Add `force: true` to the request body
 
-### Technical Details
+#### 4. New: `supabase/functions/backfill-missing-lyrics/index.ts`
 
-**CreateSong.tsx** (1 change near line 266):
-- Add `sessionStorage.setItem("songFormData", JSON.stringify(formData))` before `navigate("/checkout", ...)`
+A one-time backfill function that:
+- Queries both `orders` and `leads` where `song_url IS NOT NULL AND automation_lyrics IS NULL` (orders) / `full_song_url IS NOT NULL AND automation_lyrics IS NULL` (leads)
+- For each record, calls `automation-generate-lyrics` with `force: true`
+- Processes records sequentially with a short delay to avoid rate limits
+- Returns a summary of how many records were processed
+- Requires admin password authentication
 
-**Checkout.tsx** (3 changes):
-1. Replace the simple `const formData = location.state?.formData` with a state variable initialized from either `location.state` or `sessionStorage`
-2. In `handleCheckout`, after receiving the Stripe URL and before redirecting, re-save to sessionStorage (it's already there from CreateSong, but this ensures the selected tier is also preserved if needed)
-3. Clear sessionStorage key `"songFormData"` only on the PaymentSuccess page (not on checkout) so the data persists through the Stripe round-trip
+#### 5. `supabase/config.toml`
 
-**PaymentSuccess.tsx** (1 small addition):
-- Add `sessionStorage.removeItem("songFormData")` on mount to clean up after successful purchase
+- Add `[functions.backfill-missing-lyrics]` with `verify_jwt = false`
+
+### Critical Safety Consideration: Status Regression
+
+The most important detail is preventing `automation_status` from being set to `"lyrics_ready"` on orders/leads that already have audio and are in a terminal state (`"completed"`, `"delivered"`). When `force` is used:
+
+- Lyrics are saved to `automation_lyrics`
+- `song_title` is updated if one was extracted
+- `automation_status` is set to `"completed"` (not `"lyrics_ready"`) since audio already exists
+- `lyrics_raw_attempt_*` and QA results are saved normally
+
+This prevents the cron job or admin dashboard from treating these records as needing audio generation.
+
+### What Won't Break
+
+- **Normal pipeline flow**: Without `force`, all existing guards remain unchanged -- the pairing integrity between lyrics and audio is preserved
+- **Song player page** (`get-song-page`): Already handles `automation_lyrics` being present or absent independently of `song_url`; adding lyrics only improves the experience
+- **Admin dashboard**: Orders/leads with both audio and lyrics will now show lyrics in the detail view instead of "No lyrics yet"
+- **Delivery emails** (`send-song-delivery`): Already sent based on `song_url` existence, not lyrics
+- **Revision flow**: Not affected -- revisions explicitly clear artifacts before regeneration, and the `pending_revision` guard (line 251) runs before the `force` check
 
 ### Files Modified
 
 | File | Change |
 |------|--------|
-| `src/pages/CreateSong.tsx` | Save formData to sessionStorage before navigating to checkout |
-| `src/pages/Checkout.tsx` | Fall back to sessionStorage when location.state is empty |
-| `src/pages/PaymentSuccess.tsx` | Clear sessionStorage on successful payment |
+| `supabase/functions/automation-generate-lyrics/index.ts` | Add `force` parameter; skip guards when forced; prevent status regression |
+| `supabase/functions/upload-song/index.ts` | Pass `force: true` in lyrics generation call |
+| `supabase/functions/process-lead-payment/index.ts` | Trigger lyrics gen when audio exists but lyrics missing |
+| `supabase/functions/backfill-missing-lyrics/index.ts` | New one-time function to fix existing records |
+| `supabase/config.toml` | Register backfill function |
 
