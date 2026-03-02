@@ -293,7 +293,7 @@ const PaymentSuccess = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Price paid:</span>
                 <span className="text-foreground font-medium">
-                  ${(orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99)).toFixed(2)}
+                  ${(orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99)).toFixed(2)} USD
                 </span>
               </div>
             </div>

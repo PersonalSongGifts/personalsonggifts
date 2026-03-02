@@ -438,7 +438,7 @@ export default function SongPreview() {
           >
             <CardContent className="p-6 text-center space-y-4">
               <div>
-                <p className="text-sm text-muted-foreground line-through">$99.99</p>
+                <p className="text-sm text-muted-foreground line-through">$99.99 USD</p>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
                   {isVday10 && isFollowup
                     ? "$34.99"
@@ -447,6 +447,7 @@ export default function SongPreview() {
                     : isFollowup
                     ? "$44.99"
                     : "$49.99"}
+                  <span className="text-sm font-normal text-muted-foreground ml-1">USD</span>
                 </p>
               </div>
               <div>

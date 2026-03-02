@@ -36,6 +36,10 @@ const faqs = [
     question: "What information do I need to provide?",
     answer: "We'll ask about your recipient, your relationship, favorite memories, and what makes them special. The more details you share, the more personal your song will be. Don't worry — we guide you through every step.",
   },
+  {
+    question: "What currency are your prices in?",
+    answer: "All prices are listed in US Dollars (USD). When you proceed to checkout, the payment page will show the equivalent amount in your local currency.",
+  },
 ];
 
 const FAQSection = () => {
