@@ -340,10 +340,11 @@ const Checkout = () => {
                 </div>
               </div>
               <div className="mb-4">
-                <span className="text-lg text-muted-foreground line-through">$99.99</span>
+                <span className="text-lg text-muted-foreground line-through">$99.99 USD</span>
                 <span className="text-4xl font-bold text-foreground ml-2">
                   ${selectedTier === "standard" ? pricing.total.toFixed(2) : (calculateSeasonalPriceCents("standard") / 100).toFixed(2)}
                 </span>
+                <span className="text-sm text-muted-foreground ml-1">USD</span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -392,10 +393,11 @@ const Checkout = () => {
                 </div>
               </div>
               <div className="mb-4">
-                <span className="text-lg text-muted-foreground line-through">$159.99</span>
+                <span className="text-lg text-muted-foreground line-through">$159.99 USD</span>
                 <span className="text-4xl font-bold text-foreground ml-2">
                   ${selectedTier === "priority" ? pricing.total.toFixed(2) : (calculateSeasonalPriceCents("priority") / 100).toFixed(2)}
                 </span>
+                <span className="text-sm text-muted-foreground ml-1">USD</span>
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -413,6 +415,10 @@ const Checkout = () => {
               </ul>
             </Card>
           </div>
+
+          <p className="text-center text-xs text-muted-foreground mb-2">
+            All prices in USD. Local currency shown at checkout.
+          </p>
 
           {/* Valentine's delivery urgency notice */}
           <div className="mb-8">
@@ -498,7 +504,7 @@ const Checkout = () => {
               {/* Subtotal */}
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Subtotal:</span>
-                <span className="text-muted-foreground">${pricing.base.toFixed(2)}</span>
+                <span className="text-muted-foreground">${pricing.base.toFixed(2)} USD</span>
               </div>
               
               {/* Seasonal discount line */}
@@ -518,7 +524,7 @@ const Checkout = () => {
               <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Total:</span>
-                <span>${pricing.total.toFixed(2)}</span>
+                <span>${pricing.total.toFixed(2)} USD</span>
               </div>
             </div>
           </Card>
@@ -551,7 +557,7 @@ const Checkout = () => {
             ) : (
               <CreditCard className="h-5 w-5" />
             )}
-            {isSubmitting ? "Processing..." : `Complete Payment — $${pricing.total.toFixed(2)}`}
+            {isSubmitting ? "Processing..." : `Complete Payment — $${pricing.total.toFixed(2)} USD`}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
