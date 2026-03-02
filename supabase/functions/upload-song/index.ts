@@ -309,7 +309,7 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${supabaseServiceKey}`,
           },
-          body: JSON.stringify({ orderId: targetId, type: "order" }),
+          body: JSON.stringify({ orderId: targetId, type: "order", force: true }),
         })
           .then(r => console.log(`[UPLOAD] Lyrics generation triggered for ${shortId}: ${r.status}`))
           .catch(e => console.error(`[UPLOAD] Lyrics generation failed for ${shortId}:`, e));
