@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
       throw new Error("LOVABLE_API_KEY not configured");
     }
 
-    const { leadId, orderId } = await req.json();
+    const { leadId, orderId, force = false } = await req.json();
     
     // Determine entity type
     const entityType = orderId ? "order" : "lead";
@@ -239,12 +239,15 @@ Deno.serve(async (req) => {
     console.log(`[LYRICS] Found ${entityType}: ${entity.recipient_name} (${entity.recipient_type}), genre: ${entity.genre}, language: ${languageLabel}`);
 
     // Check if manual override is set (must be BEFORE audio guard so admin overrides always work)
-    if (entity.automation_manual_override_at) {
+    if (entity.automation_manual_override_at && !force) {
       console.log(`[LYRICS] Manual override active for ${entityType} ${entity.id}, skipping`);
       return new Response(
         JSON.stringify({ error: "Manual override active, skipping automation" }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+    if (entity.automation_manual_override_at && force) {
+      console.log(`[LYRICS] Manual override active but force=true, proceeding for ${entityType} ${entity.id}`);
     }
 
     // Guard: Pending revision — discard stale lyrics generation
@@ -266,12 +269,15 @@ Deno.serve(async (req) => {
 
     // Guard: never regenerate lyrics when audio already exists — would create a mismatch
     const audioUrl = rawEntity.song_url || rawEntity.full_song_url;
-    if (audioUrl) {
+    if (audioUrl && !force) {
       console.log(`[LYRICS] Audio already exists for ${entityType} ${entityId}, skipping to preserve pairing`);
       return new Response(
         JSON.stringify({ error: "Audio already generated, lyrics locked" }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+    if (audioUrl && force) {
+      console.log(`[LYRICS] Audio exists but force=true, generating lyrics anyway for ${entityType} ${entityId}`);
     }
 
     // Update status to lyrics_generating
@@ -474,10 +480,15 @@ Remember:
     console.log(`[LYRICS] Extracted title: "${songTitle}"`);
 
     // Update entity with lyrics and QA results
+    // When force=true and audio already exists, keep status as "completed" to prevent regression
+    const newStatus = (force && audioUrl) ? "completed" : "lyrics_ready";
+    if (force && audioUrl) {
+      console.log(`[LYRICS] force=true with existing audio — setting status to "completed" (not "lyrics_ready") to prevent regression`);
+    }
     await supabase
       .from(tableName)
       .update({
-        automation_status: "lyrics_ready",
+        automation_status: newStatus,
         automation_lyrics: finalLyrics,
         song_title: songTitle,
         lyrics_raw_attempt_1: truncateForStorage(lyrics1),

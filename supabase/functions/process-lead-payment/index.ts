@@ -204,19 +204,19 @@ Deno.serve(async (req) => {
     await logActivity(supabase, "lead", lead.id, "lead_converted", "system", `Converted to order ${newOrder.id.slice(0, 8).toUpperCase()}`);
     await logActivity(supabase, "order", newOrder.id, "order_created", "system", `Created from lead conversion, $${priceCents / 100}`);
 
-    // Fallback: if lyrics AND audio are both missing, trigger generation for the new order.
-    // If audio exists but lyrics are missing, do NOT regenerate — the existing audio's paired lyrics
-    // are the correct ones. Regenerating would create a lyrics/audio mismatch.
-    if (!lead.automation_lyrics && !lead.full_song_url) {
+    // Fallback: if lyrics are missing, trigger generation for the new order.
+    // Use force=true when audio exists so the lyrics guard is bypassed.
+    if (!lead.automation_lyrics) {
       try {
-        console.log(`Lyrics missing on lead ${lead.id}, triggering generation for order ${newOrder.id}`);
+        const hasAudio = !!lead.full_song_url;
+        console.log(`Lyrics missing on lead ${lead.id} (audio=${hasAudio}), triggering generation for order ${newOrder.id}${hasAudio ? " with force" : ""}`);
         await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${supabaseServiceKey}`,
           },
-          body: JSON.stringify({ orderId: newOrder.id, type: "order" }),
+          body: JSON.stringify({ orderId: newOrder.id, type: "order", ...(hasAudio && { force: true }) }),
         });
       } catch (e) {
         console.error("Failed to trigger fallback lyrics generation:", e);
