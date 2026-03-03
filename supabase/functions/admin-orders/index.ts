@@ -298,6 +298,66 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Get full order detail (includes heavy columns like automation_lyrics)
+      if (body?.action === "get_order_detail") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        if (!orderId) {
+          return new Response(
+            JSON.stringify({ error: "orderId required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: order, error: orderErr } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("id", orderId)
+          .maybeSingle();
+
+        if (orderErr) throw orderErr;
+        if (!order) {
+          return new Response(
+            JSON.stringify({ error: "Order not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ order }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Get full lead detail (includes heavy columns like automation_lyrics)
+      if (body?.action === "get_lead_detail") {
+        const leadId = typeof body.leadId === "string" ? body.leadId : null;
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "leadId required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: lead, error: leadErr } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("id", leadId)
+          .maybeSingle();
+
+        if (leadErr) throw leadErr;
+        if (!lead) {
+          return new Response(
+            JSON.stringify({ error: "Lead not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ lead }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Get automation status for dashboard
       if (body?.action === "get_automation_status") {
         // Get automation_enabled setting

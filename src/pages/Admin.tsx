@@ -452,6 +452,15 @@ const { data, error } = await listOrders("all", 0, 250);
     const order = allOrders.find(o => o.id === orderId);
     if (order) {
       setSelectedOrder(order);
+      // Fetch full order detail (includes lyrics) in background
+      supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: { action: "get_order_detail", orderId, adminPassword: password },
+      }).then(({ data }) => {
+        if (data?.order) {
+          setSelectedOrder(prev => prev?.id === orderId ? { ...prev, ...data.order } : prev);
+        }
+      }).catch(console.error);
     } else {
       fetchOrders();
       toast({ title: "Order not found in current list", description: "Switched to Orders tab — try refreshing if needed." });
@@ -1564,6 +1573,15 @@ const { data, error } = await listOrders("all", 0, 250);
                           onClick={() => {
                               setSelectedOrder(order);
                               setSongUrl(order.song_url || "");
+                              // Fetch full order detail (includes lyrics) in background
+                              supabase.functions.invoke("admin-orders", {
+                                method: "POST",
+                                body: { action: "get_order_detail", orderId: order.id, adminPassword: password },
+                              }).then(({ data }) => {
+                                if (data?.order) {
+                                  setSelectedOrder(prev => prev?.id === order.id ? { ...prev, ...data.order } : prev);
+                                }
+                              }).catch(console.error);
                             }}
                           >
                             <Eye className="h-4 w-4 mr-2" />
