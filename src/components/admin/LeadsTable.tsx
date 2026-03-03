@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -180,9 +180,31 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   useEffect(() => {
     if (initialSelectedLeadId) {
       const lead = leads.find((l) => l.id === initialSelectedLeadId);
-      if (lead) setSelectedLead(lead);
+      if (lead) { setSelectedLead(lead); fetchLeadDetail(lead.id); }
     }
   }, [initialSelectedLeadId, leads]);
+
+  // Fetch full lead detail (includes automation_lyrics) when a lead is selected
+  const fetchLeadDetail = useCallback(async (leadId: string) => {
+    if (!adminPassword) return;
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "get_lead_detail", leadId, adminPassword }),
+        }
+      );
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data?.lead) {
+        setSelectedLead(prev => prev?.id === leadId ? { ...prev, ...data.lead } : prev);
+      }
+    } catch (err) {
+      console.error("Failed to fetch lead detail:", err);
+    }
+  }, [adminPassword]);
 
   // Filter by status, quality, dismissed state, and search query
   const filteredLeads = leads
@@ -1252,7 +1274,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => setSelectedLead(lead)}
+                            onClick={() => { setSelectedLead(lead); fetchLeadDetail(lead.id); }}
                           >
                             <Upload className="h-4 w-4 mr-2" />
                             Manual Upload
@@ -1353,7 +1375,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setSelectedLead(lead)}
+                          onClick={() => { setSelectedLead(lead); fetchLeadDetail(lead.id); }}
                         >
                           <Eye className="h-4 w-4 mr-2" />
                           View Details
