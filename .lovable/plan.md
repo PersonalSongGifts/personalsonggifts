@@ -1,35 +1,36 @@
 
 
-## Add "USD" Labels to All Customer-Facing Prices
+## Fix: Lyrics Not Loading in Admin Order Details
 
-A small, low-maintenance change to make it clear that all prices are in US Dollars.
+### Problem
+The `automation_lyrics` column was intentionally excluded from both the order list query and the CS lookup query in the `admin-orders` edge function to keep payloads small. However, the admin detail dialog relies on this same data to display lyrics -- so lyrics always appear missing, showing "No lyrics yet" or the "Lyrics Paid but content is missing" warning even when lyrics exist in the database.
+
+I confirmed this order (B81C402F) **does** have lyrics in the database, and the lyrics purchase was successful. The problem is purely that the admin UI never receives the lyrics data.
+
+### Solution: Add a "get_order_detail" action
+
+Rather than adding `automation_lyrics` back to every list query (which would bloat the payload for hundreds of orders), we'll add a lightweight single-order fetch that returns the full record when the detail dialog opens.
 
 ### Changes
 
-#### 1. `src/pages/Checkout.tsx`
+**1. `supabase/functions/admin-orders/index.ts`** -- Add new `get_order_detail` action
 
-- **Strikethrough prices** (lines 343, 395): `$99.99` → `$99.99 USD`, `$159.99` → `$159.99 USD`
-- **Dynamic price displays** (lines 344-346, 396-397): append ` USD` after the dollar amount
-- **Order summary subtotal** (line 501): append ` USD`
-- **Total line** (line 521): append ` USD`
-- **Checkout button** (line 554): append ` USD` to the price in the button text
-- **Add a small note** below the pricing cards (around line 415): `"All prices in USD. Local currency shown at checkout."`
+- Accepts an `orderId` parameter
+- Fetches a single order with ALL columns (including `automation_lyrics`, `prev_automation_lyrics`, `automation_raw_callback`)
+- Returns the full order object
+- Same pattern for leads: add `get_lead_detail` with `leadId`
 
-#### 2. `src/pages/SongPreview.tsx`
+**2. `src/pages/Admin.tsx`** -- Fetch full details when dialog opens
 
-- **Strikethrough price** (line 441): `$99.99` → `$99.99 USD`
-- **Dynamic prices** (lines 443-449): append ` USD` to each price string (`$49.99 USD`, `$44.99 USD`, `$39.99 USD`, `$34.99 USD`)
+- When clicking an order row (currently just `setSelectedOrder(order)`), also fire a call to the new `get_order_detail` action
+- When the response arrives, merge the full data into `selectedOrder` so lyrics appear
+- The dialog opens instantly with what we already have; lyrics populate a moment later
+- Same approach for lead detail dialogs
 
-#### 3. `src/pages/PaymentSuccess.tsx`
-
-- **Price paid line** (line 237): append ` USD` after the displayed price
-
-#### 4. `src/components/home/FAQSection.tsx`
-
-- Add one new FAQ entry: **"What currency are your prices in?"** → "All prices are listed in US Dollars (USD). When you proceed to checkout, the payment page will show the equivalent amount in your local currency."
-
-### No changes needed to
-- Backend / Stripe configuration
-- Admin pages (internal only)
-- Homepage (no prices displayed)
+### What this fixes
+- Lyrics will show correctly in order detail dialogs
+- The "Lyrics Paid but content missing" warning will only appear when lyrics are genuinely missing
+- The Copy Lyrics button and Edit Lyrics functionality will work
+- Lead lyrics will also display correctly
+- No impact on list query performance (stays lean)
 
