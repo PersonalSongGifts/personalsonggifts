@@ -18,6 +18,7 @@ import Unsubscribe from "./pages/Unsubscribe";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import SongRevision from "./pages/SongRevision";
+import ShareReaction from "./pages/ShareReaction";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const App = () => (
           <Route path="/preview/:token" element={<SongPreview />} />
           <Route path="/submit-reaction" element={<SubmitReaction />} />
           <Route path="/song/revision/:token" element={<SongRevision />} />
+          <Route path="/share-reaction" element={<ShareReaction />} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
