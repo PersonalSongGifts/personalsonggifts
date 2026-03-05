@@ -262,7 +262,7 @@ const SubmitReaction = () => {
                     disabled={isUploading}
                   />
                   <Label htmlFor="consent" className="text-xs text-muted-foreground leading-relaxed cursor-pointer">
-                    I grant Personal Song Gifts a perpetual, royalty-free, worldwide, irrevocable license to use, reproduce, edit, and distribute this video for any purpose, including but not limited to advertising, social media, website content, and promotional materials.
+                    I grant Personal Song Gifts a perpetual, royalty-free, worldwide, irrevocable license to use, reproduce, modify, edit, and distribute this video for any purpose, including but not limited to advertising, social media, website content, and promotional materials.
                   </Label>
                 </div>
 
