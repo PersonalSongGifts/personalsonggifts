@@ -1,64 +1,79 @@
 
 
-## Build `/share-reaction` — Emotional, Mobile-First Reaction Video Page
+## Fix: Lead Payments Not Creating Orders + Broken Manual Conversion
 
-### Changes
+### Root Cause
 
-#### 1. Edge Function: `supabase/functions/upload-reaction/index.ts`
+**Problem 1 — Webhook skips lead payments (lines 190-196 of stripe-webhook):**
+When a customer pays through a lead checkout, the Stripe webhook sees `metadata.leadId` and returns immediately with "skipped - handled by process-lead-payment." The actual order creation depends on the frontend `PaymentSuccess` page calling `process-lead-payment`. If the user closes the browser, has a slow connection, or the redirect fails, no order is ever created.
 
-Add a `direct-upload` action in the existing FormData handler. Changes:
+**Problem 2 — Manual conversion missing fields (lines 1342-1368 of admin-orders):**
+The `convert_lead_to_order` action is missing these critical fields:
+- `automation_lyrics` — lyrics never appear
+- `automation_status` — automation pipeline doesn't know state
+- `lyrics_language_code` — defaults to 'en' instead of actual
+- `inputs_hash` — change detection breaks
+- `recipient_name_pronunciation`
+- `phone_e164`, `sms_opt_in`, `timezone`
+- `prev_automation_lyrics`, `prev_song_url`, `prev_cover_image_url`
+- `delivered_at` — never set even when song exists
 
-- Increase `MAX_VIDEO_SIZE` to 150MB
-- Remove `.avi` from allowed types (spec says mp4/quicktime/webm only)
-- When `action === "direct-upload"`:
-  - Extract `name`, `email`, `orderId` (optional), `video` from FormData
-  - Validate video (size, type, extension) — same existing logic
-  - **Rate limit**: count recent uploads by email in last 24h using a query on `orders.reaction_submitted_at` + a simple in-memory approach (or query reactions bucket listing). For simplicity, query orders where `customer_email ilike email` and `reaction_submitted_at` within last 24h, limit 3.
-  - **Order linking logic**:
-    - If `orderId` provided: validate it belongs to the email, link reaction to that order
-    - If no `orderId`: query delivered orders for that email
-      - Exactly 1 → auto-link
-      - 0 → upload file with UUID-based filename, log as unlinked (no DB update since no order to update)
-      - 2+ → upload file with UUID-based filename, log as `needs_manual_match`
-  - Filename: `{crypto.randomUUID()}-{timestamp}.ext` (never use email)
-  - Upload to `reactions` bucket, get public URL
-  - If linked to an order: update `reaction_video_url` and `reaction_submitted_at` on that order (same verified pattern with rollback)
-  - If unlinked: log structured event with email, name, filename for manual review
-  - Return `{ success: true }`
+Also sets status to `"completed"` when song exists, but the song player page filters for `"delivered"` or `"ready"`, so the customer gets "Song not found."
 
-#### 2. New Page: `src/pages/ShareReaction.tsx`
+### Plan (3 changes + 1 backfill)
 
-Self-contained page (no Layout wrapper). Mobile-first vertical scroll. `#FDF8F3` background, `#1E3A5F` headings.
+#### 1. Fix `stripe-webhook/index.ts` — Handle lead payments server-side
 
-**Minimal header**: Brand name "PersonalSongGifts" + small "Need help? support@personalsonggifts.com" link.
+Replace the early-return skip (lines 190-196) with full order creation logic:
 
-**Sections (all visible on scroll):**
+- Fetch the lead record by `metadata.leadId`
+- Check idempotency (existing order with `notes = lead_session:{session.id}`)
+- Create order with ALL fields from the lead (same as `process-lead-payment` does)
+- Set status to `"delivered"` if `full_song_url` exists, else `"paid"`
+- Set `delivered_at` when song exists
+- Copy `automation_lyrics`, `automation_status`, `lyrics_language_code`, `inputs_hash`, `song_url`, `song_title`, `cover_image_url`
+- Mark lead as converted
+- Trigger fallback lyrics generation if missing
+- Send delivery email if song exists
+- Log activity
 
-1. **Hero** — "Share Your Reaction Video" headline, warm subtext about hearing a personalized song for the first time, small heart icon
-2. **Why We're Asking** — 2-3 sentences about being a small team, real reactions helping others discover personalized songs
-3. **How It Works** — 3 numbered steps (upload → may be featured → $100 gift card drawing)
-4. **Video Tips** — Bullet list: vertical preferred, phone is fine, capture the realization moment, 30s–2min ideal. "No editing required. Authentic moments are best."
-5. **Form** — Single view, all fields visible:
-   - Name (required)
-   - Email (required)
-   - Order number (optional, helper: "Don't worry if you don't have it")
-   - Video upload (large tap area, drag-drop + tap, progress bar, microcopy: "Phone video is perfect. No editing needed.")
-   - Consent checkbox
-   - Submit button
-   - Fallback: "If upload fails, email your video to support@personalsonggifts.com"
-6. **Thank You** — Replaces entire page on success. "Thank you for sharing your moment with us."
+This makes the webhook the **primary** handler. The existing `process-lead-payment` frontend call becomes a harmless duplicate (idempotent via the `notes` check).
 
-**Client-side validation**: max 150MB, video/* only, all required fields, consent checked.
+#### 2. Fix `admin-orders/index.ts` — Fix `convert_lead_to_order` action
 
-#### 3. Route: `src/App.tsx`
+Update the order creation block (lines 1342-1368) to include all missing fields:
 
-Add `/share-reaction` route pointing to `ShareReaction`.
+- Add `automation_lyrics`, `automation_status`, `lyrics_language_code`, `inputs_hash`
+- Add `recipient_name_pronunciation`, `phone_e164`, `sms_opt_in`, `timezone`
+- Add `prev_automation_lyrics`, `prev_song_url`, `prev_cover_image_url`
+- Change status from `"completed"` to `"delivered"` when `full_song_url` exists
+- Set `delivered_at` to `now()` when song exists
+- Set `price_cents` (price * 100)
+- After creating order, trigger lyrics generation if `automation_lyrics` is null and song exists
+
+#### 3. Create `supabase/functions/backfill-lead-orders/index.ts` — Fix existing broken orders
+
+New edge function to repair orders that were manually converted without full data:
+
+- Find orders where `source = 'lead_conversion'` and `automation_lyrics IS NULL` and `song_url IS NOT NULL`
+- For each, look up the original lead by `order_id` match or email match
+- Copy missing fields from lead to order
+- Fix status from `"completed"` to `"delivered"` where applicable
+- Set `delivered_at` if missing
+- Trigger lyrics generation for any still-missing lyrics
+- Protected by `ADMIN_PASSWORD`
+- Add to `supabase/config.toml`
+
+#### 4. Route + Config
+
+- Add `backfill-lead-orders` to `supabase/config.toml` with `verify_jwt = false`
 
 ### Files
 
 | Action | File |
 |--------|------|
-| Modify | `supabase/functions/upload-reaction/index.ts` |
-| Create | `src/pages/ShareReaction.tsx` |
-| Modify | `src/App.tsx` |
+| Modify | `supabase/functions/stripe-webhook/index.ts` |
+| Modify | `supabase/functions/admin-orders/index.ts` |
+| Create | `supabase/functions/backfill-lead-orders/index.ts` |
+| Modify | `supabase/config.toml` |
 
