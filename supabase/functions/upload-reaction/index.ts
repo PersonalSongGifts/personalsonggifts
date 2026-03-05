@@ -2,18 +2,38 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // Security limits
-const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
+const MAX_VIDEO_SIZE = 150 * 1024 * 1024; // 150MB
 const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
   "video/quicktime", // .mov
   "video/webm",
-  "video/x-msvideo", // .avi
 ];
-const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".avi"];
+const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm"];
+const MAX_UPLOADS_PER_EMAIL_24H = 3;
+
+function validateVideo(video: File): string | null {
+  if (video.size > MAX_VIDEO_SIZE) {
+    return "Video must be under 150MB";
+  }
+  if (!ALLOWED_VIDEO_TYPES.includes(video.type)) {
+    return "Only MP4, MOV, and WebM videos are allowed";
+  }
+  const extensionMatch = video.name.toLowerCase().match(/\.[^.]+$/);
+  const extension = extensionMatch ? extensionMatch[0] : "";
+  if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
+    return "Invalid video file extension";
+  }
+  return null;
+}
+
+function getExtension(filename: string): string {
+  const match = filename.toLowerCase().match(/\.[^.]+$/);
+  return match ? match[0] : ".mp4";
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -26,11 +46,11 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const contentType = req.headers.get("content-type") || "";
-    
+
     // Handle JSON request (lookup action)
     if (contentType.includes("application/json")) {
       const { action, email } = await req.json();
-      
+
       if (action === "lookup") {
         if (!email) {
           return new Response(
@@ -39,8 +59,6 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Find a delivered order for this email (allow re-submissions)
-        // Using ilike for case-insensitive matching
         const { data: order, error } = await supabase
           .from("orders")
           .select("id, recipient_name, occasion, reaction_submitted_at")
@@ -68,170 +86,287 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Handle FormData request (upload action)
+    // Handle FormData request (upload or direct-upload action)
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
-      const action = formData.get("action");
-      const email = formData.get("email") as string;
-      const orderId = formData.get("orderId") as string;
+      const action = formData.get("action") as string;
+      const email = (formData.get("email") as string)?.trim();
       const video = formData.get("video") as File;
 
-      if (action !== "upload") {
-        return new Response(
-          JSON.stringify({ error: "Invalid action" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      // ── direct-upload action (new /share-reaction page) ──
+      if (action === "direct-upload") {
+        const name = (formData.get("name") as string)?.trim();
+        const orderId = (formData.get("orderId") as string)?.trim() || null;
 
-      if (!email || !orderId || !video) {
-        return new Response(
-          JSON.stringify({ error: "Email, order ID, and video are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+        if (!name || !email || !video) {
+          return new Response(
+            JSON.stringify({ error: "Name, email, and video are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
 
-      // Security: Validate file size (100MB max)
-      if (video.size > MAX_VIDEO_SIZE) {
-        return new Response(
-          JSON.stringify({ error: "Video must be under 100MB" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+        // Validate video
+        const videoError = validateVideo(video);
+        if (videoError) {
+          return new Response(
+            JSON.stringify({ error: videoError }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
 
-      // Security: Validate MIME type
-      if (!ALLOWED_VIDEO_TYPES.includes(video.type)) {
-        return new Response(
-          JSON.stringify({ error: "Only MP4, MOV, WebM, and AVI videos are allowed" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+        // Rate limit: max 3 uploads per email in 24h
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentUploads } = await supabase
+          .from("orders")
+          .select("id")
+          .ilike("customer_email", email)
+          .gte("reaction_submitted_at", twentyFourHoursAgo)
+          .limit(MAX_UPLOADS_PER_EMAIL_24H);
 
-      // Security: Validate file extension
-      const extensionMatch = video.name.toLowerCase().match(/\.[^.]+$/);
-      const extension = extensionMatch ? extensionMatch[0] : "";
-      if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
-        return new Response(
-          JSON.stringify({ error: "Invalid video file extension" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+        if (recentUploads && recentUploads.length >= MAX_UPLOADS_PER_EMAIL_24H) {
+          return new Response(
+            JSON.stringify({ error: "You've reached the upload limit. Please try again tomorrow." }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
 
-      // Verify the order belongs to this email and hasn't already submitted
-      const { data: order, error: orderError } = await supabase
-        .from("orders")
-        .select("id, customer_email, reaction_submitted_at")
-        .eq("id", orderId)
-        .single();
+        const extension = getExtension(video.name);
+        const fileName = `${crypto.randomUUID()}-${Date.now()}${extension}`;
+        let linkedOrderId: string | null = null;
 
-      if (orderError || !order) {
-        return new Response(
-          JSON.stringify({ error: "Order not found" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+        // Order linking logic
+        if (orderId) {
+          // Validate order belongs to email
+          const { data: order } = await supabase
+            .from("orders")
+            .select("id, customer_email")
+            .eq("id", orderId)
+            .maybeSingle();
 
-      // Case-insensitive email comparison
-      if (order.customer_email.toLowerCase() !== email.trim().toLowerCase()) {
-        return new Response(
-          JSON.stringify({ error: "Email does not match order" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Allow re-submissions - new video will overwrite the old one
-      if (order.reaction_submitted_at) {
-        console.log(`Re-submitting reaction for order ${orderId} (previous: ${order.reaction_submitted_at})`);
-      }
-
-      // Use validated extension for filename
-      const fileName = `${orderId}-reaction${extension}`;
-
-      // Upload to reactions bucket
-      const arrayBuffer = await video.arrayBuffer();
-      const { error: uploadError } = await supabase.storage
-        .from("reactions")
-        .upload(fileName, arrayBuffer, {
-          contentType: video.type,
-          upsert: true,
-        });
-
-      if (uploadError) {
-        console.error("Upload error:", uploadError);
-        return new Response(
-          JSON.stringify({ error: "Failed to upload video" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from("reactions")
-        .getPublicUrl(fileName);
-
-      // Update order with reaction info - use .select() to verify the update succeeded
-      const { data: updatedOrder, error: updateError } = await supabase
-        .from("orders")
-        .update({
-          reaction_video_url: publicUrl,
-          reaction_submitted_at: new Date().toISOString(),
-        })
-        .eq("id", orderId)
-        .select("id, reaction_video_url")
-        .single();
-
-      // Verify the update actually happened
-      if (updateError || !updatedOrder || !updatedOrder.reaction_video_url) {
-        console.error(JSON.stringify({
-          event: "reaction_db_update_failed",
-          orderId,
-          fileName,
-          updateError: updateError?.message || "No error but update returned empty",
-          updatedOrder,
-          timestamp: new Date().toISOString(),
-        }));
-        
-        // Rollback: Delete the uploaded file since DB update failed
-        const { error: deleteError } = await supabase.storage
-          .from("reactions")
-          .remove([fileName]);
-        
-        if (deleteError) {
-          console.error(JSON.stringify({
-            event: "reaction_rollback_failed",
-            orderId,
-            fileName,
-            deleteError: deleteError.message,
-            timestamp: new Date().toISOString(),
-          }));
+          if (order && order.customer_email.toLowerCase() === email.toLowerCase()) {
+            linkedOrderId = order.id;
+          } else {
+            console.log(JSON.stringify({
+              event: "direct_upload_order_mismatch",
+              email, orderId, timestamp: new Date().toISOString(),
+            }));
+            // Still accept upload, just don't link
+          }
         } else {
+          // Find delivered orders for this email
+          const { data: orders } = await supabase
+            .from("orders")
+            .select("id")
+            .ilike("customer_email", email)
+            .eq("status", "delivered")
+            .order("delivered_at", { ascending: false })
+            .limit(3);
+
+          if (orders && orders.length === 1) {
+            linkedOrderId = orders[0].id;
+          } else if (orders && orders.length >= 2) {
+            console.log(JSON.stringify({
+              event: "direct_upload_needs_manual_match",
+              email, name, fileName, orderCount: orders.length,
+              timestamp: new Date().toISOString(),
+            }));
+          }
+        }
+
+        // Upload to reactions bucket
+        const arrayBuffer = await video.arrayBuffer();
+        const { error: uploadError } = await supabase.storage
+          .from("reactions")
+          .upload(fileName, arrayBuffer, {
+            contentType: video.type,
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          return new Response(
+            JSON.stringify({ error: "Failed to upload video. Please try again." }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from("reactions")
+          .getPublicUrl(fileName);
+
+        // If linked to order, update DB with verified pattern
+        if (linkedOrderId) {
+          const { data: updatedOrder, error: updateError } = await supabase
+            .from("orders")
+            .update({
+              reaction_video_url: publicUrl,
+              reaction_submitted_at: new Date().toISOString(),
+            })
+            .eq("id", linkedOrderId)
+            .select("id, reaction_video_url")
+            .single();
+
+          if (updateError || !updatedOrder || !updatedOrder.reaction_video_url) {
+            console.error(JSON.stringify({
+              event: "direct_upload_db_update_failed",
+              linkedOrderId, fileName,
+              updateError: updateError?.message || "empty result",
+              timestamp: new Date().toISOString(),
+            }));
+
+            // Rollback: delete uploaded file
+            await supabase.storage.from("reactions").remove([fileName]);
+
+            return new Response(
+              JSON.stringify({ error: "Failed to save reaction — please try again" }),
+              { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        } else {
+          // Log unlinked upload for manual review
           console.log(JSON.stringify({
-            event: "reaction_rollback_success",
-            orderId,
-            fileName,
+            event: "direct_upload_unlinked",
+            email, name, fileName, publicUrl,
             timestamp: new Date().toISOString(),
           }));
         }
-        
+
+        console.log(JSON.stringify({
+          event: "direct_upload_success",
+          email, name, fileName, linkedOrderId,
+          fileSize: video.size,
+          timestamp: new Date().toISOString(),
+        }));
+
         return new Response(
-          JSON.stringify({ error: "Failed to save reaction - please try again" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Success - log structured event
-      console.log(JSON.stringify({
-        event: "reaction_uploaded",
-        orderId,
-        fileName,
-        videoUrl: publicUrl,
-        fileSize: video.size,
-        isResubmission: !!order.reaction_submitted_at,
-        timestamp: new Date().toISOString(),
-      }));
+      // ── existing upload action ──
+      if (action === "upload") {
+        const orderId = formData.get("orderId") as string;
+
+        if (!email || !orderId || !video) {
+          return new Response(
+            JSON.stringify({ error: "Email, order ID, and video are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const videoError = validateVideo(video);
+        if (videoError) {
+          return new Response(
+            JSON.stringify({ error: videoError }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Verify the order belongs to this email
+        const { data: order, error: orderError } = await supabase
+          .from("orders")
+          .select("id, customer_email, reaction_submitted_at")
+          .eq("id", orderId)
+          .single();
+
+        if (orderError || !order) {
+          return new Response(
+            JSON.stringify({ error: "Order not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (order.customer_email.toLowerCase() !== email.toLowerCase()) {
+          return new Response(
+            JSON.stringify({ error: "Email does not match order" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (order.reaction_submitted_at) {
+          console.log(`Re-submitting reaction for order ${orderId} (previous: ${order.reaction_submitted_at})`);
+        }
+
+        const extension = getExtension(video.name);
+        const fileName = `${orderId}-reaction${extension}`;
+
+        const arrayBuffer = await video.arrayBuffer();
+        const { error: uploadError } = await supabase.storage
+          .from("reactions")
+          .upload(fileName, arrayBuffer, {
+            contentType: video.type,
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          return new Response(
+            JSON.stringify({ error: "Failed to upload video" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from("reactions")
+          .getPublicUrl(fileName);
+
+        const { data: updatedOrder, error: updateError } = await supabase
+          .from("orders")
+          .update({
+            reaction_video_url: publicUrl,
+            reaction_submitted_at: new Date().toISOString(),
+          })
+          .eq("id", orderId)
+          .select("id, reaction_video_url")
+          .single();
+
+        if (updateError || !updatedOrder || !updatedOrder.reaction_video_url) {
+          console.error(JSON.stringify({
+            event: "reaction_db_update_failed",
+            orderId, fileName,
+            updateError: updateError?.message || "No error but update returned empty",
+            updatedOrder,
+            timestamp: new Date().toISOString(),
+          }));
+
+          const { error: deleteError } = await supabase.storage
+            .from("reactions")
+            .remove([fileName]);
+
+          if (deleteError) {
+            console.error(JSON.stringify({
+              event: "reaction_rollback_failed",
+              orderId, fileName,
+              deleteError: deleteError.message,
+              timestamp: new Date().toISOString(),
+            }));
+          }
+
+          return new Response(
+            JSON.stringify({ error: "Failed to save reaction - please try again" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        console.log(JSON.stringify({
+          event: "reaction_uploaded",
+          orderId, fileName,
+          videoUrl: publicUrl,
+          fileSize: video.size,
+          isResubmission: !!order.reaction_submitted_at,
+          timestamp: new Date().toISOString(),
+        }));
+
+        return new Response(
+          JSON.stringify({ success: true, videoUrl: publicUrl }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       return new Response(
-        JSON.stringify({ success: true, videoUrl: publicUrl }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Invalid action" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
