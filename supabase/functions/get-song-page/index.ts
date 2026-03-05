@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       const result = await supabase
         .rpc("find_orders_by_short_id", {
           short_id: orderId,
-          status_filter: ["delivered", "ready"],
+          status_filter: ["delivered", "ready", "completed"],
           require_song_url: true,
           max_results: 2,
         });
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     const order = orders[0];
 
-    if (!["delivered", "ready"].includes(order.status) || !order.song_url) {
+    if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url) {
       return new Response(
         JSON.stringify({ error: "Song is not ready yet" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
