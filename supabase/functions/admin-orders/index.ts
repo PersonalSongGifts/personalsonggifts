@@ -1338,13 +1338,14 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Create new order from lead data
+        // Create new order from lead data (includes ALL fields for proper continuity)
         const orderData = {
           customer_name: lead.customer_name,
           customer_email: lead.email,
           customer_phone: lead.phone,
           recipient_name: lead.recipient_name,
           recipient_type: lead.recipient_type,
+          recipient_name_pronunciation: lead.recipient_name_pronunciation,
           occasion: lead.occasion,
           genre: lead.genre,
           singer_preference: lead.singer_preference,
@@ -1354,11 +1355,23 @@ Deno.serve(async (req) => {
           song_url: lead.full_song_url,
           song_title: lead.song_title,
           cover_image_url: lead.cover_image_url,
+          automation_lyrics: lead.automation_lyrics,
+          automation_status: lead.full_song_url ? "completed" : (lead.automation_lyrics ? "lyrics_ready" : null),
+          lyrics_language_code: lead.lyrics_language_code || "en",
+          inputs_hash: lead.inputs_hash,
+          phone_e164: lead.phone_e164,
+          sms_opt_in: lead.sms_opt_in || false,
+          timezone: lead.timezone,
+          prev_automation_lyrics: lead.prev_automation_lyrics,
+          prev_song_url: lead.prev_song_url,
+          prev_cover_image_url: lead.prev_cover_image_url,
           price: price,
+          price_cents: price * 100,
           pricing_tier: price >= 79 ? "priority" : "standard",
-          status: lead.full_song_url ? "completed" : "paid",
+          status: lead.full_song_url ? "delivered" : "paid",
+          delivered_at: lead.full_song_url ? new Date().toISOString() : null,
           notes: "Manual conversion from lead (webhook failure)",
-         source: "lead_conversion",
+          source: "lead_conversion",
           device_type: "Manual Conversion",
           utm_source: lead.utm_source,
           utm_medium: lead.utm_medium,
@@ -1390,10 +1403,29 @@ Deno.serve(async (req) => {
 
         if (updateLeadError) {
           console.error("Failed to mark lead as converted:", updateLeadError);
-          // Still return success since order was created
         }
 
         console.log(`Lead ${leadId} converted to order ${order.id}`);
+
+        await logActivity(supabase, "lead", leadId, "lead_converted", "admin", `Manually converted to order ${order.id.slice(0, 8).toUpperCase()}`);
+        await logActivity(supabase, "order", order.id, "order_created", "admin", `Created from manual lead conversion, $${price}`);
+
+        // Trigger lyrics generation if missing but audio exists
+        if (!lead.automation_lyrics && lead.full_song_url) {
+          try {
+            console.log(`[ADMIN] Lyrics missing on lead ${leadId}, triggering generation for order ${order.id}`);
+            await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ orderId: order.id, type: "order", force: true }),
+            });
+          } catch (e) {
+            console.error("[ADMIN] Failed to trigger lyrics generation:", e);
+          }
+        }
 
         return new Response(
           JSON.stringify({ success: true, order }),

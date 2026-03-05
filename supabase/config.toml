@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.backfill-missing-lyrics]
 verify_jwt = false
+
+[functions.backfill-lead-orders]
+verify_jwt = false
