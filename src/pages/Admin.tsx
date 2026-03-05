@@ -219,7 +219,7 @@ export default function Admin() {
   const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
   const [pendingLeadId, setPendingLeadId] = useState<string | null>(null);
   // Analytics date range filter
-  type DatePreset = "7d" | "14d" | "30d" | "90d" | "all" | "custom";
+  type DatePreset = "today" | "yesterday" | "7d" | "14d" | "30d" | "90d" | "all" | "custom";
   const [analyticsPreset, setAnalyticsPreset] = useState<DatePreset>("30d");
   const [analyticsFrom, setAnalyticsFrom] = useState<string>("");
   const [analyticsTo, setAnalyticsTo] = useState<string>("");
@@ -234,6 +234,18 @@ export default function Admin() {
         const from = analyticsFrom ? startOfDay(parseISO(analyticsFrom)) : new Date(0);
         const to = analyticsTo ? endOfDay(parseISO(analyticsTo)) : new Date();
         return isWithinInterval(d, { start: from, end: to });
+      });
+    }
+    if (analyticsPreset === "today") {
+      const todayStart = startOfDay(new Date());
+      return allOrders.filter((o) => parseISO(o.created_at) >= todayStart);
+    }
+    if (analyticsPreset === "yesterday") {
+      const yesterdayStart = startOfDay(subDays(new Date(), 1));
+      const todayStart = startOfDay(new Date());
+      return allOrders.filter((o) => {
+        const d = parseISO(o.created_at);
+        return d >= yesterdayStart && d < todayStart;
       });
     }
     const days = analyticsPreset === "7d" ? 7 : analyticsPreset === "14d" ? 14 : analyticsPreset === "90d" ? 90 : 30;
@@ -1118,7 +1130,7 @@ const { data, error } = await listOrders("all", 0, 250);
               <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="text-sm font-medium text-muted-foreground">Date range:</span>
               <div className="flex flex-wrap gap-1.5">
-                {(["7d", "14d", "30d", "90d", "all"] as const).map((p) => (
+                {(["today", "yesterday", "7d", "14d", "30d", "90d", "all"] as const).map((p) => (
                   <button
                     key={p}
                     onClick={() => setAnalyticsPreset(p)}
@@ -1128,7 +1140,7 @@ const { data, error } = await listOrders("all", 0, 250);
                         : "bg-background border hover:bg-muted text-foreground"
                     }`}
                   >
-                    {p === "7d" ? "Last 7 days" : p === "14d" ? "Last 14 days" : p === "30d" ? "Last 30 days" : p === "90d" ? "Last 90 days" : "All time"}
+                    {p === "today" ? "Today" : p === "yesterday" ? "Yesterday" : p === "7d" ? "Last 7 days" : p === "14d" ? "Last 14 days" : p === "30d" ? "Last 30 days" : p === "90d" ? "Last 90 days" : "All time"}
                   </button>
                 ))}
                 <button
