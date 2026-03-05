@@ -186,11 +186,211 @@ Deno.serve(async (req) => {
       // Get metadata from the session
       const metadata = session.metadata || {};
 
-      // Check if this is a lead conversion (has leadId in metadata)
+      // Handle lead conversion payments server-side (primary handler)
       if (metadata.leadId) {
-        console.log(`Lead conversion detected for lead ${metadata.leadId}, skipping - handled by process-lead-payment`);
+        console.log(`[WEBHOOK] Lead conversion for lead ${metadata.leadId}, session ${session.id}`);
+
+        // Idempotency check for lead sessions
+        const { data: existingLeadOrder } = await supabase
+          .from("orders")
+          .select("id")
+          .eq("notes", `lead_session:${session.id}`)
+          .maybeSingle();
+
+        if (existingLeadOrder) {
+          console.log(`[WEBHOOK] Lead order already exists for session ${session.id}: ${existingLeadOrder.id}`);
+          return new Response(
+            JSON.stringify({ received: true, orderId: existingLeadOrder.id, status: "already_exists" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Fetch lead record
+        const { data: lead, error: leadFetchError } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("id", metadata.leadId)
+          .maybeSingle();
+
+        if (leadFetchError || !lead) {
+          console.error(`[WEBHOOK] Lead ${metadata.leadId} not found:`, leadFetchError);
+          return new Response(
+            JSON.stringify({ error: "Lead not found" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const leadPricingTier = metadata.pricingTier || "standard";
+        const leadPriceCents: number = (session.amount_total
+          ?? (metadata.offerPriceCents ? parseInt(metadata.offerPriceCents, 10) : NaN))
+          || 4999;
+        const leadPrice = Math.floor(leadPriceCents / 100);
+
+        const leadNotesValue = `lead_session:${session.id}`;
+        if (!/^lead_session:cs_[a-zA-Z0-9_]+$/.test(leadNotesValue)) {
+          console.error(`[WEBHOOK] Unexpected lead notes format: ${leadNotesValue}`);
+          return new Response(
+            JSON.stringify({ error: "Internal error: unexpected session ID format" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Create order with ALL fields from the lead (mirrors process-lead-payment)
+        const { data: leadOrder, error: leadInsertError } = await supabase
+          .from("orders")
+          .insert({
+            pricing_tier: leadPricingTier,
+            price: leadPrice,
+            price_cents: leadPriceCents,
+            expected_delivery: new Date().toISOString(),
+            customer_name: lead.customer_name,
+            customer_email: lead.email,
+            customer_phone: lead.phone,
+            recipient_type: lead.recipient_type,
+            recipient_name: lead.recipient_name,
+            recipient_name_pronunciation: lead.recipient_name_pronunciation,
+            occasion: lead.occasion,
+            genre: lead.genre,
+            singer_preference: lead.singer_preference,
+            special_qualities: lead.special_qualities,
+            favorite_memory: lead.favorite_memory,
+            special_message: lead.special_message,
+            song_url: lead.full_song_url,
+            song_title: lead.song_title,
+            cover_image_url: lead.cover_image_url,
+            automation_lyrics: lead.automation_lyrics,
+            automation_status: lead.full_song_url ? "completed" : (lead.automation_lyrics ? "lyrics_ready" : null),
+            lyrics_language_code: lead.lyrics_language_code || "en",
+            inputs_hash: lead.inputs_hash,
+            phone_e164: lead.phone_e164,
+            sms_opt_in: lead.sms_opt_in || false,
+            timezone: lead.timezone,
+            prev_automation_lyrics: lead.prev_automation_lyrics,
+            prev_song_url: lead.prev_song_url,
+            prev_cover_image_url: lead.prev_cover_image_url,
+            source: "lead_conversion",
+            device_type: "Web",
+            notes: leadNotesValue,
+            status: lead.full_song_url ? "delivered" : "pending",
+            delivered_at: lead.full_song_url ? new Date().toISOString() : null,
+          })
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents, revision_token")
+          .single();
+
+        // Handle race condition
+        if (leadInsertError) {
+          if (leadInsertError.code === "23505" || leadInsertError.message?.includes("duplicate")) {
+            console.log(`[WEBHOOK] Race condition for lead session ${session.id}`);
+            const { data: raceOrder } = await supabase
+              .from("orders")
+              .select("id")
+              .eq("notes", leadNotesValue)
+              .maybeSingle();
+            if (raceOrder) {
+              return new Response(
+                JSON.stringify({ received: true, orderId: raceOrder.id, status: "already_exists" }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+          }
+          console.error("[WEBHOOK] Lead order creation failed:", leadInsertError);
+          return new Response(
+            JSON.stringify({ error: "Failed to create lead order" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        console.log(`[WEBHOOK] Lead ${lead.id} converted to order ${leadOrder.id}`);
+
+        // Mark lead as converted
+        await supabase
+          .from("leads")
+          .update({
+            status: "converted",
+            converted_at: new Date().toISOString(),
+            order_id: leadOrder.id,
+          })
+          .eq("id", lead.id);
+
+        await logActivity(supabase, "lead", lead.id, "lead_converted", "system", `Converted to order ${leadOrder.id.slice(0, 8).toUpperCase()} via webhook`);
+        await logActivity(supabase, "order", leadOrder.id, "order_created", "system", `Created from lead conversion via webhook, $${leadPriceCents / 100}`);
+
+        // Trigger lyrics generation if missing
+        if (!lead.automation_lyrics) {
+          try {
+            const hasAudio = !!lead.full_song_url;
+            console.log(`[WEBHOOK] Lyrics missing on lead ${lead.id}, triggering generation for order ${leadOrder.id}`);
+            await fetch(`${supabaseUrl}/functions/v1/automation-generate-lyrics`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ orderId: leadOrder.id, type: "order", ...(hasAudio && { force: true }) }),
+            });
+          } catch (e) {
+            console.error("[WEBHOOK] Failed to trigger lyrics generation:", e);
+          }
+        }
+
+        // Send delivery email if song exists
+        if (lead.full_song_url) {
+          try {
+            await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                orderId: leadOrder.id,
+                customerEmail: lead.email,
+                customerName: lead.customer_name,
+                recipientName: lead.recipient_name,
+                occasion: lead.occasion,
+                songUrl: lead.full_song_url,
+                revisionToken: leadOrder.revision_token,
+              }),
+            });
+            console.log(`[WEBHOOK] Delivery email sent for lead order ${leadOrder.id}`);
+          } catch (e) {
+            console.error("[WEBHOOK] Failed to send delivery email:", e);
+          }
+        }
+
+        // Sync to Google Sheets
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/append-to-sheet`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              orderId: leadOrder.id,
+              createdAt: new Date().toISOString(),
+              status: lead.full_song_url ? "delivered" : "pending",
+              pricingTier: leadPricingTier,
+              price: leadPriceCents / 100,
+              customerName: lead.customer_name,
+              customerEmail: lead.email,
+              customerPhone: lead.phone || "",
+              recipientName: lead.recipient_name,
+              occasion: lead.occasion,
+              genre: lead.genre,
+              singerPreference: lead.singer_preference,
+              specialQualities: lead.special_qualities,
+              favoriteMemory: lead.favorite_memory,
+              specialMessage: lead.special_message || "",
+              deviceType: "Web (Lead Conversion)",
+            }),
+          });
+        } catch (e) {
+          console.error("[WEBHOOK] Failed to sync to Google Sheets:", e);
+        }
+
         return new Response(
-          JSON.stringify({ received: true, skipped: "lead conversion handled by separate endpoint" }),
+          JSON.stringify({ received: true, orderId: leadOrder.id, status: "created" }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
