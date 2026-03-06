@@ -1,39 +1,20 @@
 
 
-## Fix: Order EE84BC3C "Song Not Found" on Song Page
+## Update Gift Card Language on Share Reaction Page
 
-### Root Cause
+**File:** `src/pages/ShareReaction.tsx`, line 171
 
-The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
+**Change:** Replace the "$100 gift card" step with language about eligibility for a gift card if the video is featured.
 
-The `song_url` is valid and present. The fix has two parts:
-
-### Part 1: Immediate Database Fix
-
-Update this specific order's status to `delivered` so the song page works now:
-
-```sql
-UPDATE orders
-SET status = 'delivered',
-    delivered_at = now(),
-    delivery_status = 'sent'
-WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
+**Current:**
+```
+{ icon: Gift, label: "One participant will receive a $100 gift card" }
 ```
 
-### Part 2: Prevent Future Occurrences
-
-Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
-
-**File:** `supabase/functions/get-song-page/index.ts`
-
-Change the status check from:
-```typescript
-if (!["delivered", "ready"].includes(order.status) || !order.song_url)
+**New:**
 ```
-to:
-```typescript
-if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
+{ icon: Gift, label: "If we feature your video, you may be eligible for a gift card" }
 ```
 
-This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
+Single line change. No other modifications needed.
 
