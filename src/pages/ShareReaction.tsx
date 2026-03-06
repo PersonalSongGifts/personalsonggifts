@@ -168,7 +168,7 @@ export default function ShareReaction() {
             {[
               { icon: Upload, label: "Upload your reaction video below" },
               { icon: Video, label: "We may feature it on our website or social media" },
-              { icon: Gift, label: "One participant will receive a $100 gift card" },
+              { icon: Gift, label: "If we feature your video, you may be eligible for a gift card" },
             ].map((step, i) => (
               <div key={i} className="flex items-start gap-4">
                 <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
