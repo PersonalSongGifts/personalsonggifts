@@ -1,48 +1,39 @@
 
 
-## Add PayPal as Alternative Payment Method
+## Fix: Order EE84BC3C "Song Not Found" on Song Page
 
-Since PayPal isn't available through the existing Stripe Checkout integration for US-based accounts, we'll integrate PayPal directly using their REST API + JavaScript SDK.
+### Root Cause
 
-### How It Works
+The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
 
-Customers will see a "Pay with PayPal" button alongside the existing Stripe checkout button. International customers can pay in their local currency via PayPal.
+The `song_url` is valid and present. The fix has two parts:
 
-### What's Needed First
+### Part 1: Immediate Database Fix
 
-**PayPal API Credentials** — You'll need a PayPal Business account and two secrets:
-1. **PAYPAL_CLIENT_ID** — Found in the PayPal Developer Dashboard under your app's credentials
-2. **PAYPAL_SECRET_KEY** — Same location, the "Secret" value
+Update this specific order's status to `delivered` so the song page works now:
 
-Both have sandbox (test) and live (production) versions. We'll use live for production.
+```sql
+UPDATE orders
+SET status = 'delivered',
+    delivered_at = now(),
+    delivery_status = 'sent'
+WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
+```
 
-### Implementation Plan
+### Part 2: Prevent Future Occurrences
 
-**1. New Edge Function: `create-paypal-order`**
-- Receives the same checkout input (tier, formData, promo code)
-- Validates promo codes using the same logic as `create-checkout`
-- Calls PayPal's REST API to create an order with the correct amount
-- Returns the PayPal order ID to the client
+Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
 
-**2. New Edge Function: `capture-paypal-payment`**
-- Called after the customer approves payment in PayPal
-- Captures the PayPal payment via REST API
-- Creates the order in the database (same logic as `process-payment`)
-- Sends confirmation email, syncs to Zapier, marks leads as converted
-- Returns order details to redirect to the success page
+**File:** `supabase/functions/get-song-page/index.ts`
 
-**3. Update `src/pages/Checkout.tsx`**
-- Load PayPal JS SDK via script tag using the client ID
-- Add a "Pay with PayPal" button below the existing checkout button
-- On PayPal approval, call `capture-paypal-payment` and redirect to success page
+Change the status check from:
+```typescript
+if (!["delivered", "ready"].includes(order.status) || !order.song_url)
+```
+to:
+```typescript
+if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
+```
 
-**4. Update `src/pages/PaymentSuccess.tsx`**
-- Handle PayPal order IDs in addition to Stripe session IDs
-
-### Security
-- PayPal secret key stays server-side in edge functions only
-- Client ID is safe to expose (it's a publishable key)
-- All payment capture and order creation happens server-side
-
-Shall I proceed? I'll first need you to provide the PayPal API credentials.
+This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
 
