@@ -238,6 +238,14 @@ Deno.serve(async (req) => {
       unitAmount = 0;
       metadata.promoCode = upperAdditional;
       metadata.amount_total_cents = "0";
+    } else if (DISCOUNT_TEST_CODES[upperAdditional]) {
+      // Hardcoded discount codes (e.g. ADMINTEST99 = 99% off) — goes through real payment
+      const discountPercent = DISCOUNT_TEST_CODES[upperAdditional];
+      const basePrice = BASE_PRICES[pricingTier] || BASE_PRICES.standard;
+      const afterSeasonal = Math.floor(basePrice * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
+      unitAmount = Math.max(1, Math.floor(afterSeasonal * (100 - discountPercent) / 100));
+      metadata.additionalPromoCode = upperAdditional;
+      metadata.amount_total_cents = String(unitAmount);
     } else {
       // Look up additional coupon in Stripe if provided
       let stripeCoupon: Stripe.Coupon | null = null;
@@ -249,9 +257,6 @@ Deno.serve(async (req) => {
       }
 
       unitAmount = calculateFinalPrice(pricingTier, upperAdditional, stripeCoupon);
-      // Store the calculated charge amount in metadata as a fallback.
-      // Canonical price source downstream is session.amount_total (Stripe's actual charge in cents).
-      // This metadata field is only used if amount_total is somehow unavailable (legacy sessions).
       metadata.amount_total_cents = String(unitAmount);
     }
 
