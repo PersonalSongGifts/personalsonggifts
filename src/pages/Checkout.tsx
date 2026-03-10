@@ -285,6 +285,76 @@ const Checkout = () => {
     }
   };
 
+  const handlePayPalCheckout = async () => {
+    if (isPayPalLoading || isSubmitting || !formData) return;
+    
+    setIsPayPalLoading(true);
+    
+    const checkoutValue = pricing.total;
+    trackMetaEvent('InitiateCheckout', { value: checkoutValue, currency: 'USD' });
+    trackGAEvent('begin_checkout', {
+      currency: 'USD',
+      value: checkoutValue,
+      items: [{
+        item_name: `${selectedTier === "priority" ? "Priority" : "Standard"} Song`,
+        item_category: formData?.occasion,
+        price: checkoutValue,
+        quantity: 1,
+      }],
+    });
+    trackTikTokEvent('InitiateCheckout', { content_type: 'product', value: checkoutValue, currency: 'USD' });
+    
+    try {
+      const utmParams = getStoredUtmParams();
+
+      // Step 1: Create PayPal order on server
+      const createResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-paypal-order`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            pricingTier: selectedTier,
+            formData: {
+              ...formData,
+              smsOptIn: formData.smsOptIn && !!phoneE164,
+              phoneE164: phoneE164 || undefined,
+              timezone: userTimezone,
+            },
+            additionalPromoCode: additionalPromo?.code || undefined,
+            utmSource: utmParams.utm_source || undefined,
+            utmMedium: utmParams.utm_medium || undefined,
+            utmCampaign: utmParams.utm_campaign || undefined,
+            utmContent: utmParams.utm_content || undefined,
+            utmTerm: utmParams.utm_term || undefined,
+          }),
+        }
+      );
+
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create PayPal order");
+      }
+
+      const { orderID: paypalOrderID } = await createResponse.json();
+
+      // Step 2: Redirect to PayPal approval URL
+      // We'll use PayPal's hosted checkout page
+      window.location.href = `https://www.paypal.com/checkoutnow?token=${paypalOrderID}`;
+    } catch (error) {
+      console.error("PayPal checkout error:", error);
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+      setIsPayPalLoading(false);
+    }
+  };
+
   return (
     <Layout showPromoBanner={false}>
       <div className="py-8 md:py-12">
