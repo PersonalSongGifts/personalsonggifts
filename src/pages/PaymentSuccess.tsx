@@ -29,6 +29,7 @@ const PaymentSuccess = () => {
   useEffect(() => { sessionStorage.removeItem("songFormData"); }, []);
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("session_id");
+  const paypalToken = searchParams.get("token"); // PayPal returns ?token=<orderID>
   const source = searchParams.get("source"); // "lead" if from lead conversion
   const { trackEvent: trackMetaEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
