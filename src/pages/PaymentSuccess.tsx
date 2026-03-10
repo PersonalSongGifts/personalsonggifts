@@ -223,7 +223,7 @@ const PaymentSuccess = () => {
     };
 
     poll();
-  }, [sessionId, source, trackPurchaseEvent]);
+  }, [sessionId, paypalToken, source, trackPurchaseEvent]);
 
   if (loading) {
     return (
