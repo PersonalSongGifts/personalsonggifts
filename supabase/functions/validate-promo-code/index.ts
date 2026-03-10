@@ -12,11 +12,19 @@ const TEST_CODES: Record<string, number> = {
   "HYPERDRIVEFREE2026": 100,
   "HYPERDRIVEFREE2026!": 100,
   "BRIANNAWARREN": 100,
+  "INFLCR-SPARK-7X": 100,
+  "INFLCR-WAVE-3K": 100,
+  "INFLCR-GLOW-9M": 100,
+  "INFLCR-RISE-5Q": 100,
 };
 
 // Codes with a usage limit tracked in admin_settings
 const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = {
   "BRIANNAWARREN": { maxUses: 5, settingsKey: "briannawarren_usage_count" },
+  "INFLCR-SPARK-7X": { maxUses: 1, settingsKey: "inflcr_spark_7x_usage_count" },
+  "INFLCR-WAVE-3K": { maxUses: 1, settingsKey: "inflcr_wave_3k_usage_count" },
+  "INFLCR-GLOW-9M": { maxUses: 1, settingsKey: "inflcr_glow_9m_usage_count" },
+  "INFLCR-RISE-5Q": { maxUses: 1, settingsKey: "inflcr_rise_5q_usage_count" },
 };
 
 Deno.serve(async (req) => {

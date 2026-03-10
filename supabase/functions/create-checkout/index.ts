@@ -40,11 +40,19 @@ const FREE_TEST_CODES: Record<string, boolean> = {
   "HYPERDRIVEFREE2026": true,
   "HYPERDRIVEFREE2026!": true,
   "BRIANNAWARREN": true,
+  "INFLCR-SPARK-7X": true,
+  "INFLCR-WAVE-3K": true,
+  "INFLCR-GLOW-9M": true,
+  "INFLCR-RISE-5Q": true,
 };
 
 // Codes with a usage limit tracked in admin_settings
 const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = {
   "BRIANNAWARREN": { maxUses: 5, settingsKey: "briannawarren_usage_count" },
+  "INFLCR-SPARK-7X": { maxUses: 1, settingsKey: "inflcr_spark_7x_usage_count" },
+  "INFLCR-WAVE-3K": { maxUses: 1, settingsKey: "inflcr_wave_3k_usage_count" },
+  "INFLCR-GLOW-9M": { maxUses: 1, settingsKey: "inflcr_glow_9m_usage_count" },
+  "INFLCR-RISE-5Q": { maxUses: 1, settingsKey: "inflcr_rise_5q_usage_count" },
 };
 
 // Base prices in cents
