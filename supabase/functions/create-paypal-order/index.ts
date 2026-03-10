@@ -44,6 +44,11 @@ const FREE_TEST_CODES: Record<string, boolean> = {
   "INFLCR-RISE-5Q": true,
 };
 
+// Hardcoded discount codes that go through real payment (not free)
+const DISCOUNT_TEST_CODES: Record<string, number> = {
+  "ADMINTEST99": 99, // 99% off — ~$0.50 charge for testing payment flow
+};
+
 // Codes with a usage limit tracked in admin_settings
 const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = {
   "BRIANNAWARREN": { maxUses: 5, settingsKey: "briannawarren_usage_count" },
