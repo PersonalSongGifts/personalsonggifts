@@ -223,6 +223,13 @@ Deno.serve(async (req) => {
       unitAmountCents = 0;
       metadata.promoCode = upperAdditional;
       metadata.amount_total_cents = "0";
+    } else if (DISCOUNT_TEST_CODES[upperAdditional]) {
+      const discountPercent = DISCOUNT_TEST_CODES[upperAdditional];
+      const basePrice = BASE_PRICES[pricingTier] || BASE_PRICES.standard;
+      const afterSeasonal = Math.floor(basePrice * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
+      unitAmountCents = Math.max(1, Math.floor(afterSeasonal * (100 - discountPercent) / 100));
+      metadata.additionalPromoCode = upperAdditional;
+      metadata.amount_total_cents = String(unitAmountCents);
     } else {
       let stripeCoupon: { percent_off?: number; amount_off?: number } | null = null;
       if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
