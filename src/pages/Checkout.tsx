@@ -87,6 +87,9 @@ const Checkout = () => {
   }, [location.state]);
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPayPalLoading, setIsPayPalLoading] = useState(false);
+  const paypalButtonRef = useRef<HTMLDivElement>(null);
+  const paypalRendered = useRef(false);
   const [promoCode, setPromoCode] = useState("");
   const [additionalPromo, setAdditionalPromo] = useState<AdditionalPromo | null>(null);
   const [promoError, setPromoError] = useState("");
