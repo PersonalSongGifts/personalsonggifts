@@ -16,6 +16,7 @@ const TEST_CODES: Record<string, number> = {
   "INFLCR-WAVE-3K": 100,
   "INFLCR-GLOW-9M": 100,
   "INFLCR-RISE-5Q": 100,
+  "ADMINTEST99": 99,
 };
 
 // Codes with a usage limit tracked in admin_settings

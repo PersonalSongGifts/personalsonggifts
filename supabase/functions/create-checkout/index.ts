@@ -34,7 +34,8 @@ interface CheckoutInput {
   utmTerm?: string;
 }
 
-// Hardcoded test codes (100% off overrides)
+// Hardcoded test codes (100% off overrides — skip payment entirely)
+// NOTE: ADMINTEST99 is intentionally NOT here so it goes through real payment processing
 const FREE_TEST_CODES: Record<string, boolean> = {
   "HYPERDRIVETEST": true,
   "HYPERDRIVEFREE2026": true,
@@ -44,6 +45,11 @@ const FREE_TEST_CODES: Record<string, boolean> = {
   "INFLCR-WAVE-3K": true,
   "INFLCR-GLOW-9M": true,
   "INFLCR-RISE-5Q": true,
+};
+
+// Hardcoded discount codes that go through real payment (not free)
+const DISCOUNT_TEST_CODES: Record<string, number> = {
+  "ADMINTEST99": 99, // 99% off — ~$0.50 charge for testing payment flow
 };
 
 // Codes with a usage limit tracked in admin_settings
