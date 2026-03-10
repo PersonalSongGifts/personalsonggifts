@@ -77,6 +77,48 @@ const PaymentSuccess = () => {
   }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   useEffect(() => {
+    if (!sessionId && !paypalToken) {
+      setError("No session ID found. Please contact support if you completed a payment.");
+      setLoading(false);
+      return;
+    }
+
+    // Handle PayPal return
+    if (paypalToken) {
+      const capturePayPal = async () => {
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-payment`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              },
+              body: JSON.stringify({ orderID: paypalToken }),
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to process PayPal payment");
+          }
+
+          const data = await response.json();
+          setOrderDetails(data);
+          trackPurchaseEvent(data);
+        } catch (err) {
+          console.error("PayPal payment processing error:", err);
+          setError(err instanceof Error ? err.message : "Something went wrong");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      capturePayPal();
+      return;
+    }
+
     if (!sessionId) {
       setError("No session ID found. Please contact support if you completed a payment.");
       setLoading(false);
