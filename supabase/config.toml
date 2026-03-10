@@ -98,3 +98,9 @@ verify_jwt = false
 
 [functions.backfill-lead-orders]
 verify_jwt = false
+
+[functions.create-paypal-order]
+verify_jwt = false
+
+[functions.capture-paypal-payment]
+verify_jwt = false
