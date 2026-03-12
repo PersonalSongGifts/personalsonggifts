@@ -1,39 +1,78 @@
 
 
-## Fix: Order EE84BC3C "Song Not Found" on Song Page
+## Post-Purchase Reaction Video Email Flow
 
-### Root Cause
+### Overview
 
-The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
+Add a two-step automated email sequence (24h and 72h after song delivery) encouraging customers to submit reaction videos. Includes an admin kill-switch, stats, and email previews in the Emails tab. Also enhances the `/share-reaction` landing page with a "Bethany" social proof story and incentive rules.
 
-The `song_url` is valid and present. The fix has two parts:
+### Safety guardrails
 
-### Part 1: Immediate Database Fix
+- **Kill-switch defaults to OFF** (`reaction_email_enabled` defaults to `"false"` — nothing sends until you explicitly turn it on)
+- **Max 5 emails per cron run** per phase (same cap as unplayed resend)
+- **Suppression check** against `email_suppressions` table before every send
+- **One-shot columns** — `reaction_email_24h_sent_at` and `reaction_email_72h_sent_at` ensure each email fires at most once per order
+- **72h email only fires if 24h was already sent** — prevents skipping ahead
+- **Skips orders that already have a reaction** (`reaction_submitted_at IS NOT NULL`)
+- **Activity log** entry for every send for audit trail
 
-Update this specific order's status to `delivered` so the song page works now:
+### Database migration
+
+Add two nullable timestamp columns to `orders`:
 
 ```sql
-UPDATE orders
-SET status = 'delivered',
-    delivered_at = now(),
-    delivery_status = 'sent'
-WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
+ALTER TABLE orders ADD COLUMN reaction_email_24h_sent_at timestamptz;
+ALTER TABLE orders ADD COLUMN reaction_email_72h_sent_at timestamptz;
 ```
 
-### Part 2: Prevent Future Occurrences
+No new tables.
 
-Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
+### Changes
 
-**File:** `supabase/functions/get-song-page/index.ts`
+**1. `supabase/functions/process-scheduled-deliveries/index.ts`** — Add section 9 after the unplayed resend block
 
-Change the status check from:
-```typescript
-if (!["delivered", "ready"].includes(order.status) || !order.song_url)
-```
-to:
-```typescript
-if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
-```
+New section "REACTION VIDEO EMAIL FLOW" with:
+- Kill-switch check: `reaction_email_enabled` in `admin_settings` (default OFF)
+- Phase A (24h): Query delivered orders where `delivered_at <= now - 24h`, `reaction_email_24h_sent_at IS NULL`, `reaction_submitted_at IS NULL`, `dismissed_at IS NULL`. Check email suppressions. Send plain personal-style email via Brevo. Mark `reaction_email_24h_sent_at`. Log to `order_activity_log`.
+- Phase B (72h): Same but `delivered_at <= now - 72h`, `reaction_email_72h_sent_at IS NULL`, `reaction_email_24h_sent_at IS NOT NULL`. Includes "Bethany" story. Mark `reaction_email_72h_sent_at`.
+- Max 5 per phase per run.
 
-This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
+**24h email content:**
+- Subject: `Got your song? We'd love to see the reaction 🎵`
+- Plain personal style (white bg, Arial, bare links)
+- Short founder-style ask: greet by first name, mention the $50 incentive briefly, CTA link to `/share-reaction?utm_source=email&utm_medium=postpurchase&utm_campaign=video_24h`
+- Unsubscribe link, multipart MIME
+
+**72h email content:**
+- Subject: `One more nudge (+ how Bethany earned $50 with her reaction video)`
+- Short "Bethany" story paragraph
+- CTA link to `/share-reaction?utm_source=email&utm_medium=postpurchase&utm_campaign=video_72h`
+- Same plain style, unsubscribe, multipart MIME
+
+**2. `src/components/admin/ReactionEmailPanel.tsx`** — New component
+
+Following the exact pattern of `UnplayedResendPanel`:
+- Toggle switch for `reaction_email_enabled` (reads/writes via `automation-get-settings`)
+- Stats section showing: total 24h sent, total 72h sent, total reactions received (queried from `orders` table via `admin-orders` endpoint)
+- Two collapsible iframe previews of the 24h and 72h email templates (same pattern as `EmailTemplates.tsx`)
+
+**3. `src/pages/Admin.tsx`** — Wire into Emails tab
+
+- Import `ReactionEmailPanel`
+- Add between `ValentineRemarketingPanel` and `EmailTemplates` in the emails tab
+
+**4. `src/pages/ShareReaction.tsx`** — Landing page enhancements
+
+Add two new sections between existing "Why We're Asking" and form:
+- **"Bethany's Story"** — Card with placeholder image (simple colored div with initials as placeholder), short paragraph about Bethany ordering a song, recording the reaction, submitting it, getting $50
+- **"Incentive Rules"** — Bullet list: what qualifies, what disqualifies, payment method ($50 or song refund), not every submission guaranteed
+- Update consent checkbox to add: "I confirm everyone in the video is okay with being filmed and shared"
+
+### What does NOT change
+
+- Stripe/PayPal checkout
+- Order status machine
+- Existing email flows (delivery, unplayed resend, remarketing)
+- Automation queue/scheduler
+- Database schema beyond the two new columns
 
