@@ -1651,6 +1651,7 @@ const { data, error } = await listOrders("all", 0, 250);
 
           <TabsContent value="emails" className="space-y-6">
             <ValentineRemarketingPanel adminPassword={password} />
+            <ReactionEmailPanel adminPassword={password} allOrders={allOrders as any} />
             <EmailTemplates adminPassword={password} />
           </TabsContent>
 

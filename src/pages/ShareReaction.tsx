@@ -365,7 +365,7 @@ export default function ShareReaction() {
                 className="mt-0.5"
               />
               <label htmlFor="consent" className="text-sm text-foreground leading-snug cursor-pointer">
-                I give permission for Personal Song Gifts to use this video in marketing, on our website, or on social media.
+                I give permission for Personal Song Gifts to use, edit, and share this video in marketing, on our website, or on social media. I confirm everyone visible in the video is okay with being filmed and shared.
               </label>
             </div>
 

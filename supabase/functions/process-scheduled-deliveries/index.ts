@@ -1374,6 +1374,270 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       console.error("[RESEND] Unplayed re-send queue error:", e);
     }
 
+    // ======= 9. REACTION VIDEO EMAIL FLOW =======
+    // Send 24h and 72h post-delivery emails encouraging customers to submit reaction videos.
+    // Kill-switch defaults to OFF. Max 5 per phase per run.
+    const reactionEmailResults: Array<{ orderId: string; phase: string; success: boolean; error?: string }> = [];
+    const MAX_REACTION_EMAILS_PER_PHASE = 5;
+
+    try {
+      // Kill-switch check
+      const { data: reactionSetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "reaction_email_enabled")
+        .maybeSingle();
+
+      // Default to OFF (false) — nothing sends until admin explicitly enables
+      if (!reactionSetting || reactionSetting.value !== "true") {
+        console.log("[REACTION-EMAIL] Skipped — disabled via admin settings (default OFF)");
+        results.reactionEmails = { skipped: true, reason: "disabled" };
+      } else {
+        const brevoKeyReaction = Deno.env.get("BREVO_API_KEY");
+        const senderEmailReaction = "support@personalsonggifts.com";
+        const senderNameReaction = "Personal Song Gifts";
+
+        if (!brevoKeyReaction) {
+          console.error("[REACTION-EMAIL] BREVO_API_KEY not configured");
+        } else {
+          // Get suppressed emails
+          const { data: suppressedReaction } = await supabase
+            .from("email_suppressions")
+            .select("email");
+          const suppressedReactionSet = new Set((suppressedReaction || []).map((s: { email: string }) => s.email.toLowerCase()));
+
+          const cutoff24hReaction = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const cutoff72hReaction = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+
+          // ---- Phase A: 24h email ----
+          const { data: eligible24h } = await supabase
+            .from("orders")
+            .select("id, customer_name, customer_email, customer_email_override, recipient_name, occasion")
+            .eq("status", "delivered")
+            .not("delivered_at", "is", null)
+            .lte("delivered_at", cutoff24hReaction)
+            .is("reaction_email_24h_sent_at", null)
+            .is("reaction_submitted_at", null)
+            .is("dismissed_at", null)
+            .order("delivered_at", { ascending: true })
+            .limit(MAX_REACTION_EMAILS_PER_PHASE);
+
+          console.log(`[REACTION-EMAIL] Phase A (24h): ${eligible24h?.length || 0} eligible`);
+
+          for (const order of eligible24h || []) {
+            try {
+              const effectiveEmail = (order as any).customer_email_override || order.customer_email;
+              if (suppressedReactionSet.has(effectiveEmail.toLowerCase())) {
+                console.log(`[REACTION-EMAIL] Skipping suppressed email for order ${order.id}`);
+                reactionEmailResults.push({ orderId: order.id, phase: "24h", success: false, error: "Email suppressed" });
+                continue;
+              }
+
+              const firstName = order.customer_name?.split(" ")[0] || "there";
+              const shareLink = `https://personalsonggifts.lovable.app/share-reaction?utm_source=email&utm_medium=postpurchase&utm_campaign=video_24h`;
+              const unsubLink = `https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}`;
+
+              const html24h = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 16px 0;">Hi ${firstName},</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 16px 0;">We hope ${order.recipient_name} loved their song! One of the best parts of what we do is seeing the moment someone hears their personalized song for the first time.</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 16px 0;">If you captured that reaction on video, we'd love to see it. And if we feature your video, we'll send you a $50 gift card as a thank you.</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 8px 0;">Submit your video here:</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 24px 0;"><a href="${shareLink}" style="color:#1a73e8;">${shareLink}</a></p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 32px 0;">No editing needed — phone recordings are perfect.</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 32px 0;">Warmly,<br>The Personal Song Gifts Team</p>
+<p style="font-size:12px;color:#888;margin:0;">Personal Song Gifts &middot; 2108 N ST STE N, Sacramento, CA 95816<br><a href="${unsubLink}" style="color:#888;">Unsubscribe</a></p>
+</div>
+</body>
+</html>`;
+
+              const text24h = `Hi ${firstName},
+
+We hope ${order.recipient_name} loved their song! One of the best parts of what we do is seeing the moment someone hears their personalized song for the first time.
+
+If you captured that reaction on video, we'd love to see it. And if we feature your video, we'll send you a $50 gift card as a thank you.
+
+Submit your video here:
+${shareLink}
+
+No editing needed — phone recordings are perfect.
+
+Warmly,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts · 2108 N ST STE N, Sacramento, CA 95816
+
+To unsubscribe: ${unsubLink}`;
+
+              const res24h = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+                  "api-key": brevoKeyReaction,
+                },
+                body: JSON.stringify({
+                  sender: { name: senderNameReaction, email: senderEmailReaction },
+                  replyTo: { email: senderEmailReaction, name: senderNameReaction },
+                  to: [{ email: effectiveEmail, name: order.customer_name }],
+                  subject: `Got your song? We'd love to see the reaction 🎵`,
+                  htmlContent: html24h,
+                  textContent: text24h,
+                  headers: {
+                    "Message-ID": `<reaction24h.${order.id}.${Date.now()}@personalsonggifts.com>`,
+                    "X-Entity-Ref-ID": order.id,
+                    "Precedence": "transactional",
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <${unsubLink}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                  }
+                }),
+              });
+
+              if (!res24h.ok) {
+                const errText = await res24h.text();
+                console.error(`[REACTION-EMAIL] 24h email failed for order ${order.id}:`, errText);
+                reactionEmailResults.push({ orderId: order.id, phase: "24h", success: false, error: errText });
+                continue;
+              }
+
+              await supabase.from("orders").update({ reaction_email_24h_sent_at: new Date().toISOString() }).eq("id", order.id);
+              try {
+                await supabase.from("order_activity_log").insert({
+                  entity_type: "order", entity_id: order.id, event_type: "reaction_email_24h_sent",
+                  actor: "system", details: `Reaction video request (24h) sent to ${effectiveEmail}`,
+                });
+              } catch (_) { /* never let logging break the flow */ }
+
+              console.log(`[REACTION-EMAIL] ✅ 24h email sent for order ${order.id} → ${effectiveEmail}`);
+              reactionEmailResults.push({ orderId: order.id, phase: "24h", success: true });
+            } catch (e) {
+              console.error(`[REACTION-EMAIL] 24h error for order ${order.id}:`, e);
+              reactionEmailResults.push({ orderId: order.id, phase: "24h", success: false, error: e instanceof Error ? e.message : "Unknown" });
+            }
+          }
+
+          // ---- Phase B: 72h email ----
+          const { data: eligible72h } = await supabase
+            .from("orders")
+            .select("id, customer_name, customer_email, customer_email_override, recipient_name, occasion")
+            .eq("status", "delivered")
+            .not("delivered_at", "is", null)
+            .lte("delivered_at", cutoff72hReaction)
+            .is("reaction_email_72h_sent_at", null)
+            .not("reaction_email_24h_sent_at", "is", null) // Must have received 24h first
+            .is("reaction_submitted_at", null)
+            .is("dismissed_at", null)
+            .order("delivered_at", { ascending: true })
+            .limit(MAX_REACTION_EMAILS_PER_PHASE);
+
+          console.log(`[REACTION-EMAIL] Phase B (72h): ${eligible72h?.length || 0} eligible`);
+
+          for (const order of eligible72h || []) {
+            try {
+              const effectiveEmail = (order as any).customer_email_override || order.customer_email;
+              if (suppressedReactionSet.has(effectiveEmail.toLowerCase())) {
+                reactionEmailResults.push({ orderId: order.id, phase: "72h", success: false, error: "Email suppressed" });
+                continue;
+              }
+
+              const firstName = order.customer_name?.split(" ")[0] || "there";
+              const shareLink = `https://personalsonggifts.lovable.app/share-reaction?utm_source=email&utm_medium=postpurchase&utm_campaign=video_72h`;
+              const unsubLink = `https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}`;
+
+              const html72h = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 16px 0;">Hi ${firstName},</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 16px 0;">One last thought — we recently featured a video from Bethany, who ordered a song for her mom's birthday. She recorded the moment her mom heard it for the first time, and the reaction was beautiful. We featured it on our site, and Bethany earned a $50 gift card.</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 16px 0;">If you have a reaction video of ${order.recipient_name} hearing their song, we'd genuinely love to see it.</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 8px 0;">Submit your video here:</p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 24px 0;"><a href="${shareLink}" style="color:#1a73e8;">${shareLink}</a></p>
+<p style="font-size:16px;line-height:1.6;color:#222;margin:0 0 32px 0;">Warmly,<br>The Personal Song Gifts Team</p>
+<p style="font-size:12px;color:#888;margin:0;">Personal Song Gifts &middot; 2108 N ST STE N, Sacramento, CA 95816<br><a href="${unsubLink}" style="color:#888;">Unsubscribe</a></p>
+</div>
+</body>
+</html>`;
+
+              const text72h = `Hi ${firstName},
+
+One last thought — we recently featured a video from Bethany, who ordered a song for her mom's birthday. She recorded the moment her mom heard it for the first time, and the reaction was beautiful. We featured it on our site, and Bethany earned a $50 gift card.
+
+If you have a reaction video of ${order.recipient_name} hearing their song, we'd genuinely love to see it.
+
+Submit your video here:
+${shareLink}
+
+Warmly,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts · 2108 N ST STE N, Sacramento, CA 95816
+
+To unsubscribe: ${unsubLink}`;
+
+              const res72h = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+                  "api-key": brevoKeyReaction,
+                },
+                body: JSON.stringify({
+                  sender: { name: senderNameReaction, email: senderEmailReaction },
+                  replyTo: { email: senderEmailReaction, name: senderNameReaction },
+                  to: [{ email: effectiveEmail, name: order.customer_name }],
+                  subject: `One more nudge (+ how Bethany earned $50 with her reaction video)`,
+                  htmlContent: html72h,
+                  textContent: text72h,
+                  headers: {
+                    "Message-ID": `<reaction72h.${order.id}.${Date.now()}@personalsonggifts.com>`,
+                    "X-Entity-Ref-ID": order.id,
+                    "Precedence": "transactional",
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <${unsubLink}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                  }
+                }),
+              });
+
+              if (!res72h.ok) {
+                const errText = await res72h.text();
+                console.error(`[REACTION-EMAIL] 72h email failed for order ${order.id}:`, errText);
+                reactionEmailResults.push({ orderId: order.id, phase: "72h", success: false, error: errText });
+                continue;
+              }
+
+              await supabase.from("orders").update({ reaction_email_72h_sent_at: new Date().toISOString() }).eq("id", order.id);
+              try {
+                await supabase.from("order_activity_log").insert({
+                  entity_type: "order", entity_id: order.id, event_type: "reaction_email_72h_sent",
+                  actor: "system", details: `Reaction video request (72h) sent to ${effectiveEmail}`,
+                });
+              } catch (_) { /* never let logging break the flow */ }
+
+              console.log(`[REACTION-EMAIL] ✅ 72h email sent for order ${order.id} → ${effectiveEmail}`);
+              reactionEmailResults.push({ orderId: order.id, phase: "72h", success: true });
+            } catch (e) {
+              console.error(`[REACTION-EMAIL] 72h error for order ${order.id}:`, e);
+              reactionEmailResults.push({ orderId: order.id, phase: "72h", success: false, error: e instanceof Error ? e.message : "Unknown" });
+            }
+          }
+
+          if (reactionEmailResults.length > 0) {
+            console.log(`[REACTION-EMAIL] Processed ${reactionEmailResults.length} reaction emails`);
+          }
+          results.reactionEmails = reactionEmailResults;
+        } // end if brevoKeyReaction
+      } // end kill-switch else
+    } catch (e) {
+      console.error("[REACTION-EMAIL] Reaction email queue error:", e);
+    }
+
     return new Response(JSON.stringify(results), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
