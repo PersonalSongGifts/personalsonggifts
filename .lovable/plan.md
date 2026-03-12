@@ -1,39 +1,21 @@
 
 
-## Fix: Order EE84BC3C "Song Not Found" on Song Page
+## Issue: ReactionEmailPanel Not Visible
 
-### Root Cause
+The component `ReactionEmailPanel` **is correctly wired** in the codebase — it sits between `ValentineRemarketingPanel` and `EmailTemplates` in the Emails tab. The code, types, and imports all look correct.
 
-The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
+Your screenshot appears to be from the **published production site** (personalsonggifts.lovable.app), which may not have the latest deploy. The **preview** should show the panel.
 
-The `song_url` is valid and present. The fix has two parts:
+However, there's one potential rendering issue: if the `automation-get-settings` endpoint call fails (e.g., CORS or network error in the preview), the component still renders — it defaults `enabled` to `false` and shows the UI. So that shouldn't cause it to disappear.
 
-### Part 1: Immediate Database Fix
+### What to do
 
-Update this specific order's status to `delivered` so the song page works now:
+No code changes needed. The component exists and is correctly placed. To verify:
 
-```sql
-UPDATE orders
-SET status = 'delivered',
-    delivered_at = now(),
-    delivery_status = 'sent'
-WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
-```
+1. Open the **preview URL** (not the published site)
+2. Navigate to `/admin`
+3. Log in and go to the **Emails** tab
+4. Scroll down — the "Reaction Video Emails" card should appear between Valentine Remarketing and Email Templates
 
-### Part 2: Prevent Future Occurrences
-
-Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
-
-**File:** `supabase/functions/get-song-page/index.ts`
-
-Change the status check from:
-```typescript
-if (!["delivered", "ready"].includes(order.status) || !order.song_url)
-```
-to:
-```typescript
-if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
-```
-
-This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
+If you want this live on the published site, you'll need to **publish** the latest version.
 
