@@ -107,6 +107,9 @@ const LANGUAGE_MARKERS: Record<string, RegExp[]> = {
   hi: [
     /\b(hai|hain|ka|ki|ke|se|ko|ne|par|mein|kya|aur|ya|nahi|nahin|bhi|jo|yeh|woh|tera|mera|tumhara|pyaar|dil|zindagi|khushi)\b/gi,
   ],
+  tl: [
+    /\b(ang|ng|sa|na|at|ay|ko|mo|ka|mga|nang|kung|para|ito|iyon|aking|iyong|puso|mahal|ikaw|ako|sayo|akin|natin|atin|tayo|sana|lagi|naman)\b/gi,
+  ],
 };
 
 // ============= HELPER FUNCTIONS =============

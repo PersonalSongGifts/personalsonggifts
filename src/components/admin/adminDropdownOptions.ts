@@ -54,6 +54,7 @@ export const languageOptions = [
   { id: "sr", label: "Serbian" },
   { id: "hr", label: "Croatian" },
   { id: "hi", label: "Hindi" },
+  { id: "tl", label: "Filipino (Tagalog)" },
 ];
 
 // Helper to get label from ID
