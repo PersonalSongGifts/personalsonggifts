@@ -15,6 +15,7 @@ export const LANGUAGE_LABELS: Record<string, string> = {
   sr: "Serbian",
   hr: "Croatian",
   hi: "Hindi",
+  tl: "Filipino (Tagalog)",
 };
 
 export const SUPPORTED_LANGUAGE_CODES = Object.keys(LANGUAGE_LABELS);
