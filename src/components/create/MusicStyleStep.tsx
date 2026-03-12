@@ -50,6 +50,7 @@ const languageOptions = [
   { id: "sr", label: "Serbian" },
   { id: "hr", label: "Croatian" },
   { id: "hi", label: "Hindi" },
+  { id: "tl", label: "Filipino (Tagalog)" },
 ];
 
 const MusicStyleStep = ({ formData, updateFormData, errors, onAutoAdvance }: MusicStyleStepProps) => {

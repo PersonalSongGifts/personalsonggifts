@@ -15,6 +15,7 @@ export const LANGUAGE_LABELS: Record<string, string> = {
   sr: "Serbian",
   hr: "Croatian",
   hi: "Hindi",
+  tl: "Filipino (Tagalog)",
 };
 
 export const SUPPORTED_LANGUAGE_CODES = Object.keys(LANGUAGE_LABELS);
@@ -57,6 +58,10 @@ const LANGUAGE_SPECIFIC_RULES: Record<string, string> = {
 - Keep names in their original Latin characters (do not transliterate)
 - Embrace natural Hindi emotional expressions and idioms
 - Use natural Hindi grammar and sentence structure, not translated English`,
+  tl: `- Write lyrics in Tagalog (Filipino). Use natural conversational Tagalog suitable for a heartfelt song.
+- Keep names in their original Latin characters
+- Use natural Tagalog emotional expressions and idioms
+- Embrace the warmth and sincerity characteristic of Filipino songwriting`,
 };
 
 // Script detection markers
@@ -101,6 +106,9 @@ const LANGUAGE_MARKERS: Record<string, RegExp[]> = {
   ],
   hi: [
     /\b(hai|hain|ka|ki|ke|se|ko|ne|par|mein|kya|aur|ya|nahi|nahin|bhi|jo|yeh|woh|tera|mera|tumhara|pyaar|dil|zindagi|khushi)\b/gi,
+  ],
+  tl: [
+    /\b(ang|ng|sa|na|at|ay|ko|mo|ka|mga|nang|kung|para|ito|iyon|aking|iyong|puso|mahal|ikaw|ako|sayo|akin|natin|atin|tayo|sana|lagi|naman)\b/gi,
   ],
 };
 
