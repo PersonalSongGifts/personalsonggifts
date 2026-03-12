@@ -58,6 +58,10 @@ const LANGUAGE_SPECIFIC_RULES: Record<string, string> = {
 - Keep names in their original Latin characters (do not transliterate)
 - Embrace natural Hindi emotional expressions and idioms
 - Use natural Hindi grammar and sentence structure, not translated English`,
+  tl: `- Write lyrics in Tagalog (Filipino). Use natural conversational Tagalog suitable for a heartfelt song.
+- Keep names in their original Latin characters
+- Use natural Tagalog emotional expressions and idioms
+- Embrace the warmth and sincerity characteristic of Filipino songwriting`,
 };
 
 // Script detection markers
