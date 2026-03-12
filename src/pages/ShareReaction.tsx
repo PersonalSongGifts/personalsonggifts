@@ -161,6 +161,43 @@ export default function ShareReaction() {
           </p>
         </section>
 
+        {/* Bethany's Story */}
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold text-primary">How Bethany Earned $50</h2>
+          <div className="rounded-xl border bg-muted/30 p-5 flex gap-4 items-start">
+            <div className="flex-shrink-0 w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-lg">
+              BT
+            </div>
+            <div className="space-y-2">
+              <p className="text-foreground leading-relaxed">
+                Bethany ordered a song for her mom's birthday. When her mom heard it for the first time, the tears started flowing — and Bethany caught it all on camera. She submitted the video, we featured it on our site, and she received a <strong>$50 gift card</strong> as a thank you.
+              </p>
+              <p className="text-sm text-muted-foreground italic">
+                Your reaction could be next.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Incentive Rules */}
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold text-primary">What You Should Know</h2>
+          <ul className="space-y-2 text-foreground">
+            {[
+              "If we feature your video, you'll receive a $50 gift card or song reimbursement",
+              "Videos must show a genuine reaction to a Personal Song Gifts song",
+              "Must be well-lit and audible — phone quality is perfectly fine",
+              "Not every submission is guaranteed to be featured or compensated",
+              "By submitting, you confirm everyone visible in the video consents to being filmed and shared",
+            ].map((rule, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-primary mt-1 flex-shrink-0" />
+                <span>{rule}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         {/* How It Works */}
         <section className="space-y-5">
           <h2 className="text-xl font-semibold text-primary">How It Works</h2>
@@ -168,7 +205,7 @@ export default function ShareReaction() {
             {[
               { icon: Upload, label: "Upload your reaction video below" },
               { icon: Video, label: "We may feature it on our website or social media" },
-              { icon: Gift, label: "If we feature your video, you may be eligible for a gift card" },
+              { icon: Gift, label: "If we feature your video, you'll receive a $50 gift card" },
             ].map((step, i) => (
               <div key={i} className="flex items-start gap-4">
                 <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
@@ -328,7 +365,7 @@ export default function ShareReaction() {
                 className="mt-0.5"
               />
               <label htmlFor="consent" className="text-sm text-foreground leading-snug cursor-pointer">
-                I give permission for Personal Song Gifts to use this video in marketing, on our website, or on social media.
+                I give permission for Personal Song Gifts to use, edit, and share this video in marketing, on our website, or on social media. I confirm everyone visible in the video is okay with being filmed and shared.
               </label>
             </div>
 
