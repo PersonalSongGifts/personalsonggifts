@@ -1,39 +1,32 @@
 
 
-## Fix: Order EE84BC3C "Song Not Found" on Song Page
+## Add Filipino (Tagalog) Language Option
 
-### Root Cause
+Additive-only change across 3 files. No schema changes needed — `lyrics_language_code` already accepts any text value.
 
-The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
+### Changes
 
-The `song_url` is valid and present. The fix has two parts:
+**1. `supabase/functions/_shared/language-utils.ts`**
+- Add `tl: "Filipino (Tagalog)"` to `LANGUAGE_LABELS`
+- Add Tagalog-specific rules to `LANGUAGE_SPECIFIC_RULES`:
+  - "Write lyrics in Tagalog (Filipino). Use natural conversational Tagalog suitable for a heartfelt song."
+  - "Keep names in original Latin characters"
+  - "Use natural Tagalog emotional expressions and idioms"
+- Add Tagalog word markers to `LANGUAGE_MARKERS` for QA detection (common Tagalog function words: `ang, ng, sa, na, at, ay, ko, mo, ka, mga, nang, kung, para, ito, iyon, aking, iyong, puso, mahal`)
 
-### Part 1: Immediate Database Fix
+**2. `src/components/create/MusicStyleStep.tsx`**
+- Add `{ id: "tl", label: "Filipino (Tagalog)" }` to `languageOptions` array
 
-Update this specific order's status to `delivered` so the song page works now:
+**3. `src/components/admin/adminDropdownOptions.ts`**
+- Add `{ id: "tl", label: "Filipino (Tagalog)" }` to `languageOptions` array
 
-```sql
-UPDATE orders
-SET status = 'delivered',
-    delivered_at = now(),
-    delivery_status = 'sent'
-WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
-```
+### What does NOT change
+- No database schema changes (field is free-text)
+- No Stripe/PayPal checkout logic
+- No order status machine or scheduler
+- No email delivery logic
+- Generation pipeline already passes `lyrics_language_code` through — `tl` will flow through `buildLanguagePromptBlock()` automatically using the new label and rules
 
-### Part 2: Prevent Future Occurrences
-
-Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
-
-**File:** `supabase/functions/get-song-page/index.ts`
-
-Change the status check from:
-```typescript
-if (!["delivered", "ready"].includes(order.status) || !order.song_url)
-```
-to:
-```typescript
-if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
-```
-
-This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
+### Pipeline compatibility
+The generation functions (`automation-generate-lyrics`, `automation-trigger`) read `lyrics_language_code` from the order/lead and pass it to `buildLanguagePromptBlock()`. Adding the label and rules to `language-utils.ts` is sufficient — no pipeline code changes needed.
 
