@@ -127,13 +127,37 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
     }
   };
 
+  const handleSaveCutoff = async () => {
+    const days = parseInt(cutoffInput, 10);
+    if (isNaN(days) || days < 1 || days > 90) {
+      toast({ title: "Invalid value", description: "Enter a number between 1 and 90.", variant: "destructive" });
+      return;
+    }
+    setSavingCutoff(true);
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/automation-get-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": adminPassword },
+        body: JSON.stringify({ key: "reaction_email_cutoff_days", value: String(days) }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setCutoffDays(days);
+      setEditingCutoff(false);
+      toast({ title: "Cutoff Updated", description: `Reaction emails now target orders from the last ${days} days.` });
+    } catch (err) {
+      toast({ title: "Failed to save", description: String(err), variant: "destructive" });
+    } finally {
+      setSavingCutoff(false);
+    }
+  };
+
   // Compute stats from allOrders
   const sent24h = allOrders.filter((o) => (o as any).reaction_email_24h_sent_at).length;
   const sent72h = allOrders.filter((o) => (o as any).reaction_email_72h_sent_at).length;
   const reactionsReceived = allOrders.filter((o) => o.reaction_submitted_at).length;
 
   const now = Date.now();
-  const tenDaysAgo = now - 10 * 24 * 60 * 60 * 1000;
+  const cutoffMs = now - cutoffDays * 24 * 60 * 60 * 1000;
   const eligible = allOrders.filter(
     (o) =>
       o.status === "delivered" &&
@@ -142,7 +166,7 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
       !(o as any).reaction_email_24h_sent_at &&
       !o.dismissed_at &&
       new Date(o.delivered_at).getTime() < now - 24 * 60 * 60 * 1000 &&
-      new Date(o.delivered_at).getTime() > tenDaysAgo
+      new Date(o.delivered_at).getTime() > cutoffMs
   ).length;
 
   const isEnabled = enabled === true;
@@ -195,7 +219,7 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
         </div>
         <p className="text-xs text-muted-foreground mt-1">
           Sends two emails after song delivery (24h + 72h) asking customers to submit reaction videos. 
-          Only targets orders delivered within the last <strong>10 days</strong>. Defaults to <strong>OFF</strong>. Max 5 per phase per cron run. Skips orders with existing reactions or suppressed emails.
+          Only targets orders delivered within the last <strong>{cutoffDays} days</strong>. Defaults to <strong>OFF</strong>. Max 5 per phase per cron run. Skips orders with existing reactions or suppressed emails.
         </p>
       </CardHeader>
 
