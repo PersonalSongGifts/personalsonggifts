@@ -244,6 +244,38 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
           </div>
         </div>
 
+        {/* Cutoff Setting */}
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
+          <Settings2 className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="text-sm text-muted-foreground">Lookback window:</span>
+          {editingCutoff ? (
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={90}
+                value={cutoffInput}
+                onChange={(e) => setCutoffInput(e.target.value)}
+                className="w-16 h-7 text-sm"
+              />
+              <span className="text-sm text-muted-foreground">days</span>
+              <Button size="sm" variant="default" className="h-7 text-xs" onClick={handleSaveCutoff} disabled={savingCutoff}>
+                {savingCutoff ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingCutoff(false); setCutoffInput(String(cutoffDays)); }}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditingCutoff(true)}
+              className="text-sm font-medium text-foreground underline decoration-dashed underline-offset-2 cursor-pointer hover:text-primary"
+            >
+              {cutoffDays} days
+            </button>
+          )}
+        </div>
+
         {/* Email Previews */}
         <div className="space-y-2">
           <Collapsible open={show24hPreview} onOpenChange={setShow24hPreview}>
