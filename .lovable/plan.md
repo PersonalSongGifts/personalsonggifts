@@ -1,21 +1,24 @@
 
 
-## Issue: ReactionEmailPanel Not Visible
+## Add 10-Day Cutoff to Reaction Video Emails
 
-The component `ReactionEmailPanel` **is correctly wired** in the codebase — it sits between `ValentineRemarketingPanel` and `EmailTemplates` in the Emails tab. The code, types, and imports all look correct.
+### Changes
 
-Your screenshot appears to be from the **published production site** (personalsonggifts.lovable.app), which may not have the latest deploy. The **preview** should show the panel.
+**1. Edge function: `supabase/functions/process-scheduled-deliveries/index.ts`**
 
-However, there's one potential rendering issue: if the `automation-get-settings` endpoint call fails (e.g., CORS or network error in the preview), the component still renders — it defaults `enabled` to `false` and shows the UI. So that shouldn't cause it to disappear.
+After line 1410 (where `cutoff72hReaction` is defined), add:
+```typescript
+const cutoffOlderReaction = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+```
 
-### What to do
+Then add `.gte("delivered_at", cutoffOlderReaction)` to both queries:
+- Phase A (24h) query at ~line 1418
+- Phase B (72h) query (similar structure further down)
 
-No code changes needed. The component exists and is correctly placed. To verify:
+This ensures orders delivered more than 10 days ago are completely skipped.
 
-1. Open the **preview URL** (not the published site)
-2. Navigate to `/admin`
-3. Log in and go to the **Emails** tab
-4. Scroll down — the "Reaction Video Emails" card should appear between Valentine Remarketing and Email Templates
+**2. Admin UI: `src/components/admin/ReactionEmailPanel.tsx`**
 
-If you want this live on the published site, you'll need to **publish** the latest version.
+- Update the "Eligible Now" stat calculation to also apply the 10-day window
+- Add a note in the panel description: "Only targets orders delivered within the last 10 days."
 
