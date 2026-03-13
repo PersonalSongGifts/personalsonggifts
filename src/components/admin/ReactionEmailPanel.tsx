@@ -188,7 +188,7 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
         </div>
         <p className="text-xs text-muted-foreground mt-1">
           Sends two emails after song delivery (24h + 72h) asking customers to submit reaction videos. 
-          Defaults to <strong>OFF</strong>. Max 5 per phase per cron run. Skips orders with existing reactions or suppressed emails.
+          Only targets orders delivered within the last <strong>10 days</strong>. Defaults to <strong>OFF</strong>. Max 5 per phase per cron run. Skips orders with existing reactions or suppressed emails.
         </p>
       </CardHeader>
 

@@ -1529,6 +1529,7 @@ To unsubscribe: ${unsubLink}`;
             .eq("status", "delivered")
             .not("delivered_at", "is", null)
             .lte("delivered_at", cutoff72hReaction)
+            .gte("delivered_at", cutoffMaxReaction)
             .is("reaction_email_72h_sent_at", null)
             .not("reaction_email_24h_sent_at", "is", null) // Must have received 24h first
             .is("reaction_submitted_at", null)
