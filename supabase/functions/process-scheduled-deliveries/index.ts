@@ -1408,6 +1408,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
           const cutoff24hReaction = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           const cutoff72hReaction = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+          const cutoffMaxReaction = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
 
           // ---- Phase A: 24h email ----
           const { data: eligible24h } = await supabase
