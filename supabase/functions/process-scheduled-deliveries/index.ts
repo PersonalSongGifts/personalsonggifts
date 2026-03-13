@@ -1381,15 +1381,17 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     const MAX_REACTION_EMAILS_PER_PHASE = 5;
 
     try {
-      // Kill-switch check
-      const { data: reactionSetting } = await supabase
+      // Fetch reaction email settings (enabled + cutoff days)
+      const { data: reactionSettings } = await supabase
         .from("admin_settings")
-        .select("value")
-        .eq("key", "reaction_email_enabled")
-        .maybeSingle();
+        .select("key, value")
+        .in("key", ["reaction_email_enabled", "reaction_email_cutoff_days"]);
+
+      const reactionSettingsMap: Record<string, string> = {};
+      (reactionSettings || []).forEach((s: { key: string; value: string }) => { reactionSettingsMap[s.key] = s.value; });
 
       // Default to OFF (false) — nothing sends until admin explicitly enables
-      if (!reactionSetting || reactionSetting.value !== "true") {
+      if (reactionSettingsMap.reaction_email_enabled !== "true") {
         console.log("[REACTION-EMAIL] Skipped — disabled via admin settings (default OFF)");
         results.reactionEmails = { skipped: true, reason: "disabled" };
       } else {
@@ -1406,9 +1408,12 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
             .select("email");
           const suppressedReactionSet = new Set((suppressedReaction || []).map((s: { email: string }) => s.email.toLowerCase()));
 
+          const reactionCutoffDays = parseInt(reactionSettingsMap.reaction_email_cutoff_days || "10", 10);
+          console.log(`[REACTION-EMAIL] Using cutoff: ${reactionCutoffDays} days`);
+
           const cutoff24hReaction = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           const cutoff72hReaction = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-          const cutoffMaxReaction = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+          const cutoffMaxReaction = new Date(Date.now() - reactionCutoffDays * 24 * 60 * 60 * 1000).toISOString();
 
           // ---- Phase A: 24h email ----
           const { data: eligible24h } = await supabase

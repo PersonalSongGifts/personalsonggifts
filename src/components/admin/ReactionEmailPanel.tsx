@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, RefreshCw, Mail, Video, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, RefreshCw, Mail, Video, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -60,6 +61,10 @@ const email72hPreview = `<!DOCTYPE html>
 
 export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [cutoffDays, setCutoffDays] = useState(10);
+  const [editingCutoff, setEditingCutoff] = useState(false);
+  const [cutoffInput, setCutoffInput] = useState("10");
+  const [savingCutoff, setSavingCutoff] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [show24hPreview, setShow24hPreview] = useState(false);
@@ -77,8 +82,10 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      // Default to OFF (false) — nothing sends until admin enables
       setEnabled(data.reaction_email_enabled === "true");
+      const days = parseInt(data.reaction_email_cutoff_days || "10", 10);
+      setCutoffDays(days);
+      setCutoffInput(String(days));
     } catch (err) {
       console.error("Failed to fetch reaction email setting:", err);
       setEnabled(false);
@@ -120,13 +127,37 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
     }
   };
 
+  const handleSaveCutoff = async () => {
+    const days = parseInt(cutoffInput, 10);
+    if (isNaN(days) || days < 1 || days > 90) {
+      toast({ title: "Invalid value", description: "Enter a number between 1 and 90.", variant: "destructive" });
+      return;
+    }
+    setSavingCutoff(true);
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/automation-get-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": adminPassword },
+        body: JSON.stringify({ key: "reaction_email_cutoff_days", value: String(days) }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setCutoffDays(days);
+      setEditingCutoff(false);
+      toast({ title: "Cutoff Updated", description: `Reaction emails now target orders from the last ${days} days.` });
+    } catch (err) {
+      toast({ title: "Failed to save", description: String(err), variant: "destructive" });
+    } finally {
+      setSavingCutoff(false);
+    }
+  };
+
   // Compute stats from allOrders
   const sent24h = allOrders.filter((o) => (o as any).reaction_email_24h_sent_at).length;
   const sent72h = allOrders.filter((o) => (o as any).reaction_email_72h_sent_at).length;
   const reactionsReceived = allOrders.filter((o) => o.reaction_submitted_at).length;
 
   const now = Date.now();
-  const tenDaysAgo = now - 10 * 24 * 60 * 60 * 1000;
+  const cutoffMs = now - cutoffDays * 24 * 60 * 60 * 1000;
   const eligible = allOrders.filter(
     (o) =>
       o.status === "delivered" &&
@@ -135,7 +166,7 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
       !(o as any).reaction_email_24h_sent_at &&
       !o.dismissed_at &&
       new Date(o.delivered_at).getTime() < now - 24 * 60 * 60 * 1000 &&
-      new Date(o.delivered_at).getTime() > tenDaysAgo
+      new Date(o.delivered_at).getTime() > cutoffMs
   ).length;
 
   const isEnabled = enabled === true;
@@ -188,7 +219,7 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
         </div>
         <p className="text-xs text-muted-foreground mt-1">
           Sends two emails after song delivery (24h + 72h) asking customers to submit reaction videos. 
-          Only targets orders delivered within the last <strong>10 days</strong>. Defaults to <strong>OFF</strong>. Max 5 per phase per cron run. Skips orders with existing reactions or suppressed emails.
+          Only targets orders delivered within the last <strong>{cutoffDays} days</strong>. Defaults to <strong>OFF</strong>. Max 5 per phase per cron run. Skips orders with existing reactions or suppressed emails.
         </p>
       </CardHeader>
 
@@ -211,6 +242,38 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
             <div className="text-2xl font-bold text-green-600">{reactionsReceived}</div>
             <div className="text-xs text-muted-foreground mt-0.5">Reactions</div>
           </div>
+        </div>
+
+        {/* Cutoff Setting */}
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
+          <Settings2 className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="text-sm text-muted-foreground">Lookback window:</span>
+          {editingCutoff ? (
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={90}
+                value={cutoffInput}
+                onChange={(e) => setCutoffInput(e.target.value)}
+                className="w-16 h-7 text-sm"
+              />
+              <span className="text-sm text-muted-foreground">days</span>
+              <Button size="sm" variant="default" className="h-7 text-xs" onClick={handleSaveCutoff} disabled={savingCutoff}>
+                {savingCutoff ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingCutoff(false); setCutoffInput(String(cutoffDays)); }}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditingCutoff(true)}
+              className="text-sm font-medium text-foreground underline decoration-dashed underline-offset-2 cursor-pointer hover:text-primary"
+            >
+              {cutoffDays} days
+            </button>
+          )}
         </div>
 
         {/* Email Previews */}
