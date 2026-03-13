@@ -60,6 +60,10 @@ const email72hPreview = `<!DOCTYPE html>
 
 export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [cutoffDays, setCutoffDays] = useState(10);
+  const [editingCutoff, setEditingCutoff] = useState(false);
+  const [cutoffInput, setCutoffInput] = useState("10");
+  const [savingCutoff, setSavingCutoff] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [show24hPreview, setShow24hPreview] = useState(false);
@@ -77,8 +81,10 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      // Default to OFF (false) — nothing sends until admin enables
       setEnabled(data.reaction_email_enabled === "true");
+      const days = parseInt(data.reaction_email_cutoff_days || "10", 10);
+      setCutoffDays(days);
+      setCutoffInput(String(days));
     } catch (err) {
       console.error("Failed to fetch reaction email setting:", err);
       setEnabled(false);
