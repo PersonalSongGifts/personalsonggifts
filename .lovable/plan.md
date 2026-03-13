@@ -1,24 +1,39 @@
 
 
-## Add 10-Day Cutoff to Reaction Video Emails
+## Fix: Order EE84BC3C "Song Not Found" on Song Page
 
-### Changes
+### Root Cause
 
-**1. Edge function: `supabase/functions/process-scheduled-deliveries/index.ts`**
+The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
 
-After line 1410 (where `cutoff72hReaction` is defined), add:
-```typescript
-const cutoffOlderReaction = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+The `song_url` is valid and present. The fix has two parts:
+
+### Part 1: Immediate Database Fix
+
+Update this specific order's status to `delivered` so the song page works now:
+
+```sql
+UPDATE orders
+SET status = 'delivered',
+    delivered_at = now(),
+    delivery_status = 'sent'
+WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
 ```
 
-Then add `.gte("delivered_at", cutoffOlderReaction)` to both queries:
-- Phase A (24h) query at ~line 1418
-- Phase B (72h) query (similar structure further down)
+### Part 2: Prevent Future Occurrences
 
-This ensures orders delivered more than 10 days ago are completely skipped.
+Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
 
-**2. Admin UI: `src/components/admin/ReactionEmailPanel.tsx`**
+**File:** `supabase/functions/get-song-page/index.ts`
 
-- Update the "Eligible Now" stat calculation to also apply the 10-day window
-- Add a note in the panel description: "Only targets orders delivered within the last 10 days."
+Change the status check from:
+```typescript
+if (!["delivered", "ready"].includes(order.status) || !order.song_url)
+```
+to:
+```typescript
+if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
+```
+
+This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
 

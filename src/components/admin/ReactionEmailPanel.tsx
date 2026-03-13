@@ -126,6 +126,7 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
   const reactionsReceived = allOrders.filter((o) => o.reaction_submitted_at).length;
 
   const now = Date.now();
+  const tenDaysAgo = now - 10 * 24 * 60 * 60 * 1000;
   const eligible = allOrders.filter(
     (o) =>
       o.status === "delivered" &&
@@ -133,7 +134,8 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
       !o.reaction_submitted_at &&
       !(o as any).reaction_email_24h_sent_at &&
       !o.dismissed_at &&
-      new Date(o.delivered_at).getTime() < now - 24 * 60 * 60 * 1000
+      new Date(o.delivered_at).getTime() < now - 24 * 60 * 60 * 1000 &&
+      new Date(o.delivered_at).getTime() > tenDaysAgo
   ).length;
 
   const isEnabled = enabled === true;
@@ -186,7 +188,7 @@ export function ReactionEmailPanel({ adminPassword, allOrders }: Props) {
         </div>
         <p className="text-xs text-muted-foreground mt-1">
           Sends two emails after song delivery (24h + 72h) asking customers to submit reaction videos. 
-          Defaults to <strong>OFF</strong>. Max 5 per phase per cron run. Skips orders with existing reactions or suppressed emails.
+          Only targets orders delivered within the last <strong>10 days</strong>. Defaults to <strong>OFF</strong>. Max 5 per phase per cron run. Skips orders with existing reactions or suppressed emails.
         </p>
       </CardHeader>
 
