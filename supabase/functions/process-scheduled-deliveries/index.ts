@@ -1417,6 +1417,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
             .eq("status", "delivered")
             .not("delivered_at", "is", null)
             .lte("delivered_at", cutoff24hReaction)
+            .gte("delivered_at", cutoffMaxReaction)
             .is("reaction_email_24h_sent_at", null)
             .is("reaction_submitted_at", null)
             .is("dismissed_at", null)
