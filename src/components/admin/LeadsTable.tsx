@@ -1054,7 +1054,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
         </Card>
       ) : (
         <div className="space-y-4">
-          {filteredLeads.map((lead) => (
+          {filteredLeads.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map((lead) => (
             <Card 
               key={lead.id} 
               className={`hover:shadow-md transition-shadow ${lead.dismissed_at ? 'opacity-60 bg-muted/50' : ''} ${lead.status === "converted" ? 'border-2 border-green-500 bg-green-50/30 dark:bg-green-950/20' : ''}`}
