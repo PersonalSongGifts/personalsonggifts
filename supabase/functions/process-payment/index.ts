@@ -2,6 +2,7 @@ import Stripe from "npm:stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
+import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/lead-order-matching.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -231,14 +232,31 @@ Deno.serve(async (req) => {
 
     await logActivity(supabase, "order", newOrder.id, "order_created", "system", `New order via process-payment, ${newOrder.pricing_tier}, $${priceCents / 100}`);
 
-    // Mark matching lead as converted (non-blocking)
+    // Mark only the matching lead as converted (non-blocking)
     try {
-      const { data: matchingLead } = await supabase
+      const orderFingerprint = buildLeadFingerprintFromInput({
+        recipientName: metadata.recipientName || "",
+        recipientType: metadata.recipientType || "",
+        occasion: metadata.occasion || "",
+        genre: metadata.genre || "",
+        singerPreference: metadata.singerPreference || "",
+        specialQualities: metadata.specialQualities || "",
+        favoriteMemory: metadata.favoriteMemory || "",
+        specialMessage: metadata.specialMessage || "",
+        lyricsLanguageCode: metadata.lyricsLanguageCode || "en",
+      });
+
+      const { data: leadCandidates } = await supabase
         .from("leads")
-        .select("id")
-        .eq("email", (metadata.customerEmail || session.customer_email || "").toLowerCase())
-        .eq("status", "lead")
-        .single();
+        .select("id, email, captured_at, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, lyrics_language_code")
+        .ilike("email", (metadata.customerEmail || session.customer_email || "").toLowerCase())
+        .neq("status", "converted")
+        .order("captured_at", { ascending: false })
+        .limit(20);
+
+      const matchingLead = (leadCandidates || []).find((lead) =>
+        new Date(lead.captured_at).getTime() <= Date.now() && buildLeadFingerprint(lead) === orderFingerprint
+      );
 
       if (matchingLead) {
         await supabase
