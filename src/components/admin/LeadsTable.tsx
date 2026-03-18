@@ -992,7 +992,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               <SelectItem value="converted">Converted</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={qualityFilter} onValueChange={setQualityFilter}>
+          <Select value={qualityFilter} onValueChange={(v) => { setQualityFilter(v); setCurrentPage(0); }}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Quality" />
             </SelectTrigger>
