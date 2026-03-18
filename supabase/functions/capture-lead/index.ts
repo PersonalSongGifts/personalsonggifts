@@ -361,23 +361,18 @@ Deno.serve(async (req) => {
         .eq("email", normalizedEmail);
     }
 
-    // Check if lead already exists with this email (skip for admin testers - they were deleted above)
+    // Reuse only an active lead for this email; converted leads should not block a new lead later
     if (!isAdminTester) {
       const { data: existingLead } = await supabase
         .from("leads")
         .select("id, status")
         .eq("email", normalizedEmail)
+        .neq("status", "converted")
+        .order("captured_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (existingLead) {
-        // Lead already exists - update it with latest info (unless already converted)
-        if (existingLead.status === "converted") {
-          console.log("Lead already converted, skipping update:", normalizedEmail);
-          return new Response(
-            JSON.stringify({ success: true, message: "Lead already converted" }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
 
         const { error: updateError } = await supabase
           .from("leads")

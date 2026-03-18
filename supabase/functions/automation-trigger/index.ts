@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,23 +86,27 @@ Deno.serve(async (req) => {
     
     console.log(`[TRIGGER] Found ${entityType}: ${recipientName} (${email})`);
 
-    // Purchase guard: skip automation for leads that already have a paid order
+    // Purchase guard: only auto-convert if this exact lead already became an order after capture
     if (entityType === "lead") {
-      const { data: existingOrder } = await supabase
+      const { data: candidateOrders } = await supabase
         .from("orders")
-        .select("id")
-        .eq("customer_email", email)
+        .select("id, created_at, customer_email, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, lyrics_language_code")
+        .ilike("customer_email", email)
         .neq("status", "cancelled")
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(20);
 
-      if (existingOrder) {
-        console.log(`[TRIGGER] Lead ${entityId} has paid order ${existingOrder.id}, auto-converting and skipping`);
+      const matchedOrder = (candidateOrders || []).find((order) =>
+        new Date(order.created_at).getTime() >= new Date(entity.captured_at).getTime() && leadMatchesOrder(entity, order)
+      );
+
+      if (matchedOrder) {
+        console.log(`[TRIGGER] Lead ${entityId} already converted to matching order ${matchedOrder.id}, skipping automation`);
         await supabase.from("leads")
-          .update({ status: "converted", converted_at: new Date().toISOString(), order_id: existingOrder.id })
+          .update({ status: "converted", converted_at: new Date().toISOString(), order_id: matchedOrder.id })
           .eq("id", entityId);
         return new Response(
-          JSON.stringify({ error: "Lead auto-converted: customer already paid", orderId: existingOrder.id }),
+          JSON.stringify({ error: "Lead already converted to matching purchase", orderId: matchedOrder.id }),
           { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
