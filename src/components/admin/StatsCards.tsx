@@ -34,6 +34,7 @@ interface Lead {
 interface StatsCardsProps {
   orders: Order[];
   leads?: Lead[];
+  loadingMore?: boolean;
 }
 
 interface StatItem {
