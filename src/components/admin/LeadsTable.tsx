@@ -1013,7 +1013,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               <SelectItem value="quality">By Quality</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={dismissedFilter} onValueChange={(v) => setDismissedFilter(v as "active" | "dismissed" | "all")}>
+          <Select value={dismissedFilter} onValueChange={(v) => { setDismissedFilter(v as "active" | "dismissed" | "all"); setCurrentPage(0); }}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Show" />
             </SelectTrigger>
