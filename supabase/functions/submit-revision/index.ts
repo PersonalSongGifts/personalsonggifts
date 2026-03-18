@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
     const shouldAutoApprove = autoApproveEnabled && fieldsChanged.length > 0;
 
     if (shouldAutoApprove) {
-      console.log("[SUBMIT-REVISION] Auto-approving low-risk revision for order:", order.id);
+      console.log("[SUBMIT-REVISION] Auto-approving revision for order:", order.id);
 
       // Approve the revision request
       const { data: insertedRevision } = await supabase

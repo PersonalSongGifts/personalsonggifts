@@ -1031,6 +1031,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
           />
           <span className="text-sm text-muted-foreground">
             {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""}
+            {filteredLeads.length > PAGE_SIZE && ` (page ${currentPage + 1} of ${Math.ceil(filteredLeads.length / PAGE_SIZE)})`}
           </span>
         </div>
         <Button variant="outline" size="sm" onClick={exportToCSV} disabled={filteredLeads.length === 0}>
