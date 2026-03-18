@@ -206,6 +206,9 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     }
   }, [adminPassword]);
 
+  const [currentPage, setCurrentPage] = useState(0);
+  const PAGE_SIZE = 50;
+
   // Filter by status, quality, dismissed state, and search query
   const filteredLeads = leads
     .filter((lead) => {
@@ -977,7 +980,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4 flex-wrap">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(0); }}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
@@ -989,7 +992,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               <SelectItem value="converted">Converted</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={qualityFilter} onValueChange={setQualityFilter}>
+          <Select value={qualityFilter} onValueChange={(v) => { setQualityFilter(v); setCurrentPage(0); }}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Quality" />
             </SelectTrigger>
@@ -1010,7 +1013,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               <SelectItem value="quality">By Quality</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={dismissedFilter} onValueChange={(v) => setDismissedFilter(v as "active" | "dismissed" | "all")}>
+          <Select value={dismissedFilter} onValueChange={(v) => { setDismissedFilter(v as "active" | "dismissed" | "all"); setCurrentPage(0); }}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Show" />
             </SelectTrigger>
@@ -1023,11 +1026,12 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
           <Input
             placeholder="Search by name, email, lead ID, or song link..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(0); }}
             className="w-64"
           />
           <span className="text-sm text-muted-foreground">
             {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""}
+            {filteredLeads.length > PAGE_SIZE && ` (page ${currentPage + 1} of ${Math.ceil(filteredLeads.length / PAGE_SIZE)})`}
           </span>
         </div>
         <Button variant="outline" size="sm" onClick={exportToCSV} disabled={filteredLeads.length === 0}>
@@ -1051,7 +1055,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
         </Card>
       ) : (
         <div className="space-y-4">
-          {filteredLeads.map((lead) => (
+          {filteredLeads.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map((lead) => (
             <Card 
               key={lead.id} 
               className={`hover:shadow-md transition-shadow ${lead.dismissed_at ? 'opacity-60 bg-muted/50' : ''} ${lead.status === "converted" ? 'border-2 border-green-500 bg-green-50/30 dark:bg-green-950/20' : ''}`}
@@ -1398,6 +1402,30 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               </CardContent>
             </Card>
           ))}
+          {/* Pagination controls */}
+          {filteredLeads.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {currentPage + 1} of {Math.ceil(filteredLeads.length / PAGE_SIZE)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredLeads.length / PAGE_SIZE) - 1, p + 1))}
+                disabled={currentPage >= Math.ceil(filteredLeads.length / PAGE_SIZE) - 1}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

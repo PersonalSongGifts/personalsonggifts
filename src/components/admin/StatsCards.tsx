@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen } from "lucide-react";
+import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen, Loader2 } from "lucide-react";
 import { LucideIcon } from "lucide-react";
 
 interface Order {
@@ -34,6 +34,7 @@ interface Lead {
 interface StatsCardsProps {
   orders: Order[];
   leads?: Lead[];
+  loadingMore?: boolean;
 }
 
 interface StatItem {
@@ -155,11 +156,17 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   ];
 }
 
-export function StatsCards({ orders, leads = [] }: StatsCardsProps) {
+export function StatsCards({ orders, leads = [], loadingMore = false }: StatsCardsProps) {
   const sections = useStats(orders, leads);
 
   return (
     <div className="space-y-6 mb-8">
+      {loadingMore && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-4 py-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Still loading data… metrics will update when complete.
+        </div>
+      )}
       {sections.map((section) => (
         <div key={section.label}>
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">

@@ -323,13 +323,10 @@ Deno.serve(async (req) => {
 
     const autoApproveEnabled = autoApproveSetting?.value === "true";
 
-    // Low-risk: no language change, no occasion change, fewer than 4 fields
-    const highRiskFields = ["language", "occasion"];
-    const isHighRisk = fieldsChanged.some(f => highRiskFields.includes(f)) || fieldsChanged.length >= 4;
-    const shouldAutoApprove = autoApproveEnabled && !isHighRisk && fieldsChanged.length > 0;
+    const shouldAutoApprove = autoApproveEnabled && fieldsChanged.length > 0;
 
     if (shouldAutoApprove) {
-      console.log("[SUBMIT-REVISION] Auto-approving low-risk revision for order:", order.id);
+      console.log("[SUBMIT-REVISION] Auto-approving revision for order:", order.id);
 
       // Approve the revision request
       const { data: insertedRevision } = await supabase
