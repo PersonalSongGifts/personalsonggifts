@@ -206,6 +206,9 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     }
   }, [adminPassword]);
 
+  const [currentPage, setCurrentPage] = useState(0);
+  const PAGE_SIZE = 50;
+
   // Filter by status, quality, dismissed state, and search query
   const filteredLeads = leads
     .filter((lead) => {
