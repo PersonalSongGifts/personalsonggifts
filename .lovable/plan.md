@@ -1,39 +1,48 @@
 
 
-## Fix: Order EE84BC3C "Song Not Found" on Song Page
+## Fix Plan: Three Admin Issues
 
-### Root Cause
+### Issue 1: Leads Tab Crashing Browser
 
-The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
+**Root Cause:** The `LeadsTable` component renders ALL 16,240+ leads as individual `<Card>` components at once (`filteredLeads.map(...)` at line 1054). No pagination or virtualization exists. Each card has complex JSX with badges, buttons, tooltips — this creates 100,000+ DOM nodes, crashing the browser.
 
-The `song_url` is valid and present. The fix has two parts:
+**Fix:** Add client-side pagination to `LeadsTable.tsx`.
+- Add `currentPage` state (default 0) and a `PAGE_SIZE` constant (50 leads per page).
+- Slice `filteredLeads` to only render the current page: `filteredLeads.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)`.
+- Add pagination controls (Previous/Next buttons, page indicator) below the leads list.
+- Reset `currentPage` to 0 when filters or search change.
 
-### Part 1: Immediate Database Fix
+---
 
-Update this specific order's status to `delivered` so the song page works now:
+### Issue 2: Metrics / Graphs Accuracy Concerns
 
-```sql
-UPDATE orders
-SET status = 'delivered',
-    delivered_at = now(),
-    delivery_status = 'sent'
-WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
-```
+**Root Cause:** The admin dashboard loads data in pages of 250 records across 65+ parallel requests (2,104 orders, 16,240 leads). Charts and stats render with partial data during loading, making them appear wrong until all pages finish. The `lyrics_unlocked_at` and `lyrics_price_cents` fields ARE included in the query — this is a loading timing issue, not a data issue.
 
-### Part 2: Prevent Future Occurrences
+**Fix:** 
+- In `StatsCards` and chart components, show a loading skeleton or "Loading..." indicator while `loadingMore` is true, so admins know data is still being fetched.
+- In `Admin.tsx`, pass the `loadingMore` state to `StatsCards` and chart components so they can display a "data still loading" badge.
+- This prevents admins from thinking the metrics are wrong when they're just incomplete.
 
-Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
+---
 
-**File:** `supabase/functions/get-song-page/index.ts`
+### Issue 3: Auto-Approve Toggle Not Fully Automatic
 
-Change the status check from:
-```typescript
-if (!["delivered", "ready"].includes(order.status) || !order.song_url)
-```
-to:
-```typescript
-if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
-```
+**Root Cause:** In `supabase/functions/submit-revision/index.ts` (lines 326-329), the auto-approve logic has a "low-risk" gate that BLOCKS approval for revisions with 4+ fields changed or any language/occasion changes. Even with the toggle ON, these "high-risk" revisions still require manual approval.
 
-This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
+**Fix:** Remove the low-risk restriction when auto-approve is enabled.
+- Change line 329 from:
+  `const shouldAutoApprove = autoApproveEnabled && !isHighRisk && fieldsChanged.length > 0;`
+  to:
+  `const shouldAutoApprove = autoApproveEnabled && fieldsChanged.length > 0;`
+- Update the log message and UI description to reflect that ALL revisions (not just low-risk) are auto-approved when toggled on.
+- Update the `PendingRevisions.tsx` description from "Low-risk revisions are approved automatically" to "All revisions are approved automatically".
+- Redeploy the `submit-revision` edge function.
+
+### Files Changed
+1. `src/components/admin/LeadsTable.tsx` — Add pagination (50 per page)
+2. `src/pages/Admin.tsx` — Pass `loadingMore` to stats/chart components
+3. `src/components/admin/StatsCards.tsx` — Show "still loading" indicator
+4. `src/components/admin/RevenueChart.tsx` / `OrdersChart.tsx` / `StatusChart.tsx` / `GenreChart.tsx` — Show loading state
+5. `supabase/functions/submit-revision/index.ts` — Remove high-risk gate from auto-approve
+6. `src/components/admin/PendingRevisions.tsx` — Update description text
 
