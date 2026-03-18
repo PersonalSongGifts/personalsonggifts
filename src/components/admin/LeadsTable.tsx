@@ -1026,7 +1026,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
           <Input
             placeholder="Search by name, email, lead ID, or song link..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(0); }}
             className="w-64"
           />
           <span className="text-sm text-muted-foreground">
