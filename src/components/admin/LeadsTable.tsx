@@ -1402,6 +1402,30 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               </CardContent>
             </Card>
           ))}
+          {/* Pagination controls */}
+          {filteredLeads.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {currentPage + 1} of {Math.ceil(filteredLeads.length / PAGE_SIZE)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredLeads.length / PAGE_SIZE) - 1, p + 1))}
+                disabled={currentPage >= Math.ceil(filteredLeads.length / PAGE_SIZE) - 1}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

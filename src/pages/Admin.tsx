@@ -1177,7 +1177,7 @@ const { data, error } = await listOrders("all", 0, 250);
               </span>
             </div>
 
-            <StatsCards orders={analyticsOrders} leads={leads} />
+            <StatsCards orders={analyticsOrders} leads={leads} loadingMore={loadingMore} />
             
             <SalesVelocity orders={allOrders} />
             
