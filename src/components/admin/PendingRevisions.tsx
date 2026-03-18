@@ -202,7 +202,7 @@ export function PendingRevisions({ adminPassword }: PendingRevisionsProps) {
             </div>
           </div>
           {autoApprove && (
-            <p className="text-xs text-muted-foreground mt-1">Low-risk revisions are approved automatically</p>
+            <p className="text-xs text-muted-foreground mt-1">All revisions are approved automatically</p>
           )}
         </CardHeader>
         <CardContent>
