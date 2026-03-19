@@ -17,6 +17,7 @@ interface Order {
   sms_status?: string | null;
   lyrics_unlocked_at?: string | null;
   lyrics_price_cents?: number | null;
+  notes?: string | null;
 }
 
 interface Lead {
@@ -44,6 +45,7 @@ interface StatItem {
   icon: LucideIcon;
   color: string;
   bgColor: string;
+  extra?: string;
 }
 
 interface StatSection {
@@ -51,18 +53,24 @@ interface StatSection {
   stats: StatItem[];
 }
 
+function getPaymentSource(order: Order): "paypal" | "stripe" {
+  return order.notes?.startsWith("paypal_order:") ? "paypal" : "stripe";
+}
+
 function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Revenue
-  const totalRevenue = orders.reduce((sum, o) => o.status !== "cancelled" ? sum + o.price : sum, 0);
-  const revenueToday = orders.reduce((sum, o) => {
-    if (o.status !== "cancelled" && new Date(o.created_at) >= today) {
-      return sum + o.price;
-    }
-    return sum;
-  }, 0);
+  // Revenue with payment source breakdown
+  const activeOrders = orders.filter((o) => o.status !== "cancelled");
+  const totalRevenue = activeOrders.reduce((sum, o) => sum + o.price, 0);
+  const stripeTotal = activeOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + o.price, 0);
+  const paypalTotal = activeOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + o.price, 0);
+
+  const todayOrders = activeOrders.filter((o) => new Date(o.created_at) >= today);
+  const revenueToday = todayOrders.reduce((sum, o) => sum + o.price, 0);
+  const stripeTodayRev = todayOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + o.price, 0);
+  const paypalTodayRev = todayOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + o.price, 0);
 
   // Orders
   const totalOrders = orders.length;
@@ -118,8 +126,8 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
     {
       label: "Revenue & Orders",
       stats: [
-        { title: "Total Revenue", value: `$${totalRevenue.toLocaleString()}`, description: "All time earnings", icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100" },
-        { title: "Revenue Today", value: `$${revenueToday.toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100" },
+        { title: "Total Revenue", value: `$${totalRevenue.toLocaleString()}`, description: "All time earnings", icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100", extra: `Stripe $${stripeTotal.toLocaleString()} · PayPal $${paypalTotal.toLocaleString()}` },
+        { title: "Revenue Today", value: `$${revenueToday.toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", extra: `Stripe $${stripeTodayRev.toLocaleString()} · PayPal $${paypalTodayRev.toLocaleString()}` },
         { title: "Orders Today", value: ordersToday.toString(), description: "New orders today", icon: ShoppingCart, color: "text-blue-600", bgColor: "bg-blue-100" },
         { title: "Total Orders", value: totalOrders.toString(), description: "All time", icon: ShoppingCart, color: "text-slate-600", bgColor: "bg-slate-100" },
         { title: "Pending", value: pendingOrders.toString(), description: "Awaiting completion", icon: Clock, color: "text-amber-600", bgColor: "bg-amber-100" },
@@ -185,6 +193,11 @@ export function StatsCards({ orders, leads = [], loadingMore = false }: StatsCar
                       <p className="text-sm text-muted-foreground mt-1">
                         {stat.description}
                       </p>
+                      {stat.extra && (
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">
+                          {stat.extra}
+                        </p>
+                      )}
                     </div>
                     <div className={`p-2 rounded-lg ${stat.bgColor} shrink-0 ml-3`}>
                       <stat.icon className={`h-5 w-5 ${stat.color}`} />
