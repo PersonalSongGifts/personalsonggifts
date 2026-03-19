@@ -931,8 +931,31 @@ Deno.serve(async (req) => {
 
         console.log(`[PREVIEW] Found ${leadsToPreview?.length || 0} leads ready for preview`);
 
+        // Fetch suppressed emails to skip (CAN-SPAM compliance)
+        const suppressedEmails = new Set<string>();
+        if (leadsToPreview && leadsToPreview.length > 0) {
+          const previewEmails = leadsToPreview.map((l: { lead_email_override?: string | null; email: string }) => 
+            (l.lead_email_override?.trim() || l.email).toLowerCase()
+          );
+          const { data: suppressions } = await supabase
+            .from("email_suppressions")
+            .select("email")
+            .in("email", previewEmails);
+          for (const s of suppressions || []) {
+            suppressedEmails.add(s.email);
+          }
+        }
+
         for (const lead of leadsToPreview || []) {
           try {
+            // Check email suppression
+            const leadEffectiveEmail = (lead.lead_email_override?.trim() || lead.email).toLowerCase();
+            if (suppressedEmails.has(leadEffectiveEmail)) {
+              console.log(`[PREVIEW] Skipping suppressed email for lead ${lead.id}: ${leadEffectiveEmail}`);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: "Email suppressed" });
+              continue;
+            }
+
             if (lead.status === "converted") {
               leadPreviewResults.push({ leadId: lead.id, success: false, error: "Lead converted" });
               continue;

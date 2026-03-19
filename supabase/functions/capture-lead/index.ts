@@ -365,7 +365,7 @@ Deno.serve(async (req) => {
     if (!isAdminTester) {
       const { data: existingLead } = await supabase
         .from("leads")
-        .select("id, status")
+        .select("id, status, inputs_hash")
         .eq("email", normalizedEmail)
         .neq("status", "converted")
         .order("captured_at", { ascending: false })
