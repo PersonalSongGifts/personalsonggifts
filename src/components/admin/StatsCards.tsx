@@ -131,6 +131,7 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
         { title: "Orders Today", value: ordersToday.toString(), description: "New orders today", icon: ShoppingCart, color: "text-blue-600", bgColor: "bg-blue-100" },
         { title: "Total Orders", value: totalOrders.toString(), description: "All time", icon: ShoppingCart, color: "text-slate-600", bgColor: "bg-slate-100" },
         { title: "Pending", value: pendingOrders.toString(), description: "Awaiting completion", icon: Clock, color: "text-amber-600", bgColor: "bg-amber-100" },
+        { title: "AOV", value: `$${activeOrders.length > 0 ? (totalRevenue / activeOrders.length).toFixed(2) : "0.00"}`, description: `Across ${activeOrders.length} orders`, icon: TrendingUp, color: "text-violet-600", bgColor: "bg-violet-100" },
       ],
     },
     {

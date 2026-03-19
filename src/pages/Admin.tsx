@@ -20,6 +20,7 @@ import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
+import { AOVChart } from "@/components/admin/AOVChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
 import { StatusChart } from "@/components/admin/StatusChart";
 import { GenreChart } from "@/components/admin/GenreChart";
@@ -1184,9 +1185,10 @@ const { data, error } = await listOrders("all", 0, 250);
             
             <ConversionFunnel orders={analyticsOrders} leads={leads} />
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <RevenueChart orders={analyticsOrders} />
               <OrdersChart orders={analyticsOrders} />
+              <AOVChart orders={analyticsOrders} />
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
