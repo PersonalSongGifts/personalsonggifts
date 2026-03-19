@@ -441,11 +441,11 @@ export default function SongPreview() {
                 <p className="text-sm text-muted-foreground line-through">$99.99 USD</p>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
                   {isVday10 && isFollowup
-                    ? "$34.99"
+                    ? "$29.99"
                     : isVday10
                     ? "$39.99"
                     : isFollowup
-                    ? "$44.99"
+                    ? "$39.99"
                     : "$49.99"}
                   <span className="text-sm font-normal text-muted-foreground ml-1">USD</span>
                 </p>
