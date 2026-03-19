@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Mail, Send, Loader2 } from "lucide-react";
+import { Mail, Send, Loader2, ExternalLink } from "lucide-react";
 
 interface TestEmailSenderProps {
   adminPassword: string;
@@ -35,8 +35,14 @@ const templateLabels: Record<EmailTemplate, { label: string; description: string
 export function TestEmailSender({ adminPassword }: TestEmailSenderProps) {
   const [email, setEmail] = useState("ryan@hyperdrivelab.com");
   const [template, setTemplate] = useState<EmailTemplate>("lead_preview");
+  const [previewToken, setPreviewToken] = useState("TEST-DISCOUNT-2026-RYAN");
   const [sending, setSending] = useState(false);
   const { toast } = useToast();
+
+  const isLeadTemplate = template === "lead_preview" || template === "lead_followup";
+  const previewUrl = previewToken
+    ? `https://personalsonggifts.lovable.app/preview/${previewToken}${template === "lead_followup" ? "?followup=true" : ""}`
+    : null;
 
   const handleSendTest = async () => {
     if (!email.trim()) {
@@ -51,7 +57,7 @@ export function TestEmailSender({ adminPassword }: TestEmailSenderProps) {
     setSending(true);
     try {
       const { data, error } = await supabase.functions.invoke("send-test-email", {
-        body: { email, template, adminPassword },
+        body: { email, template, adminPassword, previewToken: previewToken || undefined },
       });
 
       if (error) throw error;
@@ -108,6 +114,31 @@ export function TestEmailSender({ adminPassword }: TestEmailSenderProps) {
             {templateLabels[template].description}
           </p>
         </div>
+
+        {isLeadTemplate && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Preview Token</label>
+            <Input
+              placeholder="e.g. TEST-DISCOUNT-2026-RYAN"
+              value={previewToken}
+              onChange={(e) => setPreviewToken(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Uses a real lead's data so the email link actually works
+            </p>
+            {previewUrl && (
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Open preview page directly
+              </a>
+            )}
+          </div>
+        )}
 
         <div className="space-y-2">
           <label className="text-sm font-medium">Send To</label>
