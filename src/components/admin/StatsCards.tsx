@@ -45,6 +45,7 @@ interface StatItem {
   icon: LucideIcon;
   color: string;
   bgColor: string;
+  extra?: string;
 }
 
 interface StatSection {
