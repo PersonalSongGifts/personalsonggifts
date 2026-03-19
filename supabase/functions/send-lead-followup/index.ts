@@ -28,7 +28,7 @@ We wanted to reach out because we'd love for ${lead.recipient_name} to actually 
 
 ${previewUrl}
 
-The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.
+The full song is between 3–6 minutes long and includes everything you shared with us about ${lead.recipient_name}.
 
 If you have any questions just reply to this email — a real person will get back to you.
 
