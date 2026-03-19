@@ -10,7 +10,7 @@ const corsHeaders = {
 // We set the offer amount server-side so Stripe ALWAYS shows the discounted lead offer,
 // even if promo-code configuration changes in Stripe.
 const LEAD_STANDARD_TOTAL_CENTS = 4999;
-const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = 4499; // $5 off follow-up
+const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = 3999; // $10 off follow-up
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
