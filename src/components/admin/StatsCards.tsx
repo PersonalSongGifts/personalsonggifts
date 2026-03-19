@@ -126,8 +126,8 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
     {
       label: "Revenue & Orders",
       stats: [
-        { title: "Total Revenue", value: `$${totalRevenue.toLocaleString()}`, description: "All time earnings", icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100" },
-        { title: "Revenue Today", value: `$${revenueToday.toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100" },
+        { title: "Total Revenue", value: `$${totalRevenue.toLocaleString()}`, description: "All time earnings", icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100", extra: `Stripe $${stripeTotal.toLocaleString()} · PayPal $${paypalTotal.toLocaleString()}` },
+        { title: "Revenue Today", value: `$${revenueToday.toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", extra: `Stripe $${stripeTodayRev.toLocaleString()} · PayPal $${paypalTodayRev.toLocaleString()}` },
         { title: "Orders Today", value: ordersToday.toString(), description: "New orders today", icon: ShoppingCart, color: "text-blue-600", bgColor: "bg-blue-100" },
         { title: "Total Orders", value: totalOrders.toString(), description: "All time", icon: ShoppingCart, color: "text-slate-600", bgColor: "bg-slate-100" },
         { title: "Pending", value: pendingOrders.toString(), description: "Awaiting completion", icon: Clock, color: "text-amber-600", bgColor: "bg-amber-100" },
