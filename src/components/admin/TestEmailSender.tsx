@@ -19,7 +19,7 @@ const templateLabels: Record<EmailTemplate, { label: string; description: string
     description: "Sent when a song preview is ready for a lead",
   },
   lead_followup: {
-    label: "Lead Follow-up ($5 Off)",
+    label: "Lead Follow-up ($10 Off)",
     description: "Sent to leads who haven't converted yet",
   },
   order_confirmation: {
