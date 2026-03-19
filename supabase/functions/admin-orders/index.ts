@@ -3115,10 +3115,10 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       );
     }
 
-    return new Response(
-      JSON.stringify({ error: "Method not allowed" }),
-      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+      return new Response(
+        JSON.stringify({ error: "Unknown action", action: typeof body?.action === "string" ? body.action : null }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
   } catch (error: unknown) {
     console.error("Admin orders error:", error);
 
