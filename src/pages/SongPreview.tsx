@@ -424,10 +424,10 @@ export default function SongPreview() {
           {isFollowup && !isVday10 && (
             <div className="bg-accent/10 border border-accent rounded-lg p-4 text-center">
               <Badge className="bg-accent text-accent-foreground mb-2">
-                Bonus Applied
+                $10 off — already applied
               </Badge>
               <p className="text-sm">
-                Your FULLSONG code gives you an extra $5 off!
+                $10 off — no code needed, it's already applied!
               </p>
             </div>
           )}
