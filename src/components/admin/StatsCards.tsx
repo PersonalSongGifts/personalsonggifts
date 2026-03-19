@@ -193,6 +193,11 @@ export function StatsCards({ orders, leads = [], loadingMore = false }: StatsCar
                       <p className="text-sm text-muted-foreground mt-1">
                         {stat.description}
                       </p>
+                      {stat.extra && (
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">
+                          {stat.extra}
+                        </p>
+                      )}
                     </div>
                     <div className={`p-2 rounded-lg ${stat.bgColor} shrink-0 ml-3`}>
                       <stat.icon className={`h-5 w-5 ${stat.color}`} />
