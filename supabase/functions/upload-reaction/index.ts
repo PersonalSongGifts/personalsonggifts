@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 // Security limits
-const MAX_VIDEO_SIZE = 150 * 1024 * 1024; // 150MB
+const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
   "video/quicktime", // .mov
@@ -17,8 +17,18 @@ const MAX_UPLOADS_PER_EMAIL_24H = 3;
 
 function validateVideo(video: File): string | null {
   if (video.size > MAX_VIDEO_SIZE) {
-    return "Video must be under 150MB";
+    return "Video must be under 2GB";
   }
+  if (!ALLOWED_VIDEO_TYPES.includes(video.type)) {
+    return "Only MP4, MOV, and WebM videos are allowed";
+  }
+  const extensionMatch = video.name.toLowerCase().match(/\.[^.]+$/);
+  const extension = extensionMatch ? extensionMatch[0] : "";
+  if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
+    return "Invalid video file extension";
+  }
+  return null;
+}
   if (!ALLOWED_VIDEO_TYPES.includes(video.type)) {
     return "Only MP4, MOV, and WebM videos are allowed";
   }

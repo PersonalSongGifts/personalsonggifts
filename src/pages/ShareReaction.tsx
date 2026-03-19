@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 
-const MAX_FILE_SIZE = 150 * 1024 * 1024;
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
 export default function ShareReaction() {
   const [name, setName] = useState("");
@@ -28,7 +28,7 @@ export default function ShareReaction() {
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      setError("Video must be under 150MB.");
+      setError("Video must be under 2GB. Try compressing the video or trimming it shorter.");
       return;
     }
     setVideoFile(file);
@@ -57,35 +57,71 @@ export default function ShareReaction() {
     }
 
     setUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
 
     try {
-      const formData = new FormData();
-      formData.append("action", "direct-upload");
-      formData.append("name", name.trim());
-      formData.append("email", email.trim());
-      if (orderNumber.trim()) formData.append("orderId", orderNumber.trim());
-      formData.append("video", videoFile);
+      // Step 1: Upload video directly to storage bucket
+      const extension = videoFile.name.toLowerCase().match(/\.[^.]+$/)?.[0] || ".mp4";
+      const fileName = `${crypto.randomUUID()}-${Date.now()}${extension}`;
 
-      // Simulate progress during upload
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + 5, 85));
-      }, 500);
+      // Use XMLHttpRequest for real progress tracking on large uploads
+      const publicUrl = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            // Reserve 5-90% for upload, 90-100% for linking
+            const pct = Math.round((e.loaded / e.total) * 85) + 5;
+            setUploadProgress(pct);
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            // Build public URL
+            const url = `${supabaseUrl}/storage/v1/object/public/reactions/${fileName}`;
+            resolve(url);
+          } else {
+            try {
+              const body = JSON.parse(xhr.responseText);
+              reject(new Error(body.message || body.error || "Upload failed"));
+            } catch {
+              reject(new Error("Upload failed"));
+            }
+          }
+        });
+
+        xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+        xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
+
+        xhr.open("POST", `${supabaseUrl}/storage/v1/object/reactions/${fileName}`);
+        xhr.setRequestHeader("Authorization", `Bearer ${anonKey}`);
+        xhr.setRequestHeader("apikey", anonKey);
+        xhr.setRequestHeader("Content-Type", videoFile.type);
+        xhr.setRequestHeader("x-upsert", "false");
+        xhr.send(videoFile);
+      });
+
+      setUploadProgress(90);
+
+      // Step 2: Call edge function to link the video to the order
       const { data, error: fnError } = await supabase.functions.invoke(
         "upload-reaction",
-        { body: formData }
+        {
+          body: {
+            action: "link-reaction",
+            name: name.trim(),
+            email: email.trim(),
+            orderId: orderNumber.trim() || undefined,
+            fileName,
+          },
+        }
       );
 
-      clearInterval(progressInterval);
-
-      if (fnError) {
-        throw new Error(fnError.message || "Upload failed");
-      }
-
-      if (data?.error) {
-        throw new Error(data.error);
-      }
+      if (fnError) throw new Error(fnError.message || "Failed to save reaction");
+      if (data?.error) throw new Error(data.error);
 
       setUploadProgress(100);
       setTimeout(() => setSubmitted(true), 400);
@@ -316,7 +352,9 @@ export default function ShareReaction() {
                       {videoFile.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {(videoFile.size / (1024 * 1024)).toFixed(1)} MB
+                      {videoFile.size >= 1024 * 1024 * 1024
+                        ? `${(videoFile.size / (1024 * 1024 * 1024)).toFixed(1)} GB`
+                        : `${(videoFile.size / (1024 * 1024)).toFixed(1)} MB`}
                     </p>
                     <p className="text-xs text-primary underline">Tap to change</p>
                   </div>
@@ -325,7 +363,7 @@ export default function ShareReaction() {
                     <Upload className="w-8 h-8 text-muted-foreground mx-auto" />
                     <p className="text-foreground font-medium">Tap to select your video</p>
                     <p className="text-xs text-muted-foreground">or drag and drop here</p>
-                    <p className="text-xs text-muted-foreground">MP4, MOV, or WebM · Max 150MB</p>
+                    <p className="text-xs text-muted-foreground">MP4, MOV, or WebM · Max 2GB</p>
                   </div>
                 )}
               </div>
@@ -350,7 +388,9 @@ export default function ShareReaction() {
               <div className="space-y-2">
                 <Progress value={uploadProgress} className="h-2" />
                 <p className="text-sm text-muted-foreground text-center">
-                  Uploading{uploadProgress < 85 ? "..." : " almost done..."}
+                  {uploadProgress < 90
+                    ? `Uploading... ${uploadProgress}%`
+                    : "Saving your reaction..."}
                 </p>
               </div>
             )}
