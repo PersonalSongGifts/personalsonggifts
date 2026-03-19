@@ -1,39 +1,43 @@
 
 
-## Fix: Order EE84BC3C "Song Not Found" on Song Page
+## Monitoring Edge Function: `monitoring-status`
 
-### Root Cause
+### Overview
+Create a read-only edge function that returns aggregate counts of system health metrics, polled by OpenClaw every 15 minutes. No PII exposed, secured by a static API key header.
 
-The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
+### Schema Issue: `input_edit_conflicts`
+The `orders` table has **no `updated_at` column**, so query #4 as specified won't work. Alternative: count orders where `pending_revision = true` AND `automation_status` IN active states — this captures the real conflict scenario (customer edited after generation started). Will also check `revision_requested_at > automation_started_at` as a proxy.
 
-The `song_url` is valid and present. The fix has two parts:
+### Implementation
 
-### Part 1: Immediate Database Fix
+**New file:** `supabase/functions/monitoring-status/index.ts`
 
-Update this specific order's status to `delivered` so the song page works now:
+**Security:** Validate `X-Monitor-Key` header against a stored secret (`MONITOR_API_KEY`). Will add this secret and have you set the value to `psg-monitor-2026-secure` (or whatever you prefer).
 
-```sql
-UPDATE orders
-SET status = 'delivered',
-    delivered_at = now(),
-    delivery_status = 'sent'
-WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
-```
+**Config:** Add `[functions.monitoring-status]` with `verify_jwt = false` to config.toml.
 
-### Part 2: Prevent Future Occurrences
+**Six queries (all COUNT-only, both `orders` + `leads` tables combined where applicable):**
 
-Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
+| Metric | Query Logic |
+|--------|-------------|
+| `stuck_orders` | `automation_status IN ('lyrics_generating','audio_generating')` AND `automation_started_at < NOW() - 45 min` — both orders + leads |
+| `failed_generations` | `automation_status IN ('failed','permanently_failed')` AND `automation_retry_count >= 3` — both tables |
+| `rate_limited_jobs` | `automation_status = 'rate_limited'` — both tables |
+| `input_edit_conflicts` | `pending_revision = true` AND `automation_status IN ('lyrics_generating','audio_generating','completed')` — orders only |
+| `pending_delivery` | `target_send_at < NOW() + 1 hour` AND `sent_at IS NULL` AND `dismissed_at IS NULL` — both tables |
+| `unconverted_leads_24h` | `status = 'lead'` AND `captured_at < NOW() - 24 hours` AND `follow_up_sent_at IS NULL` AND `dismissed_at IS NULL` — leads only |
 
-**File:** `supabase/functions/get-song-page/index.ts`
+**Error handling:** Each query wrapped in try/catch; returns `-1` for failed metrics plus an `errors` array.
 
-Change the status check from:
-```typescript
-if (!["delivered", "ready"].includes(order.status) || !order.song_url)
-```
-to:
-```typescript
-if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
-```
+**Response format:** Exact JSON shape requested, plus an `errors` field if any query fails.
 
-This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
+### Steps
+1. Add `MONITOR_API_KEY` secret (you set value)
+2. Create the edge function
+3. Deploy and test
+
+### Technical Details
+- Uses service role key internally for queries (all tables have RLS blocking public access)
+- CORS wide open as requested
+- No mutations — pure SELECT counts
 
