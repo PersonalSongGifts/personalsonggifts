@@ -1,3 +1,5 @@
+import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -7,20 +9,20 @@ interface SendTestEmailRequest {
   email: string;
   template: "lead_preview" | "lead_followup" | "order_confirmation" | "song_delivery";
   adminPassword: string;
+  previewToken?: string; // optional: use a specific lead's token
 }
 
-// Sample data for test emails
-const sampleData = {
+// Fallback sample data when no real lead is found
+const fallbackData = {
   customerName: "Test Customer",
   recipientName: "Test Recipient",
   occasion: "Birthday",
   genre: "Acoustic Pop",
-  previewToken: "demo",
   orderId: "TEST12345",
   songUrl: "https://personalsonggifts.lovable.app/song/demo",
 };
 
-function getLeadPreviewHtml(previewUrl: string, email: string) {
+function getLeadPreviewHtml(data: { customerName: string; recipientName: string; occasion: string }, previewUrl: string, email: string) {
   return `
 <!DOCTYPE html>
 <html>
@@ -30,9 +32,9 @@ function getLeadPreviewHtml(previewUrl: string, email: string) {
 </head>
 <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${sampleData.customerName},</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${data.customerName},</p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      We created a personalized ${sampleData.occasion} song for ${sampleData.recipientName} and wanted you to hear it first.
+      We created a personalized ${data.occasion} song for ${data.recipientName} and wanted you to hear it first.
     </p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
       This is a short preview. Once you complete your purchase, you'll receive the full song.
@@ -54,10 +56,10 @@ function getLeadPreviewHtml(previewUrl: string, email: string) {
   `;
 }
 
-function getLeadPreviewText(previewUrl: string, email: string) {
-  return `Hi ${sampleData.customerName},
+function getLeadPreviewText(data: { customerName: string; recipientName: string; occasion: string }, previewUrl: string, email: string) {
+  return `Hi ${data.customerName},
 
-We created a personalized ${sampleData.occasion} song for ${sampleData.recipientName} and wanted you to hear it first.
+We created a personalized ${data.occasion} song for ${data.recipientName} and wanted you to hear it first.
 
 This is a short preview. Once you complete your purchase, you'll receive the full song.
 
@@ -75,8 +77,9 @@ This is a TEST EMAIL sent from the Admin Dashboard
 `;
 }
 
-function getLeadFollowupHtml(previewUrl: string, email: string) {
+function getLeadFollowupHtml(data: { customerName: string; recipientName: string }, previewUrl: string, email: string) {
   const followupUrl = `${previewUrl}?followup=true`;
+  const firstName = data.customerName.split(" ")[0];
   return `
 <!DOCTYPE html>
 <html>
@@ -86,14 +89,14 @@ function getLeadFollowupHtml(previewUrl: string, email: string) {
 </head>
 <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${sampleData.customerName.split(" ")[0]},</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${firstName},</p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      You listened to ${sampleData.recipientName}'s song the other day — we hope it put a smile on your face.
+      You listened to ${data.recipientName}'s song the other day — we hope it put a smile on your face.
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      We wanted to reach out because we'd love for ${sampleData.recipientName} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
+      We wanted to reach out because we'd love for ${data.recipientName} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
@@ -101,7 +104,7 @@ function getLeadFollowupHtml(previewUrl: string, email: string) {
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      The full song is about 3 minutes and includes everything you shared with us about ${sampleData.recipientName}. They get to keep it and download it forever.
+      The full song is between 3–6 minutes long and includes everything you shared with us about ${data.recipientName}.
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
@@ -121,17 +124,18 @@ function getLeadFollowupHtml(previewUrl: string, email: string) {
   `;
 }
 
-function getLeadFollowupText(previewUrl: string, email: string) {
+function getLeadFollowupText(data: { customerName: string; recipientName: string }, previewUrl: string, email: string) {
   const followupUrl = `${previewUrl}?followup=true`;
-  return `Hi ${sampleData.customerName.split(" ")[0]},
+  const firstName = data.customerName.split(" ")[0];
+  return `Hi ${firstName},
 
-You listened to ${sampleData.recipientName}'s song the other day — we hope it put a smile on your face.
+You listened to ${data.recipientName}'s song the other day — we hope it put a smile on your face.
 
-We wanted to reach out because we'd love for ${sampleData.recipientName} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
+We wanted to reach out because we'd love for ${data.recipientName} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
 
 ${followupUrl}
 
-The full song is about 3 minutes and includes everything you shared with us about ${sampleData.recipientName}. They get to keep it and download it forever.
+The full song is between 3–6 minutes long and includes everything you shared with us about ${data.recipientName}.
 
 If you have any questions just reply to this email — a real person will get back to you.
 
@@ -146,7 +150,8 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
 This is a TEST EMAIL sent from the Admin Dashboard
 `;
 }
-function getOrderConfirmationHtml(email: string) {
+
+function getOrderConfirmationHtml(data: { customerName: string; recipientName: string; occasion: string; genre: string; orderId: string }, email: string) {
   const tierLabel = "Priority (24-hour)";
   const deliveryDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString("en-US", {
     weekday: "long",
@@ -165,26 +170,26 @@ function getOrderConfirmationHtml(email: string) {
 <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <p style="color: #1E3A5F; font-size: 22px; font-weight: bold; margin: 0 0 30px 0;">Order Confirmed</p>
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Dear ${sampleData.customerName},</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Dear ${data.customerName},</p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      Thank you for your order! We're creating a personalized ${sampleData.occasion} song for <strong>${sampleData.recipientName}</strong> and our team is already getting started.
+      Thank you for your order! We're creating a personalized ${data.occasion} song for <strong>${data.recipientName}</strong> and our team is already getting started.
     </p>
     <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
       <tr style="border-bottom: 1px solid #eeeeee;">
         <td style="color: #555555; padding: 10px 0; font-size: 14px; width: 40%;"><strong>Order ID</strong></td>
-        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${sampleData.orderId}</td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${data.orderId}</td>
       </tr>
       <tr style="border-bottom: 1px solid #eeeeee;">
         <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Song for</strong></td>
-        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${sampleData.recipientName}</td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${data.recipientName}</td>
       </tr>
       <tr style="border-bottom: 1px solid #eeeeee;">
         <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Occasion</strong></td>
-        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${sampleData.occasion}</td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${data.occasion}</td>
       </tr>
       <tr style="border-bottom: 1px solid #eeeeee;">
         <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Genre</strong></td>
-        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${sampleData.genre}</td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${data.genre}</td>
       </tr>
       <tr>
         <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Delivery</strong></td>
@@ -209,7 +214,7 @@ function getOrderConfirmationHtml(email: string) {
   `;
 }
 
-function getOrderConfirmationText(email: string) {
+function getOrderConfirmationText(data: { customerName: string; recipientName: string; occasion: string; genre: string; orderId: string }, email: string) {
   const tierLabel = "Priority (24-hour)";
   const deliveryDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString("en-US", {
     weekday: "long",
@@ -220,14 +225,14 @@ function getOrderConfirmationText(email: string) {
 
   return `Order Confirmed
 
-Dear ${sampleData.customerName},
+Dear ${data.customerName},
 
-Thank you for your order! We're creating a personalized ${sampleData.occasion} song for ${sampleData.recipientName} and our team is already getting started.
+Thank you for your order! We're creating a personalized ${data.occasion} song for ${data.recipientName} and our team is already getting started.
 
-Order ID: ${sampleData.orderId}
-Song for: ${sampleData.recipientName}
-Occasion: ${sampleData.occasion}
-Genre: ${sampleData.genre}
+Order ID: ${data.orderId}
+Song for: ${data.recipientName}
+Occasion: ${data.occasion}
+Genre: ${data.genre}
 Delivery: ${tierLabel} — by ${deliveryDate}
 
 We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
@@ -245,7 +250,7 @@ This is a TEST EMAIL sent from the Admin Dashboard
 `;
 }
 
-function getSongDeliveryHtml(email: string) {
+function getSongDeliveryHtml(data: { customerName: string; recipientName: string; occasion: string; orderId: string; songUrl: string }, email: string) {
   return `
 <!DOCTYPE html>
 <html>
@@ -256,18 +261,18 @@ function getSongDeliveryHtml(email: string) {
 <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <p style="color: #1E3A5F; font-size: 22px; font-weight: bold; margin: 0 0 30px 0;">Your song is ready!</p>
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Dear ${sampleData.customerName},</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Dear ${data.customerName},</p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      Your personalized ${sampleData.occasion} song for <strong>${sampleData.recipientName}</strong> is complete and ready to share!
+      Your personalized ${data.occasion} song for <strong>${data.recipientName}</strong> is complete and ready to share!
     </p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 8px 0;"><strong>Listen here:</strong></p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
-      <a href="${sampleData.songUrl}" style="color: #1E3A5F;">${sampleData.songUrl}</a>
+      <a href="${data.songUrl}" style="color: #1E3A5F;">${data.songUrl}</a>
     </p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
       From the song page you can listen, download, and share with friends and family. We hope it brings joy!
     </p>
-    <p style="color: #555555; font-size: 14px; margin: 0 0 4px 0;"><strong>Order ID:</strong> ${sampleData.orderId}</p>
+    <p style="color: #555555; font-size: 14px; margin: 0 0 4px 0;"><strong>Order ID:</strong> ${data.orderId}</p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 30px 0 40px 0;">
       Warm regards,<br>The Personal Song Gifts Team
     </p>
@@ -283,16 +288,16 @@ function getSongDeliveryHtml(email: string) {
   `;
 }
 
-function getSongDeliveryText(email: string) {
+function getSongDeliveryText(data: { customerName: string; recipientName: string; occasion: string; orderId: string; songUrl: string }, email: string) {
   return `Your song is ready!
 
-Dear ${sampleData.customerName},
+Dear ${data.customerName},
 
-Your personalized ${sampleData.occasion} song for ${sampleData.recipientName} is complete and ready to share!
+Your personalized ${data.occasion} song for ${data.recipientName} is complete and ready to share!
 
-Listen here: ${sampleData.songUrl}
+Listen here: ${data.songUrl}
 
-Order ID: ${sampleData.orderId}
+Order ID: ${data.orderId}
 
 We hope it brings joy!
 
@@ -320,7 +325,7 @@ Deno.serve(async (req) => {
       throw new Error("ADMIN_PASSWORD not configured");
     }
 
-    const { email, template, adminPassword: providedPassword }: SendTestEmailRequest = await req.json();
+    const { email, template, adminPassword: providedPassword, previewToken }: SendTestEmailRequest = await req.json();
 
     if (!providedPassword || providedPassword.trim() !== adminPassword.trim()) {
       return new Response(
@@ -336,7 +341,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return new Response(
@@ -344,6 +348,70 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Try to fetch a real lead if previewToken is provided, or find any valid lead
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    let leadData: { customerName: string; recipientName: string; occasion: string; genre: string; previewToken: string } | null = null;
+
+    if (previewToken) {
+      // Use the specific token provided
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("customer_name, recipient_name, occasion, genre, preview_token")
+        .eq("preview_token", previewToken)
+        .maybeSingle();
+
+      if (lead && lead.preview_token) {
+        leadData = {
+          customerName: lead.customer_name,
+          recipientName: lead.recipient_name,
+          occasion: lead.occasion,
+          genre: lead.genre,
+          previewToken: lead.preview_token,
+        };
+      }
+    }
+
+    if (!leadData) {
+      // Try to find any lead with a valid preview token and song
+      const { data: anyLead } = await supabase
+        .from("leads")
+        .select("customer_name, recipient_name, occasion, genre, preview_token")
+        .not("preview_token", "is", null)
+        .not("preview_song_url", "is", null)
+        .eq("status", "preview_sent")
+        .order("captured_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (anyLead && anyLead.preview_token) {
+        leadData = {
+          customerName: anyLead.customer_name,
+          recipientName: anyLead.recipient_name,
+          occasion: anyLead.occasion,
+          genre: anyLead.genre,
+          previewToken: anyLead.preview_token,
+        };
+      }
+    }
+
+    // Build data object for templates
+    const data = leadData
+      ? {
+          customerName: leadData.customerName,
+          recipientName: leadData.recipientName,
+          occasion: leadData.occasion,
+          genre: leadData.genre,
+          orderId: "TEST12345",
+          songUrl: "https://personalsonggifts.lovable.app/song/demo",
+        }
+      : fallbackData;
+
+    const previewTokenToUse = leadData?.previewToken || "demo";
+    const previewUrl = `https://personalsonggifts.lovable.app/preview/${previewTokenToUse}`;
 
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
     const senderEmail = "support@personalsonggifts.com";
@@ -353,32 +421,30 @@ Deno.serve(async (req) => {
       throw new Error("BREVO_API_KEY not configured");
     }
 
-    const previewUrl = `https://personalsonggifts.lovable.app/preview/${sampleData.previewToken}`;
-    
     let emailHtml: string;
     let textContent: string;
     let subject: string;
 
     switch (template) {
       case "lead_preview":
-        emailHtml = getLeadPreviewHtml(previewUrl, email);
-        textContent = getLeadPreviewText(previewUrl, email);
-        subject = `[TEST] Your song for ${sampleData.recipientName} is ready to preview`;
+        emailHtml = getLeadPreviewHtml(data, previewUrl, email);
+        textContent = getLeadPreviewText(data, previewUrl, email);
+        subject = `[TEST] Your song for ${data.recipientName} is ready to preview`;
         break;
       case "lead_followup":
-        emailHtml = getLeadFollowupHtml(previewUrl, email);
-        textContent = getLeadFollowupText(previewUrl, email);
-        subject = `[TEST] ${sampleData.recipientName}'s song is still waiting`;
+        emailHtml = getLeadFollowupHtml(data, previewUrl, email);
+        textContent = getLeadFollowupText(data, previewUrl, email);
+        subject = `[TEST] ${data.recipientName}'s song is still waiting`;
         break;
       case "order_confirmation":
-        emailHtml = getOrderConfirmationHtml(email);
-        textContent = getOrderConfirmationText(email);
-        subject = `[TEST] Order confirmed - ${sampleData.recipientName}'s song is being created`;
+        emailHtml = getOrderConfirmationHtml(data, email);
+        textContent = getOrderConfirmationText(data, email);
+        subject = `[TEST] Order confirmed - ${data.recipientName}'s song is being created`;
         break;
       case "song_delivery":
-        emailHtml = getSongDeliveryHtml(email);
-        textContent = getSongDeliveryText(email);
-        subject = `[TEST] ${sampleData.recipientName}'s song is complete and ready to share`;
+        emailHtml = getSongDeliveryHtml(data, email);
+        textContent = getSongDeliveryText(data, email);
+        subject = `[TEST] ${data.recipientName}'s song is complete and ready to share`;
         break;
       default:
         return new Response(
@@ -416,10 +482,10 @@ Deno.serve(async (req) => {
     }
 
     const result = await response.json();
-    console.log(`Test email (${template}) sent to ${email}:`, result);
+    console.log(`Test email (${template}) sent to ${email} using token ${previewTokenToUse}:`, result);
 
     return new Response(
-      JSON.stringify({ success: true, messageId: result.messageId, template }),
+      JSON.stringify({ success: true, messageId: result.messageId, template, previewToken: previewTokenToUse }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
