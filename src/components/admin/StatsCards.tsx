@@ -17,6 +17,7 @@ interface Order {
   sms_status?: string | null;
   lyrics_unlocked_at?: string | null;
   lyrics_price_cents?: number | null;
+  notes?: string | null;
 }
 
 interface Lead {
