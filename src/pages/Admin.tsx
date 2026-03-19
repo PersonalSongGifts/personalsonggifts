@@ -20,6 +20,7 @@ import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { Label } from "@/components/ui/label";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
+import { AOVChart } from "@/components/admin/AOVChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
 import { StatusChart } from "@/components/admin/StatusChart";
 import { GenreChart } from "@/components/admin/GenreChart";
