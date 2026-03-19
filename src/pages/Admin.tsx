@@ -39,6 +39,7 @@ import { ValentineRemarketingPanel } from "@/components/admin/ValentineRemarketi
 import { CustomOccasionInsights } from "@/components/admin/CustomOccasionInsights";
 import { UnplayedResendPanel } from "@/components/admin/UnplayedResendPanel";
 import { ReactionEmailPanel } from "@/components/admin/ReactionEmailPanel";
+import { LeadFollowupPanel } from "@/components/admin/LeadFollowupPanel";
 import { CSAssistant } from "@/components/admin/CSAssistant";
 import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 import { getCountryFromTimezone } from "@/lib/timezoneCountry";
@@ -1647,6 +1648,7 @@ const { data, error } = await listOrders("all", 0, 250);
           <TabsContent value="automation" className="space-y-6">
             <AutomationDashboard adminPassword={password} onRefresh={fetchOrders} orders={allOrders} />
             <UnplayedResendPanel adminPassword={password} allOrders={allOrders} />
+            <LeadFollowupPanel adminPassword={password} />
           </TabsContent>
 
           <TabsContent value="emails" className="space-y-6">

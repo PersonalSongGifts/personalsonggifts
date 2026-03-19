@@ -1674,6 +1674,200 @@ To unsubscribe: ${unsubLink}`;
       console.error("[REACTION-EMAIL] Reaction email queue error:", e);
     }
 
+    // ======= 9. LEAD FOLLOW-UP EMAILS ($10 off for preview listeners) =======
+    try {
+      const { data: followupSetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "lead_followup_enabled")
+        .maybeSingle();
+
+      const followupEnabled = (followupSetting as { value: string } | null)?.value === "true";
+
+      if (followupEnabled) {
+        const MAX_FOLLOWUP_PER_RUN = 10;
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+        // Get suppressed emails
+        const { data: suppressedEmails } = await supabase
+          .from("email_suppressions")
+          .select("email");
+        const suppressedSet = new Set((suppressedEmails || []).map((s: { email: string }) => s.email.toLowerCase()));
+
+        // Query eligible leads
+        const { data: eligibleLeads } = await supabase
+          .from("leads")
+          .select("id, email, customer_name, recipient_name, occasion, preview_token, full_song_url, captured_at, recipient_type, genre, singer_preference, special_qualities, favorite_memory, special_message")
+          .gt("preview_play_count", 0)
+          .not("preview_played_at", "is", null)
+          .neq("status", "converted")
+          .is("follow_up_sent_at", null)
+          .is("dismissed_at", null)
+          .not("preview_token", "is", null)
+          .not("full_song_url", "is", null)
+          .lte("preview_sent_at", twentyFourHoursAgo)
+          .order("preview_played_at", { ascending: true })
+          .limit(MAX_FOLLOWUP_PER_RUN + 10); // Fetch extra to account for suppressions
+
+        let followupSent = 0;
+        const followupResults: { leadId: string; success: boolean; error?: string }[] = [];
+
+        const brevoKey = Deno.env.get("BREVO_API_KEY");
+        if (brevoKey && eligibleLeads && eligibleLeads.length > 0) {
+          for (const lead of eligibleLeads) {
+            if (followupSent >= MAX_FOLLOWUP_PER_RUN) break;
+
+            // Check suppression
+            if (suppressedSet.has(lead.email.toLowerCase())) {
+              console.log(`[FOLLOWUP] Skipping suppressed email: ${lead.email}`);
+              continue;
+            }
+
+            // Purchase guard: check if lead already converted via fingerprint match
+            const { data: candidateOrders } = await supabase
+              .from("orders")
+              .select("id, created_at, customer_email, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, lyrics_language_code")
+              .ilike("customer_email", lead.email)
+              .neq("status", "cancelled")
+              .order("created_at", { ascending: false })
+              .limit(5);
+
+            // Use inline fingerprint check since we can't import leadMatchesOrder easily in the cron
+            const matchedOrder = (candidateOrders || []).find((order: any) => {
+              if (new Date(order.created_at).getTime() < new Date(lead.captured_at).getTime()) return false;
+              const normalize = (s: string | null | undefined) => (s || "").trim().toLowerCase();
+              return normalize(order.recipient_name) === normalize(lead.recipient_name) &&
+                normalize(order.occasion) === normalize(lead.occasion) &&
+                normalize(order.genre) === normalize(lead.genre);
+            });
+
+            if (matchedOrder) {
+              console.log(`[FOLLOWUP] Lead ${lead.id} already converted to order ${matchedOrder.id}, auto-marking`);
+              await supabase.from("leads")
+                .update({ status: "converted", converted_at: new Date().toISOString(), order_id: matchedOrder.id })
+                .eq("id", lead.id);
+              continue;
+            }
+
+            // Atomic claim: set follow_up_sent_at BEFORE sending
+            const { data: claimed } = await supabase
+              .from("leads")
+              .update({ follow_up_sent_at: new Date().toISOString() })
+              .eq("id", lead.id)
+              .is("follow_up_sent_at", null)
+              .select("id")
+              .maybeSingle();
+
+            if (!claimed) {
+              console.log(`[FOLLOWUP] Lead ${lead.id} already claimed, skipping`);
+              continue;
+            }
+
+            // Build email
+            const firstName = lead.customer_name.split(" ")[0];
+            const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}?followup=true`;
+
+            const textContent = `Hi ${firstName},
+
+You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.
+
+We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
+
+${previewUrl}
+
+The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.
+
+If you have any questions just reply to this email — a real person will get back to you.
+
+— The Personal Song Gifts team
+
+---
+Personal Song Gifts
+2108 N ST STE N, SACRAMENTO, CA 95816
+
+To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}`;
+
+            const htmlContent = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${firstName},</p>
+<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.</p>
+<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.</p>
+<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 24px 0;"><a href="${previewUrl}" style="color:#1E3A5F;">${previewUrl}</a></p>
+<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.</p>
+<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">If you have any questions just reply to this email — a real person will get back to you.</p>
+<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 40px 0;">— The Personal Song Gifts team</p>
+<hr style="border:none;border-top:1px solid #eeeeee;margin:0 0 20px 0;">
+<p style="color:#999999;font-size:12px;margin:0 0 6px 0;">Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816</p>
+<p style="color:#999999;font-size:12px;margin:0;"><a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color:#999999;">Unsubscribe</a></p>
+</div></body></html>`;
+
+            try {
+              const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+                  "api-key": brevoKey,
+                },
+                body: JSON.stringify({
+                  sender: { name: "Personal Song Gifts", email: "support@personalsonggifts.com" },
+                  replyTo: { email: "support@personalsonggifts.com", name: "Personal Song Gifts" },
+                  to: [{ email: lead.email, name: lead.customer_name }],
+                  subject: `${lead.recipient_name}'s song is still waiting`,
+                  htmlContent,
+                  textContent,
+                  headers: {
+                    "Message-ID": `<${lead.id}.followup.cron.${Date.now()}@personalsonggifts.com>`,
+                    "X-Entity-Ref-ID": lead.id,
+                    "Precedence": "transactional",
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                  }
+                }),
+              });
+
+              if (!res.ok) {
+                const errText = await res.text();
+                console.error(`[FOLLOWUP] Email failed for lead ${lead.id}:`, errText);
+                // Revert follow_up_sent_at on failure
+                await supabase.from("leads").update({ follow_up_sent_at: null }).eq("id", lead.id);
+                followupResults.push({ leadId: lead.id, success: false, error: errText });
+                continue;
+              }
+
+              console.log(`[FOLLOWUP] ✅ Sent follow-up to ${lead.email} for lead ${lead.id}`);
+              followupResults.push({ leadId: lead.id, success: true });
+              followupSent++;
+
+              // Log activity
+              try {
+                await supabase.from("order_activity_log").insert({
+                  entity_type: "lead", entity_id: lead.id, event_type: "followup_sent",
+                  actor: "system", details: `$10 off follow-up sent to ${lead.email} (source: cron)`,
+                });
+              } catch (_) { /* never let logging break the flow */ }
+            } catch (e) {
+              console.error(`[FOLLOWUP] Error sending to lead ${lead.id}:`, e);
+              await supabase.from("leads").update({ follow_up_sent_at: null }).eq("id", lead.id);
+              followupResults.push({ leadId: lead.id, success: false, error: e instanceof Error ? e.message : "Unknown" });
+            }
+          }
+        }
+
+        if (followupSent > 0) {
+          console.log(`[FOLLOWUP] Sent ${followupSent} follow-up emails`);
+        }
+        results.followupEmails = { sent: followupSent, details: followupResults };
+      } else {
+        results.followupEmails = { sent: 0, disabled: true };
+      }
+    } catch (e) {
+      console.error("[FOLLOWUP] Lead follow-up error:", e);
+    }
+
     return new Response(JSON.stringify(results), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -2913,6 +2913,213 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ======= Lead Follow-up Actions =======
+    if (body?.action === "set_lead_followup_enabled") {
+      const newValue = body.enabled === true ? "true" : "false";
+      const { error } = await supabase
+        .from("admin_settings")
+        .upsert({ key: "lead_followup_enabled", value: newValue, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      console.log(`[ADMIN] lead_followup_enabled set to ${newValue}`);
+      return new Response(
+        JSON.stringify({ success: true, enabled: newValue === "true" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (body?.action === "get_lead_followup_stats") {
+      // Eligible: played preview, not converted, not followed up, has token+song
+      const { count: eligible } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .gt("preview_play_count", 0)
+        .not("preview_played_at", "is", null)
+        .neq("status", "converted")
+        .is("follow_up_sent_at", null)
+        .is("dismissed_at", null)
+        .not("preview_token", "is", null)
+        .not("full_song_url", "is", null);
+
+      // Total sent
+      const { count: sent } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .not("follow_up_sent_at", "is", null);
+
+      // Conversions from follow-up
+      const { count: conversions } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .not("follow_up_sent_at", "is", null)
+        .eq("status", "converted");
+
+      return new Response(
+        JSON.stringify({ eligible: eligible || 0, sent: sent || 0, conversions: conversions || 0 }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (body?.action === "send_batch_followup") {
+      const MAX_BATCH = 50;
+      
+      // Get suppressed emails
+      const { data: suppressedEmails } = await supabase
+        .from("email_suppressions")
+        .select("email");
+      const suppressedSet = new Set((suppressedEmails || []).map((s: any) => s.email.toLowerCase()));
+
+      // Query all-time eligible leads (no 24h restriction for batch)
+      const { data: eligibleLeads } = await supabase
+        .from("leads")
+        .select("id, email, customer_name, recipient_name, occasion, preview_token, full_song_url, captured_at, recipient_type, genre, singer_preference, special_qualities, favorite_memory, special_message")
+        .gt("preview_play_count", 0)
+        .not("preview_played_at", "is", null)
+        .neq("status", "converted")
+        .is("follow_up_sent_at", null)
+        .is("dismissed_at", null)
+        .not("preview_token", "is", null)
+        .not("full_song_url", "is", null)
+        .order("preview_played_at", { ascending: true })
+        .limit(MAX_BATCH + 20); // Extra for suppressions
+
+      let batchSent = 0;
+      const brevoKey = Deno.env.get("BREVO_API_KEY");
+
+      if (brevoKey && eligibleLeads && eligibleLeads.length > 0) {
+        for (const lead of eligibleLeads) {
+          if (batchSent >= MAX_BATCH) break;
+
+          if (suppressedSet.has(lead.email.toLowerCase())) continue;
+
+          // Purchase guard
+          const { data: candidateOrders } = await supabase
+            .from("orders")
+            .select("id, created_at, customer_email, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message")
+            .ilike("customer_email", lead.email)
+            .neq("status", "cancelled")
+            .order("created_at", { ascending: false })
+            .limit(5);
+
+          const normalize = (s: string | null | undefined) => (s || "").trim().toLowerCase();
+          const matchedOrder = (candidateOrders || []).find((order: any) => {
+            if (new Date(order.created_at).getTime() < new Date(lead.captured_at).getTime()) return false;
+            return normalize(order.recipient_name) === normalize(lead.recipient_name) &&
+              normalize(order.occasion) === normalize(lead.occasion) &&
+              normalize(order.genre) === normalize(lead.genre);
+          });
+
+          if (matchedOrder) {
+            await supabase.from("leads")
+              .update({ status: "converted", converted_at: new Date().toISOString(), order_id: matchedOrder.id })
+              .eq("id", lead.id);
+            continue;
+          }
+
+          // Atomic claim
+          const { data: claimed } = await supabase
+            .from("leads")
+            .update({ follow_up_sent_at: new Date().toISOString() })
+            .eq("id", lead.id)
+            .is("follow_up_sent_at", null)
+            .select("id")
+            .maybeSingle();
+
+          if (!claimed) continue;
+
+          // Send email
+          const firstName = lead.customer_name.split(" ")[0];
+          const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}?followup=true`;
+
+          const textContent = `Hi ${firstName},
+
+You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.
+
+We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
+
+${previewUrl}
+
+The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.
+
+If you have any questions just reply to this email — a real person will get back to you.
+
+— The Personal Song Gifts team
+
+---
+Personal Song Gifts
+2108 N ST STE N, SACRAMENTO, CA 95816
+
+To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}`;
+
+          const htmlContent = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${firstName},</p>
+<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.</p>
+<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.</p>
+<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;"><a href="${previewUrl}" style="color:#1E3A5F;">${previewUrl}</a></p>
+<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.</p>
+<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">If you have any questions just reply to this email — a real person will get back to you.</p>
+<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 40px 0;">— The Personal Song Gifts team</p>
+<hr style="border:none;border-top:1px solid #eee;margin:0 0 20px 0;">
+<p style="color:#999;font-size:12px;margin:0 0 6px 0;">Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816</p>
+<p style="color:#999;font-size:12px;margin:0;"><a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color:#999;">Unsubscribe</a></p>
+</div></body></html>`;
+
+          try {
+            const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+              method: "POST",
+              headers: {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "api-key": brevoKey,
+              },
+              body: JSON.stringify({
+                sender: { name: "Personal Song Gifts", email: "support@personalsonggifts.com" },
+                replyTo: { email: "support@personalsonggifts.com", name: "Personal Song Gifts" },
+                to: [{ email: lead.email, name: lead.customer_name }],
+                subject: `${lead.recipient_name}'s song is still waiting`,
+                htmlContent,
+                textContent,
+                headers: {
+                  "Message-ID": `<${lead.id}.followup.batch.${Date.now()}@personalsonggifts.com>`,
+                  "X-Entity-Ref-ID": lead.id,
+                  "Precedence": "transactional",
+                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
+                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                }
+              }),
+            });
+
+            if (!res.ok) {
+              console.error(`[BATCH-FOLLOWUP] Failed for lead ${lead.id}`);
+              await supabase.from("leads").update({ follow_up_sent_at: null }).eq("id", lead.id);
+              continue;
+            }
+
+            batchSent++;
+            console.log(`[BATCH-FOLLOWUP] ✅ Sent to ${lead.email} (${batchSent}/${MAX_BATCH})`);
+
+            try {
+              await supabase.from("order_activity_log").insert({
+                entity_type: "lead", entity_id: lead.id, event_type: "followup_sent",
+                actor: "admin", details: `$10 off follow-up sent to ${lead.email} (source: batch)`,
+              });
+            } catch (_) {}
+          } catch (e) {
+            console.error(`[BATCH-FOLLOWUP] Error for lead ${lead.id}:`, e);
+            await supabase.from("leads").update({ follow_up_sent_at: null }).eq("id", lead.id);
+          }
+        }
+      }
+
+      console.log(`[BATCH-FOLLOWUP] Batch complete: ${batchSent} sent`);
+      return new Response(
+        JSON.stringify({ success: true, sent: batchSent }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }

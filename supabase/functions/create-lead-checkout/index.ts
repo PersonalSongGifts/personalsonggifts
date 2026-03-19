@@ -10,7 +10,7 @@ const corsHeaders = {
 // We set the offer amount server-side so Stripe ALWAYS shows the discounted lead offer,
 // even if promo-code configuration changes in Stripe.
 const LEAD_STANDARD_TOTAL_CENTS = 4999;
-const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = 4499; // $5 off follow-up
+const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = 3999; // $10 off follow-up
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -84,9 +84,20 @@ Deno.serve(async (req) => {
       : LEAD_STANDARD_TOTAL_CENTS;
 
     // VDay10: subtract $10 server-side when remarketing link is used
+    // Gated behind vday10_enabled admin setting
     const VDAY10_DISCOUNT_CENTS = 1000;
     if (applyVday10Discount) {
-      unitAmount = Math.max(0, unitAmount - VDAY10_DISCOUNT_CENTS);
+      const { data: vdaySetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "vday10_enabled")
+        .maybeSingle();
+      const vday10Enabled = (vdaySetting as { value: string } | null)?.value === "true";
+      if (vday10Enabled) {
+        unitAmount = Math.max(0, unitAmount - VDAY10_DISCOUNT_CENTS);
+      } else {
+        console.log("VDay10 discount requested but vday10_enabled=false, ignoring");
+      }
     }
 
     // Get origin for redirect URLs

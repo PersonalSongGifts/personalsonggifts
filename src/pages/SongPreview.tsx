@@ -424,10 +424,10 @@ export default function SongPreview() {
           {isFollowup && !isVday10 && (
             <div className="bg-accent/10 border border-accent rounded-lg p-4 text-center">
               <Badge className="bg-accent text-accent-foreground mb-2">
-                Bonus Applied
+                $10 off — already applied
               </Badge>
               <p className="text-sm">
-                Your FULLSONG code gives you an extra $5 off!
+                $10 off — no code needed, it's already applied!
               </p>
             </div>
           )}
@@ -441,11 +441,11 @@ export default function SongPreview() {
                 <p className="text-sm text-muted-foreground line-through">$99.99 USD</p>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
                   {isVday10 && isFollowup
-                    ? "$34.99"
+                    ? "$29.99"
                     : isVday10
                     ? "$39.99"
                     : isFollowup
-                    ? "$44.99"
+                    ? "$39.99"
                     : "$49.99"}
                   <span className="text-sm font-normal text-muted-foreground ml-1">USD</span>
                 </p>
@@ -479,10 +479,10 @@ export default function SongPreview() {
             <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
               {isVday10
                 ? isFollowup
-                  ? "50% Off + $5 + $10 Valentine's Day Special"
-                  : "50% Off + $10 Valentine's Day Special"
+                  ? "Valentine's Day Special + $10 off"
+                  : "Valentine's Day Special"
                 : isFollowup
-                ? "50% Off + Extra $5 Auto-Applied"
+                ? "$10 off — already applied"
                 : "50% Off Auto-Applied"}
             </Badge>
           </div>
