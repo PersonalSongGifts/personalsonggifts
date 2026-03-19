@@ -373,31 +373,91 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (existingLead) {
+        // Compute new inputs_hash to detect creative field changes
+        const newInputsHash = await computeInputsHash([
+          input.recipientName.trim(),
+          input.specialQualities.trim(),
+          input.favoriteMemory.trim(),
+          input.genre,
+          input.occasion,
+          input.lyricsLanguageCode || "en",
+        ]);
+
+        // Check if creative fields actually changed
+        const creativeFieldsChanged = existingLead.inputs_hash !== newInputsHash;
+
+        const updatePayload: Record<string, unknown> = {
+          phone: input.phone?.trim() || null,
+          customer_name: input.customerName.trim(),
+          recipient_name: input.recipientName.trim(),
+          recipient_type: input.recipientType,
+          occasion: input.occasion,
+          genre: input.genre,
+          singer_preference: input.singerPreference,
+          special_qualities: input.specialQualities.trim(),
+          favorite_memory: input.favoriteMemory.trim(),
+          special_message: input.specialMessage?.trim() || null,
+          captured_at: new Date().toISOString(),
+          quality_score: qualityScore,
+          inputs_hash: newInputsHash,
+          lyrics_language_code: input.lyricsLanguageCode || "en",
+          // Update timezone if provided
+          ...(input.timezone && { timezone: input.timezone }),
+          // Update UTM fields if provided (don't overwrite existing with null)
+          ...(input.utmSource && { utm_source: input.utmSource }),
+          ...(input.utmMedium && { utm_medium: input.utmMedium }),
+          ...(input.utmCampaign && { utm_campaign: input.utmCampaign }),
+          ...(input.utmContent && { utm_content: input.utmContent }),
+          ...(input.utmTerm && { utm_term: input.utmTerm }),
+        };
+
+        // If creative fields changed, reset all generated content and delivery state
+        if (creativeFieldsChanged) {
+          console.log(`[CAPTURE-LEAD] Creative fields changed for lead ${existingLead.id}, resetting generated content`);
+          Object.assign(updatePayload, {
+            // Reset generated content
+            preview_song_url: null,
+            full_song_url: null,
+            song_title: null,
+            cover_image_url: null,
+            automation_lyrics: null,
+            automation_status: null,
+            automation_task_id: null,
+            automation_started_at: null,
+            automation_last_error: null,
+            automation_retry_count: 0,
+            automation_raw_callback: null,
+            automation_audio_url_source: null,
+            automation_style_id: null,
+            lyrics_raw_attempt_1: null,
+            lyrics_raw_attempt_2: null,
+            lyrics_language_qa: null,
+            // Reset delivery state
+            preview_sent_at: null,
+            preview_played_at: null,
+            preview_play_count: 0,
+            preview_opened_at: null,
+            preview_token: null,
+            preview_sent_to_emails: null,
+            preview_scheduled_at: null,
+            follow_up_sent_at: null,
+            sent_at: null,
+            generated_at: null,
+            status: "lead",
+            // Reset SMS state
+            sms_status: null,
+            sms_sent_at: null,
+            sms_scheduled_for: null,
+            sms_last_error: null,
+            // Recompute timing
+            earliest_generate_at: new Date().toISOString(),
+            target_send_at: new Date(Date.now() + HOURS_UNTIL_PREVIEW_SEND * 60 * 60 * 1000).toISOString(),
+          });
+        }
 
         const { error: updateError } = await supabase
           .from("leads")
-          .update({
-            phone: input.phone?.trim() || null,
-            customer_name: input.customerName.trim(),
-            recipient_name: input.recipientName.trim(),
-            recipient_type: input.recipientType,
-            occasion: input.occasion,
-            genre: input.genre,
-            singer_preference: input.singerPreference,
-            special_qualities: input.specialQualities.trim(),
-            favorite_memory: input.favoriteMemory.trim(),
-            special_message: input.specialMessage?.trim() || null,
-            captured_at: new Date().toISOString(),
-            quality_score: qualityScore,
-            // Update timezone if provided
-            ...(input.timezone && { timezone: input.timezone }),
-            // Update UTM fields if provided (don't overwrite existing with null)
-            ...(input.utmSource && { utm_source: input.utmSource }),
-            ...(input.utmMedium && { utm_medium: input.utmMedium }),
-            ...(input.utmCampaign && { utm_campaign: input.utmCampaign }),
-            ...(input.utmContent && { utm_content: input.utmContent }),
-            ...(input.utmTerm && { utm_term: input.utmTerm }),
-          })
+          .update(updatePayload)
           .eq("id", existingLead.id);
 
         if (updateError) {
@@ -414,9 +474,15 @@ Deno.serve(async (req) => {
         // Sync to Google Sheets (unified with orders)
         syncLeadToGoogleSheet(existingLead.id, input, qualityScore);
 
-        console.log("Lead updated:", normalizedEmail);
+        // If creative fields changed, re-trigger automation for new song
+        if (creativeFieldsChanged) {
+          console.log(`[CAPTURE-LEAD] Re-triggering automation for updated lead ${existingLead.id}`);
+          triggerAutomationIfQualified(existingLead.id, qualityScore);
+        }
+
+        console.log("Lead updated:", normalizedEmail, creativeFieldsChanged ? "(creative fields changed, regenerating)" : "(minor update)");
         return new Response(
-          JSON.stringify({ success: true, leadId: existingLead.id, qualityScore }),
+          JSON.stringify({ success: true, leadId: existingLead.id, qualityScore, regenerating: creativeFieldsChanged }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
