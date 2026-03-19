@@ -65,6 +65,22 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check email suppression (CAN-SPAM compliance)
+    const effectiveEmailForCheck = (lead.lead_email_override?.trim() || lead.email).toLowerCase();
+    const { data: suppression } = await supabase
+      .from("email_suppressions")
+      .select("email")
+      .eq("email", effectiveEmailForCheck)
+      .maybeSingle();
+
+    if (suppression) {
+      console.log(`[PREVIEW] Email suppressed for lead ${leadId}: ${effectiveEmailForCheck}`);
+      return new Response(
+        JSON.stringify({ error: "Email is suppressed (unsubscribed)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Purchase guard: only auto-convert if this exact lead already became an order after capture
     const { data: candidateOrders } = await supabase
       .from("orders")

@@ -1,64 +1,39 @@
 
 
-## Audit Result + Two New Bugs Found
+## Fix: Order EE84BC3C "Song Not Found" on Song Page
 
-### Audit: False Converted Leads
+### Root Cause
 
-**Zero remaining false time-based conversions.** All 103 previously identified records are clean.
+The order has `status = "completed"` but the `get-song-page` edge function only serves songs for orders with status `"delivered"` or `"ready"`. This is a lead-converted order (`source: lead_conversion`) where the status was set to `completed` but never transitioned to `delivered` because the delivery email was never sent.
 
-Note: 102 converted leads have minor detail mismatches (e.g. user typed "Shakiethia (Keke)" as lead then "Keke" at checkout). These are legitimate same-session conversions where the user tweaked details — not false attributions. No action needed.
+The `song_url` is valid and present. The fix has two parts:
 
----
+### Part 1: Immediate Database Fix
 
-### Bug 1: Lead Overwrite Destroys Generated Songs
+Update this specific order's status to `delivered` so the song page works now:
 
-**Severity: High — 218 active records affected**
+```sql
+UPDATE orders
+SET status = 'delivered',
+    delivered_at = now(),
+    delivery_status = 'sent'
+WHERE id = 'ee84bc3c-d416-4947-9d0a-c07d987cb2b4';
+```
 
-**Problem:** When a returning user with the same email submits a new lead for a *different* song, `capture-lead` overwrites the creative fields (recipient, occasion, genre, etc.) on the existing lead row. But it does NOT reset:
-- `preview_song_url`, `full_song_url`, `song_title`, `cover_image_url` (old song stays)
-- `automation_status`, `automation_lyrics` (old generation data stays)
-- `preview_sent_at`, `preview_token`, `status` (old delivery state stays)
-- `inputs_hash`, `lyrics_language_code`
+### Part 2: Prevent Future Occurrences
 
-And it does NOT re-trigger automation (that only runs for new inserts).
+Update the `get-song-page` edge function to also accept `"completed"` status orders (when they have a valid `song_url`). This way, even if the delivery pipeline hasn't run yet, customers can still access their song page.
 
-**Result:** The lead now has Song B's details with Song A's audio attached. If they receive a preview email, they hear the wrong song. No new song is ever generated.
+**File:** `supabase/functions/get-song-page/index.ts`
 
-**Fix (in `capture-lead/index.ts`):** When updating an existing lead, detect if creative fields actually changed (compare `inputs_hash`). If they did:
-1. Reset all generated content fields to NULL (`preview_song_url`, `full_song_url`, `automation_lyrics`, `song_title`, `cover_image_url`, `automation_status`, `automation_task_id`)
-2. Reset delivery state (`preview_sent_at`, `preview_played_at`, `preview_play_count`, `follow_up_sent_at`, `sent_at`, `generated_at`, `status` back to `'lead'`)
-3. Recompute `inputs_hash` and `lyrics_language_code`
-4. Re-trigger `triggerAutomationIfQualified` so a new song generates
+Change the status check from:
+```typescript
+if (!["delivered", "ready"].includes(order.status) || !order.song_url)
+```
+to:
+```typescript
+if (!["delivered", "ready", "completed"].includes(order.status) || !order.song_url)
+```
 
-**Files:** `supabase/functions/capture-lead/index.ts`
-
----
-
-### Bug 2: Lead Preview Emails Ignore Email Suppressions
-
-**Severity: Medium — CAN-SPAM compliance risk**
-
-**Problem:** The `email_suppressions` table (122 entries) is checked before sending follow-up emails and remarketing, but NOT before sending:
-- Automated lead preview emails (in `process-scheduled-deliveries` section 6, line 934)
-- Manual lead preview emails (in `send-lead-preview`)
-
-If a user unsubscribes and later a preview email is queued for them, it sends anyway.
-
-**Fix:** Add a suppression check before sending in both locations:
-1. In `process-scheduled-deliveries` section 6: query `email_suppressions` and skip any lead whose email is in the suppressed set (same pattern already used in section 8 for follow-ups)
-2. In `send-lead-preview`: check `email_suppressions` for the target email before sending
-
-**Files:**
-- `supabase/functions/process-scheduled-deliveries/index.ts`
-- `supabase/functions/send-lead-preview/index.ts`
-
----
-
-### Summary of Changes
-
-| File | Change |
-|------|--------|
-| `supabase/functions/capture-lead/index.ts` | Detect creative field changes on update; reset generated content and re-trigger automation |
-| `supabase/functions/process-scheduled-deliveries/index.ts` | Add suppression check before lead preview emails |
-| `supabase/functions/send-lead-preview/index.ts` | Add suppression check before sending |
+This is safe because `completed` means the song is generated and ready — the only missing step is the delivery email, which shouldn't block the song page from loading.
 
