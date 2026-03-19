@@ -479,10 +479,10 @@ export default function SongPreview() {
             <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
               {isVday10
                 ? isFollowup
-                  ? "50% Off + $5 + $10 Valentine's Day Special"
-                  : "50% Off + $10 Valentine's Day Special"
+                  ? "Valentine's Day Special + $10 off"
+                  : "Valentine's Day Special"
                 : isFollowup
-                ? "50% Off + Extra $5 Auto-Applied"
+                ? "$10 off — already applied"
                 : "50% Off Auto-Applied"}
             </Badge>
           </div>
