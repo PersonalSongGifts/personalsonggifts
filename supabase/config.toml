@@ -104,3 +104,6 @@ verify_jwt = false
 
 [functions.capture-paypal-payment]
 verify_jwt = false
+
+[functions.monitoring-status]
+verify_jwt = false
