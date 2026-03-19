@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 type Step = "lookup" | "upload" | "success";
 
@@ -16,6 +17,8 @@ interface OrderInfo {
   recipientName: string;
   occasion: string;
 }
+
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
 const SubmitReaction = () => {
   const [step, setStep] = useState<Step>("lookup");
@@ -68,15 +71,13 @@ const SubmitReaction = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith("video/")) {
       toast.error("Please select a video file");
       return;
     }
 
-    // Validate file size (max 100MB - matches server limit)
-    if (file.size > 100 * 1024 * 1024) {
-      toast.error("Video must be under 100MB");
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("Video must be under 2GB. Try compressing the video or trimming it shorter.");
       return;
     }
 
@@ -90,31 +91,68 @@ const SubmitReaction = () => {
     setUploadProgress(0);
 
     try {
-      // Create form data
-      const formData = new FormData();
-      formData.append("action", "upload");
-      formData.append("email", email);
-      formData.append("orderId", orderInfo.orderId);
-      formData.append("video", selectedFile);
+      // Step 1: Upload video directly to storage bucket
+      const extension = selectedFile.name.toLowerCase().match(/\.[^.]+$/)?.[0] || ".mp4";
+      const fileName = `${crypto.randomUUID()}-${Date.now()}${extension}`;
 
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + 10, 90));
-      }, 500);
+      // Use XMLHttpRequest for real progress tracking
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 85);
+            setUploadProgress(pct);
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            try {
+              const body = JSON.parse(xhr.responseText);
+              reject(new Error(body.message || body.error || "Upload failed"));
+            } catch {
+              reject(new Error("Upload failed"));
+            }
+          }
+        });
+
+        xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+        xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
+
+        xhr.open("POST", `${supabaseUrl}/storage/v1/object/reactions/${fileName}`);
+        xhr.setRequestHeader("Authorization", `Bearer ${anonKey}`);
+        xhr.setRequestHeader("apikey", anonKey);
+        xhr.setRequestHeader("Content-Type", selectedFile.type);
+        xhr.setRequestHeader("x-upsert", "false");
+        xhr.send(selectedFile);
+      });
+
+      setUploadProgress(90);
+
+      // Step 2: Call edge function to link the video to the order
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-reaction`,
         {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "link-reaction",
+            email: email.trim(),
+            name: email.trim(), // Use email as name for this flow
+            orderId: orderInfo.orderId,
+            fileName,
+          }),
         }
       );
 
-      clearInterval(progressInterval);
-
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Upload failed");
+        throw new Error(data.error || "Failed to save reaction");
       }
 
       setUploadProgress(100);
@@ -231,14 +269,21 @@ const SubmitReaction = () => {
                   >
                     <Video className="h-12 w-12 text-muted-foreground mb-4" />
                     {selectedFile ? (
-                      <p className="font-medium text-foreground">{selectedFile.name}</p>
+                      <div>
+                        <p className="font-medium text-foreground">{selectedFile.name}</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedFile.size >= 1024 * 1024 * 1024
+                            ? `${(selectedFile.size / (1024 * 1024 * 1024)).toFixed(1)} GB`
+                            : `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`}
+                        </p>
+                      </div>
                     ) : (
                       <>
                         <p className="font-medium text-foreground">
                           Click to select your video
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          MP4, MOV, or other video formats (max 500MB)
+                          MP4, MOV, or other video formats (max 2GB)
                         </p>
                       </>
                     )}
@@ -249,7 +294,11 @@ const SubmitReaction = () => {
                   <div className="space-y-2">
                     <Progress value={uploadProgress} />
                     <p className="text-sm text-center text-muted-foreground">
-                      Uploading... {uploadProgress}%
+                      {uploadProgress < 85
+                        ? `Uploading... ${uploadProgress}%`
+                        : uploadProgress < 100
+                        ? "Saving your reaction..."
+                        : "Done!"}
                     </p>
                   </div>
                 )}
