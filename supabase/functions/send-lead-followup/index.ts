@@ -63,7 +63,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.
+      The full song is between 3–6 minutes long and includes everything you shared with us about ${lead.recipient_name}.
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
