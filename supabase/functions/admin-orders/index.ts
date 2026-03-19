@@ -2540,13 +2540,8 @@ Deno.serve(async (req) => {
       // Extract action to gate this block
       const action = typeof body?.action === "string" ? body.action : null;
       
-      // If action is set but not handled above, return unknown action error
-      if (action) {
-        return new Response(
-          JSON.stringify({ error: "Unknown action", action }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      // Unknown-action guard is intentionally handled at the end of the POST action chain
+      // so newer actions declared below can still execute.
 
       // Legacy update-order fallback (no action field = direct order updates)
       const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = (body ?? {}) as Record<string, unknown>;
