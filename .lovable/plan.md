@@ -1,17 +1,35 @@
 
 
-## Fix: Update Follow-up Label in Test Email Dropdown
+## Create a Test Lead for Discount Code Testing
 
 ### Problem
-The dropdown in `TestEmailSender.tsx` line 22 still shows `"Lead Follow-up ($5 Off)"` — needs to say `"Lead Follow-up ($10 Off)"`.
+You need a working lead preview page with a real song to test the discount code checkout flow. The test email link uses a dummy token, so it doesn't work for end-to-end testing.
 
-### Change
+### Plan
 
-**`src/components/admin/TestEmailSender.tsx`** — line 21-22:
-- Change `label: "Lead Follow-up ($5 Off)"` to `label: "Lead Follow-up ($10 Off)"`
+**Single database migration** that inserts a test lead row with:
+- Email: `Ryan@hyperdrivelab.com`
+- Customer name: `Ryan Test`
+- Recipient: `Test Buddy` (friend, birthday, pop, male)
+- Preview token: `TEST-DISCOUNT-2026-RYAN` (what you'll use in the URL)
+- Borrows existing song files from another lead (the 5EFC06ED files already in storage)
+- Status: `preview_sent` (so the preview page loads normally)
+- `full_song_url` populated (required for checkout to work)
 
-### About the test link
-The test email uses a dummy preview token (`demo`), so the link won't load a real song page. This is by design — it confirms the email sends, the copy is correct, and the $10 off messaging appears. To test with a real lead's data and a working preview link, you'd use the manual "Send Follow-up" button on a specific lead in the Leads tab.
+### After migration runs
 
-One file, one line change.
+You'll be able to visit:
+```
+https://personalsonggifts.lovable.app/preview/TEST-DISCOUNT-2026-RYAN
+```
+
+This will load the preview page with a real playable song. You can then:
+1. Click "Get Full Song" 
+2. On the Stripe checkout page, enter a promo/discount code
+3. Verify the discount applies correctly
+
+### Technical details
+- One SQL INSERT migration, no code changes needed
+- Token is 24 chars (meets the 16-char minimum validation)
+- Uses existing audio files so no upload needed
 
