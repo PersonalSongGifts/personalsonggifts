@@ -368,7 +368,7 @@ Deno.serve(async (req) => {
       case "lead_followup":
         emailHtml = getLeadFollowupHtml(previewUrl, email);
         textContent = getLeadFollowupText(previewUrl, email);
-        subject = `[TEST] A special offer for ${sampleData.recipientName}'s song`;
+        subject = `[TEST] ${sampleData.recipientName}'s song is still waiting`;
         break;
       case "order_confirmation":
         emailHtml = getOrderConfirmationHtml(email);

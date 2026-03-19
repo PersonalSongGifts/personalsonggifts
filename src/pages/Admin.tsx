@@ -1648,6 +1648,7 @@ const { data, error } = await listOrders("all", 0, 250);
           <TabsContent value="automation" className="space-y-6">
             <AutomationDashboard adminPassword={password} onRefresh={fetchOrders} orders={allOrders} />
             <UnplayedResendPanel adminPassword={password} allOrders={allOrders} />
+            <LeadFollowupPanel adminPassword={password} />
           </TabsContent>
 
           <TabsContent value="emails" className="space-y-6">

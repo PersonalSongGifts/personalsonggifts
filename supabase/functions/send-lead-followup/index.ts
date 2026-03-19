@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
+import { logActivity } from "../_shared/activity-log.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +10,82 @@ const corsHeaders = {
 interface SendFollowupRequest {
   leadId: string;
   adminPassword: string;
-  resend?: boolean;  // If true, allows resending even if follow-up was already sent
+  resend?: boolean;
+  source?: "manual" | "cron" | "batch";
+}
+
+function buildFollowupEmail(lead: { customer_name: string; recipient_name: string; preview_token: string }, email: string) {
+  const firstName = lead.customer_name.split(" ")[0];
+  const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}?followup=true`;
+
+  const subject = `${lead.recipient_name}'s song is still waiting`;
+
+  const textContent = `Hi ${firstName},
+
+You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.
+
+We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
+
+${previewUrl}
+
+The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.
+
+If you have any questions just reply to this email — a real person will get back to you.
+
+— The Personal Song Gifts team
+
+---
+Personal Song Gifts
+2108 N ST STE N, SACRAMENTO, CA 95816
+
+To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}`;
+
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${firstName},</p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+      <a href="${previewUrl}" style="color: #1E3A5F;">${previewUrl}</a>
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      If you have any questions just reply to this email — a real person will get back to you.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
+      — The Personal Song Gifts team
+    </p>
+
+    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
+    <p style="color: #999999; font-size: 12px; margin: 0 0 6px 0;">
+      Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816
+    </p>
+    <p style="color: #999999; font-size: 12px; margin: 0;">
+      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}" style="color: #999999;">Unsubscribe</a>
+    </p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, htmlContent, textContent, previewUrl };
 }
 
 Deno.serve(async (req) => {
@@ -23,7 +99,7 @@ Deno.serve(async (req) => {
       throw new Error("ADMIN_PASSWORD not configured");
     }
 
-    const { leadId, adminPassword: providedPassword, resend }: SendFollowupRequest = await req.json();
+    const { leadId, adminPassword: providedPassword, resend, source }: SendFollowupRequest = await req.json();
 
     if (!providedPassword || providedPassword.trim() !== adminPassword.trim()) {
       return new Response(
@@ -64,7 +140,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Purchase guard: only auto-convert if this exact lead already became an order after capture
+    // Purchase guard: fingerprint match
     const { data: candidateOrders } = await supabase
       .from("orders")
       .select("id, created_at, customer_email, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, lyrics_language_code")
@@ -88,6 +164,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check suppression
+    const { data: suppressed } = await supabase
+      .from("email_suppressions")
+      .select("email")
+      .eq("email", lead.email.toLowerCase())
+      .maybeSingle();
+
+    if (suppressed) {
+      console.log(`Lead ${lead.id} email ${lead.email} is suppressed, skipping follow-up`);
+      return new Response(
+        JSON.stringify({ error: "Email is suppressed" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!lead.preview_sent_at) {
       return new Response(
         JSON.stringify({ error: "Preview not sent yet - send preview first" }),
@@ -103,7 +194,37 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Send follow-up email via Brevo
+    if (!lead.preview_token) {
+      return new Response(
+        JSON.stringify({ error: "Lead has no preview token" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // RACE CONDITION FIX: Set follow_up_sent_at BEFORE sending to prevent double-send
+    const { data: claimed, error: claimError } = await supabase
+      .from("leads")
+      .update({ follow_up_sent_at: new Date().toISOString() })
+      .eq("id", leadId)
+      .is("follow_up_sent_at", null)
+      .select("id")
+      .maybeSingle();
+
+    // If resend=true, we skip the atomic claim and just proceed
+    if (!resend && (!claimed || claimError)) {
+      console.log(`Lead ${leadId} follow-up already claimed by another process`);
+      return new Response(
+        JSON.stringify({ error: "Follow-up already being sent" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (resend) {
+      // For resends, just update the timestamp
+      await supabase.from("leads").update({ follow_up_sent_at: new Date().toISOString() }).eq("id", leadId);
+    }
+
+    // Build and send email
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
     const senderEmail = "support@personalsonggifts.com";
     const senderName = "Personal Song Gifts";
@@ -112,67 +233,8 @@ Deno.serve(async (req) => {
       throw new Error("BREVO_API_KEY not configured");
     }
 
-    const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}?followup=true`;
+    const { subject, htmlContent, textContent } = buildFollowupEmail(lead, lead.email);
     const messageId = `<${lead.id}.followup.${Date.now()}@personalsonggifts.com>`;
-
-    const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${lead.customer_name},</p>
-
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      Just wanted to check in — your ${lead.occasion} song for ${lead.recipient_name} is still waiting for you.
-    </p>
-
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      You can listen to the preview and complete your order here:
-    </p>
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
-      <a href="${previewUrl}" style="color: #1E3A5F;">${previewUrl}</a>
-    </p>
-
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      Use code <strong>FULLSONG</strong> at checkout to save $5 on your order.
-    </p>
-
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
-      — The Personal Song Gifts Team
-    </p>
-
-    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
-    <p style="color: #999999; font-size: 12px; margin: 0 0 6px 0;">
-      Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816
-    </p>
-    <p style="color: #999999; font-size: 12px; margin: 0;">
-      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}" style="color: #999999;">Unsubscribe</a>
-    </p>
-  </div>
-</body>
-</html>
-    `;
-
-    const textContent = `Hi ${lead.customer_name},
-
-Just wanted to check in — your ${lead.occasion} song for ${lead.recipient_name} is still waiting for you.
-
-You can listen to the preview and complete your order here: ${previewUrl}
-
-Use code FULLSONG at checkout to save $5 on your order.
-
-— The Personal Song Gifts Team
-
----
-Personal Song Gifts
-2108 N ST STE N, SACRAMENTO, CA 95816
-
-To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}
-`;
 
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -185,9 +247,9 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         sender: { name: senderName, email: senderEmail },
         replyTo: { email: senderEmail, name: senderName },
         to: [{ email: lead.email, name: lead.customer_name }],
-        subject: `Your song for ${lead.recipient_name} is still waiting`,
-        htmlContent: emailHtml,
-        textContent: textContent,
+        subject,
+        htmlContent,
+        textContent,
         headers: {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": lead.id,
@@ -201,19 +263,19 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     if (!response.ok) {
       const errorData = await response.text();
       console.error("Brevo API error:", errorData);
+      // On failure, clear follow_up_sent_at so it can be retried
+      if (!resend) {
+        await supabase.from("leads").update({ follow_up_sent_at: null }).eq("id", leadId);
+      }
       throw new Error(`Failed to send email: ${response.status}`);
     }
 
-    // Update lead with follow_up_sent_at
-    await supabase
-      .from("leads")
-      .update({
-        follow_up_sent_at: new Date().toISOString(),
-      })
-      .eq("id", leadId);
-
     const result = await response.json();
-    console.log(`Follow-up email sent to ${lead.email}:`, result);
+    console.log(`Follow-up email (${source || "manual"}) sent to ${lead.email}:`, result);
+
+    // Log activity
+    await logActivity(supabase, "lead", lead.id, "followup_sent", source === "cron" || source === "batch" ? "system" : "admin",
+      `$10 off follow-up sent to ${lead.email} (source: ${source || "manual"})`);
 
     return new Response(
       JSON.stringify({ success: true, messageId: result.messageId }),
