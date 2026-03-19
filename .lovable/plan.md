@@ -1,43 +1,41 @@
 
 
-## Monitoring Edge Function: `monitoring-status`
+## Increase Reaction Video Upload Limit to 2GB
 
-### Overview
-Create a read-only edge function that returns aggregate counts of system health metrics, polled by OpenClaw every 15 minutes. No PII exposed, secured by a static API key header.
+### The Problem
+Currently the upload flows through the Edge Function (`upload-reaction`), which has a ~150MB infrastructure limit (Deno Deploy). Simply changing the constant won't work for larger files.
 
-### Schema Issue: `input_edit_conflicts`
-The `orders` table has **no `updated_at` column**, so query #4 as specified won't work. Alternative: count orders where `pending_revision = true` AND `automation_status` IN active states — this captures the real conflict scenario (customer edited after generation started). Will also check `revision_requested_at > automation_started_at` as a proxy.
+### Solution: Direct-to-Storage Upload
+Upload the video directly to Supabase Storage from the browser (supports up to 5GB with resumable uploads), then call the edge function with just the metadata to link it to an order.
 
-### Implementation
+### Changes
 
-**New file:** `supabase/functions/monitoring-status/index.ts`
+**1. Edge Function: `upload-reaction/index.ts`**
+- Update `MAX_VIDEO_SIZE` constant to `2 * 1024 * 1024 * 1024` (2GB)
+- Add a new action `"link-reaction"` that accepts JSON with `{ email, name, orderId?, fileName }` — does the order-matching and DB update logic without receiving the video binary
+- Keep existing `"upload"` and `"direct-upload"` actions working for smaller files as fallback
 
-**Security:** Validate `X-Monitor-Key` header against a stored secret (`MONITOR_API_KEY`). Will add this secret and have you set the value to `psg-monitor-2026-secure` (or whatever you prefer).
+**2. Client: `src/pages/ShareReaction.tsx`**
+- Update `MAX_FILE_SIZE` to 2GB
+- Change upload flow:
+  1. Generate a UUID filename client-side
+  2. Upload video directly to `reactions` bucket via `supabase.storage.from("reactions").upload()`
+  3. On success, call `upload-reaction` with action `"link-reaction"` passing email, name, orderId, and fileName
+  4. Use the storage upload's progress events for real upload progress (replacing the fake interval)
+- Keep validation (file type, size) on client side
+- Update error message from "150MB" to "2GB"
 
-**Config:** Add `[functions.monitoring-status]` with `verify_jwt = false` to config.toml.
+**3. Client: `src/pages/SubmitReaction.tsx`**
+- Update size references/error messages to 2GB
+- Same direct-to-storage pattern for the existing upload flow
 
-**Six queries (all COUNT-only, both `orders` + `leads` tables combined where applicable):**
+### Why This Approach
+- The `reactions` bucket is already public, so no auth issues with direct uploads
+- Resumable uploads handle large files reliably with real progress tracking
+- The edge function still handles all the business logic (order matching, rate limiting, DB updates)
+- Backward compatible — smaller files still work fine
 
-| Metric | Query Logic |
-|--------|-------------|
-| `stuck_orders` | `automation_status IN ('lyrics_generating','audio_generating')` AND `automation_started_at < NOW() - 45 min` — both orders + leads |
-| `failed_generations` | `automation_status IN ('failed','permanently_failed')` AND `automation_retry_count >= 3` — both tables |
-| `rate_limited_jobs` | `automation_status = 'rate_limited'` — both tables |
-| `input_edit_conflicts` | `pending_revision = true` AND `automation_status IN ('lyrics_generating','audio_generating','completed')` — orders only |
-| `pending_delivery` | `target_send_at < NOW() + 1 hour` AND `sent_at IS NULL` AND `dismissed_at IS NULL` — both tables |
-| `unconverted_leads_24h` | `status = 'lead'` AND `captured_at < NOW() - 24 hours` AND `follow_up_sent_at IS NULL` AND `dismissed_at IS NULL` — leads only |
-
-**Error handling:** Each query wrapped in try/catch; returns `-1` for failed metrics plus an `errors` array.
-
-**Response format:** Exact JSON shape requested, plus an `errors` field if any query fails.
-
-### Steps
-1. Add `MONITOR_API_KEY` secret (you set value)
-2. Create the edge function
-3. Deploy and test
-
-### Technical Details
-- Uses service role key internally for queries (all tables have RLS blocking public access)
-- CORS wide open as requested
-- No mutations — pure SELECT counts
+### Security Note
+- Rate limiting still enforced server-side in the `link-reaction` action
+- Video type validation stays on both client and server (server validates the storage object exists)
 
