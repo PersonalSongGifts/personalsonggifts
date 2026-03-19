@@ -28,17 +28,6 @@ function validateVideo(video: File): string | null {
     return "Invalid video file extension";
   }
   return null;
-}
-  if (!ALLOWED_VIDEO_TYPES.includes(video.type)) {
-    return "Only MP4, MOV, and WebM videos are allowed";
-  }
-  const extensionMatch = video.name.toLowerCase().match(/\.[^.]+$/);
-  const extension = extensionMatch ? extensionMatch[0] : "";
-  if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
-    return "Invalid video file extension";
-  }
-  return null;
-}
 
 function getExtension(filename: string): string {
   const match = filename.toLowerCase().match(/\.[^.]+$/);
