@@ -2540,137 +2540,134 @@ Deno.serve(async (req) => {
       // Extract action to gate this block
       const action = typeof body?.action === "string" ? body.action : null;
       
-      // If action is set but not handled above, return unknown action error
-      if (action) {
-        return new Response(
-          JSON.stringify({ error: "Unknown action", action }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      // Unknown-action guard is intentionally handled at the end of the POST action chain
+      // so newer actions declared below can still execute.
 
-      // Legacy update-order fallback (no action field = direct order updates)
-      const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = (body ?? {}) as Record<string, unknown>;
+      if (!action) {
+        // Legacy update-order fallback (no action field = direct order updates)
+        const { orderId, status, songUrl, song_title, deliver, scheduleDelivery, scheduledDeliveryAt } = (body ?? {}) as Record<string, unknown>;
 
-      if (!orderId) {
-        return new Response(
-          JSON.stringify({ error: "Order ID required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Update order
-      const updateData: Record<string, unknown> = {};
-      if (status) updateData.status = status;
-      if (songUrl) updateData.song_url = songUrl;
-      if (song_title) updateData.song_title = song_title;
-
-      // Handle scheduled delivery
-      if (scheduleDelivery && scheduledDeliveryAt) {
-        const scheduledTime = new Date(scheduledDeliveryAt as string);
-        
-        // Validate scheduled time is in the future
-        if (scheduledTime <= new Date()) {
+        if (!orderId) {
           return new Response(
-            JSON.stringify({ error: "Scheduled time must be in the future" }),
+            JSON.stringify({ error: "Order ID required" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        
-        updateData.scheduled_delivery_at = scheduledDeliveryAt;
-        updateData.status = "ready"; // Mark as ready for scheduled delivery
-      }
 
-      if (deliver) {
-        updateData.status = "delivered";
-        updateData.delivered_at = new Date().toISOString();
-        // Clear any scheduled delivery since we're delivering now
-        updateData.scheduled_delivery_at = null;
-      }
+        // Update order
+        const updateData: Record<string, unknown> = {};
+        if (status) updateData.status = status;
+        if (songUrl) updateData.song_url = songUrl;
+        if (song_title) updateData.song_title = song_title;
 
-      // Guard: if no meaningful updates, return error instead of empty update
-      const hasUpdates = Object.keys(updateData).length > 0 || deliver || scheduleDelivery;
-      if (!hasUpdates) {
+        // Handle scheduled delivery
+        if (scheduleDelivery && scheduledDeliveryAt) {
+          const scheduledTime = new Date(scheduledDeliveryAt as string);
+          
+          // Validate scheduled time is in the future
+          if (scheduledTime <= new Date()) {
+            return new Response(
+              JSON.stringify({ error: "Scheduled time must be in the future" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          
+          updateData.scheduled_delivery_at = scheduledDeliveryAt;
+          updateData.status = "ready"; // Mark as ready for scheduled delivery
+        }
+
+        if (deliver) {
+          updateData.status = "delivered";
+          updateData.delivered_at = new Date().toISOString();
+          // Clear any scheduled delivery since we're delivering now
+          updateData.scheduled_delivery_at = null;
+        }
+
+        // Guard: if no meaningful updates, return error instead of empty update
+        const hasUpdates = Object.keys(updateData).length > 0 || deliver || scheduleDelivery;
+        if (!hasUpdates) {
+          return new Response(
+            JSON.stringify({ error: "No update fields provided", orderId }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Use maybeSingle to avoid PGRST116
+        const { data: order, error: updateError } = await supabase
+          .from("orders")
+          .update(updateData)
+          .eq("id", orderId)
+          .select()
+          .maybeSingle();
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        if (!order) {
+          return new Response(
+            JSON.stringify({ error: "Order not found", orderId }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // If scheduling delivery, return success without sending email
+        if (scheduleDelivery) {
+          const scheduledPST = new Date(scheduledDeliveryAt as string).toLocaleString("en-US", {
+            timeZone: "America/Los_Angeles",
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }) + " PST";
+
+          return new Response(
+            JSON.stringify({ 
+              order, 
+              message: `Delivery scheduled for ${scheduledPST}` 
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // If delivering now, send the delivery email
+        if (deliver && order.song_url) {
+          try {
+            const emailResponse = await fetch(
+              `${supabaseUrl}/functions/v1/send-song-delivery`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                  orderId: order.id,
+                  customerEmail: order.customer_email,
+                  customerName: order.customer_name,
+                  recipientName: order.recipient_name,
+                  occasion: order.occasion,
+                  songUrl: order.song_url,
+                  revisionToken: order.revision_token,
+                }),
+              }
+            );
+
+            if (!emailResponse.ok) {
+              console.error("Failed to send delivery email");
+            }
+          } catch (emailError) {
+            console.error("Email error:", emailError);
+          }
+        }
+
         return new Response(
-          JSON.stringify({ error: "No update fields provided", orderId }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Use maybeSingle to avoid PGRST116
-      const { data: order, error: updateError } = await supabase
-        .from("orders")
-        .update(updateData)
-        .eq("id", orderId)
-        .select()
-        .maybeSingle();
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      if (!order) {
-        return new Response(
-          JSON.stringify({ error: "Order not found", orderId }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // If scheduling delivery, return success without sending email
-      if (scheduleDelivery) {
-        const scheduledPST = new Date(scheduledDeliveryAt as string).toLocaleString("en-US", {
-          timeZone: "America/Los_Angeles",
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        }) + " PST";
-
-        return new Response(
-          JSON.stringify({ 
-            order, 
-            message: `Delivery scheduled for ${scheduledPST}` 
-          }),
+          JSON.stringify({ order }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-
-      // If delivering now, send the delivery email
-      if (deliver && order.song_url) {
-        try {
-          const emailResponse = await fetch(
-            `${supabaseUrl}/functions/v1/send-song-delivery`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${supabaseServiceKey}`,
-              },
-              body: JSON.stringify({
-                orderId: order.id,
-                customerEmail: order.customer_email,
-                customerName: order.customer_name,
-                recipientName: order.recipient_name,
-                occasion: order.occasion,
-                songUrl: order.song_url,
-                revisionToken: order.revision_token,
-              }),
-            }
-          );
-
-          if (!emailResponse.ok) {
-            console.error("Failed to send delivery email");
-          }
-        } catch (emailError) {
-          console.error("Email error:", emailError);
-        }
-      }
-
-      return new Response(
-        JSON.stringify({ order }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
     }
 
     // NOTE: regenerate_song handler is now located earlier in the POST block (before legacy fallback)
@@ -3120,10 +3117,10 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       );
     }
 
-    return new Response(
-      JSON.stringify({ error: "Method not allowed" }),
-      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+      return new Response(
+        JSON.stringify({ error: "Unknown action", action: typeof body?.action === "string" ? body.action : null }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
   } catch (error: unknown) {
     console.error("Admin orders error:", error);
 
