@@ -57,9 +57,10 @@ Deno.serve(async (req) => {
 
     const contentType = req.headers.get("content-type") || "";
 
-    // Handle JSON request (lookup action)
+    // Handle JSON request (lookup or link-reaction action)
     if (contentType.includes("application/json")) {
-      const { action, email } = await req.json();
+      const body = await req.json();
+      const { action, email } = body;
 
       if (action === "lookup") {
         if (!email) {
@@ -91,6 +92,134 @@ Deno.serve(async (req) => {
             recipientName: order.recipient_name,
             occasion: order.occasion,
           }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // ── link-reaction action (client uploaded directly to storage) ──
+      if (action === "link-reaction") {
+        const linkEmail = (body.email as string)?.trim();
+        const linkName = (body.name as string)?.trim();
+        const linkOrderId = (body.orderId as string)?.trim() || null;
+        const linkFileName = (body.fileName as string)?.trim();
+
+        if (!linkEmail || !linkName || !linkFileName) {
+          return new Response(
+            JSON.stringify({ error: "Email, name, and fileName are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Verify the file exists in storage
+        const { data: fileData } = await supabase.storage
+          .from("reactions")
+          .list("", { search: linkFileName, limit: 1 });
+
+        if (!fileData || fileData.length === 0) {
+          return new Response(
+            JSON.stringify({ error: "Video file not found in storage" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Rate limit: max 3 uploads per email in 24h
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentUploads } = await supabase
+          .from("orders")
+          .select("id")
+          .ilike("customer_email", linkEmail)
+          .gte("reaction_submitted_at", twentyFourHoursAgo)
+          .limit(MAX_UPLOADS_PER_EMAIL_24H);
+
+        if (recentUploads && recentUploads.length >= MAX_UPLOADS_PER_EMAIL_24H) {
+          await supabase.storage.from("reactions").remove([linkFileName]);
+          return new Response(
+            JSON.stringify({ error: "You've reached the upload limit. Please try again tomorrow." }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        let linkedOrderId: string | null = null;
+
+        if (linkOrderId) {
+          const { data: order } = await supabase
+            .from("orders")
+            .select("id, customer_email")
+            .eq("id", linkOrderId)
+            .maybeSingle();
+
+          if (order && order.customer_email.toLowerCase() === linkEmail.toLowerCase()) {
+            linkedOrderId = order.id;
+          } else {
+            console.log(JSON.stringify({
+              event: "link_reaction_order_mismatch",
+              email: linkEmail, orderId: linkOrderId, timestamp: new Date().toISOString(),
+            }));
+          }
+        } else {
+          const { data: orders } = await supabase
+            .from("orders")
+            .select("id")
+            .ilike("customer_email", linkEmail)
+            .eq("status", "delivered")
+            .order("delivered_at", { ascending: false })
+            .limit(3);
+
+          if (orders && orders.length === 1) {
+            linkedOrderId = orders[0].id;
+          } else if (orders && orders.length >= 2) {
+            console.log(JSON.stringify({
+              event: "link_reaction_needs_manual_match",
+              email: linkEmail, name: linkName, fileName: linkFileName,
+              orderCount: orders.length, timestamp: new Date().toISOString(),
+            }));
+          }
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from("reactions")
+          .getPublicUrl(linkFileName);
+
+        if (linkedOrderId) {
+          const { data: updatedOrder, error: updateError } = await supabase
+            .from("orders")
+            .update({
+              reaction_video_url: publicUrl,
+              reaction_submitted_at: new Date().toISOString(),
+            })
+            .eq("id", linkedOrderId)
+            .select("id, reaction_video_url")
+            .single();
+
+          if (updateError || !updatedOrder || !updatedOrder.reaction_video_url) {
+            console.error(JSON.stringify({
+              event: "link_reaction_db_update_failed",
+              linkedOrderId, fileName: linkFileName,
+              updateError: updateError?.message || "empty result",
+              timestamp: new Date().toISOString(),
+            }));
+            await supabase.storage.from("reactions").remove([linkFileName]);
+            return new Response(
+              JSON.stringify({ error: "Failed to save reaction — please try again" }),
+              { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        } else {
+          console.log(JSON.stringify({
+            event: "link_reaction_unlinked",
+            email: linkEmail, name: linkName, fileName: linkFileName, publicUrl,
+            timestamp: new Date().toISOString(),
+          }));
+        }
+
+        console.log(JSON.stringify({
+          event: "link_reaction_success",
+          email: linkEmail, name: linkName, fileName: linkFileName, linkedOrderId,
+          timestamp: new Date().toISOString(),
+        }));
+
+        return new Response(
+          JSON.stringify({ success: true }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
