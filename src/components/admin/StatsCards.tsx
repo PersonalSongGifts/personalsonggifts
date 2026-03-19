@@ -53,18 +53,24 @@ interface StatSection {
   stats: StatItem[];
 }
 
+function getPaymentSource(order: Order): "paypal" | "stripe" {
+  return order.notes?.startsWith("paypal_order:") ? "paypal" : "stripe";
+}
+
 function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Revenue
-  const totalRevenue = orders.reduce((sum, o) => o.status !== "cancelled" ? sum + o.price : sum, 0);
-  const revenueToday = orders.reduce((sum, o) => {
-    if (o.status !== "cancelled" && new Date(o.created_at) >= today) {
-      return sum + o.price;
-    }
-    return sum;
-  }, 0);
+  // Revenue with payment source breakdown
+  const activeOrders = orders.filter((o) => o.status !== "cancelled");
+  const totalRevenue = activeOrders.reduce((sum, o) => sum + o.price, 0);
+  const stripeTotal = activeOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + o.price, 0);
+  const paypalTotal = activeOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + o.price, 0);
+
+  const todayOrders = activeOrders.filter((o) => new Date(o.created_at) >= today);
+  const revenueToday = todayOrders.reduce((sum, o) => sum + o.price, 0);
+  const stripeTodayRev = todayOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + o.price, 0);
+  const paypalTodayRev = todayOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + o.price, 0);
 
   // Orders
   const totalOrders = orders.length;
