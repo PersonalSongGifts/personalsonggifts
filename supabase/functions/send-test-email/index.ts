@@ -76,6 +76,7 @@ This is a TEST EMAIL sent from the Admin Dashboard
 }
 
 function getLeadFollowupHtml(previewUrl: string, email: string) {
+  const followupUrl = `${previewUrl}?followup=true`;
   return `
 <!DOCTYPE html>
 <html>
@@ -85,20 +86,29 @@ function getLeadFollowupHtml(previewUrl: string, email: string) {
 </head>
 <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${sampleData.customerName},</p>
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${sampleData.customerName.split(" ")[0]},</p>
+
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      Just wanted to check in — your ${sampleData.occasion} song for ${sampleData.recipientName} is still waiting for you.
+      You listened to ${sampleData.recipientName}'s song the other day — we hope it put a smile on your face.
     </p>
+
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      You can listen to the preview and complete your order here:
+      We wanted to reach out because we'd love for ${sampleData.recipientName} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
     </p>
+
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
-      <a href="${previewUrl}" style="color: #1E3A5F;">${previewUrl}</a>
+      <a href="${followupUrl}" style="color: #1E3A5F;">${followupUrl}</a>
     </p>
+
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      Use code <strong>FULLSONG</strong> at checkout to save $5 on your order.
+      The full song is about 3 minutes and includes everything you shared with us about ${sampleData.recipientName}. They get to keep it and download it forever.
     </p>
-    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">— The Personal Song Gifts Team</p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+      If you have any questions just reply to this email — a real person will get back to you.
+    </p>
+
+    <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">— The Personal Song Gifts team</p>
     <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0 0 20px 0;">
     <p style="color: #999999; font-size: 12px; margin: 0 0 6px 0;">Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816</p>
     <p style="color: #999999; font-size: 12px; margin: 0 0 6px 0;">
@@ -112,15 +122,20 @@ function getLeadFollowupHtml(previewUrl: string, email: string) {
 }
 
 function getLeadFollowupText(previewUrl: string, email: string) {
-  return `Hi ${sampleData.customerName},
+  const followupUrl = `${previewUrl}?followup=true`;
+  return `Hi ${sampleData.customerName.split(" ")[0]},
 
-Just wanted to check in — your ${sampleData.occasion} song for ${sampleData.recipientName} is still waiting for you.
+You listened to ${sampleData.recipientName}'s song the other day — we hope it put a smile on your face.
 
-You can listen to the preview and complete your order here: ${previewUrl}
+We wanted to reach out because we'd love for ${sampleData.recipientName} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
 
-Use code FULLSONG at checkout to save $5 on your order.
+${followupUrl}
 
-— The Personal Song Gifts Team
+The full song is about 3 minutes and includes everything you shared with us about ${sampleData.recipientName}. They get to keep it and download it forever.
+
+If you have any questions just reply to this email — a real person will get back to you.
+
+— The Personal Song Gifts team
 
 ---
 Personal Song Gifts
@@ -131,7 +146,6 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
 This is a TEST EMAIL sent from the Admin Dashboard
 `;
 }
-
 function getOrderConfirmationHtml(email: string) {
   const tierLabel = "Priority (24-hour)";
   const deliveryDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString("en-US", {
