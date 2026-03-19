@@ -28,6 +28,7 @@ function validateVideo(video: File): string | null {
     return "Invalid video file extension";
   }
   return null;
+}
 
 function getExtension(filename: string): string {
   const match = filename.toLowerCase().match(/\.[^.]+$/);
