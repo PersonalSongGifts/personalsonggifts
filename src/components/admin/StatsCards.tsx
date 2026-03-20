@@ -166,6 +166,7 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
         { title: "Downloads", value: songsDownloaded.toString(), description: `of ${deliveredOrders.length} delivered`, icon: Download, color: "text-rose-600", bgColor: "bg-rose-100" },
         { title: "SMS Sent", value: smsSent.toString(), description: `of ${smsOptedIn} opted in`, icon: MessageSquare, color: "text-sky-600", bgColor: "bg-sky-100" },
         { title: "SMS Failed", value: smsFailed.toString(), description: `${smsFailed} errors`, icon: MessageSquare, color: "text-orange-600", bgColor: "bg-orange-100" },
+        { title: "Reactions", value: reactionCount.toString(), description: `${reactionRate}% of ${deliveredOrders.length} delivered`, icon: Video, color: "text-rose-600", bgColor: "bg-rose-100" },
       ],
     },
   ];
