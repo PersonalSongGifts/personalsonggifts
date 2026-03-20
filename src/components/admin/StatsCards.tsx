@@ -110,6 +110,10 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const songsPlayed = orders.filter((o) => o.song_played_at).length;
   const songsDownloaded = orders.filter((o) => o.song_downloaded_at).length;
 
+  // Reaction Videos
+  const reactionCount = orders.filter((o) => o.reaction_video_url && o.reaction_submitted_at).length;
+  const reactionRate = deliveredOrders.length > 0 ? Math.round((reactionCount / deliveredOrders.length) * 100) : 0;
+
   // SMS
   const allEntities = [...orders, ...leads];
   const smsOptedIn = allEntities.filter((e) => e.sms_opt_in).length;
