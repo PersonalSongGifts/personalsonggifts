@@ -18,6 +18,8 @@ interface Order {
   lyrics_unlocked_at?: string | null;
   lyrics_price_cents?: number | null;
   notes?: string | null;
+  reaction_video_url?: string | null;
+  reaction_submitted_at?: string | null;
 }
 
 interface Lead {
