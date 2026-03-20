@@ -1,27 +1,18 @@
 
 
-## Add AOV Stat Card + AOV Trend Chart to Admin Analytics
+## Add Reaction Video Submissions Stat Card
 
-### What we're building
-1. **AOV stat card** in the "Revenue & Orders" section of StatsCards — shows the average order value for the current date range
-2. **AOV Trend chart** — a new line/area chart showing daily AOV over the selected date range, placed alongside the existing Revenue and Orders charts
+### What
+Add a "Reaction Videos" stat card to the StatsCards component showing the count of video submissions.
 
 ### Changes
 
-**1. `src/components/admin/StatsCards.tsx`**
-- Add an "AOV" stat to the "Revenue & Orders" section
-- Calculate: `totalRevenue / activeOrders.length` (non-cancelled orders in the filtered set)
-- Display as `$XX.XX` with description showing order count
+**`src/components/admin/StatsCards.tsx`**
+- Add `Video` icon import from lucide-react
+- Accept `reaction_video_url` and `reaction_submitted_at` fields on the `Order` interface (already present in the data passed from Admin.tsx)
+- Count orders where both `reaction_video_url` and `reaction_submitted_at` are set
+- Add a stat to the "Engagement & SMS" section: title "Reactions", value = count, description = "video submissions", with a Video icon in pink/rose styling
+- Also show what percentage of delivered orders submitted a reaction
 
-**2. New file: `src/components/admin/AOVChart.tsx`**
-- Line/area chart showing daily AOV over the date range passed in via `orders` prop
-- Group orders by day, compute `sum(price) / count` per day
-- Show rolling 7-day average line for trend visibility
-- Tooltip shows exact AOV, order count, and revenue for each day
-- Uses same styling as RevenueChart (AreaChart from recharts)
-
-**3. `src/pages/Admin.tsx`**
-- Import and add `<AOVChart orders={analyticsOrders} />` in the Analytics tab grid (alongside RevenueChart/OrdersChart or in a new row)
-
-All components already receive `analyticsOrders` which is pre-filtered by the date range selector, so AOV will automatically respond to date range changes.
+No database changes needed — the data already exists on the orders table and is already fetched by the admin dashboard.
 
