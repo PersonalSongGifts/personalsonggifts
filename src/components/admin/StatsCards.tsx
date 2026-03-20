@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen, Loader2 } from "lucide-react";
+import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen, Loader2, Video } from "lucide-react";
 import { LucideIcon } from "lucide-react";
 
 interface Order {
@@ -18,6 +18,8 @@ interface Order {
   lyrics_unlocked_at?: string | null;
   lyrics_price_cents?: number | null;
   notes?: string | null;
+  reaction_video_url?: string | null;
+  reaction_submitted_at?: string | null;
 }
 
 interface Lead {
@@ -108,6 +110,10 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const songsPlayed = orders.filter((o) => o.song_played_at).length;
   const songsDownloaded = orders.filter((o) => o.song_downloaded_at).length;
 
+  // Reaction Videos
+  const reactionCount = orders.filter((o) => o.reaction_video_url && o.reaction_submitted_at).length;
+  const reactionRate = deliveredOrders.length > 0 ? Math.round((reactionCount / deliveredOrders.length) * 100) : 0;
+
   // SMS
   const allEntities = [...orders, ...leads];
   const smsOptedIn = allEntities.filter((e) => e.sms_opt_in).length;
@@ -160,6 +166,7 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
         { title: "Downloads", value: songsDownloaded.toString(), description: `of ${deliveredOrders.length} delivered`, icon: Download, color: "text-rose-600", bgColor: "bg-rose-100" },
         { title: "SMS Sent", value: smsSent.toString(), description: `of ${smsOptedIn} opted in`, icon: MessageSquare, color: "text-sky-600", bgColor: "bg-sky-100" },
         { title: "SMS Failed", value: smsFailed.toString(), description: `${smsFailed} errors`, icon: MessageSquare, color: "text-orange-600", bgColor: "bg-orange-100" },
+        { title: "Reactions", value: reactionCount.toString(), description: `${reactionRate}% of ${deliveredOrders.length} delivered`, icon: Video, color: "text-rose-600", bgColor: "bg-rose-100" },
       ],
     },
   ];
