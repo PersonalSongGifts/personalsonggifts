@@ -714,7 +714,7 @@ Deno.serve(async (req) => {
     // Build update object based on entity type
     if (entityType === "lead") {
       // Generate preview token for leads
-      const previewToken = generatePreviewToken();
+      const previewToken = entity.preview_token || generatePreviewToken();
 
       // Check if lead email is in admin tester allowlist for accelerated preview
       let autoSendTime: string;
