@@ -1,18 +1,32 @@
 
 
-## Add Reaction Video Submissions Stat Card
+## Fix: Preview Token Overwritten on Regeneration
 
-### What
-Add a "Reaction Videos" stat card to the StatsCards component showing the count of video submissions.
+### Problem
+When a lead's song is regenerated (e.g., creative fields changed), the `automation-suno-callback` generates a **new preview token** every time, overwriting the previous one. If a preview email was already sent with the old token, that link becomes permanently broken — returning "Preview not found."
 
-### Changes
+This is what happened to Amoya (andreabrown3818@gmail.com):
+- March 21: First audio generated → token `HCeFE3sfDgpsNWhJ`
+- March 22: Creative fields updated → second audio generated → token overwritten to `34PWmQnMawX7MHc3`
+- The email she received contains the old, now-invalid token
 
-**`src/components/admin/StatsCards.tsx`**
-- Add `Video` icon import from lucide-react
-- Accept `reaction_video_url` and `reaction_submitted_at` fields on the `Order` interface (already present in the data passed from Admin.tsx)
-- Count orders where both `reaction_video_url` and `reaction_submitted_at` are set
-- Add a stat to the "Engagement & SMS" section: title "Reactions", value = count, description = "video submissions", with a Video icon in pink/rose styling
-- Also show what percentage of delivered orders submitted a reaction
+### Fix
 
-No database changes needed — the data already exists on the orders table and is already fetched by the admin dashboard.
+**`supabase/functions/automation-suno-callback/index.ts`** (~line 715-717)
+
+Change the token generation to preserve existing tokens:
+
+```typescript
+// Only generate a new preview token if the lead doesn't already have one
+const previewToken = entity.preview_token || generatePreviewToken();
+```
+
+This requires that the `entity` query (which fetches the lead) already includes `preview_token` in its SELECT. I'll verify and add it if missing.
+
+### Immediate Fix for This Customer
+
+Also need to update this specific lead's token back to the one in her email, or resend the preview email with the correct (current) token. Recommend resending via admin.
+
+### Files Changed
+- `supabase/functions/automation-suno-callback/index.ts` — preserve existing preview_token on regeneration
 
