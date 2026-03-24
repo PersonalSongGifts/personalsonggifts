@@ -60,6 +60,14 @@
     </script>
     <!-- TikTok Pixel Code End -->
 
+    <!-- Amplitude Analytics + Session Replay -->
+    <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
+    <script src="https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.25.15-min.js.gz"></script>
+    <script>
+      window.amplitude.add(window.sessionReplay.plugin({sampleRate: 1}));
+      window.amplitude.init('c8af55590969b980a194dbf61f9ca6a3', {"autocapture":{"elementInteractions":true}});
+    </script>
+
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
