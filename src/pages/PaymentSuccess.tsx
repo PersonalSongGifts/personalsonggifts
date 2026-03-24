@@ -72,6 +72,29 @@ const PaymentSuccess = () => {
       value: purchaseValue,
       currency: 'USD',
     });
+
+    // Amplitude purchase tracking
+    const amp = (window as any).amplitude;
+    if (amp) {
+      amp.track('Purchase Completed', {
+        order_id: data.orderId,
+        revenue: purchaseValue,
+        currency: 'USD',
+        pricing_tier: data.pricingTier,
+        occasion: data.occasion,
+        genre: data.genre,
+        recipient_name: data.recipientName,
+        is_lead_conversion: !!data.songUrl && source === 'lead',
+      });
+
+      if (amp.Revenue) {
+        const rev = new amp.Revenue()
+          .setProductId(data.pricingTier || 'standard')
+          .setPrice(purchaseValue)
+          .setQuantity(1);
+        amp.revenue(rev);
+      }
+    }
     
     hasTrackedPurchase.current = true;
   }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
