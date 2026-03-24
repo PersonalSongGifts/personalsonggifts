@@ -1,20 +1,27 @@
 
 
-## Fix cs-agent-lookup UUID Matching + Add Revision Data
+## Fix: Increment revision_count for All New Revision Submissions
 
 ### Root Cause
-The Supabase JS `.ilike("id::text", ...)` doesn't work — the client interprets `id::text` as a literal column name. Need to use `.filter("id::text", "ilike", value)` instead, which passes the cast-expression through to PostgREST.
+In `supabase/functions/submit-revision/index.ts` (~line 233), `revision_count` is only incremented when the revision is **post-delivery AND not editing a pending revision**:
 
-### Changes
+```typescript
+if (!isPreDelivery && !isEditingPending) {
+  orderUpdate.revision_count = (order.revision_count || 0) + 1;
+}
+```
 
-**`supabase/functions/cs-agent-lookup/index.ts`**
+Pre-delivery revisions never increment the counter. That's why order 2DA17D9E (which was classified as pre-delivery) has `revision_count: 0` despite having an approved revision.
 
-1. **Fix UUID text matching** in all three places (lines 79, 96, 143):
-   - Replace `.ilike("id::text", ...)` with `.filter("id::text", "ilike", `${shortId}%`)`
+### Fix
+Change the condition to increment for **all new submissions** (both pre- and post-delivery), only skipping edits to already-pending revisions:
 
-2. **Add revision_requests to `lookup_order` response** — after fetching orders, query `revision_requests` for each order and attach as `revision_requests` array
+```typescript
+if (!isEditingPending) {
+  orderUpdate.revision_count = (order.revision_count || 0) + 1;
+}
+```
 
-3. **Add revision_requests to `lookup_by_email` response** — same pattern: for each order returned, fetch its revision requests
-
-### No other files changed. Redeploy and test after.
+### File Changed
+- `supabase/functions/submit-revision/index.ts` — one line change at the increment condition
 
