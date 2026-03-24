@@ -464,8 +464,7 @@ Deno.serve(async (req) => {
       unplayed_resend_sent_at: null,
     };
 
-    if (!isPreDelivery && !isEditingPending) {
-      // Post-delivery new submission: increment revision_count
+    if (!isEditingPending) {
       orderUpdate.revision_count = (order.revision_count || 0) + 1;
     }
 
