@@ -47,6 +47,29 @@ Deno.serve(async (req) => {
   }
 });
 
+// Helper: find orders by short hex ID prefix using .filter() for id::text cast
+async function findOrdersByShortId(supabase: ReturnType<typeof createClient>, shortId: string, selectFields: string, limit = 5) {
+  return await supabase
+    .from("orders")
+    .select(selectFields)
+    .filter("id::text", "ilike", `${shortId}%`)
+    .limit(limit);
+}
+
+// Helper: fetch revision requests for a list of orders
+async function attachRevisions(supabase: ReturnType<typeof createClient>, orders: any[]) {
+  if (!orders || orders.length === 0) return orders;
+  for (const order of orders) {
+    const { data: revisions } = await supabase
+      .from("revision_requests")
+      .select("*")
+      .eq("order_id", order.id)
+      .order("submitted_at", { ascending: false });
+    order.revision_requests = revisions || [];
+  }
+  return orders;
+}
+
 // ── lookup_by_email ──
 async function lookupByEmail(supabase: ReturnType<typeof createClient>, body: { email?: string }) {
   const email = body.email?.trim()?.toLowerCase();
@@ -60,10 +83,12 @@ async function lookupByEmail(supabase: ReturnType<typeof createClient>, body: { 
     supabase.from("leads").select(leadFields).ilike("email", email).order("captured_at", { ascending: false }).limit(50),
   ]);
 
+  const orders = await attachRevisions(supabase, ordersRes.data || []);
+
   return json({
-    orders: ordersRes.data || [],
+    orders,
     leads: leadsRes.data || [],
-    orders_count: ordersRes.data?.length || 0,
+    orders_count: orders.length,
     leads_count: leadsRes.data?.length || 0,
   });
 }
@@ -73,16 +98,18 @@ async function lookupOrder(supabase: ReturnType<typeof createClient>, body: { or
   const shortId = body.order_id?.trim()?.toUpperCase();
   if (!shortId) return json({ error: "order_id required" }, 400);
 
-  const { data, error } = await supabase
-    .from("orders")
-    .select("id, status, pricing_tier, recipient_name, occasion, genre, singer_preference, automation_status, song_url, song_title, cover_image_url, created_at, delivered_at, expected_delivery, revision_count, max_revisions, revision_token, automation_lyrics, delivery_status, special_qualities, favorite_memory, special_message, automation_last_error, automation_retry_count, prev_song_url, prev_automation_lyrics, customer_name, customer_email, customer_phone")
-    .ilike("id::text", `${shortId}%`)
-    .limit(5);
+  const { data, error } = await findOrdersByShortId(
+    supabase,
+    shortId,
+    "id, status, pricing_tier, recipient_name, occasion, genre, singer_preference, automation_status, song_url, song_title, cover_image_url, created_at, delivered_at, expected_delivery, revision_count, max_revisions, revision_token, automation_lyrics, delivery_status, special_qualities, favorite_memory, special_message, automation_last_error, automation_retry_count, prev_song_url, prev_automation_lyrics, customer_name, customer_email, customer_phone",
+  );
 
   if (error) return json({ error: error.message }, 500);
   if (!data || data.length === 0) return json({ error: "order_not_found" }, 404);
 
-  return json({ orders: data, count: data.length });
+  const orders = await attachRevisions(supabase, data);
+
+  return json({ orders, count: orders.length });
 }
 
 // ── check_song ──
@@ -90,20 +117,21 @@ async function checkSong(supabase: ReturnType<typeof createClient>, body: { orde
   const shortId = body.order_id?.trim()?.toUpperCase();
   if (!shortId) return json({ error: "order_id required" }, 400);
 
-  const { data, error } = await supabase
-    .from("orders")
-    .select("id, song_url, song_title, cover_image_url, automation_lyrics, automation_status, song_play_count, song_played_at, song_downloaded_at")
-    .ilike("id::text", `${shortId}%`)
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await findOrdersByShortId(
+    supabase,
+    shortId,
+    "id, song_url, song_title, cover_image_url, automation_lyrics, automation_status, song_play_count, song_played_at, song_downloaded_at",
+    1,
+  );
 
   if (error) return json({ error: error.message }, 500);
-  if (!data) return json({ error: "order_not_found" }, 404);
+  if (!data || data.length === 0) return json({ error: "order_not_found" }, 404);
 
-  const songAvailable = !!data.song_url && data.song_url.length > 0;
+  const order = data[0];
+  const songAvailable = !!order.song_url && order.song_url.length > 0;
 
   return json({
-    ...data,
+    ...order,
     song_available: songAvailable,
   });
 }
@@ -136,20 +164,15 @@ async function getRevisionRequests(supabase: ReturnType<typeof createClient>, bo
   const shortId = body.order_id?.trim()?.toUpperCase();
   if (!shortId) return json({ error: "order_id required" }, 400);
 
-  // First find the full order ID
-  const { data: order } = await supabase
-    .from("orders")
-    .select("id")
-    .ilike("id::text", `${shortId}%`)
-    .limit(1)
-    .maybeSingle();
+  // Find the full order ID using .filter() for proper UUID text cast
+  const { data: orders } = await findOrdersByShortId(supabase, shortId, "id", 1);
 
-  if (!order) return json({ error: "order_not_found" }, 404);
+  if (!orders || orders.length === 0) return json({ error: "order_not_found" }, 404);
 
   const { data, error } = await supabase
     .from("revision_requests")
     .select("*")
-    .eq("order_id", order.id)
+    .eq("order_id", orders[0].id)
     .order("submitted_at", { ascending: false });
 
   if (error) return json({ error: error.message }, 500);
