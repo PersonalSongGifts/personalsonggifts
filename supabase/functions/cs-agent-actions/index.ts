@@ -45,15 +45,15 @@ Deno.serve(async (req) => {
   }
 });
 
-// Helper: find order by short ID
+// Helper: find order by short ID using the database function
 async function findOrder(supabase: ReturnType<typeof createClient>, shortId: string) {
-  const { data } = await supabase
-    .from("orders")
-    .select("*")
-    .ilike("id::text", `${shortId.toUpperCase()}%`)
-    .limit(1)
-    .maybeSingle();
-  return data;
+  const { data } = await supabase.rpc("find_orders_by_short_id", {
+    short_id: shortId.toUpperCase(),
+    status_filter: null,
+    require_song_url: false,
+    max_results: 1,
+  });
+  return data?.[0] || null;
 }
 
 // ── regenerate_song ──

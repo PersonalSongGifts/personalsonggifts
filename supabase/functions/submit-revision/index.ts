@@ -535,9 +535,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         form_type: isPreDelivery ? "pre_delivery_update" : "post_delivery_redo",
-        revisions_remaining: isPreDelivery
-          ? Math.max(0, (order.max_revisions || 1) - (order.revision_count || 0))
-          : Math.max(0, (order.max_revisions || 1) - ((order.revision_count || 0) + (isEditingPending ? 0 : 1))),
+        revisions_remaining: Math.max(0, (order.max_revisions || 1) - ((order.revision_count || 0) + (isEditingPending ? 0 : 1))),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
