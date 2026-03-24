@@ -107,3 +107,9 @@ verify_jwt = false
 
 [functions.monitoring-status]
 verify_jwt = false
+
+[functions.cs-agent-lookup]
+verify_jwt = false
+
+[functions.cs-agent-actions]
+verify_jwt = false
