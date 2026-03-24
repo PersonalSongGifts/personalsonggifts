@@ -1,27 +1,18 @@
 
 
-## Fix: Increment revision_count for All New Revision Submissions
+## Fix cs-agent-actions UUID Bug + revisions_remaining Accuracy
 
-### Root Cause
-In `supabase/functions/submit-revision/index.ts` (~line 233), `revision_count` is only incremented when the revision is **post-delivery AND not editing a pending revision**:
+### Issue 1: cs-agent-actions broken UUID matching
+**`supabase/functions/cs-agent-actions/index.ts`** — Replace the `findOrder` helper (line 49-57) to use the `find_orders_by_short_id` RPC instead of `.ilike("id::text", ...)`, matching the pattern already working in cs-agent-lookup.
 
-```typescript
-if (!isPreDelivery && !isEditingPending) {
-  orderUpdate.revision_count = (order.revision_count || 0) + 1;
-}
-```
-
-Pre-delivery revisions never increment the counter. That's why order 2DA17D9E (which was classified as pre-delivery) has `revision_count: 0` despite having an approved revision.
-
-### Fix
-Change the condition to increment for **all new submissions** (both pre- and post-delivery), only skipping edits to already-pending revisions:
+### Issue 2: Stale revisions_remaining in pre-delivery response
+**`supabase/functions/submit-revision/index.ts`** — Fix the `revisions_remaining` calculation (line 538-540) to account for the just-incremented count for both pre- and post-delivery paths. Use a consistent formula:
 
 ```typescript
-if (!isEditingPending) {
-  orderUpdate.revision_count = (order.revision_count || 0) + 1;
-}
+const newCount = (order.revision_count || 0) + (isEditingPending ? 0 : 1);
+revisions_remaining: Math.max(0, (order.max_revisions || 1) - newCount)
 ```
 
-### File Changed
-- `supabase/functions/submit-revision/index.ts` — one line change at the increment condition
+### Summary
+Two files, two small fixes. No other issues found — the revision system, auto-approve flow, customer-facing pages, email notifications, and cs-agent-lookup are all functioning correctly.
 
