@@ -16,10 +16,6 @@ function json(data: unknown, status = 200) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Inline auth check for debugging
-  const providedKey = req.headers.get("x-cs-agent-key");
-  const expectedKey = Deno.env.get("CS_AGENT_KEY");
-  console.log(`[CS-AUTH] provided="${providedKey}", expectedLen=${expectedKey?.length}`);
   if (!validateCsAgentKey(req)) return json({ error: "unauthorized" }, 403);
 
   const supabase = createClient(
