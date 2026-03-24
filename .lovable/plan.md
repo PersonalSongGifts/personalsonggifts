@@ -1,25 +1,15 @@
 
 
-## Install Amplitude Analytics + Session Replay
+## Add Amplitude CDN Scripts to index.html
 
-### Changes
+### Problem
+Session Replay isn't registering in Amplitude despite the npm SDK being installed. The CDN snippet loads earlier and more reliably than the dynamic import approach.
 
-**1. Install package**
-- `npm install @amplitude/unified`
+### Plan
 
-**2. `src/main.tsx`** — Initialize Amplitude once at app startup
-- Import `@amplitude/unified`
-- Call `amplitude.initAll()` with the provided API key before `createRoot().render()`
-- Config: autocapture enabled, session replay sample rate 1
+**1. `index.html`** — Add the three Amplitude script tags in the `<head>`, after the TikTok pixel and before the fonts section.
 
-```typescript
-import * as amplitude from '@amplitude/unified';
+**2. `src/main.tsx`** — Remove the existing dynamic `import('@amplitude/unified')` block to avoid double-initialization.
 
-amplitude.initAll('c8af55590969b980a194dbf61f9ca6a3', {
-  analytics: { autocapture: true },
-  sessionReplay: { sampleRate: 1 },
-});
-```
-
-No other files need changes. Autocapture handles page views, clicks, and form interactions automatically. Session Replay records at 100% sample rate.
+Two files changed, no new dependencies.
 
