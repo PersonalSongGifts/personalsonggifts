@@ -1,32 +1,25 @@
 
 
-## Fix: Preview Token Overwritten on Regeneration
+## Install Amplitude Analytics + Session Replay
 
-### Problem
-When a lead's song is regenerated (e.g., creative fields changed), the `automation-suno-callback` generates a **new preview token** every time, overwriting the previous one. If a preview email was already sent with the old token, that link becomes permanently broken — returning "Preview not found."
+### Changes
 
-This is what happened to Amoya (andreabrown3818@gmail.com):
-- March 21: First audio generated → token `HCeFE3sfDgpsNWhJ`
-- March 22: Creative fields updated → second audio generated → token overwritten to `34PWmQnMawX7MHc3`
-- The email she received contains the old, now-invalid token
+**1. Install package**
+- `npm install @amplitude/unified`
 
-### Fix
-
-**`supabase/functions/automation-suno-callback/index.ts`** (~line 715-717)
-
-Change the token generation to preserve existing tokens:
+**2. `src/main.tsx`** — Initialize Amplitude once at app startup
+- Import `@amplitude/unified`
+- Call `amplitude.initAll()` with the provided API key before `createRoot().render()`
+- Config: autocapture enabled, session replay sample rate 1
 
 ```typescript
-// Only generate a new preview token if the lead doesn't already have one
-const previewToken = entity.preview_token || generatePreviewToken();
+import * as amplitude from '@amplitude/unified';
+
+amplitude.initAll('c8af55590969b980a194dbf61f9ca6a3', {
+  analytics: { autocapture: true },
+  sessionReplay: { sampleRate: 1 },
+});
 ```
 
-This requires that the `entity` query (which fetches the lead) already includes `preview_token` in its SELECT. I'll verify and add it if missing.
-
-### Immediate Fix for This Customer
-
-Also need to update this specific lead's token back to the one in her email, or resend the preview email with the correct (current) token. Recommend resending via admin.
-
-### Files Changed
-- `supabase/functions/automation-suno-callback/index.ts` — preserve existing preview_token on regeneration
+No other files need changes. Autocapture handles page views, clicks, and form interactions automatically. Session Replay records at 100% sample rate.
 
