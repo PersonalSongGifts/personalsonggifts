@@ -585,6 +585,29 @@ Deno.serve(async (req) => {
     
     console.log(`[CALLBACK] ✅ Valid audio: ${audioBytes.length} bytes from ${usedSource}`);
 
+    // Duration guard: estimate duration from file size and bitrate
+    const estimatedBitrate = detectMp3Bitrate(audioBytes);
+    const estimatedDurationSec = Math.round((audioBytes.length * 8) / (estimatedBitrate * 1000));
+    console.log(`[CALLBACK] Estimated duration: ${estimatedDurationSec}s (${estimatedBitrate}kbps, ${audioBytes.length} bytes)`);
+
+    if (estimatedDurationSec < 150) {
+      console.log(`[CALLBACK] ⚠️ Song too short (${estimatedDurationSec}s < 150s), flagging for review`);
+      await supabase
+        .from(tableName)
+        .update({
+          automation_status: "needs_review",
+          automation_last_error: `[CALLBACK] Song too short (${estimatedDurationSec}s), expected 180s+. May need lyrics extension and regeneration.`,
+        })
+        .eq("id", entityId);
+
+      await logActivity(supabase, entityType, entityId, "audio_too_short", "system", `Audio ${estimatedDurationSec}s, flagged for review`);
+
+      return new Response(
+        JSON.stringify({ success: false, reason: "song_too_short", duration: estimatedDurationSec }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Deterministic storage path for idempotency
     const shortId = entityId.slice(0, 8).toUpperCase();
     const folderPrefix = entityType === "order" ? "orders" : "leads";

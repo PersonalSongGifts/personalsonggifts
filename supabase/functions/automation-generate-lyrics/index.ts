@@ -37,7 +37,7 @@ Always write lyrics in this structure:
 7. [Final Chorus] - strongest/biggest
 8. [Outro] - 1-4 short lines
 
-Target a typical 3:00-3:30 song. Keep line lengths short and singable (4-10 words per line).
+CRITICAL DURATION REQUIREMENT: The song MUST have enough lyrics for at least 3 minutes of audio. A typical 3-minute song needs 250-350 words of sung lyrics. Do NOT write fewer words — short lyrics produce unacceptably short songs. If in doubt, add an extra verse or extend the bridge. Target 3:00-3:30 of audio. Keep line lengths short and singable (4-10 words per line).
 
 # Genre Vibes
 - Pop/Acoustic: Emotional clarity, intimate
@@ -325,7 +325,8 @@ ${languagePromptBlock}
 Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
 - Mention the RecipientName 3-7 times naturally.
-- Make it wholesome and heartfelt.`;
+- Make it wholesome and heartfelt.
+- CRITICAL: Write at least 250 words of lyrics to ensure the song is at least 3 minutes long. Do NOT write a short song.`;
 
     console.log(`[LYRICS] Calling Gemini API, prompt length: ${userPrompt.length} chars, language: ${languageCode}`);
 
@@ -394,7 +395,8 @@ ${retryLanguageBlock}
 Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
 - Mention the RecipientName 3-7 times naturally.
-- Make it wholesome and heartfelt.`;
+- Make it wholesome and heartfelt.
+- CRITICAL: Write at least 250 words of lyrics to ensure the song is at least 3 minutes long. Do NOT write a short song.`;
 
       const attempt2Result = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, retryUserPrompt);
       
@@ -466,6 +468,23 @@ Remember:
       );
     }
 
+    // Word count validation
+    const wordCount = finalLyrics.split(/\s+/).filter((w: string) => w.length > 0).length;
+    console.log(`[LYRICS] Final lyrics word count: ${wordCount}`);
+
+    if (wordCount < 200) {
+      console.log(`[LYRICS] ⚠️ Lyrics too short (${wordCount} words), requesting extension`);
+      const extensionPrompt = `The following song lyrics are too short (${wordCount} words). A 3-minute song needs at least 250 words. Add one more verse and extend the bridge to bring the total above 250 words. Keep the same style, tone, and theme. Output the COMPLETE extended lyrics with all sections:\n\n${finalLyrics}`;
+      const extensionResult = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, extensionPrompt);
+      if (!extensionResult.error && extensionResult.lyrics) {
+        const extWordCount = extensionResult.lyrics.split(/\s+/).filter((w: string) => w.length > 0).length;
+        console.log(`[LYRICS] Extension result: ${extWordCount} words (was ${wordCount})`);
+        if (extWordCount > wordCount) {
+          finalLyrics = extensionResult.lyrics;
+        }
+      }
+    }
+
     // Extract title from lyrics (look for first meaningful line after [Intro])
     let songTitle = `Song for ${entity.recipient_name}`;
     const lines = finalLyrics.split('\n').filter((l: string) => l.trim() && !l.startsWith('['));
@@ -491,6 +510,7 @@ Remember:
         automation_status: newStatus,
         automation_lyrics: finalLyrics,
         song_title: songTitle,
+        lyrics_word_count: finalLyrics.split(/\s+/).filter((w: string) => w.length > 0).length,
         lyrics_raw_attempt_1: truncateForStorage(lyrics1),
         lyrics_raw_attempt_2: truncateForStorage(lyrics2),
         lyrics_language_qa: qaResultToStore,

@@ -80,6 +80,7 @@ export type Database = {
           lyrics_language_qa: Json | null
           lyrics_raw_attempt_1: string | null
           lyrics_raw_attempt_2: string | null
+          lyrics_word_count: number | null
           next_attempt_at: string | null
           occasion: string
           order_id: string | null
@@ -151,6 +152,7 @@ export type Database = {
           lyrics_language_qa?: Json | null
           lyrics_raw_attempt_1?: string | null
           lyrics_raw_attempt_2?: string | null
+          lyrics_word_count?: number | null
           next_attempt_at?: string | null
           occasion: string
           order_id?: string | null
@@ -222,6 +224,7 @@ export type Database = {
           lyrics_language_qa?: Json | null
           lyrics_raw_attempt_1?: string | null
           lyrics_raw_attempt_2?: string | null
+          lyrics_word_count?: number | null
           next_attempt_at?: string | null
           occasion?: string
           order_id?: string | null
@@ -353,6 +356,7 @@ export type Database = {
           lyrics_unlock_payment_intent_id: string | null
           lyrics_unlock_session_id: string | null
           lyrics_unlocked_at: string | null
+          lyrics_word_count: number | null
           max_revisions: number | null
           next_attempt_at: string | null
           notes: string | null
@@ -448,6 +452,7 @@ export type Database = {
           lyrics_unlock_payment_intent_id?: string | null
           lyrics_unlock_session_id?: string | null
           lyrics_unlocked_at?: string | null
+          lyrics_word_count?: number | null
           max_revisions?: number | null
           next_attempt_at?: string | null
           notes?: string | null
@@ -543,6 +548,7 @@ export type Database = {
           lyrics_unlock_payment_intent_id?: string | null
           lyrics_unlock_session_id?: string | null
           lyrics_unlocked_at?: string | null
+          lyrics_word_count?: number | null
           max_revisions?: number | null
           next_attempt_at?: string | null
           notes?: string | null
@@ -840,6 +846,7 @@ export type Database = {
           lyrics_unlock_payment_intent_id: string | null
           lyrics_unlock_session_id: string | null
           lyrics_unlocked_at: string | null
+          lyrics_word_count: number | null
           max_revisions: number | null
           next_attempt_at: string | null
           notes: string | null
