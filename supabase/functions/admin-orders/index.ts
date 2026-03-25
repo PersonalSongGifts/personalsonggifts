@@ -1427,6 +1427,27 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Auto-send delivery email if the order has a song
+        if (lead.full_song_url) {
+          try {
+            console.log(`[ADMIN] Auto-sending delivery email for converted order ${order.id}`);
+            const deliveryResponse = await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ orderId: order.id }),
+            });
+            const deliveryResult = await deliveryResponse.json();
+            console.log(`[ADMIN] Delivery email result:`, JSON.stringify(deliveryResult));
+            await logActivity(supabase, "order", order.id, "delivery_email_auto_sent", "admin", `Auto-sent after lead conversion`);
+          } catch (e) {
+            console.error("[ADMIN] Failed to auto-send delivery email:", e);
+            await logActivity(supabase, "order", order.id, "delivery_email_auto_failed", "admin", `Auto-send failed: ${e instanceof Error ? e.message : "unknown"}`);
+          }
+        }
+
         return new Response(
           JSON.stringify({ success: true, order }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
