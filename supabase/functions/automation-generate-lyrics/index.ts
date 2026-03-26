@@ -91,6 +91,11 @@ CRITICAL DURATION REQUIREMENT: The song MUST have enough lyrics for at least 3 m
 
 # Formatting
 - Use [Section Name] labels exactly
+- CRITICAL: ALL production directions, instrumental cues, and performance instructions
+  MUST use square brackets [], NEVER parentheses ().
+  Parentheses () are SUNG by the AI vocalist. Square brackets [] are silent instructions.
+  ✅ Correct: [Smooth soulful keyboard fades in]  [Tempo slows]  [Fade out with soft piano]
+  ❌ Wrong:  (Smooth soulful keyboard fades in)  (Tempo slows)  (Fade out with soft piano)
 - One line of lyrics per line
 - Avoid overusing punctuation
 - You may use repetitions for hooks and vocalizations (oh, ooooh, la la la)
