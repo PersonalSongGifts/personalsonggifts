@@ -1,37 +1,29 @@
 
 
-## Fix Short Song Duration + Improve Convert-to-Order Flow
+## Fix: Parentheses vs Brackets in Generated Lyrics
 
-### Problem 1: Songs generating too short (1:29 instead of 3–6 min)
-The lyrics prompt says "target 3:00–3:30" but this is a soft suggestion. If the AI writes fewer/shorter sections, Suno produces a short song. There's no guardrail.
+### Problem
+Suno treats `(text)` as **sung lyrics** and `[text]` as **non-sung production instructions**. The AI is generating stage directions like `(Smooth soulful keyboard fades in)` and `(Tempo slows, deep bass)` in parentheses, causing Suno to literally sing those instructions aloud.
 
-### Problem 2: Convert to Order doesn't notify the customer
-After conversion, no email is sent — admin must manually resend delivery from the Orders tab.
+### Fix
+Add a rule to the `SYSTEM_PROMPT` in `supabase/functions/automation-generate-lyrics/index.ts` (around line 92-97, in the Formatting section):
 
----
+```
+# Formatting
+- Use [Section Name] labels exactly
+- CRITICAL: ALL production directions, instrumental cues, and performance instructions
+  MUST use square brackets [], NEVER parentheses ().
+  Parentheses () are SUNG by the AI vocalist. Square brackets [] are silent instructions.
+  ✅ Correct: [Smooth soulful keyboard fades in]  [Tempo slows]  [Fade out with soft piano]
+  ❌ Wrong:  (Smooth soulful keyboard fades in)  (Tempo slows)  (Fade out with soft piano)
+- One line of lyrics per line
+- Avoid overusing punctuation
+- You may use repetitions for hooks and vocalizations (oh, ooooh, la la la)
+```
 
-### Changes
+### Scope
+One file changed: `supabase/functions/automation-generate-lyrics/index.ts` — update to the system prompt only. No database changes, no frontend changes. Redeploy the edge function after.
 
-**1. `supabase/functions/automation-generate-lyrics/index.ts`** — Strengthen duration enforcement in the system prompt and user prompt:
-
-- Add explicit minimum: "CRITICAL: The song MUST have enough lyrics for at least 3 minutes of audio. A typical 3-minute song needs 250-350 words of lyrics."
-- Add word count validation after generation: if final lyrics are under 200 words, log a warning and add an extra verse/chorus via a follow-up AI call
-- Add a `lyrics_word_count` field to the entity update so we can track this
-
-**2. `supabase/functions/automation-suno-callback/index.ts`** — Add duration check when Suno returns:
-
-- After receiving the audio URL, do a HEAD request or check Suno's returned duration metadata
-- If duration < 150 seconds (2:30), set `automation_status` to `needs_review` instead of `completed`, with error message "Song too short ({duration}s), expected 180s+"
-- This prevents auto-delivery of short songs
-
-**3. `supabase/functions/admin-orders/index.ts`** — After convert_lead_to_order, auto-trigger delivery email if the order has a song:
-
-- After successful order creation, if `lead.full_song_url` exists (order status = "delivered"), automatically call the `send-song-delivery` function
-- Log the delivery attempt to activity log
-- This way customers get their full song email immediately upon conversion without manual admin intervention
-
-### Summary
-- Lyrics prompt gets stricter word count requirements
-- Suno callback flags songs under 2:30 for review instead of auto-delivering
-- Convert to Order auto-sends delivery email when a song exists
+### Note
+This only affects **future** lyrics generations. Existing songs with this issue would need to be regenerated.
 
