@@ -185,6 +185,26 @@ Deno.serve(async (req) => {
       const body = await req.json();
       const { action } = body;
 
+      // --- LIST PROMOS ---
+      if (action === "list") {
+        const { data, error } = await supabase
+          .from("promotions")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        const promos = (data || []).map((p: any) => ({
+          ...p,
+          computed_status: computeStatus(p),
+        }));
+
+        return new Response(
+          JSON.stringify({ promos }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // --- UPSERT PROMO ---
       if (action === "upsert") {
         const { promo } = body;

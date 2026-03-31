@@ -110,8 +110,8 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
     setLoading(true);
     try {
       const res = await supabase.functions.invoke("admin-promos", {
-        method: "GET",
         headers: { "x-admin-password": adminPassword },
+        body: { action: "list" },
       });
       if (res.error) throw res.error;
       setPromos(res.data?.promos || []);
