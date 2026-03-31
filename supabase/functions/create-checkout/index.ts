@@ -9,6 +9,7 @@ const corsHeaders = {
 interface CheckoutInput {
   pricingTier: "standard" | "priority";
   promoCode?: string;
+  promoSlug?: string;
   additionalPromoCode?: string;
   formData: {
     recipientType: string;
