@@ -42,6 +42,7 @@ import { UnplayedResendPanel } from "@/components/admin/UnplayedResendPanel";
 import { ReactionEmailPanel } from "@/components/admin/ReactionEmailPanel";
 import { LeadFollowupPanel } from "@/components/admin/LeadFollowupPanel";
 import { CSAssistant } from "@/components/admin/CSAssistant";
+import { PromosPanel } from "@/components/admin/PromosPanel";
 import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 import { getCountryFromTimezone } from "@/lib/timezoneCountry";
 
