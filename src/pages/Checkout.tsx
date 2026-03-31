@@ -268,8 +268,8 @@ const Checkout = () => {
               phoneE164: phoneE164 || undefined,
               timezone: userTimezone,
             },
-            // Send additional promo code for server-side stacking
             additionalPromoCode: additionalPromo?.code || undefined,
+            promoSlug: activeFlashPromo.active ? activeFlashPromo.slug : undefined,
             utmSource: utmParams.utm_source || undefined,
             utmMedium: utmParams.utm_medium || undefined,
             utmCampaign: utmParams.utm_campaign || undefined,
