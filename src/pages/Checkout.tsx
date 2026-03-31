@@ -599,7 +599,7 @@ const Checkout = () => {
               
               {/* Seasonal discount line */}
               <div className="flex justify-between items-center text-primary">
-                <span>{activePromo.emoji} {activePromo.code} Discount ({SEASONAL_DISCOUNT_PERCENT}% Off):</span>
+                <span>{activeFlashPromo.active ? `${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name}` : `${seasonalPromo.emoji} ${seasonalPromo.code}`} Discount:</span>
                 <span>-${pricing.seasonalSavings.toFixed(2)}</span>
               </div>
               
