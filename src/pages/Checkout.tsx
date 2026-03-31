@@ -348,6 +348,7 @@ const Checkout = () => {
               timezone: userTimezone,
             },
             additionalPromoCode: additionalPromo?.code || undefined,
+            promoSlug: activeFlashPromo.active ? activeFlashPromo.slug : undefined,
             utmSource: utmParams.utm_source || undefined,
             utmMedium: utmParams.utm_medium || undefined,
             utmCampaign: utmParams.utm_campaign || undefined,
