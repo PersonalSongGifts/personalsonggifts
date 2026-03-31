@@ -50,6 +50,8 @@ interface PromoFormData {
   show_banner: boolean;
   banner_text: string;
   banner_emoji: string;
+  banner_bg_color: string;
+  banner_text_color: string;
   email_leads: boolean;
   email_leads_days: string;
   email_subject: string;
