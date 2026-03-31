@@ -108,11 +108,27 @@ const Checkout = () => {
   // Normalize phone to E.164
   const phoneE164 = useMemo(() => normalizeToE164(formData?.phoneNumber), [formData?.phoneNumber]);
   
-  const activePromo = getActivePromo();
+  const seasonalPromo = getActivePromo();
+  const { promo: activeFlashPromo, refetch: refetchPromo } = useActivePromo();
   
   // Stacked pricing calculation -- all math in integer cents, converted to dollars only for display
   const pricing = useMemo(() => {
     const baseCents = BASE_PRICES_CENTS[selectedTier];
+
+    // If flash promo is active, use promo prices directly
+    if (activeFlashPromo.active) {
+      const promoCents = selectedTier === "priority"
+        ? (activeFlashPromo.priorityPriceCents || 0)
+        : (activeFlashPromo.standardPriceCents || 0);
+      return {
+        base: baseCents / 100,
+        afterSeasonal: promoCents / 100,
+        seasonalSavings: (baseCents - promoCents) / 100,
+        additionalSavings: 0,
+        total: promoCents / 100,
+      };
+    }
+
     const afterSeasonalCents = calculateSeasonalPriceCents(selectedTier);
     const seasonalSavingsCents = baseCents - afterSeasonalCents;
 
@@ -130,7 +146,7 @@ const Checkout = () => {
       additionalSavings: additionalSavingsCents / 100,
       total: totalCents / 100,
     };
-  }, [selectedTier, additionalPromo]);
+  }, [selectedTier, additionalPromo, activeFlashPromo]);
   
   const handleApplyPromo = async () => {
     const code = promoCode.trim();
