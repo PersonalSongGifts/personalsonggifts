@@ -25,6 +25,8 @@ interface Promo {
   show_banner: boolean;
   banner_text: string | null;
   banner_emoji: string | null;
+  banner_bg_color: string | null;
+  banner_text_color: string | null;
   email_leads: boolean;
   email_leads_days: number;
   email_subject: string | null;
@@ -48,6 +50,8 @@ interface PromoFormData {
   show_banner: boolean;
   banner_text: string;
   banner_emoji: string;
+  banner_bg_color: string;
+  banner_text_color: string;
   email_leads: boolean;
   email_leads_days: string;
   email_subject: string;
@@ -66,6 +70,8 @@ const emptyForm: PromoFormData = {
   show_banner: true,
   banner_text: "",
   banner_emoji: "🐣",
+  banner_bg_color: "",
+  banner_text_color: "",
   email_leads: false,
   email_leads_days: "30",
   email_subject: "",
@@ -139,6 +145,8 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
         show_banner: form.show_banner,
         banner_text: form.banner_text || null,
         banner_emoji: form.banner_emoji || null,
+        banner_bg_color: form.banner_bg_color || null,
+        banner_text_color: form.banner_text_color || null,
         email_leads: form.email_leads,
         email_leads_days: parseInt(form.email_leads_days) || 30,
         email_subject: form.email_subject || null,
@@ -237,6 +245,8 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
       show_banner: promo.show_banner,
       banner_text: promo.banner_text || "",
       banner_emoji: promo.banner_emoji || "",
+      banner_bg_color: promo.banner_bg_color || "",
+      banner_text_color: promo.banner_text_color || "",
       email_leads: promo.email_leads,
       email_leads_days: String(promo.email_leads_days),
       email_subject: promo.email_subject || "",
@@ -426,6 +436,55 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
                   onChange={(e) => setForm(f => ({ ...f, banner_text: e.target.value }))}
                   placeholder="Easter Flash Sale — Songs from $24.99!"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Banner Background Color</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={form.banner_bg_color || "#8B5CF6"}
+                    onChange={(e) => setForm(f => ({ ...f, banner_bg_color: e.target.value }))}
+                    className="h-10 w-12 rounded border border-input cursor-pointer"
+                  />
+                  <Input
+                    value={form.banner_bg_color}
+                    onChange={(e) => setForm(f => ({ ...f, banner_bg_color: e.target.value }))}
+                    placeholder="#8B5CF6"
+                    className="flex-1"
+                  />
+                  {form.banner_bg_color && (
+                    <Button variant="ghost" size="sm" onClick={() => setForm(f => ({ ...f, banner_bg_color: "" }))}>
+                      Reset
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Leave empty for default theme color</p>
+              </div>
+              <div>
+                <Label>Banner Text Color</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={form.banner_text_color || "#FFFFFF"}
+                    onChange={(e) => setForm(f => ({ ...f, banner_text_color: e.target.value }))}
+                    className="h-10 w-12 rounded border border-input cursor-pointer"
+                  />
+                  <Input
+                    value={form.banner_text_color}
+                    onChange={(e) => setForm(f => ({ ...f, banner_text_color: e.target.value }))}
+                    placeholder="#FFFFFF"
+                    className="flex-1"
+                  />
+                  {form.banner_text_color && (
+                    <Button variant="ghost" size="sm" onClick={() => setForm(f => ({ ...f, banner_text_color: "" }))}>
+                      Reset
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Leave empty for default theme color</p>
               </div>
             </div>
 

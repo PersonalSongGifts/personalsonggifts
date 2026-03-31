@@ -1,0 +1,1 @@
+ALTER TABLE promotions ADD COLUMN banner_bg_color text, ADD COLUMN banner_text_color text;
