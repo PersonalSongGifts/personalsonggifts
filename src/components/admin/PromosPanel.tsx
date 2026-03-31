@@ -70,6 +70,8 @@ const emptyForm: PromoFormData = {
   show_banner: true,
   banner_text: "",
   banner_emoji: "🐣",
+  banner_bg_color: "",
+  banner_text_color: "",
   email_leads: false,
   email_leads_days: "30",
   email_subject: "",
