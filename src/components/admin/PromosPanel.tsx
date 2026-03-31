@@ -575,7 +575,13 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
             <AlertDialogDescription>
               {toggleConfirm?.is_active
                 ? "This will immediately stop the promotion. All pages will revert to normal pricing within 60 seconds."
-                : "This will enable the promotion. Prices will update across the site within 60 seconds. Only one promo can be active at a time."}
+                : (() => {
+                    const startsAt = toggleConfirm ? new Date(toggleConfirm.starts_at) : null;
+                    const isFuture = startsAt && startsAt > new Date();
+                    return isFuture
+                      ? `This will activate the promotion, but it will NOT appear on the site until ${startsAt!.toLocaleString()}. Only one promo can be active at a time.`
+                      : "This will enable the promotion. Prices will update across the site within 60 seconds. Only one promo can be active at a time.";
+                  })()}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
