@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
     }
 
     const input: CheckoutInput = await req.json();
-    const { pricingTier, formData, additionalPromoCode } = input;
+    const { pricingTier, formData, additionalPromoCode, promoSlug } = input;
 
     // Validate tier
     if (!["standard", "priority"].includes(pricingTier)) {
