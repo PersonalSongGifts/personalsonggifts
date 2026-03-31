@@ -281,6 +281,12 @@ const Checkout = () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (errorData.error === "promo_expired") {
+          toast({ title: "This sale has ended", description: "Prices have been updated.", variant: "destructive" });
+          await refetchPromo();
+          setIsSubmitting(false);
+          return;
+        }
         throw new Error(errorData.error || "Failed to create checkout session");
       }
 
