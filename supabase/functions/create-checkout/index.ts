@@ -248,17 +248,62 @@ Deno.serve(async (req) => {
       metadata.additionalPromoCode = upperAdditional;
       metadata.amount_total_cents = String(unitAmount);
     } else {
-      // Look up additional coupon in Stripe if provided
-      let stripeCoupon: Stripe.Coupon | null = null;
-      if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
-        stripeCoupon = await lookupStripeCoupon(stripe, upperAdditional);
-        if (stripeCoupon) {
-          metadata.additionalPromoCode = upperAdditional;
+      // Check for active promotion
+      const supabaseForPromo = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+
+      if (promoSlug) {
+        // Frontend explicitly sent a promo slug — validate it's still active
+        const { data: promo } = await supabaseForPromo
+          .from("promotions")
+          .select("*")
+          .eq("slug", promoSlug)
+          .eq("is_active", true)
+          .lte("starts_at", new Date().toISOString())
+          .gte("ends_at", new Date().toISOString())
+          .maybeSingle();
+
+        if (!promo) {
+          return new Response(
+            JSON.stringify({ error: "promo_expired" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        unitAmount = pricingTier === "priority" ? promo.priority_price_cents : promo.standard_price_cents;
+        metadata.promoSlug = promo.slug;
+        metadata.promoName = promo.name;
+        metadata.amount_total_cents = String(unitAmount);
+      } else {
+        // No promo slug — check if there's an active promo anyway
+        const { data: activePromo } = await supabaseForPromo
+          .from("promotions")
+          .select("*")
+          .eq("is_active", true)
+          .lte("starts_at", new Date().toISOString())
+          .gte("ends_at", new Date().toISOString())
+          .maybeSingle();
+
+        if (activePromo) {
+          unitAmount = pricingTier === "priority" ? activePromo.priority_price_cents : activePromo.standard_price_cents;
+          metadata.promoSlug = activePromo.slug;
+          metadata.promoName = activePromo.name;
+          metadata.amount_total_cents = String(unitAmount);
+        } else {
+          // Fall back to seasonal discount + optional Stripe coupon
+          let stripeCoupon: Stripe.Coupon | null = null;
+          if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
+            stripeCoupon = await lookupStripeCoupon(stripe, upperAdditional);
+            if (stripeCoupon) {
+              metadata.additionalPromoCode = upperAdditional;
+            }
+          }
+          unitAmount = calculateFinalPrice(pricingTier, upperAdditional, stripeCoupon);
+          metadata.amount_total_cents = String(unitAmount);
         }
       }
-
-      unitAmount = calculateFinalPrice(pricingTier, upperAdditional, stripeCoupon);
-      metadata.amount_total_cents = String(unitAmount);
     }
 
     const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";

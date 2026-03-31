@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
     }
 
     const input: CheckoutInput = await req.json();
-    const { pricingTier, formData, additionalPromoCode } = input;
+    const { pricingTier, formData, additionalPromoCode, promoSlug } = input;
 
     if (!["standard", "priority"].includes(pricingTier)) {
       return new Response(
