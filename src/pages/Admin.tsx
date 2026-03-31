@@ -1126,6 +1126,10 @@ const { data, error } = await listOrders("all", 0, 250);
               <Send className="h-4 w-4" />
               CS Assistant
             </TabsTrigger>
+            <TabsTrigger value="promos" className="gap-2">
+              <Tag className="h-4 w-4" />
+              Promos
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="analytics" className="space-y-6">
