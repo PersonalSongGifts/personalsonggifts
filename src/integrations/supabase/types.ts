@@ -654,8 +654,10 @@ export type Database = {
       }
       promotions: {
         Row: {
+          banner_bg_color: string | null
           banner_emoji: string | null
           banner_text: string | null
+          banner_text_color: string | null
           created_at: string
           email_batch_sent: number
           email_batch_total: number
@@ -675,8 +677,10 @@ export type Database = {
           starts_at: string
         }
         Insert: {
+          banner_bg_color?: string | null
           banner_emoji?: string | null
           banner_text?: string | null
+          banner_text_color?: string | null
           created_at?: string
           email_batch_sent?: number
           email_batch_total?: number
@@ -696,8 +700,10 @@ export type Database = {
           starts_at: string
         }
         Update: {
+          banner_bg_color?: string | null
           banner_emoji?: string | null
           banner_text?: string | null
+          banner_text_color?: string | null
           created_at?: string
           email_batch_sent?: number
           email_batch_total?: number

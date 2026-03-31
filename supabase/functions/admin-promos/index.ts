@@ -257,6 +257,8 @@ Deno.serve(async (req) => {
           email_leads_days: promo.email_leads_days ?? 30,
           email_subject: promo.email_subject || null,
           email_body_template: promo.email_body_template || null,
+          banner_bg_color: promo.banner_bg_color || null,
+          banner_text_color: promo.banner_text_color || null,
         };
 
         let result;

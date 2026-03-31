@@ -13,6 +13,8 @@ export interface ActivePromo {
   showBanner?: boolean;
   bannerText?: string;
   bannerEmoji?: string;
+  bannerBgColor?: string;
+  bannerTextColor?: string;
 }
 
 interface ActivePromoContextType {
