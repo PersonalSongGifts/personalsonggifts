@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Play, Pause, Music, Lock, Check, Loader2, AlertCircle, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useActivePromo } from "@/hooks/useActivePromo";
 
 interface PreviewData {
   recipientName: string;
