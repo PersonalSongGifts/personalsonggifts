@@ -403,22 +403,38 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Starts At</Label>
+                <Label>Starts At (your local time)</Label>
                 <Input
                   type="datetime-local"
                   value={form.starts_at}
                   onChange={(e) => setForm(f => ({ ...f, starts_at: e.target.value }))}
                 />
+                {form.starts_at && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    UTC: {new Date(form.starts_at).toISOString().replace("T", " ").slice(0, 16)}
+                  </p>
+                )}
               </div>
               <div>
-                <Label>Ends At</Label>
+                <Label>Ends At (your local time)</Label>
                 <Input
                   type="datetime-local"
                   value={form.ends_at}
                   onChange={(e) => setForm(f => ({ ...f, ends_at: e.target.value }))}
                 />
+                {form.ends_at && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    UTC: {new Date(form.ends_at).toISOString().replace("T", " ").slice(0, 16)}
+                  </p>
+                )}
               </div>
             </div>
+            {/* Scheduling warning */}
+            {form.is_active && form.starts_at && new Date(form.starts_at) > new Date() && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800">
+                ⚠️ This promo is activated but its start time is in the future. It will <strong>not appear on the site</strong> until {new Date(form.starts_at).toLocaleString()}.
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -490,6 +506,10 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
 
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
+                <Switch checked={form.is_active} onCheckedChange={(v) => setForm(f => ({ ...f, is_active: v }))} />
+                <Label>Active</Label>
+              </div>
+              <div className="flex items-center gap-2">
                 <Switch checked={form.show_banner} onCheckedChange={(v) => setForm(f => ({ ...f, show_banner: v }))} />
                 <Label>Show Banner</Label>
               </div>
@@ -555,7 +575,13 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
             <AlertDialogDescription>
               {toggleConfirm?.is_active
                 ? "This will immediately stop the promotion. All pages will revert to normal pricing within 60 seconds."
-                : "This will enable the promotion. Prices will update across the site within 60 seconds. Only one promo can be active at a time."}
+                : (() => {
+                    const startsAt = toggleConfirm ? new Date(toggleConfirm.starts_at) : null;
+                    const isFuture = startsAt && startsAt > new Date();
+                    return isFuture
+                      ? `This will activate the promotion, but it will NOT appear on the site until ${startsAt!.toLocaleString()}. Only one promo can be active at a time.`
+                      : "This will enable the promotion. Prices will update across the site within 60 seconds. Only one promo can be active at a time.";
+                  })()}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
