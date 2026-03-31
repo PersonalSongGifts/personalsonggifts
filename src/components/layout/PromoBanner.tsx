@@ -7,11 +7,9 @@ const PromoBanner = () => {
   const [isVisible, setIsVisible] = useState(true);
   const { promo, loading } = useActivePromo();
 
-  if (!isVisible || loading) return null;
+  if (!isVisible || loading || !promo.active || !promo.showBanner) return null;
 
-  const bannerText = promo.active && promo.showBanner && promo.bannerText
-    ? `${promo.bannerEmoji || "🔥"} ${promo.bannerText}`
-    : "🎵 50% Off Sale Ends Today!";
+  const bannerText = `${promo.bannerEmoji || "🔥"} ${promo.bannerText || "Limited Time Sale!"}`;
 
   return (
     <div
