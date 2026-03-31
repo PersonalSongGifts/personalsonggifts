@@ -360,6 +360,12 @@ const Checkout = () => {
 
       if (!createResponse.ok) {
         const errorData = await createResponse.json().catch(() => ({}));
+        if (errorData.error === "promo_expired") {
+          toast({ title: "This sale has ended", description: "Prices have been updated.", variant: "destructive" });
+          await refetchPromo();
+          setIsPayPalLoading(false);
+          return;
+        }
         throw new Error(errorData.error || "Failed to create PayPal order");
       }
 
