@@ -73,6 +73,7 @@ export type Database = {
           genre: string
           id: string
           inputs_hash: string | null
+          last_promo_email_sent_at: string | null
           last_valentine_remarketing_sent_at: string | null
           lead_email_cc: string | null
           lead_email_override: string | null
@@ -145,6 +146,7 @@ export type Database = {
           genre: string
           id?: string
           inputs_hash?: string | null
+          last_promo_email_sent_at?: string | null
           last_valentine_remarketing_sent_at?: string | null
           lead_email_cc?: string | null
           lead_email_override?: string | null
@@ -217,6 +219,7 @@ export type Database = {
           genre?: string
           id?: string
           inputs_hash?: string | null
+          last_promo_email_sent_at?: string | null
           last_valentine_remarketing_sent_at?: string | null
           lead_email_cc?: string | null
           lead_email_override?: string | null
@@ -646,6 +649,72 @@ export type Database = {
           is_online?: boolean | null
           song_url_host?: string | null
           user_agent?: string | null
+        }
+        Relationships: []
+      }
+      promotions: {
+        Row: {
+          banner_emoji: string | null
+          banner_text: string | null
+          created_at: string
+          email_batch_sent: number
+          email_batch_total: number
+          email_body_template: string | null
+          email_leads: boolean
+          email_leads_days: number
+          email_subject: string | null
+          ends_at: string
+          id: string
+          is_active: boolean
+          lead_price_cents: number
+          name: string
+          priority_price_cents: number
+          show_banner: boolean
+          slug: string
+          standard_price_cents: number
+          starts_at: string
+        }
+        Insert: {
+          banner_emoji?: string | null
+          banner_text?: string | null
+          created_at?: string
+          email_batch_sent?: number
+          email_batch_total?: number
+          email_body_template?: string | null
+          email_leads?: boolean
+          email_leads_days?: number
+          email_subject?: string | null
+          ends_at: string
+          id?: string
+          is_active?: boolean
+          lead_price_cents: number
+          name: string
+          priority_price_cents: number
+          show_banner?: boolean
+          slug: string
+          standard_price_cents: number
+          starts_at: string
+        }
+        Update: {
+          banner_emoji?: string | null
+          banner_text?: string | null
+          created_at?: string
+          email_batch_sent?: number
+          email_batch_total?: number
+          email_body_template?: string | null
+          email_leads?: boolean
+          email_leads_days?: number
+          email_subject?: string | null
+          ends_at?: string
+          id?: string
+          is_active?: boolean
+          lead_price_cents?: number
+          name?: string
+          priority_price_cents?: number
+          show_banner?: boolean
+          slug?: string
+          standard_price_cents?: number
+          starts_at?: string
         }
         Relationships: []
       }

@@ -25,6 +25,7 @@ import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
 import { getStoredUtmParams } from "@/hooks/useUtmCapture";
 import { normalizeToE164 } from "@/lib/phoneUtils";
+import { useActivePromo } from "@/hooks/useActivePromo";
 
 type PricingTier = "standard" | "priority";
 
@@ -107,11 +108,27 @@ const Checkout = () => {
   // Normalize phone to E.164
   const phoneE164 = useMemo(() => normalizeToE164(formData?.phoneNumber), [formData?.phoneNumber]);
   
-  const activePromo = getActivePromo();
+  const seasonalPromo = getActivePromo();
+  const { promo: activeFlashPromo, refetch: refetchPromo } = useActivePromo();
   
   // Stacked pricing calculation -- all math in integer cents, converted to dollars only for display
   const pricing = useMemo(() => {
     const baseCents = BASE_PRICES_CENTS[selectedTier];
+
+    // If flash promo is active, use promo prices directly
+    if (activeFlashPromo.active) {
+      const promoCents = selectedTier === "priority"
+        ? (activeFlashPromo.priorityPriceCents || 0)
+        : (activeFlashPromo.standardPriceCents || 0);
+      return {
+        base: baseCents / 100,
+        afterSeasonal: promoCents / 100,
+        seasonalSavings: (baseCents - promoCents) / 100,
+        additionalSavings: 0,
+        total: promoCents / 100,
+      };
+    }
+
     const afterSeasonalCents = calculateSeasonalPriceCents(selectedTier);
     const seasonalSavingsCents = baseCents - afterSeasonalCents;
 
@@ -129,7 +146,7 @@ const Checkout = () => {
       additionalSavings: additionalSavingsCents / 100,
       total: totalCents / 100,
     };
-  }, [selectedTier, additionalPromo]);
+  }, [selectedTier, additionalPromo, activeFlashPromo]);
   
   const handleApplyPromo = async () => {
     const code = promoCode.trim();
@@ -167,7 +184,7 @@ const Checkout = () => {
         const discountDesc = data.type === "amount_off" 
           ? `$${(data.amount_off / 100).toFixed(2)} off` 
           : `${data.percent_off}% off`;
-        toast({ title: "Promo code applied!", description: `${discountDesc} stacked on top of ${activePromo.code}.` });
+        toast({ title: "Promo code applied!", description: `${discountDesc} stacked on top of ${seasonalPromo.code}.` });
       } else {
         setPromoError(data.error || "Invalid promo code");
       }
@@ -251,8 +268,8 @@ const Checkout = () => {
               phoneE164: phoneE164 || undefined,
               timezone: userTimezone,
             },
-            // Send additional promo code for server-side stacking
             additionalPromoCode: additionalPromo?.code || undefined,
+            promoSlug: activeFlashPromo.active ? activeFlashPromo.slug : undefined,
             utmSource: utmParams.utm_source || undefined,
             utmMedium: utmParams.utm_medium || undefined,
             utmCampaign: utmParams.utm_campaign || undefined,
@@ -264,6 +281,12 @@ const Checkout = () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (errorData.error === "promo_expired") {
+          toast({ title: "This sale has ended", description: "Prices have been updated.", variant: "destructive" });
+          await refetchPromo();
+          setIsSubmitting(false);
+          return;
+        }
         throw new Error(errorData.error || "Failed to create checkout session");
       }
 
@@ -325,6 +348,7 @@ const Checkout = () => {
               timezone: userTimezone,
             },
             additionalPromoCode: additionalPromo?.code || undefined,
+            promoSlug: activeFlashPromo.active ? activeFlashPromo.slug : undefined,
             utmSource: utmParams.utm_source || undefined,
             utmMedium: utmParams.utm_medium || undefined,
             utmCampaign: utmParams.utm_campaign || undefined,
@@ -336,6 +360,12 @@ const Checkout = () => {
 
       if (!createResponse.ok) {
         const errorData = await createResponse.json().catch(() => ({}));
+        if (errorData.error === "promo_expired") {
+          toast({ title: "This sale has ended", description: "Prices have been updated.", variant: "destructive" });
+          await refetchPromo();
+          setIsPayPalLoading(false);
+          return;
+        }
         throw new Error(errorData.error || "Failed to create PayPal order");
       }
 
@@ -380,7 +410,7 @@ const Checkout = () => {
           <div className="flex justify-center mb-6">
             <div className="bg-primary/10 text-primary font-semibold px-4 py-2 rounded-full text-sm flex items-center gap-2">
               <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
-              {activePromo.emoji} {activePromo.code} auto-applied at checkout
+              {activeFlashPromo.active ? `${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name} — prices slashed!` : `${seasonalPromo.emoji} ${seasonalPromo.code} auto-applied at checkout`}
             </div>
           </div>
 
@@ -582,7 +612,7 @@ const Checkout = () => {
               
               {/* Seasonal discount line */}
               <div className="flex justify-between items-center text-primary">
-                <span>{activePromo.emoji} {activePromo.code} Discount ({SEASONAL_DISCOUNT_PERCENT}% Off):</span>
+                <span>{activeFlashPromo.active ? `${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name}` : `${seasonalPromo.emoji} ${seasonalPromo.code}`} Discount:</span>
                 <span>-${pricing.seasonalSavings.toFixed(2)}</span>
               </div>
               

@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Play, Pause, Music, Lock, Check, Loader2, AlertCircle, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useActivePromo } from "@/hooks/useActivePromo";
 
 interface PreviewData {
   recipientName: string;
@@ -21,6 +22,8 @@ export default function SongPreview() {
   const [searchParams] = useSearchParams();
   const isFollowup = searchParams.get("followup") === "true";
   const isVday10 = searchParams.get("vday10") === "true";
+  const promoParam = searchParams.get("promo");
+  const { promo: activeFlashPromo, refetch: refetchPromo } = useActivePromo();
   
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -260,6 +263,7 @@ export default function SongPreview() {
             tier,
             applyFollowupDiscount: isFollowup,
             applyVday10Discount: isVday10,
+            promoSlug: activeFlashPromo.active ? activeFlashPromo.slug : (promoParam || undefined),
           }),
         }
       );
@@ -267,6 +271,12 @@ export default function SongPreview() {
       const data = await response.json();
       
       if (!response.ok) {
+        if (data.error === "promo_expired") {
+          toast({ title: "This sale has ended", description: "Prices have been updated.", variant: "destructive" });
+          await refetchPromo();
+          setPurchasing(false);
+          return;
+        }
         throw new Error(data.error || "Failed to create checkout");
       }
 

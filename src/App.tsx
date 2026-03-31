@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ScrollToTop } from "./components/ScrollToTop";
+import { ActivePromoProvider } from "./hooks/useActivePromo";
 import Index from "./pages/Index";
 import CreateSong from "./pages/CreateSong";
 import Checkout from "./pages/Checkout";
@@ -24,6 +25,7 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ActivePromoProvider>
     <TooltipProvider>
       <Toaster />
       <Sonner />
@@ -49,6 +51,7 @@ const App = () => (
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
+    </ActivePromoProvider>
   </QueryClientProvider>
 );
 
