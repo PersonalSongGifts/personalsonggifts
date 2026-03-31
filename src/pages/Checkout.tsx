@@ -25,6 +25,7 @@ import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
 import { getStoredUtmParams } from "@/hooks/useUtmCapture";
 import { normalizeToE164 } from "@/lib/phoneUtils";
+import { useActivePromo } from "@/hooks/useActivePromo";
 
 type PricingTier = "standard" | "priority";
 
