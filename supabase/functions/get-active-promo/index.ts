@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json",
-          "Cache-Control": "public, max-age=60",
+          "Cache-Control": "no-cache, no-store",
         },
       }
     );
