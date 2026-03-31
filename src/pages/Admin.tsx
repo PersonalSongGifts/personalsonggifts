@@ -1667,6 +1667,9 @@ const { data, error } = await listOrders("all", 0, 250);
           <TabsContent value="cs" className="space-y-6">
             <CSAssistant adminPassword={password} />
           </TabsContent>
+
+          <TabsContent value="promos" className="space-y-6">
+            <PromosPanel adminPassword={password} />
         </Tabs>
       </main>
 
