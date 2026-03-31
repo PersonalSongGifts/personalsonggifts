@@ -506,6 +506,10 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
 
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
+                <Switch checked={form.is_active} onCheckedChange={(v) => setForm(f => ({ ...f, is_active: v }))} />
+                <Label>Active</Label>
+              </div>
+              <div className="flex items-center gap-2">
                 <Switch checked={form.show_banner} onCheckedChange={(v) => setForm(f => ({ ...f, show_banner: v }))} />
                 <Label>Show Banner</Label>
               </div>
