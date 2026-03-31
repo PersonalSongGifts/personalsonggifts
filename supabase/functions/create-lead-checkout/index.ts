@@ -79,24 +79,49 @@ Deno.serve(async (req) => {
       apiVersion: "2025-08-27.basil",
     });
 
-    let unitAmount = applyFollowupDiscount
-      ? LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS
-      : LEAD_STANDARD_TOTAL_CENTS;
+    let unitAmount: number;
+    let allowPromotionCodes = true;
 
-    // VDay10: subtract $10 server-side when remarketing link is used
-    // Gated behind vday10_enabled admin setting
-    const VDAY10_DISCOUNT_CENTS = 1000;
-    if (applyVday10Discount) {
-      const { data: vdaySetting } = await supabase
-        .from("admin_settings")
-        .select("value")
-        .eq("key", "vday10_enabled")
+    if (promoSlug) {
+      // Frontend sent a promo slug — validate it's still active
+      const { data: promo } = await supabase
+        .from("promotions")
+        .select("*")
+        .eq("slug", promoSlug)
+        .eq("is_active", true)
+        .lte("starts_at", new Date().toISOString())
+        .gte("ends_at", new Date().toISOString())
         .maybeSingle();
-      const vday10Enabled = (vdaySetting as { value: string } | null)?.value === "true";
-      if (vday10Enabled) {
-        unitAmount = Math.max(0, unitAmount - VDAY10_DISCOUNT_CENTS);
-      } else {
-        console.log("VDay10 discount requested but vday10_enabled=false, ignoring");
+
+      if (!promo) {
+        return new Response(
+          JSON.stringify({ error: "promo_expired" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Promo price takes TOTAL precedence — ignore followup and vday10
+      unitAmount = promo.lead_price_cents;
+      allowPromotionCodes = false;
+    } else {
+      unitAmount = applyFollowupDiscount
+        ? LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS
+        : LEAD_STANDARD_TOTAL_CENTS;
+
+      // VDay10: subtract $10 server-side when remarketing link is used
+      const VDAY10_DISCOUNT_CENTS = 1000;
+      if (applyVday10Discount) {
+        const { data: vdaySetting } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", "vday10_enabled")
+          .maybeSingle();
+        const vday10Enabled = (vdaySetting as { value: string } | null)?.value === "true";
+        if (vday10Enabled) {
+          unitAmount = Math.max(0, unitAmount - VDAY10_DISCOUNT_CENTS);
+        } else {
+          console.log("VDay10 discount requested but vday10_enabled=false, ignoring");
+        }
       }
     }
 
