@@ -25,6 +25,8 @@ interface Promo {
   show_banner: boolean;
   banner_text: string | null;
   banner_emoji: string | null;
+  banner_bg_color: string | null;
+  banner_text_color: string | null;
   email_leads: boolean;
   email_leads_days: number;
   email_subject: string | null;
