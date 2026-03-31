@@ -311,6 +311,7 @@ Deno.serve(async (req) => {
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer_email: formData.yourEmail,
+      ...(metadata.promoSlug ? {} : { allow_promotion_codes: true }),
       line_items: [
         {
           price_data: {
