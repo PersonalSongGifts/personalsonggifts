@@ -1670,6 +1670,7 @@ const { data, error } = await listOrders("all", 0, 250);
 
           <TabsContent value="promos" className="space-y-6">
             <PromosPanel adminPassword={password} />
+          </TabsContent>
         </Tabs>
       </main>
 
