@@ -232,15 +232,59 @@ Deno.serve(async (req) => {
       metadata.additionalPromoCode = upperAdditional;
       metadata.amount_total_cents = String(unitAmountCents);
     } else {
-      let stripeCoupon: { percent_off?: number; amount_off?: number } | null = null;
-      if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
-        stripeCoupon = await lookupStripeCoupon(upperAdditional);
-        if (stripeCoupon) {
-          metadata.additionalPromoCode = upperAdditional;
+      // Check for active promotion
+      const supabaseForPromo = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+
+      if (promoSlug) {
+        const { data: promo } = await supabaseForPromo
+          .from("promotions")
+          .select("*")
+          .eq("slug", promoSlug)
+          .eq("is_active", true)
+          .lte("starts_at", new Date().toISOString())
+          .gte("ends_at", new Date().toISOString())
+          .maybeSingle();
+
+        if (!promo) {
+          return new Response(
+            JSON.stringify({ error: "promo_expired" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        unitAmountCents = pricingTier === "priority" ? promo.priority_price_cents : promo.standard_price_cents;
+        metadata.promoSlug = promo.slug;
+        metadata.promoName = promo.name;
+        metadata.amount_total_cents = String(unitAmountCents);
+      } else {
+        const { data: activePromo } = await supabaseForPromo
+          .from("promotions")
+          .select("*")
+          .eq("is_active", true)
+          .lte("starts_at", new Date().toISOString())
+          .gte("ends_at", new Date().toISOString())
+          .maybeSingle();
+
+        if (activePromo) {
+          unitAmountCents = pricingTier === "priority" ? activePromo.priority_price_cents : activePromo.standard_price_cents;
+          metadata.promoSlug = activePromo.slug;
+          metadata.promoName = activePromo.name;
+          metadata.amount_total_cents = String(unitAmountCents);
+        } else {
+          let stripeCoupon: { percent_off?: number; amount_off?: number } | null = null;
+          if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
+            stripeCoupon = await lookupStripeCoupon(upperAdditional);
+            if (stripeCoupon) {
+              metadata.additionalPromoCode = upperAdditional;
+            }
+          }
+          unitAmountCents = calculateFinalPriceCents(pricingTier, stripeCoupon);
+          metadata.amount_total_cents = String(unitAmountCents);
         }
       }
-      unitAmountCents = calculateFinalPriceCents(pricingTier, stripeCoupon);
-      metadata.amount_total_cents = String(unitAmountCents);
     }
 
     const unitAmountDollars = (unitAmountCents / 100).toFixed(2);

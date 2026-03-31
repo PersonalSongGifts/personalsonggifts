@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { previewToken, applyFollowupDiscount, applyVday10Discount } = await req.json();
+    const { previewToken, applyFollowupDiscount, applyVday10Discount, promoSlug } = await req.json();
 
     if (!previewToken || previewToken.length < 16) {
       return new Response(
