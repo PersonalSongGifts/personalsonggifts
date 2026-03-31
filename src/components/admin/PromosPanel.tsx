@@ -145,6 +145,8 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
         show_banner: form.show_banner,
         banner_text: form.banner_text || null,
         banner_emoji: form.banner_emoji || null,
+        banner_bg_color: form.banner_bg_color || null,
+        banner_text_color: form.banner_text_color || null,
         email_leads: form.email_leads,
         email_leads_days: parseInt(form.email_leads_days) || 30,
         email_subject: form.email_subject || null,
