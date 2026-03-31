@@ -439,7 +439,55 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Banner Background Color</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={form.banner_bg_color || "#8B5CF6"}
+                    onChange={(e) => setForm(f => ({ ...f, banner_bg_color: e.target.value }))}
+                    className="h-10 w-12 rounded border border-input cursor-pointer"
+                  />
+                  <Input
+                    value={form.banner_bg_color}
+                    onChange={(e) => setForm(f => ({ ...f, banner_bg_color: e.target.value }))}
+                    placeholder="#8B5CF6"
+                    className="flex-1"
+                  />
+                  {form.banner_bg_color && (
+                    <Button variant="ghost" size="sm" onClick={() => setForm(f => ({ ...f, banner_bg_color: "" }))}>
+                      Reset
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Leave empty for default theme color</p>
+              </div>
+              <div>
+                <Label>Banner Text Color</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={form.banner_text_color || "#FFFFFF"}
+                    onChange={(e) => setForm(f => ({ ...f, banner_text_color: e.target.value }))}
+                    className="h-10 w-12 rounded border border-input cursor-pointer"
+                  />
+                  <Input
+                    value={form.banner_text_color}
+                    onChange={(e) => setForm(f => ({ ...f, banner_text_color: e.target.value }))}
+                    placeholder="#FFFFFF"
+                    className="flex-1"
+                  />
+                  {form.banner_text_color && (
+                    <Button variant="ghost" size="sm" onClick={() => setForm(f => ({ ...f, banner_text_color: "" }))}>
+                      Reset
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Leave empty for default theme color</p>
+              </div>
+            </div>
+
               <div className="flex items-center gap-2">
                 <Switch checked={form.show_banner} onCheckedChange={(v) => setForm(f => ({ ...f, show_banner: v }))} />
                 <Label>Show Banner</Label>
