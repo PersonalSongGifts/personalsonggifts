@@ -263,6 +263,7 @@ export default function SongPreview() {
             tier,
             applyFollowupDiscount: isFollowup,
             applyVday10Discount: isVday10,
+            promoSlug: activeFlashPromo.active ? activeFlashPromo.slug : (promoParam || undefined),
           }),
         }
       );
