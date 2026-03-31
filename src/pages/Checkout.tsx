@@ -184,7 +184,7 @@ const Checkout = () => {
         const discountDesc = data.type === "amount_off" 
           ? `$${(data.amount_off / 100).toFixed(2)} off` 
           : `${data.percent_off}% off`;
-        toast({ title: "Promo code applied!", description: `${discountDesc} stacked on top of ${activePromo.code}.` });
+        toast({ title: "Promo code applied!", description: `${discountDesc} stacked on top of ${seasonalPromo.code}.` });
       } else {
         setPromoError(data.error || "Invalid promo code");
       }
