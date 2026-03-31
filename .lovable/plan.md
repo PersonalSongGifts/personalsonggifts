@@ -1,25 +1,73 @@
 
+Root cause is now clear: this is most likely not a banner-rendering bug anymore.
 
-## Fix: Promo Banner Not Updating on Frontend
+What I found:
+- The app wiring is correct:
+  - `ActivePromoProvider` wraps the whole app in `src/App.tsx`
+  - homepage uses `Layout`, and `Layout` renders `PromoBanner` by default
+  - `PromoBanner` hides only when `loading`, `promo.active` is false, or `showBanner` is false
+- The current Easter promo in the database is:
+  - `is_active = true`
+  - `show_banner = true`
+  - `slug = easter`
+  - prices = 2499 / 3499 / 2499
+  - `starts_at = 2026-03-31 23:22:00+00`
+  - `ends_at = 2026-04-12 23:22:00+00`
+- `get-active-promo` only returns a promo when:
+  - `is_active = true`
+  - `starts_at <= now`
+  - `ends_at >= now`
 
-### Root Cause
-The edge function works correctly (confirmed by direct test — returns `active: true` with Easter promo data). The problem is the **frontend fetch**:
+Why you are seeing no banner and no promo pricing:
+- The Easter promo is activated, but its scheduled start time is later than when you checked.
+- So the backend correctly treats it as “not live yet”.
+- That means:
+  - homepage banner does not render
+  - checkout pricing stays on non-Easter pricing
+  - lead preview pricing also stays on non-Easter pricing
 
-1. **`method: "GET"` in `supabase.functions.invoke()`** — In newer Supabase JS SDK versions, this actually sends a GET request. Combined with `Cache-Control: public, max-age=60` on the response, browsers aggressively cache the old `{ active: false }` response. Incognito/different browsers may have gotten this cached response on first load.
+Plan:
+1. Fix the current Easter promo timing
+- Update the Easter promo so `starts_at` is in the past or “now”.
+- Keep the desired end date/time.
+- Re-check the homepage and checkout immediately after.
 
-2. **Banner always shows fallback** — When `promo.active` is false, the banner still renders with hardcoded "50% Off Sale Ends Today!" text instead of hiding.
+2. Make promo scheduling foolproof in admin
+- Add a clearer status in the Promos tab:
+  - Active now
+  - Scheduled / starts later
+  - Expired
+  - Inactive
+- Show the exact interpreted start/end time next to the form fields.
+- Add timezone copy directly in the form so admins know what the datetime inputs mean.
 
-### Fix (2 files)
+3. Prevent this exact mistake in the future
+- When activating a promo whose start time is still in the future, show a warning like:
+  - “This promo is activated, but it will not appear until its start date/time.”
+- When saving, show a summary:
+  - “Will go live at …”
+  - “Will end at …”
 
-**1. `src/hooks/useActivePromo.tsx`**
-- Remove `method: "GET"` from `supabase.functions.invoke()` — let it default to POST, which avoids browser-level HTTP caching entirely.
+4. Verify all customer-facing surfaces after the date fix
+- Homepage:
+  - banner appears at the very top
+  - Easter text appears
+  - banner color matches admin settings
+- Checkout:
+  - standard shows original price struck through and promo price $24.99
+  - priority shows original price struck through and promo price $34.99
+- Lead preview page:
+  - lead unlock price shows promo price if applicable
 
-**2. `supabase/functions/get-active-promo/index.ts`**
-- Change `Cache-Control` from `public, max-age=60` to `no-cache, no-store` to prevent any caching of the response (since we switched to POST, browser caching is less of an issue, but this is belt-and-suspenders).
+5. Verify payment behavior after the promo is actually live
+- Stripe checkout request sends the promo slug only when the promo is live
+- PayPal order creation uses promo pricing only when the promo is live
+- If the promo expires mid-flow, frontend still shows the “This sale has ended” handling
 
-**3. `src/components/layout/PromoBanner.tsx`**
-- When `promo.active` is false OR `promo.showBanner` is false, hide the banner entirely (return null) instead of showing the hardcoded fallback text.
-
-### Redeploy
-The `get-active-promo` edge function must be redeployed after the cache header change.
-
+Technical details:
+- This is a scheduling/data issue, not a missing JSX/render issue.
+- No major Stripe/PayPal rewrite is indicated by the current evidence.
+- The same “active promo” gate controls banner visibility and checkout pricing, so one incorrect start time explains both symptoms.
+- The highest-value fix is:
+  1. correct the Easter promo start time
+  2. improve admin timezone/status clarity so this cannot happen again
