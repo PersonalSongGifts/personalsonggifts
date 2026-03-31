@@ -22,6 +22,8 @@ export default function SongPreview() {
   const [searchParams] = useSearchParams();
   const isFollowup = searchParams.get("followup") === "true";
   const isVday10 = searchParams.get("vday10") === "true";
+  const promoParam = searchParams.get("promo");
+  const { promo: activeFlashPromo, refetch: refetchPromo } = useActivePromo();
   
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
