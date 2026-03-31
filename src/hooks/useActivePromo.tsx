@@ -35,9 +35,7 @@ export const ActivePromoProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchPromo = useCallback(async () => {
     try {
-      const { data, error } = await supabase.functions.invoke("get-active-promo", {
-        method: "GET",
-      });
+      const { data, error } = await supabase.functions.invoke("get-active-promo");
       if (error) {
         console.error("Failed to fetch active promo:", error);
         setPromo({ active: false });
