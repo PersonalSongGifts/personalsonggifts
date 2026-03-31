@@ -1,31 +1,26 @@
 
 
-## Fix: Promo Banner Not Showing Active Promo
+## Add Banner Color Picker to Promo Admin
 
-### Problem
-You activated the promo in admin, but the banner still shows the fallback "50% Off Sale Ends Today!" text. This means `get-active-promo` is returning `{ active: false }`.
+### What Changes
 
-### Root Cause (most likely)
-The `get-active-promo` edge function may not have been deployed after the promotions system was built. The function exists in the codebase but needs deployment.
+1. **Database**: Add `banner_bg_color` (text, nullable, default `null`) and `banner_text_color` (text, nullable, default `null`) columns to the `promotions` table. When null, falls back to the current `bg-primary` / `text-primary-foreground`.
 
-Additionally, there may be a **timezone mismatch**: the admin form sends local datetime values, but `get-active-promo` compares against `new Date().toISOString()` (UTC). If `starts_at` was saved as a local time string without timezone info, the comparison could fail.
+2. **Admin form (`PromosPanel.tsx`)**: Add two color picker inputs (background + text color) in the banner settings section. Use native `<input type="color">` with a hex text input beside it for precision. Include a "Reset to default" option.
 
-### Fix
+3. **Edge function (`get-active-promo`)**: Return `banner_bg_color` and `banner_text_color` in the response.
 
-1. **Deploy `get-active-promo`** edge function — this is likely the primary issue.
+4. **`useActivePromo` hook**: Pass through the two new color fields.
 
-2. **Verify the promo record** — run a quick DB query to confirm the promo exists with `is_active = true`, `show_banner = true`, a non-empty `banner_text`, and that `starts_at <= now() <= ends_at`.
-
-3. **Fix timezone handling in admin form** (if needed) — ensure `starts_at` and `ends_at` are stored as proper UTC timestamps so the edge function's date comparison works correctly.
+5. **`PromoBanner.tsx`**: Apply inline `style={{ backgroundColor, color }}` when promo colors are set, otherwise keep the Tailwind classes.
 
 ### Files
-- Deploy: `supabase/functions/get-active-promo/index.ts`
-- Possibly fix: `src/components/admin/PromosPanel.tsx` (datetime conversion)
-- Possibly fix: `supabase/functions/admin-promos/index.ts` (datetime storage)
-
-### Steps
-1. Deploy `get-active-promo`
-2. Query the `promotions` table to inspect the saved record
-3. If dates are wrong, fix the timezone conversion in the save logic
-4. Verify banner updates on the homepage
+| File | Change |
+|------|--------|
+| Migration | `ALTER TABLE promotions ADD COLUMN banner_bg_color text, ADD COLUMN banner_text_color text` |
+| `supabase/functions/admin-promos/index.ts` | Save/return color fields |
+| `supabase/functions/get-active-promo/index.ts` | Return color fields |
+| `src/hooks/useActivePromo.tsx` | Map new fields |
+| `src/components/admin/PromosPanel.tsx` | Two color pickers in form |
+| `src/components/layout/PromoBanner.tsx` | Apply dynamic colors via inline style |
 
