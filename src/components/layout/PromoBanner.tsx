@@ -1,17 +1,23 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useActivePromo } from "@/hooks/useActivePromo";
 
 const PromoBanner = () => {
   const [isVisible, setIsVisible] = useState(true);
+  const { promo, loading } = useActivePromo();
 
-  if (!isVisible) return null;
+  if (!isVisible || loading) return null;
+
+  const bannerText = promo.active && promo.showBanner && promo.bannerText
+    ? `${promo.bannerEmoji || "🔥"} ${promo.bannerText}`
+    : "🎵 50% Off Sale Ends Today!";
 
   return (
     <div className="bg-primary text-primary-foreground py-2.5 px-4 relative">
       <div className="container mx-auto flex items-center justify-center gap-2 text-sm md:text-base">
         <span className="font-medium">
-          🎵 50% Off Sale Ends Today!
+          {bannerText}
         </span>
         <Link 
           to="/create" 

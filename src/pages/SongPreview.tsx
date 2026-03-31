@@ -271,6 +271,12 @@ export default function SongPreview() {
       const data = await response.json();
       
       if (!response.ok) {
+        if (data.error === "promo_expired") {
+          toast({ title: "This sale has ended", description: "Prices have been updated.", variant: "destructive" });
+          await refetchPromo();
+          setPurchasing(false);
+          return;
+        }
         throw new Error(data.error || "Failed to create checkout");
       }
 
