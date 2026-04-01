@@ -450,7 +450,9 @@ export default function SongPreview() {
               <div>
                 <p className="text-sm text-muted-foreground line-through">$99.99 USD</p>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
-                  {isVday10 && isFollowup
+                  {activeFlashPromo.active
+                    ? `$${((activeFlashPromo.leadPriceCents || 4999) / 100).toFixed(2)}`
+                    : isVday10 && isFollowup
                     ? "$29.99"
                     : isVday10
                     ? "$39.99"
@@ -487,7 +489,9 @@ export default function SongPreview() {
           {/* Promo Badge */}
           <div className="text-center">
             <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
-              {isVday10
+              {activeFlashPromo.active
+                ? `${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name}`
+                : isVday10
                 ? isFollowup
                   ? "Valentine's Day Special + $10 off"
                   : "Valentine's Day Special"
