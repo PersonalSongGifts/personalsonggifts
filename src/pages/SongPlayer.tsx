@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useActivePromo } from "@/hooks/useActivePromo";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
