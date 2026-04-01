@@ -498,7 +498,7 @@ const Checkout = () => {
               <div className="mb-4">
                 <span className="text-lg text-muted-foreground line-through">$159.99 USD</span>
                 <span className="text-4xl font-bold text-foreground ml-2">
-                  ${selectedTier === "priority" ? pricing.total.toFixed(2) : (calculateSeasonalPriceCents("priority") / 100).toFixed(2)}
+                  ${(activeFlashPromo.active ? (activeFlashPromo.priorityPriceCents || 0) / 100 : calculateSeasonalPriceCents("priority") / 100).toFixed(2)}
                 </span>
                 <span className="text-sm text-muted-foreground ml-1">USD</span>
               </div>
