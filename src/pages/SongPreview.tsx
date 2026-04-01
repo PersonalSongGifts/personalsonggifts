@@ -323,6 +323,19 @@ export default function SongPreview() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
+      {/* Urgency Banner */}
+      {activeFlashPromo.active && activeFlashPromo.showBanner && (
+        <div
+          className="py-3 px-4 text-center font-bold text-sm md:text-base"
+          style={{
+            backgroundColor: activeFlashPromo.bannerBgColor || "hsl(var(--primary))",
+            color: activeFlashPromo.bannerTextColor || "hsl(var(--primary-foreground))",
+          }}
+        >
+          🔥 Sale happening now — don't miss out!
+        </div>
+      )}
+
       {/* Header */}
       <div className={`${isVday10 ? "bg-gradient-to-r from-pink-600 to-rose-700" : "bg-primary"} text-primary-foreground py-8 px-4 text-center`}>
         <h1 className="text-2xl md:text-3xl font-bold mb-2">
