@@ -406,11 +406,20 @@ const Checkout = () => {
             Choose your delivery speed and complete payment
           </p>
 
-          {/* 50% Off Badge */}
+          {/* Promo Badge */}
           <div className="flex justify-center mb-6">
             <div className="bg-primary/10 text-primary font-semibold px-4 py-2 rounded-full text-sm flex items-center gap-2">
-              <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
-              {activeFlashPromo.active ? `${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name} — prices slashed!` : `${seasonalPromo.emoji} ${seasonalPromo.code} auto-applied at checkout`}
+              {activeFlashPromo.active ? (
+                <>
+                  <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">SALE</span>
+                  {`${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name} — prices slashed!`}
+                </>
+              ) : (
+                <>
+                  <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
+                  {`${seasonalPromo.emoji} ${seasonalPromo.code} auto-applied at checkout`}
+                </>
+              )}
             </div>
           </div>
 
