@@ -503,7 +503,7 @@ export default function SongPreview() {
           <div className="text-center">
             <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
               {activeFlashPromo.active
-                ? `${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name}`
+                ? "⏳ Limited time offer — act now"
                 : isVday10
                 ? isFollowup
                   ? "Valentine's Day Special + $10 off"
