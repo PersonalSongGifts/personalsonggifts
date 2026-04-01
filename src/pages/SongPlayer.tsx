@@ -70,6 +70,7 @@ interface SongData {
 }
 
 const SongPlayer = () => {
+  const { promo: activeFlashPromo } = useActivePromo();
   const { orderId } = useParams<{ orderId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [songData, setSongData] = useState<SongData | null>(null);
