@@ -323,6 +323,19 @@ export default function SongPreview() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
+      {/* Urgency Banner */}
+      {activeFlashPromo.active && activeFlashPromo.showBanner && (
+        <div
+          className="py-3 px-4 text-center font-bold text-sm md:text-base"
+          style={{
+            backgroundColor: activeFlashPromo.bannerBgColor || "hsl(var(--primary))",
+            color: activeFlashPromo.bannerTextColor || "hsl(var(--primary-foreground))",
+          }}
+        >
+          🔥 Sale happening now — don't miss out!
+        </div>
+      )}
+
       {/* Header */}
       <div className={`${isVday10 ? "bg-gradient-to-r from-pink-600 to-rose-700" : "bg-primary"} text-primary-foreground py-8 px-4 text-center`}>
         <h1 className="text-2xl md:text-3xl font-bold mb-2">
@@ -490,7 +503,7 @@ export default function SongPreview() {
           <div className="text-center">
             <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
               {activeFlashPromo.active
-                ? `${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name}`
+                ? "⏳ Limited time offer — act now"
                 : isVday10
                 ? isFollowup
                   ? "Valentine's Day Special + $10 off"

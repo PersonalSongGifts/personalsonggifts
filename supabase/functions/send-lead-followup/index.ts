@@ -14,17 +14,37 @@ interface SendFollowupRequest {
   source?: "manual" | "cron" | "batch";
 }
 
-function buildFollowupEmail(lead: { customer_name: string; recipient_name: string; preview_token: string }, email: string) {
+interface ActivePromo {
+  name: string;
+  lead_price_cents: number;
+  standard_price_cents: number;
+}
+
+function buildFollowupEmail(
+  lead: { customer_name: string; recipient_name: string; preview_token: string },
+  email: string,
+  promo?: ActivePromo | null
+) {
   const firstName = lead.customer_name.split(" ")[0];
   const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}?followup=true`;
 
   const subject = `${lead.recipient_name}'s song is still waiting`;
 
+  // Dynamic pricing copy
+  const promoPrice = promo
+    ? `$${(promo.lead_price_cents / 100).toFixed(2)}`
+    : "$39.99";
+  const originalPrice = "$99.99";
+
+  const offerParagraph = promo
+    ? `We're running a sale right now — get the full song for just ${promoPrice} (normally ${originalPrice}). No code needed, the discount is already applied to the link below.`
+    : `So we're taking $10 off — no code needed, it's already applied to the link below.`;
+
   const textContent = `Hi ${firstName},
 
 You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.
 
-We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
+We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. ${offerParagraph}
 
 ${previewUrl}
 
@@ -55,7 +75,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
+      We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. ${offerParagraph}
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
@@ -224,6 +244,17 @@ Deno.serve(async (req) => {
       await supabase.from("leads").update({ follow_up_sent_at: new Date().toISOString() }).eq("id", leadId);
     }
 
+    // Query active promo (same logic as get-active-promo)
+    const now = new Date().toISOString();
+    const { data: activePromo } = await supabase
+      .from("promotions")
+      .select("name, lead_price_cents, standard_price_cents")
+      .eq("is_active", true)
+      .lte("starts_at", now)
+      .gte("ends_at", now)
+      .limit(1)
+      .maybeSingle();
+
     // Build and send email
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
     const senderEmail = "support@personalsonggifts.com";
@@ -233,7 +264,7 @@ Deno.serve(async (req) => {
       throw new Error("BREVO_API_KEY not configured");
     }
 
-    const { subject, htmlContent, textContent } = buildFollowupEmail(lead, lead.email);
+    const { subject, htmlContent, textContent } = buildFollowupEmail(lead, lead.email, activePromo);
     const messageId = `<${lead.id}.followup.${Date.now()}@personalsonggifts.com>`;
 
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -271,11 +302,14 @@ Deno.serve(async (req) => {
     }
 
     const result = await response.json();
-    console.log(`Follow-up email (${source || "manual"}) sent to ${lead.email}:`, result);
+    const offerDesc = activePromo
+      ? `${activePromo.name} promo at $${(activePromo.lead_price_cents / 100).toFixed(2)}`
+      : "$10 off ($39.99)";
+    console.log(`Follow-up email (${source || "manual"}) sent to ${lead.email} with offer: ${offerDesc}`, result);
 
     // Log activity
     await logActivity(supabase, "lead", lead.id, "followup_sent", source === "cron" || source === "batch" ? "system" : "admin",
-      `$10 off follow-up sent to ${lead.email} (source: ${source || "manual"})`);
+      `Follow-up sent to ${lead.email} — offer: ${offerDesc} (source: ${source || "manual"})`);
 
     return new Response(
       JSON.stringify({ success: true, messageId: result.messageId }),

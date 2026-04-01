@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useActivePromo } from "@/hooks/useActivePromo";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ interface SongData {
 }
 
 const SongPlayer = () => {
+  const { promo: activeFlashPromo } = useActivePromo();
   const { orderId } = useParams<{ orderId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [songData, setSongData] = useState<SongData | null>(null);
@@ -775,6 +777,26 @@ const SongPlayer = () => {
             </Link>
           </CardContent>
         </Card>
+
+        {/* Promo CTA */}
+        {activeFlashPromo.active && (
+          <Card className="bg-accent/10 border-accent/30">
+            <CardContent className="pt-6 text-center">
+              <p className="text-lg font-semibold mb-1">
+                🎵 Want a song for someone else?
+              </p>
+              <p className="text-muted-foreground mb-4">
+                We're running a sale right now — don't miss out!
+              </p>
+              <Link to="/create">
+                <Button size="lg" className="gap-2">
+                  <Gift className="h-4 w-4" />
+                  Create a Song →
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Footer */}
         <div className="text-center mt-12 pt-8 border-t">
