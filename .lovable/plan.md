@@ -1,73 +1,50 @@
 
-Root cause is now clear: this is most likely not a banner-rendering bug anymore.
+Fix the incorrect promo price display on the checkout tier cards.
 
-What I found:
-- The app wiring is correct:
-  - `ActivePromoProvider` wraps the whole app in `src/App.tsx`
-  - homepage uses `Layout`, and `Layout` renders `PromoBanner` by default
-  - `PromoBanner` hides only when `loading`, `promo.active` is false, or `showBanner` is false
-- The current Easter promo in the database is:
-  - `is_active = true`
-  - `show_banner = true`
-  - `slug = easter`
-  - prices = 2499 / 3499 / 2499
-  - `starts_at = 2026-03-31 23:22:00+00`
-  - `ends_at = 2026-04-12 23:22:00+00`
-- `get-active-promo` only returns a promo when:
-  - `is_active = true`
-  - `starts_at <= now`
-  - `ends_at >= now`
+What’s wrong
+- The backend promo data is correct: `useActivePromo`, `get-active-promo`, `create-checkout`, and `create-paypal-order` all support separate Standard and Priority promo prices.
+- The UI bug is in `src/pages/Checkout.tsx`.
+- Each card currently renders:
+  - selected tier: `pricing.total`
+  - unselected tier: `calculateSeasonalPriceCents(...)`
+- That means when Standard is selected, the Priority card falls back to the old seasonal price (`$79.99`) instead of the promo price (`$34.99`). The reverse would happen if Priority were selected.
 
-Why you are seeing no banner and no promo pricing:
-- The Easter promo is activated, but its scheduled start time is later than when you checked.
-- So the backend correctly treats it as “not live yet”.
-- That means:
-  - homepage banner does not render
-  - checkout pricing stays on non-Easter pricing
-  - lead preview pricing also stays on non-Easter pricing
+Implementation plan
+1. Update `src/pages/Checkout.tsx`
+- Add a small helper or memoized map for display prices per tier, separate from the currently selected checkout total.
+- Logic:
+  - if active promo exists:
+    - standard card shows `activeFlashPromo.standardPriceCents / 100`
+    - priority card shows `activeFlashPromo.priorityPriceCents / 100`
+  - otherwise:
+    - standard card shows `calculateSeasonalPriceCents("standard") / 100`
+    - priority card shows `calculateSeasonalPriceCents("priority") / 100`
 
-Plan:
-1. Fix the current Easter promo timing
-- Update the Easter promo so `starts_at` is in the past or “now”.
-- Keep the desired end date/time.
-- Re-check the homepage and checkout immediately after.
+2. Keep payment behavior unchanged
+- Do not change Stripe/PayPal pricing logic.
+- Do not change order summary total logic.
+- `pricing.total` should still represent only the selected tier for checkout submission.
 
-2. Make promo scheduling foolproof in admin
-- Add a clearer status in the Promos tab:
-  - Active now
-  - Scheduled / starts later
-  - Expired
-  - Inactive
-- Show the exact interpreted start/end time next to the form fields.
-- Add timezone copy directly in the form so admins know what the datetime inputs mean.
+3. Replace both card price renderers
+- Standard card should always display the Standard visible price.
+- Priority card should always display the Priority visible price.
+- This removes the incorrect dependency on `selectedTier` for the non-selected card’s displayed amount.
 
-3. Prevent this exact mistake in the future
-- When activating a promo whose start time is still in the future, show a warning like:
-  - “This promo is activated, but it will not appear until its start date/time.”
-- When saving, show a summary:
-  - “Will go live at …”
-  - “Will end at …”
+4. Verify after the fix
+- With Easter promo active and Standard selected:
+  - Standard card = `$24.99`
+  - Priority card = `$34.99`
+- With Easter promo active and Priority selected:
+  - Standard card = `$24.99`
+  - Priority card = `$34.99`
+- Without active promo:
+  - Standard card = `$49.99`
+  - Priority card = `$79.99`
+- Confirm order summary and payment button still update based on the selected tier.
 
-4. Verify all customer-facing surfaces after the date fix
-- Homepage:
-  - banner appears at the very top
-  - Easter text appears
-  - banner color matches admin settings
-- Checkout:
-  - standard shows original price struck through and promo price $24.99
-  - priority shows original price struck through and promo price $34.99
-- Lead preview page:
-  - lead unlock price shows promo price if applicable
-
-5. Verify payment behavior after the promo is actually live
-- Stripe checkout request sends the promo slug only when the promo is live
-- PayPal order creation uses promo pricing only when the promo is live
-- If the promo expires mid-flow, frontend still shows the “This sale has ended” handling
-
-Technical details:
-- This is a scheduling/data issue, not a missing JSX/render issue.
-- No major Stripe/PayPal rewrite is indicated by the current evidence.
-- The same “active promo” gate controls banner visibility and checkout pricing, so one incorrect start time explains both symptoms.
-- The highest-value fix is:
-  1. correct the Easter promo start time
-  2. improve admin timezone/status clarity so this cannot happen again
+Technical detail
+- Root cause is presentation-only.
+- The current bug is caused by this pattern in `Checkout.tsx`:
+  - Standard card: `selectedTier === "standard" ? pricing.total : seasonal standard`
+  - Priority card: `selectedTier === "priority" ? pricing.total : seasonal priority`
+- The fix is to decouple “card display price for each tier” from “selected tier total”.
