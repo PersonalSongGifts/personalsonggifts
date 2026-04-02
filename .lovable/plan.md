@@ -1,28 +1,34 @@
 
 
-## Improve Spam/Junk Folder Messaging on Confirmation Pages
+## Skip Reaction Video Emails for Memorial Orders
 
-### What
-Rewrite the spam folder warnings on both `Confirmation.tsx` and `PaymentSuccess.tsx` to sound warmer, more conversational, and less like a bulleted checklist — while still clearly communicating the action needed.
+### Problem
+Customers who order memorial/tribute songs (for someone who passed away) receive automated "send us a reaction video!" emails, which is insensitive and caused a complaint.
 
-### Changes
+### Solution
+Add a simple filter to the reaction email logic in `process-scheduled-deliveries` that skips orders where the occasion is `memorial` or `pet-memorial`. These are the two occasion types where asking for a reaction video is inappropriate.
 
-**`src/pages/Confirmation.tsx`** (lines 88-100)
-- Replace the current amber warning box (bulleted list style) with a friendlier, more concise version
-- New copy along the lines of:
-  > **One important thing** — your finished song will arrive from **support@personalsonggifts.com**. Sometimes email providers send it to spam or junk by mistake, so if you don't see it in your inbox, check there first. Adding us to your contacts makes sure you won't miss it!
-- Keep the Mail icon and amber styling but remove the bullet list format for a more natural read
+### Change
 
-**`src/pages/PaymentSuccess.tsx`** (around line 412-416)
-- Update the existing delivery paragraph to match the same warmer tone
-- Same core message: check spam/junk, add to contacts
+**`supabase/functions/process-scheduled-deliveries/index.ts`**
 
-### Tone
-Friendly, helpful, not alarming. Feels like a personal heads-up rather than a legal disclaimer.
+In both Phase A (24h) and Phase B (72h) eligible order queries, add a filter to exclude memorial occasions:
+
+- After fetching eligible orders, filter out any where `occasion` is `memorial` or `pet-memorial`
+- This is a simple in-memory filter since the occasion column is already returned in the query
+- Add a log line noting how many were skipped for memorial sensitivity
+
+The occasion values `memorial` and `pet-memorial` match exactly what the intake form uses.
+
+### Why this approach
+- Minimal change — one filter added in two places
+- No database migration needed (occasion is already stored on orders)
+- No UI changes needed
+- Covers both human and pet memorials
+- Future-proof: if more sensitive occasion types are added, they can be added to the exclusion list
 
 ### Files
 | File | Change |
 |------|--------|
-| `src/pages/Confirmation.tsx` | Rewrite spam warning box copy |
-| `src/pages/PaymentSuccess.tsx` | Rewrite delivery email copy |
+| `supabase/functions/process-scheduled-deliveries/index.ts` | Filter out `memorial` and `pet-memorial` occasions from both 24h and 72h reaction email queries |
 
