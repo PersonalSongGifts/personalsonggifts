@@ -1,30 +1,28 @@
 
 
-## Add Email Confirmation Callout on Checkout Page (Pre-Purchase)
+## Improve Spam/Junk Folder Messaging on Confirmation Pages
 
-### Problem
-Customers mistype their email, never receive their song, and win Stripe chargebacks. Currently their email is shown on line 557 as small "Delivery to:" text that's easy to miss.
+### What
+Rewrite the spam folder warnings on both `Confirmation.tsx` and `PaymentSuccess.tsx` to sound warmer, more conversational, and less like a bulleted checklist — while still clearly communicating the action needed.
 
-### Solution
-Add a prominent email confirmation callout **between the Order Summary card and the payment buttons** (around line 642). This is the last thing they see before clicking "Pay" — if their email is wrong, they'll catch it here.
+### Changes
 
-### Change: `src/pages/Checkout.tsx`
+**`src/pages/Confirmation.tsx`** (lines 88-100)
+- Replace the current amber warning box (bulleted list style) with a friendlier, more concise version
+- New copy along the lines of:
+  > **One important thing** — your finished song will arrive from **support@personalsonggifts.com**. Sometimes email providers send it to spam or junk by mistake, so if you don't see it in your inbox, check there first. Adding us to your contacts makes sure you won't miss it!
+- Keep the Mail icon and amber styling but remove the bullet list format for a more natural read
 
-Insert a new callout card after the Order Summary `</Card>` (line 642) and before the "Reassurance" grid (line 644):
+**`src/pages/PaymentSuccess.tsx`** (around line 412-416)
+- Update the existing delivery paragraph to match the same warmer tone
+- Same core message: check spam/junk, add to contacts
 
-- Mail icon + bold heading: **"Your song will be delivered to:"**
-- Customer email displayed in large, bold, prominent text
-- Subtle note below: "Please double-check this is correct — your song will be sent here."
-- Style: light info-toned background (`bg-blue-50 border-blue-200`), not alarming but impossible to miss
-- Also keep the existing "Delivery to:" line in the order summary (line 557) since it's part of the receipt-style layout
-
-### Why pre-purchase is better
-- Customer can go back and fix their email before paying
-- If they proceed, it's clear evidence they confirmed the email (helps win disputes)
-- Zero conversion friction — it's just a confirmation, not an extra step
+### Tone
+Friendly, helpful, not alarming. Feels like a personal heads-up rather than a legal disclaimer.
 
 ### Files
 | File | Change |
 |------|--------|
-| `src/pages/Checkout.tsx` | Add email confirmation callout between order summary and payment buttons |
+| `src/pages/Confirmation.tsx` | Rewrite spam warning box copy |
+| `src/pages/PaymentSuccess.tsx` | Rewrite delivery email copy |
 
