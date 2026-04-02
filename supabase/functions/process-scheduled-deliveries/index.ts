@@ -1457,9 +1457,18 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
             .order("delivered_at", { ascending: true })
             .limit(MAX_REACTION_EMAILS_PER_PHASE);
 
-          console.log(`[REACTION-EMAIL] Phase A (24h): ${eligible24h?.length || 0} eligible`);
+          // Filter out memorial/sensitive occasions
+          const SENSITIVE_OCCASIONS = ["memorial", "pet-memorial"];
+          const filtered24h = (eligible24h || []).filter(
+            (o: any) => !SENSITIVE_OCCASIONS.includes(o.occasion)
+          );
+          const skipped24h = (eligible24h?.length || 0) - filtered24h.length;
+          if (skipped24h > 0) {
+            console.log(`[REACTION-EMAIL] Phase A: Skipped ${skipped24h} memorial orders`);
+          }
+          console.log(`[REACTION-EMAIL] Phase A (24h): ${filtered24h.length} eligible`);
 
-          for (const order of eligible24h || []) {
+          for (const order of filtered24h) {
             try {
               const effectiveEmail = (order as any).customer_email_override || order.customer_email;
               if (suppressedReactionSet.has(effectiveEmail.toLowerCase())) {
