@@ -641,6 +641,16 @@ const Checkout = () => {
             </div>
           </Card>
 
+          {/* Email confirmation callout */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex items-start gap-3">
+            <Mail className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-blue-900">Your song will be delivered to:</p>
+              <p className="text-lg font-bold text-blue-900 mt-1">{formData.yourEmail}</p>
+              <p className="text-xs text-blue-700 mt-1">Please double-check this is correct — your song will be sent to this email address.</p>
+            </div>
+          </div>
+
           {/* Reassurance */}
           <div className="grid md:grid-cols-3 gap-4 mb-8">
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
