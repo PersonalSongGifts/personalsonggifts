@@ -1579,9 +1579,17 @@ To unsubscribe: ${unsubLink}`;
             .order("delivered_at", { ascending: true })
             .limit(MAX_REACTION_EMAILS_PER_PHASE);
 
-          console.log(`[REACTION-EMAIL] Phase B (72h): ${eligible72h?.length || 0} eligible`);
+          // Filter out memorial/sensitive occasions
+          const filtered72h = (eligible72h || []).filter(
+            (o: any) => !SENSITIVE_OCCASIONS.includes(o.occasion)
+          );
+          const skipped72h = (eligible72h?.length || 0) - filtered72h.length;
+          if (skipped72h > 0) {
+            console.log(`[REACTION-EMAIL] Phase B: Skipped ${skipped72h} memorial orders`);
+          }
+          console.log(`[REACTION-EMAIL] Phase B (72h): ${filtered72h.length} eligible`);
 
-          for (const order of eligible72h || []) {
+          for (const order of filtered72h) {
             try {
               const effectiveEmail = (order as any).customer_email_override || order.customer_email;
               if (suppressedReactionSet.has(effectiveEmail.toLowerCase())) {
