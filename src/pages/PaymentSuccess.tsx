@@ -407,14 +407,12 @@ const PaymentSuccess = () => {
             <div className="flex gap-3 p-4 mb-8 rounded-lg text-left" style={{ backgroundColor: "hsl(48 100% 96%)", border: "1px solid hsl(48 60% 80%)" }}>
               <Mail className="h-5 w-5 shrink-0 mt-0.5" style={{ color: "hsl(32 95% 44%)" }} />
               <div className="text-sm" style={{ color: "hsl(30 50% 20%)" }}>
-                <p className="font-semibold mb-1">Watch for your song email</p>
+                <p className="font-semibold mb-1">One important thing</p>
                 <p className="mb-2">
-                  Your song will be delivered via email from{" "}
-                  <strong>support@personalsonggifts.com</strong>. Be sure to add this address
-                  to your contacts so it doesn't go to your spam folder.
+                  Your finished song will arrive from <strong>support@personalsonggifts.com</strong>. Sometimes email providers send it to spam or junk by mistake, so if you don't see it in your inbox, check there first. Adding us to your contacts makes sure you won't miss it!
                 </p>
                 <p>
-                  If you have questions or concerns, reach out to us at{" "}
+                  Questions? Reach out anytime at{" "}
                   <a href="mailto:support@personalsonggifts.com" className="underline font-medium">
                     support@personalsonggifts.com
                   </a>

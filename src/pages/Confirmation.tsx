@@ -100,12 +100,11 @@ const Confirmation = () => {
           <div className="mb-8 rounded-lg border border-amber-200 bg-amber-50 p-5 text-left">
             <div className="flex items-start gap-3">
               <Mail className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="font-semibold text-amber-900 mb-1">Don't miss your song!</h4>
-                <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside">
-                  <li>Check your <strong>spam/junk folder</strong> for emails from <strong>support@personalsonggifts.com</strong></li>
-                  <li>Add <strong>support@personalsonggifts.com</strong> to your contacts to ensure delivery</li>
-                </ul>
+              <div className="text-sm text-amber-800">
+                <p className="font-semibold text-amber-900 mb-1">One important thing</p>
+                <p>
+                  Your finished song will arrive from <strong>support@personalsonggifts.com</strong>. Sometimes email providers send it to spam or junk by mistake, so if you don't see it in your inbox, check there first. Adding us to your contacts makes sure you won't miss it!
+                </p>
               </div>
             </div>
           </div>
