@@ -20,7 +20,6 @@ const occasions = [
   { id: "birthday", label: "Birthday" },
   { id: "graduation", label: "Graduation" },
   { id: "retirement", label: "Retirement" },
-  { id: "mothers-day", label: "Mother's Day" },
   { id: "fathers-day", label: "Father's Day" },
   { id: "proposal", label: "Proposal" },
   { id: "friendship", label: "Friendship" },
@@ -29,11 +28,36 @@ const occasions = [
 ];
 
 const OccasionStep = ({ formData, updateFormData, errors, onAutoAdvance }: OccasionStepProps) => {
+  const isMothersSelected = formData.occasion === "mothers-day";
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {errors.occasion && (
         <p className="text-destructive text-sm text-center">{errors.occasion}</p>
       )}
+
+      {/* Featured Mother's Day Button */}
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={() => {
+            updateFormData({ occasion: "mothers-day" });
+            onAutoAdvance?.();
+          }}
+          className={`w-full max-w-md mx-auto flex flex-col items-center gap-1 rounded-xl border-2 px-6 py-5 cursor-pointer transition-all duration-200 ${
+            isMothersSelected
+              ? "border-pink-500 ring-2 ring-pink-400 bg-gradient-to-r from-pink-100 to-rose-100 shadow-lg"
+              : "border-pink-300 bg-gradient-to-r from-pink-50 to-rose-50 hover:border-pink-400 hover:shadow-md"
+          }`}
+        >
+          <span className="text-lg sm:text-xl font-bold text-pink-700">
+            🌸 💝 Mother's Day 💝 🌸
+          </span>
+          <span className="text-sm text-pink-500">💐 🌷 🌺</span>
+        </button>
+      </div>
+
+      {/* Regular Occasion Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {occasions.map((occasion) => {
           const isSelected = formData.occasion === occasion.id;
