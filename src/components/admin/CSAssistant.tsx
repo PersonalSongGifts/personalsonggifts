@@ -328,6 +328,113 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
                       <span>Delivery: {order.delivery_status}</span>
                     )}
                   </div>
+
+                  {/* Revision Status Section */}
+                  {(order.revision_status || order.pending_revision || (order.revision_count != null && order.revision_count > 0)) && (
+                    <div className="mt-2 border rounded p-3 bg-muted/30 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <FileEdit className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-xs font-medium">Revision</span>
+                        {order.revision_status && (
+                          <Badge className={revisionStatusColors[order.revision_status] || "bg-gray-100 text-gray-800"} variant="outline">
+                            {order.revision_status}
+                          </Badge>
+                        )}
+                        {order.pending_revision && (
+                          <Badge className="bg-yellow-100 text-yellow-800" variant="outline">
+                            ⏳ Awaiting review
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {order.revision_count ?? 0}/{order.max_revisions ?? 1} used
+                        </span>
+                      </div>
+
+                      {order.revision_requested_at && (
+                        <p className="text-xs text-muted-foreground">
+                          Requested {formatAdminDate(order.revision_requested_at)}
+                        </p>
+                      )}
+
+                      {order.resend_scheduled_at && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Revised song delivery: {formatAdminDate(order.resend_scheduled_at)}
+                        </p>
+                      )}
+
+                      {order.revision_status === "approved" && order.automation_status && (
+                        <p className="text-xs text-muted-foreground">
+                          🤖 Generation: {order.automation_status}
+                        </p>
+                      )}
+
+                      {order.revision_status === "rejected" && order.revision_reason && (
+                        <p className="text-xs text-red-600">
+                          Reason: {order.revision_reason}
+                        </p>
+                      )}
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs gap-1"
+                        onClick={() => fetchRevisionDetails(order.id)}
+                        disabled={loadingRevisionDetails === order.id}
+                      >
+                        {loadingRevisionDetails === order.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : expandedRevisionOrderId === order.id ? (
+                          <ChevronUp className="h-3 w-3" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3" />
+                        )}
+                        {expandedRevisionOrderId === order.id ? "Hide Details" : "View Revision Details"}
+                      </Button>
+
+                      {expandedRevisionOrderId === order.id && revisionDetails[order.id] && (
+                        <div className="space-y-2 pt-1">
+                          {revisionDetails[order.id].length === 0 ? (
+                            <p className="text-xs text-muted-foreground italic">No revision requests found for this order.</p>
+                          ) : (
+                            revisionDetails[order.id].map((rev: any) => (
+                              <div key={rev.id} className="border rounded p-2 space-y-1 text-xs bg-background">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge className={revisionStatusColors[rev.status] || "bg-gray-100 text-gray-800"} variant="outline">
+                                    {rev.status}
+                                  </Badge>
+                                  <span className="text-muted-foreground">{formatAdminDate(rev.submitted_at)}</span>
+                                  {rev.is_pre_delivery && <Badge variant="outline" className="text-xs">Pre-delivery</Badge>}
+                                </div>
+                                {rev.changes_summary && (
+                                  <p className="text-muted-foreground">{rev.changes_summary}</p>
+                                )}
+                                {Array.isArray(rev.fields_changed) && rev.fields_changed.length > 0 && (
+                                  <div className="space-y-1 pt-1">
+                                    {rev.fields_changed.map((field: string) => {
+                                      const original = rev.original_values?.[field];
+                                      const newVal = rev[field];
+                                      return (
+                                        <div key={field} className="pl-2 border-l-2 border-muted">
+                                          <span className="font-medium capitalize">{field.replace(/_/g, " ")}</span>
+                                          {original != null && (
+                                            <p className="text-muted-foreground">Was: <span className="line-through">{String(original)}</span></p>
+                                          )}
+                                          {newVal != null && (
+                                            <p>Now: {String(newVal)}</p>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
 
