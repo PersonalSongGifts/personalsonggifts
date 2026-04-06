@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Copy, ExternalLink, RefreshCw, Loader2, AlertTriangle, CheckCircle, Clock, Send } from "lucide-react";
+import { Search, Copy, ExternalLink, RefreshCw, Loader2, AlertTriangle, CheckCircle, Clock, Send, FileEdit, ChevronDown, ChevronUp } from "lucide-react";
 import { formatAdminDate } from "@/lib/utils";
 import { PendingRevisions } from "./PendingRevisions";
 
@@ -36,6 +36,13 @@ const automationStatusColors: Record<string, string> = {
   failed: "bg-red-100 text-red-800",
 };
 
+const revisionStatusColors: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800",
+  approved: "bg-purple-100 text-purple-800",
+  rejected: "bg-red-100 text-red-800",
+  completed: "bg-green-100 text-green-800",
+};
+
 export function CSAssistant({ adminPassword }: CSAssistantProps) {
   const [email, setEmail] = useState("");
   const [orders, setOrders] = useState<any[]>([]);
@@ -45,6 +52,9 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
   const [customerMessage, setCustomerMessage] = useState("");
   const [draftResponse, setDraftResponse] = useState("");
   const [drafting, setDrafting] = useState(false);
+  const [expandedRevisionOrderId, setExpandedRevisionOrderId] = useState<string | null>(null);
+  const [revisionDetails, setRevisionDetails] = useState<Record<string, any[]>>({});
+  const [loadingRevisionDetails, setLoadingRevisionDetails] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleLookup = useCallback(async () => {
@@ -158,12 +168,34 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
   }, [toast]);
 
   const copyDraftOnly = useCallback(() => {
-    // Extract only the draft response portion after "✉️ Draft Response:"
     const marker = "✉️ Draft Response:";
     const idx = draftResponse.indexOf(marker);
     const draftOnly = idx !== -1 ? draftResponse.slice(idx + marker.length).trim() : draftResponse;
     copyToClipboard(draftOnly, "Draft response");
   }, [draftResponse, copyToClipboard]);
+
+  const fetchRevisionDetails = useCallback(async (orderId: string) => {
+    if (revisionDetails[orderId]) {
+      setExpandedRevisionOrderId(prev => prev === orderId ? null : orderId);
+      return;
+    }
+    setLoadingRevisionDetails(orderId);
+    setExpandedRevisionOrderId(orderId);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: { action: "list_pending_revisions", adminPassword },
+      });
+      if (error) throw error;
+      const allRevisions = data.revisions || [];
+      const orderRevisions = allRevisions.filter((r: any) => r.order_id === orderId);
+      setRevisionDetails(prev => ({ ...prev, [orderId]: orderRevisions }));
+    } catch (err) {
+      toast({ title: "Failed to load revision details", variant: "destructive" });
+    } finally {
+      setLoadingRevisionDetails(null);
+    }
+  }, [adminPassword, revisionDetails, toast]);
 
   const isOverdue = (order: any) => {
     if (order.sent_at) return false;
@@ -296,6 +328,113 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
                       <span>Delivery: {order.delivery_status}</span>
                     )}
                   </div>
+
+                  {/* Revision Status Section */}
+                  {(order.revision_status || order.pending_revision || (order.revision_count != null && order.revision_count > 0)) && (
+                    <div className="mt-2 border rounded p-3 bg-muted/30 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <FileEdit className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-xs font-medium">Revision</span>
+                        {order.revision_status && (
+                          <Badge className={revisionStatusColors[order.revision_status] || "bg-gray-100 text-gray-800"} variant="outline">
+                            {order.revision_status}
+                          </Badge>
+                        )}
+                        {order.pending_revision && (
+                          <Badge className="bg-yellow-100 text-yellow-800" variant="outline">
+                            ⏳ Awaiting review
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {order.revision_count ?? 0}/{order.max_revisions ?? 1} used
+                        </span>
+                      </div>
+
+                      {order.revision_requested_at && (
+                        <p className="text-xs text-muted-foreground">
+                          Requested {formatAdminDate(order.revision_requested_at)}
+                        </p>
+                      )}
+
+                      {order.resend_scheduled_at && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Revised song delivery: {formatAdminDate(order.resend_scheduled_at)}
+                        </p>
+                      )}
+
+                      {order.revision_status === "approved" && order.automation_status && (
+                        <p className="text-xs text-muted-foreground">
+                          🤖 Generation: {order.automation_status}
+                        </p>
+                      )}
+
+                      {order.revision_status === "rejected" && order.revision_reason && (
+                        <p className="text-xs text-red-600">
+                          Reason: {order.revision_reason}
+                        </p>
+                      )}
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs gap-1"
+                        onClick={() => fetchRevisionDetails(order.id)}
+                        disabled={loadingRevisionDetails === order.id}
+                      >
+                        {loadingRevisionDetails === order.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : expandedRevisionOrderId === order.id ? (
+                          <ChevronUp className="h-3 w-3" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3" />
+                        )}
+                        {expandedRevisionOrderId === order.id ? "Hide Details" : "View Revision Details"}
+                      </Button>
+
+                      {expandedRevisionOrderId === order.id && revisionDetails[order.id] && (
+                        <div className="space-y-2 pt-1">
+                          {revisionDetails[order.id].length === 0 ? (
+                            <p className="text-xs text-muted-foreground italic">No revision requests found for this order.</p>
+                          ) : (
+                            revisionDetails[order.id].map((rev: any) => (
+                              <div key={rev.id} className="border rounded p-2 space-y-1 text-xs bg-background">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge className={revisionStatusColors[rev.status] || "bg-gray-100 text-gray-800"} variant="outline">
+                                    {rev.status}
+                                  </Badge>
+                                  <span className="text-muted-foreground">{formatAdminDate(rev.submitted_at)}</span>
+                                  {rev.is_pre_delivery && <Badge variant="outline" className="text-xs">Pre-delivery</Badge>}
+                                </div>
+                                {rev.changes_summary && (
+                                  <p className="text-muted-foreground">{rev.changes_summary}</p>
+                                )}
+                                {Array.isArray(rev.fields_changed) && rev.fields_changed.length > 0 && (
+                                  <div className="space-y-1 pt-1">
+                                    {rev.fields_changed.map((field: string) => {
+                                      const original = rev.original_values?.[field];
+                                      const newVal = rev[field];
+                                      return (
+                                        <div key={field} className="pl-2 border-l-2 border-muted">
+                                          <span className="font-medium capitalize">{field.replace(/_/g, " ")}</span>
+                                          {original != null && (
+                                            <p className="text-muted-foreground">Was: <span className="line-through">{String(original)}</span></p>
+                                          )}
+                                          {newVal != null && (
+                                            <p>Now: {String(newVal)}</p>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
 
