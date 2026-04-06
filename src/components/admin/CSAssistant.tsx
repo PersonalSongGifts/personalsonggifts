@@ -36,6 +36,13 @@ const automationStatusColors: Record<string, string> = {
   failed: "bg-red-100 text-red-800",
 };
 
+const revisionStatusColors: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800",
+  approved: "bg-purple-100 text-purple-800",
+  rejected: "bg-red-100 text-red-800",
+  completed: "bg-green-100 text-green-800",
+};
+
 export function CSAssistant({ adminPassword }: CSAssistantProps) {
   const [email, setEmail] = useState("");
   const [orders, setOrders] = useState<any[]>([]);
@@ -45,6 +52,9 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
   const [customerMessage, setCustomerMessage] = useState("");
   const [draftResponse, setDraftResponse] = useState("");
   const [drafting, setDrafting] = useState(false);
+  const [expandedRevisionOrderId, setExpandedRevisionOrderId] = useState<string | null>(null);
+  const [revisionDetails, setRevisionDetails] = useState<Record<string, any[]>>({});
+  const [loadingRevisionDetails, setLoadingRevisionDetails] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleLookup = useCallback(async () => {
