@@ -20,7 +20,6 @@ const occasions = [
   { id: "birthday", label: "Birthday" },
   { id: "graduation", label: "Graduation" },
   { id: "retirement", label: "Retirement" },
-  { id: "mothers-day", label: "Mother's Day" },
   { id: "fathers-day", label: "Father's Day" },
   { id: "proposal", label: "Proposal" },
   { id: "friendship", label: "Friendship" },
