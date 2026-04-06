@@ -56,7 +56,7 @@ const RecipientStep = ({ formData, updateFormData, errors, onAutoAdvance }: Reci
             <div className={`w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center ${
               isSelected ? "bg-primary text-primary-foreground" : "bg-secondary"
             }`}>
-              <option.icon className="h-6 w-6" />
+              <option.icon className={`h-6 w-6 ${(option.id === "mom" || option.id === "wife") && !isSelected ? "text-red-500 fill-red-500" : ""}`} />
             </div>
             <span className="font-medium text-foreground">{option.label}</span>
           </Card>
