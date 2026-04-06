@@ -19,10 +19,10 @@ interface RecipientStepProps {
 }
 
 const recipientOptions = [
+  { id: "mom", label: "Mom 💐❤️", icon: Heart },
+  { id: "wife", label: "Wife 🌸❤️", icon: Heart },
   { id: "husband", label: "Husband", icon: Heart },
-  { id: "wife", label: "Wife", icon: Heart },
   { id: "partner", label: "Partner", icon: Heart },
-  { id: "mom", label: "Mom", icon: Heart },
   { id: "dad", label: "Dad", icon: Users },
   { id: "child", label: "Child", icon: Baby },
   { id: "friend", label: "Friend", icon: UserCheck },
