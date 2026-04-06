@@ -70,3 +70,17 @@ export function getLabelForOption(
 export function getLanguageLabel(code: string): string {
   return getLabelForOption(languageOptions, code);
 }
+
+export const recipientOptions = [
+  { id: "husband", label: "Husband" },
+  { id: "wife", label: "Wife" },
+  { id: "partner", label: "Partner" },
+  { id: "mom", label: "Mom" },
+  { id: "dad", label: "Dad" },
+  { id: "parent", label: "Parent" },
+  { id: "child", label: "Child" },
+  { id: "friend", label: "Friend" },
+  { id: "pet", label: "Pet" },
+  { id: "myself", label: "Myself" },
+  { id: "other", label: "Other" },
+];
