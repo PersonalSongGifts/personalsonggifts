@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at";
+    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, download_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at";
 
     let orders: any[] | null = null;
     let error: any = null;
@@ -145,6 +145,7 @@ Deno.serve(async (req) => {
       revision_token: order.revision_token || null,
       revision_available: revisionAvailable,
       revision_status: order.revision_status || null,
+      download_unlocked: !!order.download_unlocked_at,
     };
 
     // Auto-swap phonetic name with actual name in displayed lyrics

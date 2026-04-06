@@ -344,6 +344,10 @@ export type Database = {
           delivery_status: string | null
           device_type: string | null
           dismissed_at: string | null
+          download_price_cents: number | null
+          download_unlock_payment_intent_id: string | null
+          download_unlock_session_id: string | null
+          download_unlocked_at: string | null
           earliest_generate_at: string | null
           expected_delivery: string | null
           favorite_memory: string
@@ -440,6 +444,10 @@ export type Database = {
           delivery_status?: string | null
           device_type?: string | null
           dismissed_at?: string | null
+          download_price_cents?: number | null
+          download_unlock_payment_intent_id?: string | null
+          download_unlock_session_id?: string | null
+          download_unlocked_at?: string | null
           earliest_generate_at?: string | null
           expected_delivery?: string | null
           favorite_memory: string
@@ -536,6 +544,10 @@ export type Database = {
           delivery_status?: string | null
           device_type?: string | null
           dismissed_at?: string | null
+          download_price_cents?: number | null
+          download_unlock_payment_intent_id?: string | null
+          download_unlock_session_id?: string | null
+          download_unlocked_at?: string | null
           earliest_generate_at?: string | null
           expected_delivery?: string | null
           favorite_memory?: string
@@ -906,6 +918,10 @@ export type Database = {
           delivery_status: string | null
           device_type: string | null
           dismissed_at: string | null
+          download_price_cents: number | null
+          download_unlock_payment_intent_id: string | null
+          download_unlock_session_id: string | null
+          download_unlocked_at: string | null
           earliest_generate_at: string | null
           expected_delivery: string | null
           favorite_memory: string
