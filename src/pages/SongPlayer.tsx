@@ -78,6 +78,7 @@ const SongPlayer = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const [lyricsCopied, setLyricsCopied] = useState(false);
   
   
@@ -133,7 +134,6 @@ const SongPlayer = () => {
           }
         );
         if (response.ok) {
-          // Re-fetch song data to get full lyrics
           await fetchSongData();
           toast.success("Lyrics unlocked!");
         }
@@ -141,12 +141,42 @@ const SongPlayer = () => {
         console.error("Lyrics verification failed:", err);
       } finally {
         setLyricsLoading(false);
-        // Clean URL param
         setSearchParams({}, { replace: true });
       }
     };
 
     verifyLyricsPurchase();
+  }, [searchParams]);
+
+  // Handle download unlock redirect from Stripe
+  useEffect(() => {
+    const downloadSessionId = searchParams.get("download_session_id");
+    if (!downloadSessionId) return;
+
+    const verifyDownloadPurchase = async () => {
+      setDownloadLoading(true);
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-download-purchase`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: downloadSessionId }),
+          }
+        );
+        if (response.ok) {
+          await fetchSongData();
+          toast.success("Download unlocked! You can now download your song.");
+        }
+      } catch (err) {
+        console.error("Download verification failed:", err);
+      } finally {
+        setDownloadLoading(false);
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    verifyDownloadPurchase();
   }, [searchParams]);
 
   // Track playback error for diagnostics
@@ -375,16 +405,45 @@ const SongPlayer = () => {
   };
 
   const downloadSong = async () => {
-    if (!songData?.song_url) return;
+    if (!songData?.song_url || !orderId) return;
+
+    // If download is locked, redirect to Stripe checkout
+    if (!songData.download_unlocked) {
+      setDownloadLoading(true);
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-download-checkout`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId }),
+          }
+        );
+        const data = await response.json();
+        if (data.alreadyUnlocked) {
+          await fetchSongData();
+          toast.success("Download already unlocked!");
+          return;
+        }
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          toast.error(data.error || "Failed to start checkout");
+        }
+      } catch {
+        toast.error("Failed to start download checkout");
+      } finally {
+        setDownloadLoading(false);
+      }
+      return;
+    }
     
     // Track download event (fire-and-forget)
-    if (orderId) {
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "order", action: "download", orderId }),
-      }).catch((err) => console.error("Failed to track download:", err));
-    }
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "order", action: "download", orderId }),
+    }).catch((err) => console.error("Failed to track download:", err));
     
     try {
       const response = await fetch(songData.song_url);
