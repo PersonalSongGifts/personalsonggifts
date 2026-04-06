@@ -532,10 +532,16 @@ const SongPlayer = () => {
           <div className="max-w-md mx-auto mb-6 bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-center">
             <AlertCircle className="h-6 w-6 text-destructive mx-auto mb-2" />
             <p className="text-sm text-destructive mb-3">{audioError}</p>
-            <Button onClick={downloadSong} className="gap-2">
-              <Download className="h-4 w-4" />
-              Download Song Instead
-            </Button>
+            {songData.download_unlocked ? (
+              <Button onClick={downloadSong} className="gap-2">
+                <Download className="h-4 w-4" />
+                Download Song Instead
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Purchase the download below to save your song.
+              </p>
+            )}
           </div>
         )}
 
@@ -619,9 +625,20 @@ const SongPlayer = () => {
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-3 mb-8 flex-wrap">
-          <Button variant="outline" onClick={downloadSong} className="gap-2">
-            <Download className="h-4 w-4" />
-            Download
+          <Button
+            variant={songData.download_unlocked ? "outline" : "default"}
+            onClick={downloadSong}
+            disabled={downloadLoading}
+            className="gap-2"
+          >
+            {downloadLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : songData.download_unlocked ? (
+              <Download className="h-4 w-4" />
+            ) : (
+              <Lock className="h-4 w-4" />
+            )}
+            {songData.download_unlocked ? "Download" : "Download Song — $49.00 USD"}
           </Button>
           
           <DropdownMenu>
