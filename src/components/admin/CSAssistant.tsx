@@ -168,12 +168,34 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
   }, [toast]);
 
   const copyDraftOnly = useCallback(() => {
-    // Extract only the draft response portion after "✉️ Draft Response:"
     const marker = "✉️ Draft Response:";
     const idx = draftResponse.indexOf(marker);
     const draftOnly = idx !== -1 ? draftResponse.slice(idx + marker.length).trim() : draftResponse;
     copyToClipboard(draftOnly, "Draft response");
   }, [draftResponse, copyToClipboard]);
+
+  const fetchRevisionDetails = useCallback(async (orderId: string) => {
+    if (revisionDetails[orderId]) {
+      setExpandedRevisionOrderId(prev => prev === orderId ? null : orderId);
+      return;
+    }
+    setLoadingRevisionDetails(orderId);
+    setExpandedRevisionOrderId(orderId);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: { action: "list_pending_revisions", adminPassword },
+      });
+      if (error) throw error;
+      const allRevisions = data.revisions || [];
+      const orderRevisions = allRevisions.filter((r: any) => r.order_id === orderId);
+      setRevisionDetails(prev => ({ ...prev, [orderId]: orderRevisions }));
+    } catch (err) {
+      toast({ title: "Failed to load revision details", variant: "destructive" });
+    } finally {
+      setLoadingRevisionDetails(null);
+    }
+  }, [adminPassword, revisionDetails, toast]);
 
   const isOverdue = (order: any) => {
     if (order.sent_at) return false;
