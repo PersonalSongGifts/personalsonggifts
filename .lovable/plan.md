@@ -1,43 +1,31 @@
 
 
-## Add Prominent Mother's Day Button to Occasion Step
+## Split "Parent" into "Mom" and "Dad" on Recipient Step
 
 ### What
-Add a large, eye-catching Mother's Day featured button at the top of the occasion grid (just below the subtitle), with heart emojis and flower decorations. Remove Mother's Day from the regular grid to avoid duplication.
+Replace the single "Parent" card with two separate cards — "Mom" and "Dad" — and move them near the top of the grid for Mother's Day prominence. Update admin dropdowns to match.
 
 ### Changes
 
-**`src/components/create/OccasionStep.tsx`**
+**`src/components/create/RecipientStep.tsx`**
+- Replace `{ id: "parent", label: "Parent", icon: Users }` with:
+  - `{ id: "mom", label: "Mom", icon: Heart }` (position 4, right after Partner)
+  - `{ id: "dad", label: "Dad", icon: Users }` (position 5, right after Mom)
+- This gives the grid order: Husband, Wife, Partner, **Mom**, **Dad**, Child, Friend, Pet, Myself, Other (10 items total)
 
-1. Add a featured Mother's Day button above the occasion grid:
-   - Full-width on mobile, constrained width on desktop
-   - Pink/rose gradient background with border
-   - Heart emojis (💐🌸💝) surrounding the text
-   - Flower emoji accents for the decorative feel
-   - Larger text and padding than regular cards
-   - Same click behavior (select + auto-advance)
-   - Selected state with ring highlight matching the themed colors
+**`src/components/admin/adminDropdownOptions.ts`**
+- Add a `recipientOptions` array that includes `mom` and `dad` (instead of `parent`) so admin filtering/editing works with the new values
+- Keep backward compatibility: old orders with `recipient_type: "parent"` will still display via the `getLabelForOption` fallback (returns the raw ID)
 
-2. Remove `mothers-day` from the regular `occasions` array so it only appears as the featured button
-
-3. Responsive approach:
-   - Mobile: full-width button with comfortable tap target
-   - Tablet/Desktop: centered, max-width ~md, still prominent
-
-### Visual
-```text
-┌─────────────────────────────────────┐
-│  🌸 💝  Mother's Day  💝 🌸        │  ← Featured button (pink bg)
-│        💐 🌷 🌺                     │  ← Flower accents below
-└─────────────────────────────────────┘
-
-[ Valentine's ] [ Wedding ] [ Anniversary ] [ Baby Lullaby ]
-[ Memorial ]    [ Pet Cel ] [ Pet Mem ]     [ Milestone ]
-...remaining occasions in normal grid...
-```
+### What does NOT need to change
+- **Database**: `recipient_type` is a free-text string column — no migration needed
+- **Lyrics generation** (`automation-generate-lyrics`): The `recipient_type` value is passed directly into the AI prompt as `RecipientType: mom` or `RecipientType: dad`. This actually *improves* lyric quality — the AI will use "Mama/Mom" or "Dad/Pops" instead of generic "parent" language
+- **All other edge functions**: They just store/pass `recipient_type` as a string — no logic branches on "parent" specifically
+- **Revision form**: Uses the same dropdown options, will pick up the new values automatically
 
 ### Files
 | File | Change |
 |------|--------|
-| `src/components/create/OccasionStep.tsx` | Add featured Mother's Day button, remove from grid |
+| `src/components/create/RecipientStep.tsx` | Replace "Parent" with "Mom" and "Dad", reorder to put them near top |
+| `src/components/admin/adminDropdownOptions.ts` | Add `recipientOptions` array with mom/dad instead of parent |
 
