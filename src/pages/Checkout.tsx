@@ -562,7 +562,7 @@ const Checkout = () => {
               {/* Promo item */}
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Unlimited plays & full usage rights</span>
+                  <span className="text-muted-foreground">Unlimited plays</span>
                   <span className="bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5 rounded">FREE</span>
                 </div>
                 <div className="flex items-center gap-2">
