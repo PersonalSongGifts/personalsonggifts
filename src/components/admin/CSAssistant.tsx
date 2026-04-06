@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Copy, ExternalLink, RefreshCw, Loader2, AlertTriangle, CheckCircle, Clock, Send } from "lucide-react";
+import { Search, Copy, ExternalLink, RefreshCw, Loader2, AlertTriangle, CheckCircle, Clock, Send, FileEdit, ChevronDown, ChevronUp } from "lucide-react";
 import { formatAdminDate } from "@/lib/utils";
 import { PendingRevisions } from "./PendingRevisions";
 
