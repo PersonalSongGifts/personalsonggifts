@@ -113,3 +113,9 @@ verify_jwt = false
 
 [functions.cs-agent-actions]
 verify_jwt = false
+
+[functions.create-download-checkout]
+verify_jwt = false
+
+[functions.verify-download-purchase]
+verify_jwt = false

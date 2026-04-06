@@ -67,6 +67,7 @@ interface SongData {
   revision_token?: string;
   revision_available?: boolean;
   revision_status?: string;
+  download_unlocked: boolean;
 }
 
 const SongPlayer = () => {
