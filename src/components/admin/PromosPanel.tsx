@@ -44,6 +44,7 @@ interface PromoFormData {
   standard_price_dollars: string;
   priority_price_dollars: string;
   lead_price_dollars: string;
+  bonus_price_dollars: string;
   starts_at: string;
   ends_at: string;
   is_active: boolean;
@@ -64,6 +65,7 @@ const emptyForm: PromoFormData = {
   standard_price_dollars: "24.99",
   priority_price_dollars: "34.99",
   lead_price_dollars: "24.99",
+  bonus_price_dollars: "",
   starts_at: "",
   ends_at: "",
   is_active: false,
