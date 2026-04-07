@@ -3294,13 +3294,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
       console.log(`[BONUS-ADMIN] ✅ Bonus task created: ${bonusTaskId} for ${entityType} ${entityId}`);
 
-      await logActivity(supabase, {
-        entityType,
-        entityId,
-        eventType: "bonus_generation_triggered",
-        actor: "admin",
-        details: `Admin triggered bonus ${isAcousticPrimary ? "R&B" : "acoustic"} generation`,
-      });
+      await logActivity(supabase, entityType as "order" | "lead", entityId, "bonus_generation_triggered", "admin", `Admin triggered bonus ${isAcousticPrimary ? "R&B" : "acoustic"} generation`);
 
       return new Response(
         JSON.stringify({ success: true, taskId: bonusTaskId, bonusGenre: isAcousticPrimary ? "R&B" : "Acoustic" }),
