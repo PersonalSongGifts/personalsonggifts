@@ -43,6 +43,7 @@ import { ReactionEmailPanel } from "@/components/admin/ReactionEmailPanel";
 import { LeadFollowupPanel } from "@/components/admin/LeadFollowupPanel";
 import { CSAssistant } from "@/components/admin/CSAssistant";
 import { PromosPanel } from "@/components/admin/PromosPanel";
+import { BonusTrackAnalytics } from "@/components/admin/BonusTrackAnalytics";
 import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 import { getCountryFromTimezone } from "@/lib/timezoneCountry";
 
@@ -140,6 +141,14 @@ interface Order {
   // Billing country
   billing_country_code?: string | null;
   billing_country_name?: string | null;
+  // Bonus track
+  bonus_song_url?: string | null;
+  bonus_preview_url?: string | null;
+  bonus_song_title?: string | null;
+  bonus_cover_image_url?: string | null;
+  bonus_automation_status?: string | null;
+  bonus_unlocked_at?: string | null;
+  bonus_price_cents?: number | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -1211,6 +1220,9 @@ const { data, error } = await listOrders("all", 0, 250);
 
             {/* Custom Occasion Insights */}
             <CustomOccasionInsights orders={analyticsOrders} />
+
+            {/* Bonus Track Analytics */}
+            <BonusTrackAnalytics orders={analyticsOrders} />
 
             {/* Hot Leads - most engaged unconverted */}
             <HotLeadsCard
