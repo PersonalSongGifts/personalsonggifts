@@ -1,57 +1,51 @@
 
 
-## Surface Revision Status in CS Assistant Lookup
+## Revised Plan — Download Unlock Webhook Fix + Safer Validation
 
-### Problem
-When a customer emails CS about a revision, the agent has no quick way to see whether a revision request already exists, its status, or when the revised song will be delivered — they'd have to scroll up to the separate Pending Revisions queue and search manually.
+### Root cause confirmed
+The `stripe-webhook` has early-return handlers for `lyrics_unlock` (line 126) and `leadId` (line 191), but **no handler for `download_unlock`**. The download checkout session (`create-download-checkout`) sets `metadata.entitlement = "download_unlock"`, but the webhook ignores it and falls through to creating a blank order.
 
-### Solution
-Add a **revision status section** to each order card in the CS Assistant lookup results. The data is already returned by the `cs_lookup` endpoint — it just needs to be displayed.
+### What I changed from the original plan
 
-### What CS agents will see
+**Removed the webhook "creative field safety net"**. The original plan said: "before the order INSERT, skip if creative fields are empty." This is **dangerous** — if Stripe ever truncates metadata for a legitimate $50+ order, the customer pays but silently gets no order. A broken order is visible and fixable. A silently dropped order is lost revenue and a CS nightmare. The download_unlock handler alone fixes the actual bug.
 
-For each order card in the lookup results, a new section appears (when relevant):
+### Changes (3 items, not 4)
 
-```text
-┌─ Order 2DA17D9E ─ delivered ─────────────────────┐
-│  Occasion: birthday · Recipient: Sarah · ...     │
-│  Song: ♫ Listen                                   │
-│  ─────────────────────────────────────────────── │
-│  📝 Revision: pending (submitted Apr 5)           │
-│     Changed: special_qualities, favorite_memory   │
-│     Revisions used: 1/1                           │
-│     Revised song ETA: ~12h after approval         │
-│                                                   │
-│  [View Revision Details ↗]                        │
-└───────────────────────────────────────────────────┘
-```
+**1. `supabase/functions/stripe-webhook/index.ts` — Add download_unlock early-return handler**
+- Insert right after the lyrics_unlock handler (after line 164), before Supabase init at line 167
+- Check `sessionMetadata.entitlement === "download_unlock"`
+- Validate `orderId` from metadata (same UUID regex as lyrics handler)
+- Update the order: `download_unlocked_at`, `download_unlock_session_id`, `download_unlock_payment_intent_id`, `download_price_cents`
+- Idempotent: only update where `download_unlocked_at IS NULL`
+- Log activity, return early — never falls through to order creation
+- This mirrors lines 126-164 exactly
 
-- **No revision activity**: nothing shown (clean)
-- **Pending revision**: yellow badge, fields changed, submission date
-- **Approved/in-progress**: purple badge, automation status, ETA
-- **Completed & delivered**: green badge, delivered date
-- **Rejected**: red badge with reason
+**2. `supabase/functions/create-checkout/index.ts` — Strengthen input validation**
+- Expand line 181 validation to also require `occasion`, `genre`, `singerPreference`, `specialQualities`, `favoriteMemory` as non-empty
+- This is safe because:
+  - The frontend form already validates all these fields before allowing checkout
+  - Lead conversions use a separate function (`create-lead-checkout`), not this one
+  - Download/lyrics upsells use their own separate functions
+  - Free test codes still go through the form, which requires all fields
 
-### Changes
+**3. Migration — Cancel the broken order**
+- `UPDATE orders SET status = 'cancelled' WHERE id::text ILIKE 'B59B6978%'`
 
-**`src/components/admin/CSAssistant.tsx`**
-1. After the existing delivery status line in each order card, add a conditional revision block:
-   - Show revision badge (pending/approved/rejected) using `revision_status`
-   - Show `revision_count` / `max_revisions` (e.g. "1/1 revisions used")
-   - Show `revision_requested_at` timestamp
-   - If `pending_revision` is true, show "⏳ Awaiting admin review"
-   - If revision is approved and `automation_status` is active, show generation progress
-   - If `resend_scheduled_at` is set, show the scheduled delivery time for the revised song
-2. Add a "View Revision Details" button that expands to show the actual revision request content (fields changed, old vs new values) — fetch from `revision_requests` table via the existing `admin-orders` endpoint
-3. No backend changes needed — all required fields (`revision_count`, `max_revisions`, `pending_revision`, `revision_status`, `revision_requested_at`, `resend_scheduled_at`, `automation_status`) are already returned by `cs_lookup`
+### Touch points verified safe
 
-**Fetching revision request details (on-demand)**
-- When agent clicks "View Revision Details", call `admin-orders` with `action: "list_pending_revisions"` or query `revision_requests` filtered by `order_id`
-- Display the same field diff view (Was/Now) already used in `PendingRevisions` component
-- Reuse the `renderChangedField` pattern from `PendingRevisions.tsx`
+| Flow | Uses `create-checkout`? | Uses `stripe-webhook`? | Impact |
+|------|------------------------|----------------------|--------|
+| Normal song purchase | Yes | Yes (order insert path) | No change — fields always present from form |
+| Free test codes (HYPERDRIVETEST etc.) | Yes (then skips Stripe) | No | Stricter validation, but form always fills fields |
+| Lead conversion | No (`create-lead-checkout`) | Yes (leadId early return) | Untouched |
+| Lyrics unlock | No (`create-lyrics-checkout`) | Yes (lyrics_unlock early return) | Untouched |
+| Download unlock | No (`create-download-checkout`) | Yes (**NEW handler**) | Fixed — no longer falls through |
+| PayPal orders | No (separate flow) | No | Untouched |
 
 ### Files
 | File | Change |
 |------|--------|
-| `src/components/admin/CSAssistant.tsx` | Add revision status section to order cards with badge, counts, timestamps, and expandable detail view |
+| `supabase/functions/stripe-webhook/index.ts` | Add `download_unlock` early-return handler after lyrics handler |
+| `supabase/functions/create-checkout/index.ts` | Require 5 creative fields in validation |
+| Migration SQL | Cancel order B59B6978 |
 
