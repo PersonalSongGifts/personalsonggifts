@@ -19,6 +19,7 @@ interface Promo {
   standard_price_cents: number;
   priority_price_cents: number;
   lead_price_cents: number;
+  bonus_price_cents: number | null;
   starts_at: string;
   ends_at: string;
   is_active: boolean;
@@ -135,12 +136,14 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const bonusParsed = form.bonus_price_dollars ? parseFloat(form.bonus_price_dollars) : null;
       const promoData: any = {
         name: form.name,
         slug: form.slug,
         standard_price_cents: Math.round(parseFloat(form.standard_price_dollars) * 100),
         priority_price_cents: Math.round(parseFloat(form.priority_price_dollars) * 100),
         lead_price_cents: Math.round(parseFloat(form.lead_price_dollars) * 100),
+        bonus_price_cents: bonusParsed ? Math.round(bonusParsed * 100) : null,
         starts_at: new Date(form.starts_at).toISOString(),
         ends_at: new Date(form.ends_at).toISOString(),
         is_active: form.is_active,
@@ -241,6 +244,7 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
       standard_price_dollars: (promo.standard_price_cents / 100).toFixed(2),
       priority_price_dollars: (promo.priority_price_cents / 100).toFixed(2),
       lead_price_dollars: (promo.lead_price_cents / 100).toFixed(2),
+      bonus_price_dollars: promo.bonus_price_cents ? (promo.bonus_price_cents / 100).toFixed(2) : "",
       starts_at: toLocalDatetime(promo.starts_at),
       ends_at: toLocalDatetime(promo.ends_at),
       is_active: promo.is_active,
