@@ -786,12 +786,43 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build update object based on entity type
+    // ======= BONUS CALLBACK: Save bonus track data =======
+    if (isBonusCallback) {
+      console.log(`[CALLBACK] Saving bonus track for ${entityType} ${entityId}`);
+      await supabase
+        .from(tableName)
+        .update({
+          bonus_song_url: fullUrlData.publicUrl,
+          bonus_preview_url: previewUrlData?.publicUrl || null,
+          bonus_song_title: title,
+          bonus_cover_image_url: coverImageUrl,
+          bonus_automation_status: "completed",
+          bonus_automation_last_error: null,
+        })
+        .eq("id", entityId);
+
+      console.log(`[CALLBACK] ✅ Bonus track saved for ${entityType} ${entityId}`);
+      await logActivity(supabase, entityType, entityId, "bonus_audio_generated", "system", `Bonus acoustic track generated, ${audioBytes!.length} bytes`);
+
+      // For orders: check if primary is done, and if so, schedule delivery
+      if (entityType === "order") {
+        const { data: freshOrder } = await supabase.from("orders").select("song_url, automation_status, delivery_status").eq("id", entityId).single();
+        if (freshOrder?.song_url && freshOrder?.automation_status === "completed" && !freshOrder?.delivery_status) {
+          console.log(`[CALLBACK] Primary done + bonus done → scheduling delivery for order ${entityId}`);
+          await supabase.from("orders").update({ delivery_status: "scheduled" }).eq("id", entityId);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, entityType, entityId, title, audioUrl: fullUrlData.publicUrl, bonus: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ======= PRIMARY CALLBACK: Build update object based on entity type =======
     if (entityType === "lead") {
-      // Generate preview token for leads
       const previewToken = entity.preview_token || generatePreviewToken();
 
-      // Check if lead email is in admin tester allowlist for accelerated preview
       let autoSendTime: string;
       const { data: testerEmailsSetting } = await supabase
         .from("admin_settings")
@@ -807,17 +838,14 @@ Deno.serve(async (req) => {
       const isAdminTester = testerEmails.includes((entity.email as string).toLowerCase());
 
       if (isAdminTester) {
-        // Admin testers get preview email within ~1 minute
         autoSendTime = new Date(Date.now() + 60 * 1000).toISOString();
         console.log(`[CALLBACK] Admin tester detected (${entity.email}), scheduling preview for ${autoSendTime}`);
       } else {
-        // Regular leads: 24 hours from capture for conversion optimization
         const capturedAt = new Date(entity.captured_at as string);
         autoSendTime = new Date(capturedAt.getTime() + 24 * 60 * 60 * 1000).toISOString();
         console.log(`[CALLBACK] Regular lead, scheduling preview for ${autoSendTime}`);
       }
 
-      // Update lead with all song data + generated_at timestamp
       console.log(`[CALLBACK] Updating lead ${entityId} with final song data`);
       await supabase
         .from("leads")
@@ -831,15 +859,14 @@ Deno.serve(async (req) => {
           preview_scheduled_at: autoSendTime,
           automation_status: "completed",
           automation_last_error: null,
-          generated_at: new Date().toISOString(), // Track when generation completed
-          automation_audio_url_source: usedSource, // Track which URL field was used
+          generated_at: new Date().toISOString(),
+          automation_audio_url_source: usedSource,
         })
         .eq("id", entityId);
 
-      // POST-UPDATE VERIFICATION: Re-read to confirm song URL was persisted
       const { data: verifyLead } = await supabase.from("leads").select("preview_song_url, full_song_url").eq("id", entityId).single();
       if (!verifyLead?.preview_song_url && !verifyLead?.full_song_url) {
-        console.error(`[CALLBACK] ⚠️ VERIFICATION FAILED: Lead ${entityId} song URLs not persisted after update!`);
+        console.error(`[CALLBACK] ⚠️ VERIFICATION FAILED: Lead ${entityId} song URLs not persisted!`);
         await supabase.from("leads").update({
           automation_status: "failed",
           automation_last_error: "Post-update verification failed: song URL not persisted",
@@ -848,33 +875,49 @@ Deno.serve(async (req) => {
       }
 
       console.log(`[CALLBACK] ✅ Automation complete for lead ${entityId} (verified)`);
-      console.log(`[CALLBACK] Preview scheduled for: ${autoSendTime}`);
-
       await logActivity(supabase, "lead", entityId, "audio_generated", "system", `Audio generated, ${audioBytes!.length} bytes, source: ${usedSource}`, { taskId });
 
-
     } else {
-      // Update order with song data + generated_at timestamp
+      // Order primary callback
       console.log(`[CALLBACK] Updating order ${entityId} with final song data`);
+      
+      // Check if bonus is still generating — if so, don't schedule delivery yet
+      const bonusStillGenerating = entity.bonus_automation_status === "audio_generating";
+      const bonusStartedAt = entity.bonus_automation_started_at ? new Date(entity.bonus_automation_started_at as string) : null;
+      const bonusStuckTooLong = bonusStartedAt && (Date.now() - bonusStartedAt.getTime() > 30 * 60 * 1000);
+      
+      // Deliver if: no bonus generating, OR bonus has been stuck >30min
+      const shouldScheduleDelivery = !bonusStillGenerating || bonusStuckTooLong;
+      
+      if (bonusStillGenerating && !bonusStuckTooLong) {
+        console.log(`[CALLBACK] Bonus still generating for order ${entityId}, holding delivery`);
+      }
+      if (bonusStuckTooLong) {
+        console.log(`[CALLBACK] Bonus stuck >30min for order ${entityId}, delivering primary anyway`);
+        await supabase.from("orders").update({
+          bonus_automation_status: "failed",
+          bonus_automation_last_error: "Bonus generation exceeded 30-minute failsafe, primary delivered without bonus",
+        }).eq("id", entityId);
+      }
+
       await supabase
         .from("orders")
         .update({
           song_url: fullUrlData.publicUrl,
           song_title: title,
           cover_image_url: coverImageUrl,
-          status: "ready", // Mark order as ready for delivery (not completed - that's delivery_status)
+          status: "ready",
           automation_status: "completed",
           automation_last_error: null,
-          generated_at: new Date().toISOString(), // Track when generation completed
-          delivery_status: "scheduled", // Ready for scheduled delivery
-          automation_audio_url_source: usedSource, // Track which URL field was used
+          generated_at: new Date().toISOString(),
+          delivery_status: shouldScheduleDelivery ? "scheduled" : null,
+          automation_audio_url_source: usedSource,
         })
         .eq("id", entityId);
 
-      // POST-UPDATE VERIFICATION: Re-read to confirm song URL was persisted
       const { data: verifyOrder } = await supabase.from("orders").select("song_url").eq("id", entityId).single();
       if (!verifyOrder?.song_url) {
-        console.error(`[CALLBACK] ⚠️ VERIFICATION FAILED: Order ${entityId} song_url not persisted after update!`);
+        console.error(`[CALLBACK] ⚠️ VERIFICATION FAILED: Order ${entityId} song_url not persisted!`);
         await supabase.from("orders").update({
           automation_status: "failed",
           automation_last_error: "Post-update verification failed: song_url not persisted",
@@ -883,7 +926,6 @@ Deno.serve(async (req) => {
       }
 
       console.log(`[CALLBACK] ✅ Automation complete for order ${entityId} (verified)`);
-
       await logActivity(supabase, "order", entityId, "audio_generated", "system", `Audio generated, ${audioBytes!.length} bytes, source: ${usedSource}`, { taskId });
     }
 
