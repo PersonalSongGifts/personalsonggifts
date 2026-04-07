@@ -949,7 +949,7 @@ const SongPlayer = () => {
           const genreDescription = isRnB
             ? "Your song was so special that we reimagined it in an R&B style — smooth, soulful, and full of groove. A whole new way to experience your song."
             : "Your song was so special that we created an acoustic version too — intimate, organic, and full of feeling. Like a private performance just for you.";
-          const bonusCoverUrl = songData.bonus_cover_image_url || songData.cover_image_url || coverImage;
+          const bonusCoverUrl = songData.bonus_cover_image_url || getCoverImage();
           
           return (
             <Card className="mb-8 overflow-hidden border-primary/20">
