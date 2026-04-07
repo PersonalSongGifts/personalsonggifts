@@ -305,7 +305,8 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
                   </div>
                 </div>
                 <CardDescription>
-                  Slug: {promo.slug} · {formatCents(promo.standard_price_cents)} / {formatCents(promo.priority_price_cents)} / Lead: {formatCents(promo.lead_price_cents)}
+                  Slug: {promo.slug} · {formatCents(promo.standard_price_cents)} / {formatCents(promo.priority_price_cents)} / Lead: {formatCents(promo.lead_price_cents)}{promo.bonus_price_cents ? ` / Bonus: ${formatCents(promo.bonus_price_cents)}` : ""}
+                </CardDescription>
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
@@ -377,7 +378,7 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div>
                 <Label>Standard Price ($)</Label>
                 <Input
@@ -404,6 +405,17 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
                   value={form.lead_price_dollars}
                   onChange={(e) => setForm(f => ({ ...f, lead_price_dollars: e.target.value }))}
                 />
+              </div>
+              <div>
+                <Label>Bonus Price ($)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.bonus_price_dollars}
+                  onChange={(e) => setForm(f => ({ ...f, bonus_price_dollars: e.target.value }))}
+                  placeholder="Leave blank for default"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Optional — overrides $19.99 default</p>
               </div>
             </div>
 
