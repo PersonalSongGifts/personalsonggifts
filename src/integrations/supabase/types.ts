@@ -59,6 +59,15 @@ export type Database = {
           automation_status: string | null
           automation_style_id: string | null
           automation_task_id: string | null
+          bonus_automation_last_error: string | null
+          bonus_automation_started_at: string | null
+          bonus_automation_status: string | null
+          bonus_automation_task_id: string | null
+          bonus_cover_image_url: string | null
+          bonus_preview_url: string | null
+          bonus_song_title: string | null
+          bonus_song_url: string | null
+          bonus_style_prompt: string | null
           captured_at: string
           converted_at: string | null
           cover_image_url: string | null
@@ -132,6 +141,15 @@ export type Database = {
           automation_status?: string | null
           automation_style_id?: string | null
           automation_task_id?: string | null
+          bonus_automation_last_error?: string | null
+          bonus_automation_started_at?: string | null
+          bonus_automation_status?: string | null
+          bonus_automation_task_id?: string | null
+          bonus_cover_image_url?: string | null
+          bonus_preview_url?: string | null
+          bonus_song_title?: string | null
+          bonus_song_url?: string | null
+          bonus_style_prompt?: string | null
           captured_at?: string
           converted_at?: string | null
           cover_image_url?: string | null
@@ -205,6 +223,15 @@ export type Database = {
           automation_status?: string | null
           automation_style_id?: string | null
           automation_task_id?: string | null
+          bonus_automation_last_error?: string | null
+          bonus_automation_started_at?: string | null
+          bonus_automation_status?: string | null
+          bonus_automation_task_id?: string | null
+          bonus_cover_image_url?: string | null
+          bonus_preview_url?: string | null
+          bonus_song_title?: string | null
+          bonus_song_url?: string | null
+          bonus_style_prompt?: string | null
           captured_at?: string
           converted_at?: string | null
           cover_image_url?: string | null
@@ -331,6 +358,19 @@ export type Database = {
           automation_task_id: string | null
           billing_country_code: string | null
           billing_country_name: string | null
+          bonus_automation_last_error: string | null
+          bonus_automation_started_at: string | null
+          bonus_automation_status: string | null
+          bonus_automation_task_id: string | null
+          bonus_cover_image_url: string | null
+          bonus_preview_url: string | null
+          bonus_price_cents: number | null
+          bonus_song_title: string | null
+          bonus_song_url: string | null
+          bonus_style_prompt: string | null
+          bonus_unlock_payment_intent_id: string | null
+          bonus_unlock_session_id: string | null
+          bonus_unlocked_at: string | null
           cover_image_url: string | null
           created_at: string
           customer_email: string
@@ -431,6 +471,19 @@ export type Database = {
           automation_task_id?: string | null
           billing_country_code?: string | null
           billing_country_name?: string | null
+          bonus_automation_last_error?: string | null
+          bonus_automation_started_at?: string | null
+          bonus_automation_status?: string | null
+          bonus_automation_task_id?: string | null
+          bonus_cover_image_url?: string | null
+          bonus_preview_url?: string | null
+          bonus_price_cents?: number | null
+          bonus_song_title?: string | null
+          bonus_song_url?: string | null
+          bonus_style_prompt?: string | null
+          bonus_unlock_payment_intent_id?: string | null
+          bonus_unlock_session_id?: string | null
+          bonus_unlocked_at?: string | null
           cover_image_url?: string | null
           created_at?: string
           customer_email: string
@@ -531,6 +584,19 @@ export type Database = {
           automation_task_id?: string | null
           billing_country_code?: string | null
           billing_country_name?: string | null
+          bonus_automation_last_error?: string | null
+          bonus_automation_started_at?: string | null
+          bonus_automation_status?: string | null
+          bonus_automation_task_id?: string | null
+          bonus_cover_image_url?: string | null
+          bonus_preview_url?: string | null
+          bonus_price_cents?: number | null
+          bonus_song_title?: string | null
+          bonus_song_url?: string | null
+          bonus_style_prompt?: string | null
+          bonus_unlock_payment_intent_id?: string | null
+          bonus_unlock_session_id?: string | null
+          bonus_unlocked_at?: string | null
           cover_image_url?: string | null
           created_at?: string
           customer_email?: string
@@ -670,6 +736,7 @@ export type Database = {
           banner_emoji: string | null
           banner_text: string | null
           banner_text_color: string | null
+          bonus_price_cents: number | null
           created_at: string
           email_batch_sent: number
           email_batch_total: number
@@ -693,6 +760,7 @@ export type Database = {
           banner_emoji?: string | null
           banner_text?: string | null
           banner_text_color?: string | null
+          bonus_price_cents?: number | null
           created_at?: string
           email_batch_sent?: number
           email_batch_total?: number
@@ -716,6 +784,7 @@ export type Database = {
           banner_emoji?: string | null
           banner_text?: string | null
           banner_text_color?: string | null
+          bonus_price_cents?: number | null
           created_at?: string
           email_batch_sent?: number
           email_batch_total?: number
@@ -905,6 +974,19 @@ export type Database = {
           automation_task_id: string | null
           billing_country_code: string | null
           billing_country_name: string | null
+          bonus_automation_last_error: string | null
+          bonus_automation_started_at: string | null
+          bonus_automation_status: string | null
+          bonus_automation_task_id: string | null
+          bonus_cover_image_url: string | null
+          bonus_preview_url: string | null
+          bonus_price_cents: number | null
+          bonus_song_title: string | null
+          bonus_song_url: string | null
+          bonus_style_prompt: string | null
+          bonus_unlock_payment_intent_id: string | null
+          bonus_unlock_session_id: string | null
+          bonus_unlocked_at: string | null
           cover_image_url: string | null
           created_at: string
           customer_email: string
