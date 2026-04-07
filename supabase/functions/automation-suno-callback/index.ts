@@ -617,35 +617,42 @@ Deno.serve(async (req) => {
     
     if (!audioBytes) {
       console.error(`[CALLBACK] All ${allAudioUrls.length} audio URL(s) failed to produce a valid file`);
-      await supabase
-        .from(tableName)
-        .update({
+      if (isBonusCallback) {
+        await supabase.from(tableName).update({
+          bonus_automation_status: "failed",
+          bonus_automation_last_error: `All ${allAudioUrls.length} audio URLs returned empty/invalid files.`,
+        }).eq("id", entityId);
+      } else {
+        await supabase.from(tableName).update({
           automation_status: "failed",
           automation_last_error: `[CALLBACK] All ${allAudioUrls.length} audio URLs returned empty/invalid files. URLs tried: ${allAudioUrls.map(u => u.source).join(', ')}. Will retry.`,
           automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
-        })
-        .eq("id", entityId);
+        }).eq("id", entityId);
+      }
       return new Response("Audio file empty", { status: 200, headers: corsHeaders });
     }
     
     console.log(`[CALLBACK] ✅ Valid audio: ${audioBytes.length} bytes from ${usedSource}`);
 
-    // Duration guard: estimate duration from file size and bitrate
+    // Duration guard: estimate duration from file size and bitrate (180s minimum)
     const estimatedBitrate = detectMp3Bitrate(audioBytes);
     const estimatedDurationSec = Math.round((audioBytes.length * 8) / (estimatedBitrate * 1000));
     console.log(`[CALLBACK] Estimated duration: ${estimatedDurationSec}s (${estimatedBitrate}kbps, ${audioBytes.length} bytes)`);
 
-    if (estimatedDurationSec < 150) {
-      console.log(`[CALLBACK] ⚠️ Song too short (${estimatedDurationSec}s < 150s), flagging for review`);
-      await supabase
-        .from(tableName)
-        .update({
+    if (estimatedDurationSec < 180) {
+      console.log(`[CALLBACK] ⚠️ Song too short (${estimatedDurationSec}s < 180s), flagging for review`);
+      if (isBonusCallback) {
+        await supabase.from(tableName).update({
+          bonus_automation_status: "failed",
+          bonus_automation_last_error: `Bonus song too short (${estimatedDurationSec}s), expected 180s+.`,
+        }).eq("id", entityId);
+      } else {
+        await supabase.from(tableName).update({
           automation_status: "needs_review",
           automation_last_error: `[CALLBACK] Song too short (${estimatedDurationSec}s), expected 180s+. May need lyrics extension and regeneration.`,
-        })
-        .eq("id", entityId);
-
-      await logActivity(supabase, entityType, entityId, "audio_too_short", "system", `Audio ${estimatedDurationSec}s, flagged for review`);
+        }).eq("id", entityId);
+        await logActivity(supabase, entityType, entityId, "audio_too_short", "system", `Audio ${estimatedDurationSec}s, flagged for review`);
+      }
 
       return new Response(
         JSON.stringify({ success: false, reason: "song_too_short", duration: estimatedDurationSec }),
