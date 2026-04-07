@@ -77,6 +77,7 @@ interface SongData {
   bonus_status?: string | null;
   genre?: string;
   bonus_genre_label?: string;
+  bonus_asset_version?: string | null;
 }
 
 const SongPlayer = () => {
@@ -612,6 +613,18 @@ const SongPlayer = () => {
   }
 
   const songTitle = songData.song_title || `A Song for ${songData.recipient_name}`;
+  const bonusAudioSrc = (() => {
+    const rawSrc = songData.bonus_unlocked ? songData.bonus_song_url : songData.bonus_preview_url;
+    if (!rawSrc) return null;
+    if (!songData.bonus_asset_version) return rawSrc;
+    try {
+      const url = new URL(rawSrc);
+      url.searchParams.set("v", songData.bonus_asset_version);
+      return url.toString();
+    } catch {
+      return rawSrc;
+    }
+  })();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
@@ -623,10 +636,10 @@ const SongPlayer = () => {
         playsInline
       />
       {/* Bonus preview audio — use full URL if unlocked, otherwise preview */}
-      {(songData.bonus_unlocked ? songData.bonus_song_url : songData.bonus_preview_url) && (
+      {bonusAudioSrc && (
         <audio
           ref={bonusAudioRef}
-          src={(songData.bonus_unlocked ? songData.bonus_song_url : songData.bonus_preview_url) || ""}
+          src={bonusAudioSrc}
           preload="none"
           playsInline
         />
