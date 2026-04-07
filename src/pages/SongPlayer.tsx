@@ -613,13 +613,22 @@ const SongPlayer = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
-      {/* Hidden audio element */}
+      {/* Hidden audio elements */}
       <audio 
         ref={audioRef} 
         src={songData.song_url} 
         preload="auto"
         playsInline
       />
+      {/* Bonus preview audio — use full URL if unlocked, otherwise preview */}
+      {(songData.bonus_unlocked ? songData.bonus_song_url : songData.bonus_preview_url) && (
+        <audio
+          ref={bonusAudioRef}
+          src={(songData.bonus_unlocked ? songData.bonus_song_url : songData.bonus_preview_url) || ""}
+          preload="none"
+          playsInline
+        />
+      )}
 
       <div className="container max-w-2xl mx-auto px-4 py-8 md:py-16">
         {/* Audio Error Fallback */}
