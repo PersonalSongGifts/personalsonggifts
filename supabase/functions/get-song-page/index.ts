@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, download_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at";
+    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, download_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_cover_image_url, bonus_unlocked_at, bonus_automation_status";
 
     let orders: any[] | null = null;
     let error: any = null;
@@ -146,6 +146,13 @@ Deno.serve(async (req) => {
       revision_available: revisionAvailable,
       revision_status: order.revision_status || null,
       download_unlocked: !!order.download_unlocked_at,
+      bonus_available: !!(order.bonus_preview_url || order.bonus_song_url),
+      bonus_preview_url: order.bonus_preview_url || null,
+      bonus_song_url: order.bonus_unlocked_at ? (order.bonus_song_url || null) : null,
+      bonus_song_title: order.bonus_song_title || null,
+      bonus_cover_image_url: order.bonus_cover_image_url || null,
+      bonus_unlocked: !!order.bonus_unlocked_at,
+      bonus_status: order.bonus_automation_status || null,
     };
 
     // Auto-swap phonetic name with actual name in displayed lyrics
