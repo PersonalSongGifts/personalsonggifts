@@ -1116,9 +1116,6 @@ const SongPlayer = () => {
                         </Button>
                       );
                     })()}
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Includes full download access
-                    </p>
                   </div>
                 )}
               </CardContent>
