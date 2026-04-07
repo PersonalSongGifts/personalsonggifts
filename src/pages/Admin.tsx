@@ -1654,7 +1654,7 @@ const { data, error } = await listOrders("all", 0, 250);
                               Bonus Generating...
                             </Button>
                           )}
-                            variant="outline"
+                          <Button
                             size="sm"
                           onClick={() => {
                               setSelectedOrder(order);
