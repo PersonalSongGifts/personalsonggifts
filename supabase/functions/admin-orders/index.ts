@@ -2186,6 +2186,16 @@ Deno.serve(async (req) => {
           clearUpdates.cover_image_url = null;
           clearUpdates.sent_at = null;
           clearUpdates.delivery_status = "pending";
+          // Reset bonus track so it regenerates with updated lyrics/genre
+          clearUpdates.bonus_song_url = null;
+          clearUpdates.bonus_preview_url = null;
+          clearUpdates.bonus_song_title = null;
+          clearUpdates.bonus_cover_image_url = null;
+          clearUpdates.bonus_automation_status = null;
+          clearUpdates.bonus_automation_task_id = null;
+          clearUpdates.bonus_automation_started_at = null;
+          clearUpdates.bonus_automation_last_error = null;
+          clearUpdates.bonus_style_prompt = null;
         } else {
           clearUpdates.preview_song_url = null;
           clearUpdates.full_song_url = null;
@@ -2508,6 +2518,16 @@ Deno.serve(async (req) => {
           orderUpdate.delivery_status = "pending";
           orderUpdate.sent_at = null;
           orderUpdate.unplayed_resend_sent_at = null;
+          // Reset bonus track so it regenerates with revised content
+          orderUpdate.bonus_song_url = null;
+          orderUpdate.bonus_preview_url = null;
+          orderUpdate.bonus_song_title = null;
+          orderUpdate.bonus_cover_image_url = null;
+          orderUpdate.bonus_automation_status = null;
+          orderUpdate.bonus_automation_task_id = null;
+          orderUpdate.bonus_automation_started_at = null;
+          orderUpdate.bonus_automation_last_error = null;
+          orderUpdate.bonus_style_prompt = null;
 
           const regenNow = Date.now();
           orderUpdate.earliest_generate_at = new Date(regenNow + 1 * 60 * 1000).toISOString();
