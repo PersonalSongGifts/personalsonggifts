@@ -663,8 +663,9 @@ Deno.serve(async (req) => {
     // Deterministic storage path for idempotency
     const shortId = entityId.slice(0, 8).toUpperCase();
     const folderPrefix = entityType === "order" ? "orders" : "leads";
-    const fullStoragePath = `${folderPrefix}/${shortId}-full.mp3`;
-    const previewStoragePath = `${folderPrefix}/${shortId}-preview.mp3`;
+    const bonusSuffix = isBonusCallback ? "-bonus" : "";
+    const fullStoragePath = `${folderPrefix}/${shortId}${bonusSuffix}-full.mp3`;
+    const previewStoragePath = `${folderPrefix}/${shortId}${bonusSuffix}-preview.mp3`;
 
     // Upload full song
     console.log(`[CALLBACK] Uploading full song to: ${fullStoragePath}`);
