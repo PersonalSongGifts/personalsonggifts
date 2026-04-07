@@ -191,6 +191,89 @@ const SongPlayer = () => {
     verifyDownloadPurchase();
   }, [searchParams]);
 
+  // Handle bonus unlock redirect from Stripe
+  useEffect(() => {
+    const bonusSessionId = searchParams.get("bonus_session_id");
+    if (!bonusSessionId) return;
+
+    const verifyBonusPurchase = async () => {
+      setBonusLoading(true);
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-bonus-purchase`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: bonusSessionId }),
+          }
+        );
+        if (response.ok) {
+          await fetchSongData();
+          toast.success("Bonus track unlocked! 🎶");
+        }
+      } catch (err) {
+        console.error("Bonus verification failed:", err);
+      } finally {
+        setBonusLoading(false);
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    verifyBonusPurchase();
+  }, [searchParams]);
+
+  // Bonus audio event handlers
+  useEffect(() => {
+    const audio = bonusAudioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => setBonusCurrentTime(audio.currentTime);
+    const handleLoadedMetadata = () => setBonusDuration(audio.duration);
+    const handleEnded = () => { setBonusIsPlaying(false); setBonusIsBuffering(false); };
+    const handlePlaying = () => { setBonusIsPlaying(true); setBonusIsBuffering(false); };
+    const handlePause = () => { setBonusIsPlaying(false); setBonusIsBuffering(false); };
+    const handleWaiting = () => setBonusIsBuffering(true);
+    const handleCanPlay = () => setBonusIsBuffering(false);
+
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("waiting", handleWaiting);
+    audio.addEventListener("canplay", handleCanPlay);
+
+    return () => {
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("waiting", handleWaiting);
+      audio.removeEventListener("canplay", handleCanPlay);
+    };
+  }, [songData]);
+
+  const toggleBonusPlay = async () => {
+    if (!bonusAudioRef.current) return;
+    if (bonusIsPlaying) {
+      bonusAudioRef.current.pause();
+      return;
+    }
+    setBonusIsBuffering(true);
+    try {
+      await bonusAudioRef.current.play();
+    } catch {
+      setBonusIsBuffering(false);
+    }
+  };
+
+  const handleBonusSeek = (value: number[]) => {
+    if (!bonusAudioRef.current) return;
+    bonusAudioRef.current.currentTime = value[0];
+    setBonusCurrentTime(value[0]);
+  };
+
   // Track playback error for diagnostics
   const trackPlaybackError = (errorName: string, errorMessage: string) => {
     if (!orderId || !songData?.song_url) return;
