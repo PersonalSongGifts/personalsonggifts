@@ -88,9 +88,13 @@ const SongPlayer = () => {
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [bonusLoading, setBonusLoading] = useState(false);
   const [lyricsCopied, setLyricsCopied] = useState(false);
-  
-  
-  
+
+  // Bonus audio player state
+  const bonusAudioRef = useRef<HTMLAudioElement>(null);
+  const [bonusIsPlaying, setBonusIsPlaying] = useState(false);
+  const [bonusCurrentTime, setBonusCurrentTime] = useState(0);
+  const [bonusDuration, setBonusDuration] = useState(0);
+  const [bonusIsBuffering, setBonusIsBuffering] = useState(false);
   // Audio player state
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
