@@ -681,9 +681,9 @@ Deno.serve(async (req) => {
       throw new Error(`Upload failed: ${fullUploadError.message}`);
     }
 
-    // Create and upload preview (only for leads)
+    // Create and upload preview (for leads OR bonus callbacks)
     let previewUrlData = null;
-    if (entityType === "lead") {
+    if (entityType === "lead" || isBonusCallback) {
       console.log(`[CALLBACK] Creating and uploading preview to: ${previewStoragePath}`);
       const previewBytes = createPreviewClip(audioBytes, 45);
       const { error: previewUploadError } = await supabase.storage
@@ -695,7 +695,6 @@ Deno.serve(async (req) => {
 
       if (previewUploadError) {
         console.error("[CALLBACK] Preview upload error:", previewUploadError);
-        // Continue even if preview fails
       } else {
         const { data } = supabase.storage
           .from("songs")
