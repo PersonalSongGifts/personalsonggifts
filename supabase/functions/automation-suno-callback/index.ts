@@ -262,10 +262,11 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Try to find entity by task ID - check both leads and orders
+    // Try to find entity by task ID - check both leads and orders, including bonus_automation_task_id
     let entityInfo: EntityInfo | null = null;
+    let isBonusCallback = false;
     
-    // Check leads first
+    // Check leads first (primary task)
     const { data: lead, error: leadError } = await supabase
       .from("leads")
       .select("*")
@@ -274,18 +275,44 @@ Deno.serve(async (req) => {
 
     if (lead && !leadError) {
       entityInfo = { type: "lead", table: "leads", id: lead.id, entity: lead };
-      console.log(`[CALLBACK] Found lead ${lead.id} (${lead.recipient_name}) for taskId ${taskId}`);
+      console.log(`[CALLBACK] Found lead ${lead.id} (${lead.recipient_name}) for primary taskId ${taskId}`);
     } else {
-      // Check orders
-      const { data: order, error: orderError } = await supabase
-        .from("orders")
+      // Check leads bonus task
+      const { data: bonusLead, error: bonusLeadError } = await supabase
+        .from("leads")
         .select("*")
-        .eq("automation_task_id", taskId)
+        .eq("bonus_automation_task_id", taskId)
         .maybeSingle();
+      
+      if (bonusLead && !bonusLeadError) {
+        entityInfo = { type: "lead", table: "leads", id: bonusLead.id, entity: bonusLead };
+        isBonusCallback = true;
+        console.log(`[CALLBACK] Found lead ${bonusLead.id} for BONUS taskId ${taskId}`);
+      } else {
+        // Check orders primary task
+        const { data: order, error: orderError } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("automation_task_id", taskId)
+          .maybeSingle();
 
-      if (order && !orderError) {
-        entityInfo = { type: "order", table: "orders", id: order.id, entity: order };
-        console.log(`[CALLBACK] Found order ${order.id} (${order.recipient_name}) for taskId ${taskId}`);
+        if (order && !orderError) {
+          entityInfo = { type: "order", table: "orders", id: order.id, entity: order };
+          console.log(`[CALLBACK] Found order ${order.id} (${order.recipient_name}) for primary taskId ${taskId}`);
+        } else {
+          // Check orders bonus task
+          const { data: bonusOrder, error: bonusOrderError } = await supabase
+            .from("orders")
+            .select("*")
+            .eq("bonus_automation_task_id", taskId)
+            .maybeSingle();
+          
+          if (bonusOrder && !bonusOrderError) {
+            entityInfo = { type: "order", table: "orders", id: bonusOrder.id, entity: bonusOrder };
+            isBonusCallback = true;
+            console.log(`[CALLBACK] Found order ${bonusOrder.id} for BONUS taskId ${taskId}`);
+          }
+        }
       }
     }
 
