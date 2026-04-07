@@ -164,6 +164,49 @@ Deno.serve(async (req) => {
       }
       // --- End Lyrics Unlock handler ---
 
+      // --- Download Unlock handler (early return before order creation) ---
+      if (sessionMetadata.entitlement === "download_unlock") {
+        const downloadOrderId = sessionMetadata.orderId;
+        console.log(`[WEBHOOK] Download unlock for order ${downloadOrderId}`);
+
+        if (!downloadOrderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(downloadOrderId)) {
+          console.error("[WEBHOOK] Invalid orderId in download_unlock metadata");
+          return new Response(
+            JSON.stringify({ received: true, error: "Invalid orderId in metadata" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        // Idempotent: only update if download_unlocked_at IS NULL
+        const { error: downloadUpdateError } = await supabase
+          .from("orders")
+          .update({
+            download_unlocked_at: new Date().toISOString(),
+            download_unlock_session_id: session.id,
+            download_unlock_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : null,
+            download_price_cents: session.amount_total,
+          })
+          .eq("id", downloadOrderId)
+          .is("download_unlocked_at", null);
+
+        if (downloadUpdateError) {
+          console.error("[WEBHOOK] Failed to unlock download:", downloadUpdateError);
+        } else {
+          console.log(`[WEBHOOK] Download unlocked for order ${downloadOrderId}`);
+          await logActivity(supabase, "order", downloadOrderId, "download_unlocked", "system", `Download unlocked via Stripe, $${(session.amount_total || 0) / 100}`);
+        }
+
+        return new Response(
+          JSON.stringify({ received: true, type: "download_unlock", orderId: downloadOrderId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // --- End Download Unlock handler ---
+
       // Initialize Supabase
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

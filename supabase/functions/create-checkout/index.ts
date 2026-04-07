@@ -177,8 +177,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate required form data
-    if (!formData || !formData.yourEmail || !formData.recipientName) {
+    // Validate required form data — all creative fields must be non-empty
+    const missingFields = [
+      !formData && "formData",
+      !formData?.yourEmail?.trim() && "yourEmail",
+      !formData?.recipientName?.trim() && "recipientName",
+      !formData?.occasion?.trim() && "occasion",
+      !formData?.genre?.trim() && "genre",
+      !formData?.singerPreference?.trim() && "singerPreference",
+      !formData?.specialQualities?.trim() && "specialQualities",
+      !formData?.favoriteMemory?.trim() && "favoriteMemory",
+    ].filter(Boolean);
+
+    if (missingFields.length > 0) {
+      console.error(`[CHECKOUT] Missing required fields: ${missingFields.join(", ")}`);
       return new Response(
         JSON.stringify({ error: "Missing required form data" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
