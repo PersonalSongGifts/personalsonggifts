@@ -19,6 +19,7 @@ interface Promo {
   standard_price_cents: number;
   priority_price_cents: number;
   lead_price_cents: number;
+  bonus_price_cents: number | null;
   starts_at: string;
   ends_at: string;
   is_active: boolean;
@@ -44,6 +45,7 @@ interface PromoFormData {
   standard_price_dollars: string;
   priority_price_dollars: string;
   lead_price_dollars: string;
+  bonus_price_dollars: string;
   starts_at: string;
   ends_at: string;
   is_active: boolean;
@@ -64,6 +66,7 @@ const emptyForm: PromoFormData = {
   standard_price_dollars: "24.99",
   priority_price_dollars: "34.99",
   lead_price_dollars: "24.99",
+  bonus_price_dollars: "",
   starts_at: "",
   ends_at: "",
   is_active: false,
@@ -133,12 +136,14 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const bonusParsed = form.bonus_price_dollars ? parseFloat(form.bonus_price_dollars) : null;
       const promoData: any = {
         name: form.name,
         slug: form.slug,
         standard_price_cents: Math.round(parseFloat(form.standard_price_dollars) * 100),
         priority_price_cents: Math.round(parseFloat(form.priority_price_dollars) * 100),
         lead_price_cents: Math.round(parseFloat(form.lead_price_dollars) * 100),
+        bonus_price_cents: bonusParsed ? Math.round(bonusParsed * 100) : null,
         starts_at: new Date(form.starts_at).toISOString(),
         ends_at: new Date(form.ends_at).toISOString(),
         is_active: form.is_active,
@@ -239,6 +244,7 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
       standard_price_dollars: (promo.standard_price_cents / 100).toFixed(2),
       priority_price_dollars: (promo.priority_price_cents / 100).toFixed(2),
       lead_price_dollars: (promo.lead_price_cents / 100).toFixed(2),
+      bonus_price_dollars: promo.bonus_price_cents ? (promo.bonus_price_cents / 100).toFixed(2) : "",
       starts_at: toLocalDatetime(promo.starts_at),
       ends_at: toLocalDatetime(promo.ends_at),
       is_active: promo.is_active,
@@ -299,7 +305,7 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
                   </div>
                 </div>
                 <CardDescription>
-                  Slug: {promo.slug} · {formatCents(promo.standard_price_cents)} / {formatCents(promo.priority_price_cents)} / Lead: {formatCents(promo.lead_price_cents)}
+                  Slug: {promo.slug} · {formatCents(promo.standard_price_cents)} / {formatCents(promo.priority_price_cents)} / Lead: {formatCents(promo.lead_price_cents)}{promo.bonus_price_cents ? ` / Bonus: ${formatCents(promo.bonus_price_cents)}` : ""}
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
@@ -371,7 +377,7 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div>
                 <Label>Standard Price ($)</Label>
                 <Input
@@ -398,6 +404,17 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
                   value={form.lead_price_dollars}
                   onChange={(e) => setForm(f => ({ ...f, lead_price_dollars: e.target.value }))}
                 />
+              </div>
+              <div>
+                <Label>Bonus Price ($)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.bonus_price_dollars}
+                  onChange={(e) => setForm(f => ({ ...f, bonus_price_dollars: e.target.value }))}
+                  placeholder="Leave blank for default"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Optional — overrides $19.99 default</p>
               </div>
             </div>
 

@@ -87,6 +87,31 @@ Deno.serve(async (req) => {
       
       results.stuckRecoveries = stuckTotal;
 
+      // --- BONUS TRACK 30-MIN FAILSAFE ---
+      // If primary song is ready but bonus track is stuck for >30 min, clear the hold
+      // so delivery can proceed with just the primary track
+      const bonusCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: stuckBonusOrders } = await supabase
+        .from("orders")
+        .select("id, bonus_automation_status, bonus_automation_started_at")
+        .not("song_url", "is", null)
+        .in("bonus_automation_status", ["queued", "audio_generating"])
+        .is("bonus_song_url", null)
+        .not("bonus_automation_started_at", "is", null)
+        .lte("bonus_automation_started_at", bonusCutoff)
+        .limit(10);
+
+      if (stuckBonusOrders && stuckBonusOrders.length > 0) {
+        console.log(`[BONUS-FAILSAFE] ${stuckBonusOrders.length} orders have stuck bonus tracks >30min, clearing hold`);
+        for (const order of stuckBonusOrders) {
+          await supabase.from("orders").update({
+            bonus_automation_status: "failed",
+            bonus_automation_last_error: "Timed out after 30 minutes — primary song delivered without bonus",
+          }).eq("id", order.id);
+        }
+        results.bonusFailsafeCleared = stuckBonusOrders.length;
+      }
+
       // --- FAILSAFE: Auto-complete orders that have a song but stuck automation_status ---
       const { data: stuckWithSong } = await supabase
         .from("orders")

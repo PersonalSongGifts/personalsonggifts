@@ -88,9 +88,13 @@ const SongPlayer = () => {
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [bonusLoading, setBonusLoading] = useState(false);
   const [lyricsCopied, setLyricsCopied] = useState(false);
-  
-  
-  
+
+  // Bonus audio player state
+  const bonusAudioRef = useRef<HTMLAudioElement>(null);
+  const [bonusIsPlaying, setBonusIsPlaying] = useState(false);
+  const [bonusCurrentTime, setBonusCurrentTime] = useState(0);
+  const [bonusDuration, setBonusDuration] = useState(0);
+  const [bonusIsBuffering, setBonusIsBuffering] = useState(false);
   // Audio player state
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -186,6 +190,89 @@ const SongPlayer = () => {
 
     verifyDownloadPurchase();
   }, [searchParams]);
+
+  // Handle bonus unlock redirect from Stripe
+  useEffect(() => {
+    const bonusSessionId = searchParams.get("bonus_session_id");
+    if (!bonusSessionId) return;
+
+    const verifyBonusPurchase = async () => {
+      setBonusLoading(true);
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-bonus-purchase`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: bonusSessionId }),
+          }
+        );
+        if (response.ok) {
+          await fetchSongData();
+          toast.success("Bonus track unlocked! 🎶");
+        }
+      } catch (err) {
+        console.error("Bonus verification failed:", err);
+      } finally {
+        setBonusLoading(false);
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    verifyBonusPurchase();
+  }, [searchParams]);
+
+  // Bonus audio event handlers
+  useEffect(() => {
+    const audio = bonusAudioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => setBonusCurrentTime(audio.currentTime);
+    const handleLoadedMetadata = () => setBonusDuration(audio.duration);
+    const handleEnded = () => { setBonusIsPlaying(false); setBonusIsBuffering(false); };
+    const handlePlaying = () => { setBonusIsPlaying(true); setBonusIsBuffering(false); };
+    const handlePause = () => { setBonusIsPlaying(false); setBonusIsBuffering(false); };
+    const handleWaiting = () => setBonusIsBuffering(true);
+    const handleCanPlay = () => setBonusIsBuffering(false);
+
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("waiting", handleWaiting);
+    audio.addEventListener("canplay", handleCanPlay);
+
+    return () => {
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("waiting", handleWaiting);
+      audio.removeEventListener("canplay", handleCanPlay);
+    };
+  }, [songData]);
+
+  const toggleBonusPlay = async () => {
+    if (!bonusAudioRef.current) return;
+    if (bonusIsPlaying) {
+      bonusAudioRef.current.pause();
+      return;
+    }
+    setBonusIsBuffering(true);
+    try {
+      await bonusAudioRef.current.play();
+    } catch {
+      setBonusIsBuffering(false);
+    }
+  };
+
+  const handleBonusSeek = (value: number[]) => {
+    if (!bonusAudioRef.current) return;
+    bonusAudioRef.current.currentTime = value[0];
+    setBonusCurrentTime(value[0]);
+  };
 
   // Track playback error for diagnostics
   const trackPlaybackError = (errorName: string, errorMessage: string) => {
@@ -526,13 +613,22 @@ const SongPlayer = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
-      {/* Hidden audio element */}
+      {/* Hidden audio elements */}
       <audio 
         ref={audioRef} 
         src={songData.song_url} 
         preload="auto"
         playsInline
       />
+      {/* Bonus preview audio — use full URL if unlocked, otherwise preview */}
+      {(songData.bonus_unlocked ? songData.bonus_song_url : songData.bonus_preview_url) && (
+        <audio
+          ref={bonusAudioRef}
+          src={(songData.bonus_unlocked ? songData.bonus_song_url : songData.bonus_preview_url) || ""}
+          preload="none"
+          playsInline
+        />
+      )}
 
       <div className="container max-w-2xl mx-auto px-4 py-8 md:py-16">
         {/* Audio Error Fallback */}
@@ -842,6 +938,156 @@ const SongPlayer = () => {
             </Card>
           );
         })()}
+
+        {/* Bonus Acoustic Track Section */}
+        {songData.bonus_available && (songData.bonus_preview_url || songData.bonus_song_url) && (
+          <Card className="mb-8 overflow-hidden border-primary/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Music className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-foreground">🎸 Acoustic Version</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                We also made an acoustic version of your song — warm, intimate, and full of feeling. Like a private performance just for you.
+              </p>
+
+              {/* Bonus Player */}
+              <div className="mb-4 bg-muted/40 rounded-lg p-4">
+                <div className="mb-3">
+                  <Slider
+                    value={[bonusCurrentTime]}
+                    max={bonusDuration || 100}
+                    step={0.1}
+                    onValueChange={handleBonusSeek}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>{formatTime(bonusCurrentTime)}</span>
+                    <span>{formatTime(bonusDuration)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-center">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={toggleBonusPlay}
+                    disabled={bonusIsBuffering}
+                    className="w-10 h-10 rounded-full"
+                  >
+                    {bonusIsBuffering ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : bonusIsPlaying ? (
+                      <Pause className="h-4 w-4" />
+                    ) : (
+                      <Play className="h-4 w-4 ml-0.5" />
+                    )}
+                  </Button>
+                </div>
+                {!songData.bonus_unlocked && (
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    45-second preview
+                  </p>
+                )}
+              </div>
+
+              {/* Unlock / Download CTA */}
+              {songData.bonus_unlocked ? (
+                <div className="text-center">
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={async () => {
+                      if (!songData.bonus_song_url) return;
+                      try {
+                        const response = await fetch(songData.bonus_song_url);
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `${songData.bonus_song_title || songTitle + " (Acoustic)"}.mp3`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        toast.success("Download started!");
+                      } catch {
+                        toast.error("Failed to download bonus track");
+                      }
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Acoustic Version
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-center">
+                  {(() => {
+                    const promoBonusPrice = activeFlashPromo.active && activeFlashPromo.bonusPriceCents
+                      ? activeFlashPromo.bonusPriceCents
+                      : null;
+                    const displayPrice = promoBonusPrice
+                      ? `$${(promoBonusPrice / 100).toFixed(2)}`
+                      : "$19.99";
+                    return (
+                      <Button
+                        onClick={async () => {
+                          if (!orderId) return;
+                          setBonusLoading(true);
+                          try {
+                            const response = await fetch(
+                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-bonus-checkout`,
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ orderId }),
+                              }
+                            );
+                            const data = await response.json();
+                            if (data.alreadyUnlocked) {
+                              await fetchSongData();
+                              toast.success("Already unlocked!");
+                              return;
+                            }
+                            if (data.url) {
+                              window.location.href = data.url;
+                            } else {
+                              toast.error(data.error || "Failed to start checkout");
+                            }
+                          } catch {
+                            toast.error("Failed to start bonus checkout");
+                          } finally {
+                            setBonusLoading(false);
+                          }
+                        }}
+                        disabled={bonusLoading}
+                        size="lg"
+                        className="gap-2"
+                      >
+                        {bonusLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Lock className="h-4 w-4" />
+                        )}
+                        Unlock Full Acoustic Version —{" "}
+                        {promoBonusPrice ? (
+                          <>
+                            <span className="line-through opacity-60 mr-1">$19.99</span>
+                            {displayPrice}
+                          </>
+                        ) : (
+                          displayPrice
+                        )}
+                      </Button>
+                    );
+                  })()}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Includes full download access
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Reaction CTA */}
         <Card className="bg-primary/5 border-primary/20">
