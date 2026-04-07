@@ -202,6 +202,7 @@ export default function Admin() {
   const [savingOrderEdits, setSavingOrderEdits] = useState(false);
   // Order automation state
   const [triggeringOrderAutomation, setTriggeringOrderAutomation] = useState<string | null>(null);
+  const [triggeringBonusGeneration, setTriggeringBonusGeneration] = useState<string | null>(null);
   // Order dismissal state
   const [dismissedOrderFilter, setDismissedOrderFilter] = useState<"active" | "cancelled" | "all">("active");
   const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
