@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, download_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_cover_image_url, bonus_unlocked_at, bonus_automation_status, bonus_automation_task_id, bonus_automation_started_at, genre";
+    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, download_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_cover_image_url, bonus_unlocked_at, bonus_automation_status, bonus_automation_task_id, bonus_automation_started_at, bonus_style_prompt, genre";
 
     let orders: any[] | null = null;
     let error: any = null;
@@ -155,9 +155,13 @@ Deno.serve(async (req) => {
       bonus_unlocked: !!order.bonus_unlocked_at,
       bonus_status: order.bonus_automation_status || null,
       bonus_asset_version: order.bonus_automation_task_id || order.bonus_automation_started_at || order.bonus_unlocked_at || null,
-      bonus_genre_label: order.bonus_song_title
-        ? (order.bonus_song_title.includes("(R&B") ? "R&B" : order.bonus_song_title.includes("(Acoustic") ? "Acoustic" : "Acoustic")
-        : "Acoustic",
+      bonus_genre_label: (() => {
+        const prompt = (order.bonus_style_prompt || "").toLowerCase();
+        if (prompt.includes("r&b") || prompt.includes("rnb")) return "R&B";
+        if (prompt.includes("acoustic")) return "Acoustic";
+        if (order.bonus_song_title?.includes("(R&B")) return "R&B";
+        return "Acoustic";
+      })(),
     };
 
     // Auto-swap phonetic name with actual name in displayed lyrics

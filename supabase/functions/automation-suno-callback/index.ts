@@ -344,6 +344,11 @@ Deno.serve(async (req) => {
         console.log(`[CALLBACK] Bonus unexpected status ${entity.bonus_automation_status} for ${entityId}`);
         return new Response("Bonus unexpected status", { status: 200, headers: corsHeaders });
       }
+      // Stale task guard: reject callbacks from old tasks after manual regen
+      if (entity.bonus_automation_task_id && entity.bonus_automation_task_id !== taskId) {
+        console.log(`[CALLBACK] Stale bonus callback: expected ${entity.bonus_automation_task_id}, got ${taskId}`);
+        return new Response("Stale bonus callback", { status: 200, headers: corsHeaders });
+      }
       if (entity.automation_manual_override_at) {
         console.log(`[CALLBACK] Manual override active, ignoring bonus callback`);
         return new Response("Manual override active", { status: 200, headers: corsHeaders });
