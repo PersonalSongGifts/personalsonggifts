@@ -3138,6 +3138,176 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       );
     }
 
+    // ===== GENERATE BONUS SONG =====
+    if (body?.action === "generate_bonus") {
+      const orderId = typeof body.orderId === "string" ? body.orderId : null;
+      const leadId = typeof body.leadId === "string" ? body.leadId : null;
+      const entityId = orderId || leadId;
+      const entityType = orderId ? "order" : "lead";
+      const tableName = orderId ? "orders" : "leads";
+
+      if (!entityId) {
+        return new Response(
+          JSON.stringify({ error: "orderId or leadId required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Fetch entity
+      const { data: entity, error: entityErr } = await supabase
+        .from(tableName)
+        .select("id, genre, singer_preference, automation_lyrics, song_title, recipient_name, price_cents, lyrics_language_code")
+        .eq("id", entityId)
+        .single();
+
+      if (entityErr || !entity) {
+        return new Response(
+          JSON.stringify({ error: `${entityType} not found` }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!entity.automation_lyrics) {
+        return new Response(
+          JSON.stringify({ error: "No lyrics available — generate the primary song first" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
+      if (!KIE_API_KEY) {
+        return new Response(
+          JSON.stringify({ error: "KIE_API_KEY not configured" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Smart genre detection
+      const primaryGenre = (entity.genre || "").toLowerCase().trim();
+      const isAcousticPrimary = primaryGenre === "acoustic";
+      const singerPref = (entity.singer_preference || "").toLowerCase();
+      const vocalGender = singerPref.includes("female") ? "female" : "male";
+
+      let bonusStylePrompt: string;
+      let bonusSongTitle: string;
+
+      if (isAcousticPrimary) {
+        // Use R&B style
+        const { data: rnbStyle } = await supabase
+          .from("song_styles")
+          .select("suno_prompt")
+          .eq("genre_match", "rnb")
+          .eq("vocal_gender", vocalGender)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+
+        if (rnbStyle?.suno_prompt) {
+          bonusStylePrompt = rnbStyle.suno_prompt;
+        } else {
+          bonusStylePrompt = vocalGender === "female"
+            ? "Smooth modern R&B ballad, warm soulful female vocal, lush harmonies, subtle 808s, intimate and groove-driven, solo female singer only, no duet, no featured artists, no secondary vocals"
+            : "Smooth modern R&B ballad, warm soulful male vocal, lush harmonies, subtle 808s, intimate and groove-driven, solo male singer only, no duet, no featured artists, no secondary vocals";
+        }
+        bonusSongTitle = `${entity.song_title || `Song for ${entity.recipient_name}`} (R&B Version)`;
+      } else {
+        bonusStylePrompt = vocalGender === "female"
+          ? "Raw acoustic singer‑songwriter intimate living‑room feel, imperfect but emotional female vocal with breaths and dynamics left in, lyrics that feel like an honest confession or letter, no big studio polish or heavy effects, mostly dry mix with a touch of natural room reverb, overall vulnerable, organic, \"one take\" performance energy"
+          : "Raw acoustic singer‑songwriter intimate living‑room feel, imperfect but emotional male vocal with breaths and dynamics left in, lyrics that feel like an honest confession or letter, no big studio polish or heavy effects, mostly dry mix with a touch of natural room reverb, overall vulnerable, organic, \"one take\" performance energy";
+        bonusSongTitle = `${entity.song_title || `Song for ${entity.recipient_name}`} (Acoustic)`;
+      }
+
+      // Reset bonus columns first
+      await supabase
+        .from(tableName)
+        .update({
+          bonus_song_url: null,
+          bonus_preview_url: null,
+          bonus_automation_status: "audio_generating",
+          bonus_automation_task_id: null,
+          bonus_automation_started_at: new Date().toISOString(),
+          bonus_automation_last_error: null,
+          bonus_song_title: bonusSongTitle,
+          bonus_style_prompt: bonusStylePrompt,
+          bonus_cover_image_url: null,
+        })
+        .eq("id", entityId);
+
+      // Fetch model settings
+      const { data: modelSetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "suno_model")
+        .maybeSingle();
+      const model = (modelSetting as { value: string } | null)?.value || "V4_5";
+
+      // Fire Kie.ai
+      const callbackUrl = `${supabaseUrl}/functions/v1/automation-suno-callback`;
+
+      console.log(`[BONUS-ADMIN] Generating bonus for ${entityType} ${entityId}, style: ${isAcousticPrimary ? "R&B" : "Acoustic"}`);
+
+      const bonusResponse = await fetch("https://api.kie.ai/api/v1/generate", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${KIE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: entity.automation_lyrics,
+          style: bonusStylePrompt,
+          title: bonusSongTitle,
+          customMode: true,
+          instrumental: false,
+          model: model,
+          callBackUrl: callbackUrl,
+        }),
+      });
+
+      if (!bonusResponse.ok) {
+        const errText = await bonusResponse.text();
+        await supabase.from(tableName).update({
+          bonus_automation_status: "failed",
+          bonus_automation_last_error: `Kie API error: ${bonusResponse.status} - ${errText.substring(0, 200)}`,
+        }).eq("id", entityId);
+        return new Response(
+          JSON.stringify({ error: "Bonus generation API call failed", details: errText.substring(0, 200) }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const bonusData = await bonusResponse.json();
+      if (bonusData?.code !== 200 || !bonusData?.data?.taskId) {
+        await supabase.from(tableName).update({
+          bonus_automation_status: "failed",
+          bonus_automation_last_error: `Invalid response: ${bonusData?.msg || "No taskId"}`,
+        }).eq("id", entityId);
+        return new Response(
+          JSON.stringify({ error: "Invalid bonus generation response", details: bonusData?.msg }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const bonusTaskId = bonusData.data.taskId;
+      await supabase.from(tableName).update({
+        bonus_automation_task_id: bonusTaskId,
+      }).eq("id", entityId);
+
+      console.log(`[BONUS-ADMIN] ✅ Bonus task created: ${bonusTaskId} for ${entityType} ${entityId}`);
+
+      await logActivity(supabase, {
+        entityType,
+        entityId,
+        eventType: "bonus_generation_triggered",
+        actor: "admin",
+        details: `Admin triggered bonus ${isAcousticPrimary ? "R&B" : "acoustic"} generation`,
+      });
+
+      return new Response(
+        JSON.stringify({ success: true, taskId: bonusTaskId, bonusGenre: isAcousticPrimary ? "R&B" : "Acoustic" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
       return new Response(
         JSON.stringify({ error: "Unknown action", action: typeof body?.action === "string" ? body.action : null }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }

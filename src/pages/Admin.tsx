@@ -202,6 +202,7 @@ export default function Admin() {
   const [savingOrderEdits, setSavingOrderEdits] = useState(false);
   // Order automation state
   const [triggeringOrderAutomation, setTriggeringOrderAutomation] = useState<string | null>(null);
+  const [triggeringBonusGeneration, setTriggeringBonusGeneration] = useState<string | null>(null);
   // Order dismissal state
   const [dismissedOrderFilter, setDismissedOrderFilter] = useState<"active" | "cancelled" | "all">("active");
   const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
@@ -932,7 +933,37 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
-  // Handler for dismissing/restoring orders
+  const handleTriggerBonusGeneration = async (order: Order) => {
+    if (!password) return;
+    
+    setTriggeringBonusGeneration(order.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        body: { action: "generate_bonus", orderId: order.id, adminPassword: password },
+      });
+
+      if (error) throw new Error(error.message || "Failed to trigger bonus generation");
+      if (data?.error) throw new Error(data.error);
+
+      toast({
+        title: "Bonus Song Generation Started",
+        description: `${data?.bonusGenre || "Bonus"} version for ${order.recipient_name} is being generated.`,
+      });
+
+      fetchOrders();
+    } catch (err) {
+      console.error("Bonus generation error:", err);
+      toast({
+        title: "Failed to Start Bonus Generation",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setTriggeringBonusGeneration(null);
+    }
+  };
+
+
   const handleDismissOrder = async (order: Order, dismiss: boolean) => {
     if (!password) return;
     
@@ -1600,8 +1631,30 @@ const { data, error } = await listOrders("all", 0, 250);
                               Generating...
                             </Button>
                           )}
+                          {/* Bonus Generate button - show when order has lyrics and song_url exists */}
+                          {order.song_url && order.automation_status === "completed" && !["audio_generating"].includes(order.bonus_automation_status || "") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleTriggerBonusGeneration(order)}
+                              disabled={triggeringBonusGeneration === order.id}
+                              title={order.bonus_song_url ? "Regenerate bonus song" : "Generate bonus song"}
+                            >
+                              {triggeringBonusGeneration === order.id ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <Music className="h-4 w-4 mr-2" />
+                              )}
+                              {order.bonus_song_url ? "Regen Bonus" : "Gen Bonus"}
+                            </Button>
+                          )}
+                          {order.bonus_automation_status === "audio_generating" && (
+                            <Button variant="outline" size="sm" disabled>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Bonus Generating...
+                            </Button>
+                          )}
                           <Button
-                            variant="outline"
                             size="sm"
                           onClick={() => {
                               setSelectedOrder(order);
