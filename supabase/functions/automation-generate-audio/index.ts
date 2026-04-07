@@ -6,6 +6,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Strip Suno section/instrument tags (e.g. [Verse], [Soft melodic acoustic guitar picking])
+// from lyrics so they don't override the bonus style prompt.
+// Preserves actual lyric lines — only removes lines that are purely bracket tags.
+function stripSunoTags(lyrics: string): string {
+  return lyrics
+    .split("\n")
+    .filter(line => !/^\s*\[.*\]\s*$/.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n"); // collapse excessive blank lines
+}
+
 // Helper to normalize entity data from leads or orders
 interface EntityData {
   id: string;
@@ -415,7 +426,7 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            prompt: entity.automation_lyrics,
+            prompt: stripSunoTags(entity.automation_lyrics),
             style: bonusStylePrompt,
             title: bonusSongTitle,
             customMode: true,
