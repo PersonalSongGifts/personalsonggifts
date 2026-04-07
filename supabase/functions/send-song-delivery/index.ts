@@ -21,6 +21,7 @@ interface SongDeliveryRequest {
   smsOptIn?: boolean;
   timezone?: string | null;
   smsStatus?: string | null;
+  bonusAvailable?: boolean;
 }
 
 Deno.serve(async (req) => {
@@ -50,6 +51,7 @@ Deno.serve(async (req) => {
       smsOptIn,
       timezone,
       smsStatus,
+      bonusAvailable,
     }: SongDeliveryRequest = await req.json();
 
     if (!customerEmail || !orderId || !songUrl) {
@@ -100,6 +102,10 @@ Deno.serve(async (req) => {
       <a href="https://personalsonggifts.lovable.app/song/revision/${revisionToken}" style="color: #1E3A5F;">Request a revision</a>
     </p>` : ''}
 
+    ${bonusAvailable ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 16px 0;">
+      P.S. We also made an acoustic version of your song — visit your song page to check it out.
+    </p>` : ''}
+
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 30px 0 40px 0;">
       Warm regards,<br>
       The Personal Song Gifts Team
@@ -127,6 +133,7 @@ Listen here: ${songPageUrl}
 
 Order ID: ${orderId.slice(0, 8).toUpperCase()}
 ${revisionToken ? `\nWant changes? Request a revision: https://personalsonggifts.lovable.app/song/revision/${revisionToken}\n` : ''}
+${bonusAvailable ? `P.S. We also made an acoustic version of your song — visit your song page to check it out.\n` : ''}
 We hope it brings joy!
 
 Warm regards,
