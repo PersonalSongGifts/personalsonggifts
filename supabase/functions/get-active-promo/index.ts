@@ -68,6 +68,7 @@ Deno.serve(async (req) => {
         bannerEmoji: data.banner_emoji,
         bannerBgColor: data.banner_bg_color,
         bannerTextColor: data.banner_text_color,
+        bonusPriceCents: data.bonus_price_cents,
       }),
       {
         headers: {
