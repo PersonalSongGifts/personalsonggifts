@@ -259,6 +259,7 @@ Deno.serve(async (req) => {
           email_body_template: promo.email_body_template || null,
           banner_bg_color: promo.banner_bg_color || null,
           banner_text_color: promo.banner_text_color || null,
+          bonus_price_cents: promo.bonus_price_cents || null,
         };
 
         let result;

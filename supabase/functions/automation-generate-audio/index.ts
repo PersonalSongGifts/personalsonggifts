@@ -350,6 +350,86 @@ Deno.serve(async (req) => {
     console.log(`[AUDIO] TaskId saved to ${entityType} ${entityId}`);
     console.log(`[AUDIO] Waiting for callback from Suno (1-3 minutes)`);
 
+    // ========== BONUS ACOUSTIC TRACK (parallel generation) ==========
+    let bonusResult: { taskId?: string; error?: string } = {};
+    
+    try {
+      // Check if bonus generation is enabled
+      const { data: bonusEnabledSetting } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "bonus_song_enabled")
+        .maybeSingle();
+      
+      const bonusEnabled = (bonusEnabledSetting as { value: string } | null)?.value !== "false";
+      
+      // Skip for free/test orders
+      const priceCents = entityType === "order" ? (rawEntity.price_cents as number | null) : null;
+      const isFreeOrder = entityType === "order" && (!priceCents || priceCents <= 0);
+      
+      if (bonusEnabled && !isFreeOrder) {
+        // Determine acoustic style prompt based on singer gender
+        const bonusStylePrompt = vocalGender === "female"
+          ? "Raw acoustic singer‑songwriter intimate living‑room feel, imperfect but emotional female vocal with breaths and dynamics left in, lyrics that feel like an honest confession or letter, no big studio polish or heavy effects, mostly dry mix with a touch of natural room reverb, overall vulnerable, organic, \"one take\" performance energy"
+          : "Raw acoustic singer‑songwriter intimate living‑room feel, imperfect but emotional male vocal with breaths and dynamics left in, lyrics that feel like an honest confession or letter, no big studio polish or heavy effects, mostly dry mix with a touch of natural room reverb, overall vulnerable, organic, \"one take\" performance energy";
+        
+        const bonusSongTitle = `${entity.song_title || `Song for ${entity.recipient_name}`} (Acoustic)`;
+        
+        console.log(`[AUDIO] Firing bonus acoustic track for ${entityType} ${entityId}`);
+        console.log(`[AUDIO] Bonus style: ${bonusStylePrompt.substring(0, 60)}...`);
+        
+        const bonusResponse = await fetch("https://api.kie.ai/api/v1/generate", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${KIE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt: entity.automation_lyrics,
+            style: bonusStylePrompt,
+            title: bonusSongTitle,
+            customMode: true,
+            instrumental: false,
+            model: model,
+            callBackUrl: callbackUrl,
+          }),
+        });
+        
+        if (bonusResponse.ok) {
+          const bonusData = await bonusResponse.json();
+          if (bonusData?.code === 200 && bonusData?.data?.taskId) {
+            const bonusTaskId = bonusData.data.taskId;
+            console.log(`[AUDIO] ✅ Bonus task created: ${bonusTaskId}`);
+            
+            await supabase
+              .from(tableName)
+              .update({
+                bonus_automation_task_id: bonusTaskId,
+                bonus_automation_status: "audio_generating",
+                bonus_automation_started_at: new Date().toISOString(),
+                bonus_style_prompt: bonusStylePrompt,
+                bonus_song_title: bonusSongTitle,
+              })
+              .eq("id", entityId);
+            
+            bonusResult = { taskId: bonusTaskId };
+          } else {
+            console.warn(`[AUDIO] Bonus Suno response invalid: ${bonusData?.msg || "No taskId"}`);
+            bonusResult = { error: bonusData?.msg || "No taskId returned" };
+          }
+        } else {
+          const errText = await bonusResponse.text();
+          console.warn(`[AUDIO] Bonus Suno call failed: ${bonusResponse.status} ${errText.substring(0, 100)}`);
+          bonusResult = { error: `HTTP ${bonusResponse.status}` };
+        }
+      } else {
+        console.log(`[AUDIO] Bonus generation skipped (enabled=${bonusEnabled}, isFree=${isFreeOrder})`);
+      }
+    } catch (bonusErr) {
+      console.warn(`[AUDIO] Bonus generation error (non-fatal):`, bonusErr);
+      bonusResult = { error: bonusErr instanceof Error ? bonusErr.message : "Unknown error" };
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -360,6 +440,7 @@ Deno.serve(async (req) => {
         language: languageCode,
         styleUsed: selectedStyle.label || selectedStyle.suno_prompt?.substring(0, 50),
         callbackUrl,
+        bonus: bonusResult,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

@@ -207,6 +207,49 @@ Deno.serve(async (req) => {
       }
       // --- End Download Unlock handler ---
 
+      // --- Bonus Unlock handler (early return before order creation) ---
+      if (sessionMetadata.entitlement === "bonus_unlock") {
+        const bonusOrderId = sessionMetadata.orderId;
+        console.log(`[WEBHOOK] Bonus unlock for order ${bonusOrderId}`);
+
+        if (!bonusOrderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bonusOrderId)) {
+          console.error("[WEBHOOK] Invalid orderId in bonus_unlock metadata");
+          return new Response(
+            JSON.stringify({ received: true, error: "Invalid orderId in metadata" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        // Idempotent: only update if bonus_unlocked_at IS NULL
+        const { error: bonusUpdateError } = await supabase
+          .from("orders")
+          .update({
+            bonus_unlocked_at: new Date().toISOString(),
+            bonus_unlock_session_id: session.id,
+            bonus_unlock_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : null,
+            bonus_price_cents: session.amount_total,
+          })
+          .eq("id", bonusOrderId)
+          .is("bonus_unlocked_at", null);
+
+        if (bonusUpdateError) {
+          console.error("[WEBHOOK] Failed to unlock bonus:", bonusUpdateError);
+        } else {
+          console.log(`[WEBHOOK] Bonus unlocked for order ${bonusOrderId}`);
+          await logActivity(supabase, "order", bonusOrderId, "bonus_unlocked", "system", `Bonus unlocked via Stripe webhook, $${(session.amount_total || 0) / 100}`);
+        }
+
+        return new Response(
+          JSON.stringify({ received: true, type: "bonus_unlock", orderId: bonusOrderId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // --- End Bonus Unlock handler ---
+
       // Initialize Supabase
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

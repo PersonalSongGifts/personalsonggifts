@@ -68,6 +68,13 @@ interface SongData {
   revision_available?: boolean;
   revision_status?: string;
   download_unlocked: boolean;
+  bonus_available?: boolean;
+  bonus_preview_url?: string | null;
+  bonus_song_url?: string | null;
+  bonus_song_title?: string | null;
+  bonus_cover_image_url?: string | null;
+  bonus_unlocked?: boolean;
+  bonus_status?: string | null;
 }
 
 const SongPlayer = () => {
@@ -79,6 +86,7 @@ const SongPlayer = () => {
   const [error, setError] = useState<string | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
+  const [bonusLoading, setBonusLoading] = useState(false);
   const [lyricsCopied, setLyricsCopied] = useState(false);
   
   
