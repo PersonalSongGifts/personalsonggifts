@@ -933,7 +933,37 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
-  // Handler for dismissing/restoring orders
+  const handleTriggerBonusGeneration = async (order: Order) => {
+    if (!password) return;
+    
+    setTriggeringBonusGeneration(order.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        body: { action: "generate_bonus", orderId: order.id, adminPassword: password },
+      });
+
+      if (error) throw new Error(error.message || "Failed to trigger bonus generation");
+      if (data?.error) throw new Error(data.error);
+
+      toast({
+        title: "Bonus Song Generation Started",
+        description: `${data?.bonusGenre || "Bonus"} version for ${order.recipient_name} is being generated.`,
+      });
+
+      fetchOrders();
+    } catch (err) {
+      console.error("Bonus generation error:", err);
+      toast({
+        title: "Failed to Start Bonus Generation",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setTriggeringBonusGeneration(null);
+    }
+  };
+
+
   const handleDismissOrder = async (order: Order, dismiss: boolean) => {
     if (!password) return;
     
