@@ -3246,6 +3246,14 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
       console.log(`[BONUS-ADMIN] Generating bonus for ${entityType} ${entityId}, style: ${isAcousticPrimary ? "R&B" : "Acoustic"}`);
 
+      // Strip Suno section/instrument tags so they don't override the bonus style prompt
+      const stripSunoTags = (lyrics: string): string =>
+        lyrics
+          .split("\n")
+          .filter((line: string) => !/^\s*\[.*\]\s*$/.test(line))
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n");
+
       const bonusResponse = await fetch("https://api.kie.ai/api/v1/generate", {
         method: "POST",
         headers: {
@@ -3253,7 +3261,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          prompt: entity.automation_lyrics,
+          prompt: stripSunoTags(entity.automation_lyrics),
           style: bonusStylePrompt,
           title: bonusSongTitle,
           customMode: true,
