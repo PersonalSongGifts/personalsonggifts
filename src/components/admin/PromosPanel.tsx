@@ -307,7 +307,6 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
                 <CardDescription>
                   Slug: {promo.slug} · {formatCents(promo.standard_price_cents)} / {formatCents(promo.priority_price_cents)} / Lead: {formatCents(promo.lead_price_cents)}{promo.bonus_price_cents ? ` / Bonus: ${formatCents(promo.bonus_price_cents)}` : ""}
                 </CardDescription>
-                </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="text-sm text-muted-foreground space-y-1">
