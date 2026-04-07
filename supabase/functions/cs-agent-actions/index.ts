@@ -84,6 +84,16 @@ async function regenerateSong(
     automation_last_error: null,
     automation_started_at: null,
     generated_at: null,
+    // Reset bonus track so it regenerates with updated content
+    bonus_song_url: null,
+    bonus_preview_url: null,
+    bonus_song_title: null,
+    bonus_cover_image_url: null,
+    bonus_automation_status: null,
+    bonus_automation_task_id: null,
+    bonus_automation_started_at: null,
+    bonus_automation_last_error: null,
+    bonus_style_prompt: null,
   };
 
   if (body.lyrics_override) {
