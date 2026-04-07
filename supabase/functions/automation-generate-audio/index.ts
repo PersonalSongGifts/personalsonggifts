@@ -368,12 +368,42 @@ Deno.serve(async (req) => {
       const isFreeOrder = entityType === "order" && (!priceCents || priceCents <= 0);
       
       if (bonusEnabled && !isFreeOrder) {
-        // Determine acoustic style prompt based on singer gender
-        const bonusStylePrompt = vocalGender === "female"
-          ? "Raw acoustic singer‑songwriter intimate living‑room feel, imperfect but emotional female vocal with breaths and dynamics left in, lyrics that feel like an honest confession or letter, no big studio polish or heavy effects, mostly dry mix with a touch of natural room reverb, overall vulnerable, organic, \"one take\" performance energy"
-          : "Raw acoustic singer‑songwriter intimate living‑room feel, imperfect but emotional male vocal with breaths and dynamics left in, lyrics that feel like an honest confession or letter, no big studio polish or heavy effects, mostly dry mix with a touch of natural room reverb, overall vulnerable, organic, \"one take\" performance energy";
+        // Smart genre detection: if primary is acoustic, use R&B style instead
+        const primaryGenre = (entity.genre || "").toLowerCase().trim();
+        const isAcousticPrimary = primaryGenre === "acoustic";
         
-        const bonusSongTitle = `${entity.song_title || `Song for ${entity.recipient_name}`} (Acoustic)`;
+        let bonusStylePrompt: string;
+        let bonusSongTitle: string;
+        
+        if (isAcousticPrimary) {
+          // Primary is acoustic — use R&B style from song_styles table
+          const { data: rnbStyle } = await supabase
+            .from("song_styles")
+            .select("suno_prompt")
+            .eq("genre_match", "rnb")
+            .eq("vocal_gender", vocalGender)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+          
+          if (rnbStyle?.suno_prompt) {
+            bonusStylePrompt = rnbStyle.suno_prompt;
+            console.log(`[AUDIO] Primary is acoustic — using R&B style for bonus`);
+          } else {
+            // Fallback if no R&B style found
+            bonusStylePrompt = vocalGender === "female"
+              ? "Smooth modern R&B ballad, warm soulful female vocal, lush harmonies, subtle 808s, intimate and groove-driven, solo female singer only, no duet, no featured artists, no secondary vocals"
+              : "Smooth modern R&B ballad, warm soulful male vocal, lush harmonies, subtle 808s, intimate and groove-driven, solo male singer only, no duet, no featured artists, no secondary vocals";
+            console.log(`[AUDIO] No R&B style in song_styles — using hardcoded R&B fallback`);
+          }
+          bonusSongTitle = `${entity.song_title || `Song for ${entity.recipient_name}`} (R&B Version)`;
+        } else {
+          // All other genres — use acoustic style
+          bonusStylePrompt = vocalGender === "female"
+            ? "Raw acoustic singer‑songwriter intimate living‑room feel, imperfect but emotional female vocal with breaths and dynamics left in, lyrics that feel like an honest confession or letter, no big studio polish or heavy effects, mostly dry mix with a touch of natural room reverb, overall vulnerable, organic, \"one take\" performance energy"
+            : "Raw acoustic singer‑songwriter intimate living‑room feel, imperfect but emotional male vocal with breaths and dynamics left in, lyrics that feel like an honest confession or letter, no big studio polish or heavy effects, mostly dry mix with a touch of natural room reverb, overall vulnerable, organic, \"one take\" performance energy";
+          bonusSongTitle = `${entity.song_title || `Song for ${entity.recipient_name}`} (Acoustic)`;
+        }
         
         console.log(`[AUDIO] Firing bonus acoustic track for ${entityType} ${entityId}`);
         console.log(`[AUDIO] Bonus style: ${bonusStylePrompt.substring(0, 60)}...`);

@@ -22,6 +22,7 @@ interface SongDeliveryRequest {
   timezone?: string | null;
   smsStatus?: string | null;
   bonusAvailable?: boolean;
+  bonusSongTitle?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -52,7 +53,13 @@ Deno.serve(async (req) => {
       timezone,
       smsStatus,
       bonusAvailable,
+      bonusSongTitle,
     }: SongDeliveryRequest = await req.json();
+
+    // Derive bonus genre label from title
+    const bonusGenreLabel = bonusSongTitle
+      ? (bonusSongTitle.includes("(R&B") ? "R&B" : "acoustic")
+      : "acoustic";
 
     if (!customerEmail || !orderId || !songUrl) {
       return new Response(
@@ -103,7 +110,7 @@ Deno.serve(async (req) => {
     </p>` : ''}
 
     ${bonusAvailable ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 16px 0;">
-      P.S. We also made an acoustic version of your song — visit your song page to check it out.
+      P.S. We also made ${bonusGenreLabel === "R&B" ? "an R&B" : "an acoustic"} version of your song — visit your song page to check it out.
     </p>` : ''}
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 30px 0 40px 0;">
@@ -133,7 +140,7 @@ Listen here: ${songPageUrl}
 
 Order ID: ${orderId.slice(0, 8).toUpperCase()}
 ${revisionToken ? `\nWant changes? Request a revision: https://personalsonggifts.lovable.app/song/revision/${revisionToken}\n` : ''}
-${bonusAvailable ? `P.S. We also made an acoustic version of your song — visit your song page to check it out.\n` : ''}
+${bonusAvailable ? `P.S. We also made ${bonusGenreLabel === "R&B" ? "an R&B" : "an acoustic"} version of your song — visit your song page to check it out.\n` : ''}
 We hope it brings joy!
 
 Warm regards,
