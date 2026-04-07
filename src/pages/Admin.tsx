@@ -1631,7 +1631,29 @@ const { data, error } = await listOrders("all", 0, 250);
                               Generating...
                             </Button>
                           )}
-                          <Button
+                          {/* Bonus Generate button - show when order has lyrics and song_url exists */}
+                          {order.song_url && order.automation_status === "completed" && !["audio_generating"].includes(order.bonus_automation_status || "") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleTriggerBonusGeneration(order)}
+                              disabled={triggeringBonusGeneration === order.id}
+                              title={order.bonus_song_url ? "Regenerate bonus song" : "Generate bonus song"}
+                            >
+                              {triggeringBonusGeneration === order.id ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <Music className="h-4 w-4 mr-2" />
+                              )}
+                              {order.bonus_song_url ? "Regen Bonus" : "Gen Bonus"}
+                            </Button>
+                          )}
+                          {order.bonus_automation_status === "audio_generating" && (
+                            <Button variant="outline" size="sm" disabled>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Bonus Generating...
+                            </Button>
+                          )}
                             variant="outline"
                             size="sm"
                           onClick={() => {
