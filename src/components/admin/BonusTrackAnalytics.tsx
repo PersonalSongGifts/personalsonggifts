@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Music, Unlock, DollarSign, TrendingUp } from "lucide-react";
+import { Music, Unlock, DollarSign, TrendingUp, PlayCircle, MousePointerClick } from "lucide-react";
 
 interface Order {
   bonus_song_url?: string | null;
@@ -8,6 +8,10 @@ interface Order {
   bonus_unlocked_at?: string | null;
   bonus_price_cents?: number | null;
   bonus_automation_status?: string | null;
+  bonus_play_count?: number | null;
+  bonus_first_played_at?: string | null;
+  bonus_checkout_click_count?: number | null;
+  bonus_checkout_clicked_at?: string | null;
   customer_email?: string;
   id: string;
   created_at: string;
@@ -29,6 +33,17 @@ export function BonusTrackAnalytics({ orders }: BonusTrackAnalyticsProps) {
     (sum, o) => sum + (o.bonus_price_cents || 0),
     0
   );
+
+  // Engagement metrics
+  const previewed = orders.filter((o) => (o.bonus_play_count || 0) > 0);
+  const totalPlays = orders.reduce((sum, o) => sum + (o.bonus_play_count || 0), 0);
+  const checkoutClicked = orders.filter((o) => (o.bonus_checkout_click_count || 0) > 0);
+  const previewToClickRate = previewed.length > 0
+    ? ((checkoutClicked.length / previewed.length) * 100).toFixed(1)
+    : "0";
+  const clickToPurchaseRate = checkoutClicked.length > 0
+    ? ((unlocked.length / checkoutClicked.length) * 100).toFixed(1)
+    : "0";
 
   const recentUnlocks = [...unlocked]
     .sort((a, b) => new Date(b.bonus_unlocked_at!).getTime() - new Date(a.bonus_unlocked_at!).getTime())
@@ -73,6 +88,36 @@ export function BonusTrackAnalytics({ orders }: BonusTrackAnalyticsProps) {
               {(totalRevenue / 100).toFixed(2)}
             </p>
             <p className="text-xs text-muted-foreground">Revenue</p>
+          </div>
+        </div>
+
+        {/* Engagement Funnel */}
+        <div>
+          <h4 className="text-sm font-medium mb-2">Engagement Funnel</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3 bg-muted/50 rounded-lg text-center">
+              <p className="text-xl font-bold flex items-center justify-center gap-1">
+                <PlayCircle className="h-4 w-4" />
+                {previewed.length}
+              </p>
+              <p className="text-xs text-muted-foreground">Previews Played</p>
+              <p className="text-[10px] text-muted-foreground">{totalPlays} total plays</p>
+            </div>
+            <div className="p-3 bg-muted/50 rounded-lg text-center">
+              <p className="text-xl font-bold flex items-center justify-center gap-1">
+                <MousePointerClick className="h-4 w-4" />
+                {checkoutClicked.length}
+              </p>
+              <p className="text-xs text-muted-foreground">Checkout Clicks</p>
+            </div>
+            <div className="p-3 bg-muted/50 rounded-lg text-center">
+              <p className="text-xl font-bold">{previewToClickRate}%</p>
+              <p className="text-xs text-muted-foreground">Preview → Click</p>
+            </div>
+            <div className="p-3 bg-muted/50 rounded-lg text-center">
+              <p className="text-xl font-bold">{clickToPurchaseRate}%</p>
+              <p className="text-xs text-muted-foreground">Click → Purchase</p>
+            </div>
           </div>
         </div>
 
