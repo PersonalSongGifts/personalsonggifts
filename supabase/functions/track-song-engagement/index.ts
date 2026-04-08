@@ -7,7 +7,7 @@ const corsHeaders = {
 
 interface TrackRequest {
   type: "lead" | "order";
-  action: "play" | "download" | "error";
+  action: "play" | "download" | "error" | "bonus_play" | "bonus_checkout_click";
   token?: string; // For leads
   orderId?: string; // For orders
   errorDetails?: {
@@ -188,6 +188,18 @@ Deno.serve(async (req) => {
           updates.song_played_at = new Date().toISOString();
         }
         console.log(`Order ${order.id} play tracked (count: ${updates.song_play_count})`);
+      } else if (action === "bonus_play") {
+        updates.bonus_play_count = ((order as Record<string, unknown>).bonus_play_count as number || 0) + 1;
+        if (!(order as Record<string, unknown>).bonus_first_played_at) {
+          updates.bonus_first_played_at = new Date().toISOString();
+        }
+        console.log(`Order ${order.id} bonus play tracked (count: ${updates.bonus_play_count})`);
+      } else if (action === "bonus_checkout_click") {
+        updates.bonus_checkout_click_count = ((order as Record<string, unknown>).bonus_checkout_click_count as number || 0) + 1;
+        if (!(order as Record<string, unknown>).bonus_checkout_clicked_at) {
+          updates.bonus_checkout_clicked_at = new Date().toISOString();
+        }
+        console.log(`Order ${order.id} bonus checkout click tracked (count: ${updates.bonus_checkout_click_count})`);
       } else if (action === "download") {
         updates.song_download_count = (order.song_download_count || 0) + 1;
         // Only set timestamp on first download
