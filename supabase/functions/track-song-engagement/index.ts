@@ -7,7 +7,7 @@ const corsHeaders = {
 
 interface TrackRequest {
   type: "lead" | "order";
-  action: "play" | "download" | "error";
+  action: "play" | "download" | "error" | "bonus_play" | "bonus_checkout_click";
   token?: string; // For leads
   orderId?: string; // For orders
   errorDetails?: {
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      let order: { id: string; song_played_at: string | null; song_play_count: number | null; song_downloaded_at: string | null; song_download_count: number | null } | null = null;
+      let order: Record<string, unknown> | null = null;
 
       if (isShortId) {
         const { data: orders, error: fetchError } = await supabase
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
         // Full UUID: direct lookup
         const { data, error: fetchError } = await supabase
           .from("orders")
-          .select("id, song_played_at, song_play_count, song_downloaded_at, song_download_count")
+          .select("id, song_played_at, song_play_count, song_downloaded_at, song_download_count, bonus_play_count, bonus_first_played_at, bonus_checkout_click_count, bonus_checkout_clicked_at")
           .eq("id", orderId)
           .maybeSingle();
 
@@ -182,12 +182,23 @@ Deno.serve(async (req) => {
       const updates: Record<string, unknown> = {};
 
       if (action === "play") {
-        updates.song_play_count = (order.song_play_count || 0) + 1;
-        // Only set timestamp on first play
+        updates.song_play_count = ((order.song_play_count as number) || 0) + 1;
         if (!order.song_played_at) {
           updates.song_played_at = new Date().toISOString();
         }
         console.log(`Order ${order.id} play tracked (count: ${updates.song_play_count})`);
+      } else if (action === "bonus_play") {
+        updates.bonus_play_count = ((order.bonus_play_count as number) || 0) + 1;
+        if (!order.bonus_first_played_at) {
+          updates.bonus_first_played_at = new Date().toISOString();
+        }
+        console.log(`Order ${order.id} bonus play tracked (count: ${updates.bonus_play_count})`);
+      } else if (action === "bonus_checkout_click") {
+        updates.bonus_checkout_click_count = ((order.bonus_checkout_click_count as number) || 0) + 1;
+        if (!order.bonus_checkout_clicked_at) {
+          updates.bonus_checkout_clicked_at = new Date().toISOString();
+        }
+        console.log(`Order ${order.id} bonus checkout click tracked (count: ${updates.bonus_checkout_click_count})`);
       } else if (action === "download") {
         updates.song_download_count = (order.song_download_count || 0) + 1;
         // Only set timestamp on first download

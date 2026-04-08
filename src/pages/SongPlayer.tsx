@@ -257,6 +257,8 @@ const SongPlayer = () => {
     };
   }, [songData]);
 
+  const hasTrackedBonusPlay = useRef(false);
+
   const toggleBonusPlay = async () => {
     if (!bonusAudioRef.current) return;
     if (bonusIsPlaying) {
@@ -266,6 +268,15 @@ const SongPlayer = () => {
     setBonusIsBuffering(true);
     try {
       await bonusAudioRef.current.play();
+      // Track bonus play (fire-and-forget)
+      if (orderId && !hasTrackedBonusPlay.current) {
+        hasTrackedBonusPlay.current = true;
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "order", action: "bonus_play", orderId }),
+        }).catch(() => {});
+      }
     } catch {
       setBonusIsBuffering(false);
     }
@@ -965,161 +976,180 @@ const SongPlayer = () => {
           const bonusCoverUrl = songData.bonus_cover_image_url || getCoverImage();
           
           return (
-            <Card className="mb-8 overflow-hidden border-primary/20">
-              {/* Cover image header */}
-              <div className="relative h-48 overflow-hidden">
-                <img
-                  src={bonusCoverUrl}
-                  alt={`${genreLabel} version cover`}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-card via-card/60 to-transparent" />
-                <div className="absolute bottom-4 left-6 right-6">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{genreEmoji}</span>
-                    <h3 className="text-xl font-bold text-foreground">{genreLabel} Version</h3>
+            <div className="mb-8">
+              {/* Section divider */}
+              <div className="flex items-center justify-center gap-3 mb-8 mt-4">
+                <div className="h-px bg-border flex-1" />
+                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                  ✨ We made something extra for you
+                </span>
+                <div className="h-px bg-border flex-1" />
+              </div>
+
+              {/* Large album art */}
+              <div className="flex justify-center mb-6">
+                <div className="w-full max-w-sm">
+                  <div className="aspect-square rounded-xl overflow-hidden shadow-lg">
+                    <img
+                      src={bonusCoverUrl}
+                      alt={`${genreLabel} version cover`}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 </div>
               </div>
 
-              <CardContent className="pt-4">
-                <p className="text-sm text-muted-foreground mb-5">
+              {/* Title + description */}
+              <div className="text-center mb-6">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <span className="text-3xl">{genreEmoji}</span>
+                  <h2 className="text-2xl md:text-3xl font-bold text-foreground">
+                    {genreLabel} Version
+                  </h2>
+                </div>
+                <p className="text-base text-muted-foreground max-w-md mx-auto">
                   {genreDescription}
                 </p>
+              </div>
 
-                {/* Bonus Player — matching primary player size */}
-                <div className="mb-5 bg-muted/40 rounded-lg p-5">
-                  <div className="mb-4">
-                    <Slider
-                      value={[bonusCurrentTime]}
-                      max={bonusDuration || 100}
-                      step={0.1}
-                      onValueChange={handleBonusSeek}
-                      className="w-full"
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                      <span>{formatTime(bonusCurrentTime)}</span>
-                      <span>{formatTime(bonusDuration)}</span>
-                    </div>
+              {/* Full-size player */}
+              <div className="mb-6 bg-muted/40 rounded-xl p-6">
+                <div className="mb-4">
+                  <Slider
+                    value={[bonusCurrentTime]}
+                    max={bonusDuration || 100}
+                    step={0.1}
+                    onValueChange={handleBonusSeek}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>{formatTime(bonusCurrentTime)}</span>
+                    <span>{formatTime(bonusDuration)}</span>
                   </div>
-                  <div className="flex items-center justify-center">
-                    <Button
-                      size="lg"
-                      onClick={toggleBonusPlay}
-                      disabled={bonusIsBuffering}
-                      className="w-16 h-16 rounded-full"
-                    >
-                      {bonusIsBuffering ? (
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                      ) : bonusIsPlaying ? (
-                        <Pause className="h-6 w-6" />
-                      ) : (
-                        <Play className="h-6 w-6 ml-1" />
-                      )}
-                    </Button>
-                  </div>
-                  {!songData.bonus_unlocked && (
-                    <p className="text-xs text-muted-foreground text-center mt-3">
-                      45-second preview
-                    </p>
-                  )}
                 </div>
-
-                {/* Unlock / Download CTA */}
-                {songData.bonus_unlocked ? (
-                  <div className="text-center">
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      className="gap-2"
-                      onClick={async () => {
-                        if (!songData.bonus_song_url) return;
-                        try {
-                          const response = await fetch(songData.bonus_song_url);
-                          const blob = await response.blob();
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = `${songData.bonus_song_title || songTitle + ` (${genreLabel})`}.mp3`;
-                          document.body.appendChild(a);
-                          a.click();
-                          window.URL.revokeObjectURL(url);
-                          document.body.removeChild(a);
-                          toast.success("Download started!");
-                        } catch {
-                          toast.error("Failed to download bonus track");
-                        }
-                      }}
-                    >
-                      <Download className="h-4 w-4" />
-                      Download {genreLabel} Version
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="text-center">
-                    {(() => {
-                      const promoBonusPrice = activeFlashPromo.active && activeFlashPromo.bonusPriceCents
-                        ? activeFlashPromo.bonusPriceCents
-                        : null;
-                      const displayPrice = promoBonusPrice
-                        ? `$${(promoBonusPrice / 100).toFixed(2)}`
-                        : "$19.99";
-                      return (
-                        <Button
-                          onClick={async () => {
-                            if (!orderId) return;
-                            setBonusLoading(true);
-                            try {
-                              const response = await fetch(
-                                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-bonus-checkout`,
-                                {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ orderId }),
-                                }
-                              );
-                              const data = await response.json();
-                              if (data.alreadyUnlocked) {
-                                await fetchSongData();
-                                toast.success("Already unlocked!");
-                                return;
-                              }
-                              if (data.url) {
-                                window.location.href = data.url;
-                              } else {
-                                toast.error(data.error || "Failed to start checkout");
-                              }
-                            } catch {
-                              toast.error("Failed to start bonus checkout");
-                            } finally {
-                              setBonusLoading(false);
-                            }
-                          }}
-                          disabled={bonusLoading}
-                          size="lg"
-                          className="gap-2"
-                        >
-                          {bonusLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Lock className="h-4 w-4" />
-                          )}
-                          Unlock Full {genreLabel} Version —{" "}
-                          {promoBonusPrice ? (
-                            <>
-                              <span className="line-through opacity-60 mr-1">$19.99</span>
-                              {displayPrice}
-                            </>
-                          ) : (
-                            displayPrice
-                          )}
-                        </Button>
-                      );
-                    })()}
-                  </div>
+                <div className="flex items-center justify-center">
+                  <Button
+                    size="lg"
+                    onClick={toggleBonusPlay}
+                    disabled={bonusIsBuffering}
+                    className="w-16 h-16 rounded-full"
+                  >
+                    {bonusIsBuffering ? (
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    ) : bonusIsPlaying ? (
+                      <Pause className="h-6 w-6" />
+                    ) : (
+                      <Play className="h-6 w-6 ml-1" />
+                    )}
+                  </Button>
+                </div>
+                {!songData.bonus_unlocked && (
+                  <p className="text-xs text-muted-foreground text-center mt-3">
+                    45-second preview
+                  </p>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+
+              {/* Unlock / Download CTA */}
+              {songData.bonus_unlocked ? (
+                <div className="text-center">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="gap-2"
+                    onClick={async () => {
+                      if (!songData.bonus_song_url) return;
+                      try {
+                        const response = await fetch(songData.bonus_song_url);
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `${songData.bonus_song_title || songTitle + ` (${genreLabel})`}.mp3`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        toast.success("Download started!");
+                      } catch {
+                        toast.error("Failed to download bonus track");
+                      }
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download {genreLabel} Version
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-center">
+                  {(() => {
+                    const promoBonusPrice = activeFlashPromo.active && activeFlashPromo.bonusPriceCents
+                      ? activeFlashPromo.bonusPriceCents
+                      : null;
+                    const displayPrice = promoBonusPrice
+                      ? `$${(promoBonusPrice / 100).toFixed(2)}`
+                      : "$19.99";
+                    return (
+                      <Button
+                        onClick={async () => {
+                          if (!orderId) return;
+                          // Track bonus checkout click (fire-and-forget)
+                          fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-song-engagement`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ type: "order", action: "bonus_checkout_click", orderId }),
+                          }).catch(() => {});
+                          setBonusLoading(true);
+                          try {
+                            const response = await fetch(
+                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-bonus-checkout`,
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ orderId }),
+                              }
+                            );
+                            const data = await response.json();
+                            if (data.alreadyUnlocked) {
+                              await fetchSongData();
+                              toast.success("Already unlocked!");
+                              return;
+                            }
+                            if (data.url) {
+                              window.location.href = data.url;
+                            } else {
+                              toast.error(data.error || "Failed to start checkout");
+                            }
+                          } catch {
+                            toast.error("Failed to start bonus checkout");
+                          } finally {
+                            setBonusLoading(false);
+                          }
+                        }}
+                        disabled={bonusLoading}
+                        size="lg"
+                        className="w-full max-w-sm gap-2 text-base py-6"
+                      >
+                        {bonusLoading ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Lock className="h-5 w-5" />
+                        )}
+                        Unlock Full {genreLabel} Version —{" "}
+                        {promoBonusPrice ? (
+                          <>
+                            <span className="line-through opacity-60 mr-1">$19.99</span>
+                            {displayPrice}
+                          </>
+                        ) : (
+                          displayPrice
+                        )}
+                      </Button>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
           );
         })()}
 

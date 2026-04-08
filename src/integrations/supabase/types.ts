@@ -362,7 +362,11 @@ export type Database = {
           bonus_automation_started_at: string | null
           bonus_automation_status: string | null
           bonus_automation_task_id: string | null
+          bonus_checkout_click_count: number | null
+          bonus_checkout_clicked_at: string | null
           bonus_cover_image_url: string | null
+          bonus_first_played_at: string | null
+          bonus_play_count: number | null
           bonus_preview_url: string | null
           bonus_price_cents: number | null
           bonus_song_title: string | null
@@ -475,7 +479,11 @@ export type Database = {
           bonus_automation_started_at?: string | null
           bonus_automation_status?: string | null
           bonus_automation_task_id?: string | null
+          bonus_checkout_click_count?: number | null
+          bonus_checkout_clicked_at?: string | null
           bonus_cover_image_url?: string | null
+          bonus_first_played_at?: string | null
+          bonus_play_count?: number | null
           bonus_preview_url?: string | null
           bonus_price_cents?: number | null
           bonus_song_title?: string | null
@@ -588,7 +596,11 @@ export type Database = {
           bonus_automation_started_at?: string | null
           bonus_automation_status?: string | null
           bonus_automation_task_id?: string | null
+          bonus_checkout_click_count?: number | null
+          bonus_checkout_clicked_at?: string | null
           bonus_cover_image_url?: string | null
+          bonus_first_played_at?: string | null
+          bonus_play_count?: number | null
           bonus_preview_url?: string | null
           bonus_price_cents?: number | null
           bonus_song_title?: string | null
@@ -978,7 +990,11 @@ export type Database = {
           bonus_automation_started_at: string | null
           bonus_automation_status: string | null
           bonus_automation_task_id: string | null
+          bonus_checkout_click_count: number | null
+          bonus_checkout_clicked_at: string | null
           bonus_cover_image_url: string | null
+          bonus_first_played_at: string | null
+          bonus_play_count: number | null
           bonus_preview_url: string | null
           bonus_price_cents: number | null
           bonus_song_title: string | null
