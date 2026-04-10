@@ -232,6 +232,8 @@ Deno.serve(async (req) => {
           await supabase.from("orders").update({
             automation_status: "permanently_failed",
             automation_last_error: `Stuck in ${order.automation_status} for >15min, exceeded max retries (${MAX_AUTO_RETRIES})`,
+            bonus_automation_status: "failed",
+            bonus_automation_last_error: "Primary song generation permanently failed",
           }).eq("id", order.id);
         } else {
           console.log(`[RECOVERY] Order ${order.id} stuck in ${order.automation_status} >15min, resetting (retry ${retryCount}/${MAX_AUTO_RETRIES})`);
@@ -264,6 +266,8 @@ Deno.serve(async (req) => {
           await supabase.from("leads").update({
             automation_status: "permanently_failed",
             automation_last_error: `Stuck in ${lead.automation_status} for >15min, exceeded max retries (${MAX_AUTO_RETRIES})`,
+            bonus_automation_status: "failed",
+            bonus_automation_last_error: "Primary song generation permanently failed",
           }).eq("id", lead.id);
         } else {
           console.log(`[RECOVERY] Lead ${lead.id} stuck in ${lead.automation_status} >15min, resetting (retry ${retryCount}/${MAX_AUTO_RETRIES})`);
