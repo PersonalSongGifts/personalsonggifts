@@ -1,0 +1,1 @@
+UPDATE orders SET bonus_automation_status = 'failed', bonus_automation_last_error = 'Primary song generation permanently failed' WHERE id::text ILIKE 'eedf2e72%' OR id::text ILIKE 'b09f3424%';
