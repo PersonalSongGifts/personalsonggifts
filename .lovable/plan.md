@@ -1,63 +1,41 @@
 
 
-## Make Bonus Section More Prominent + Add Bonus Engagement Tracking
+## Fix: Bonus Track Stuck at "Generating" When Primary Fails
 
-### Part 1: Redesign Bonus Section on Song Page
+### What's Happening
 
-Currently the bonus track section is a small card with a tiny cover image strip, small text, and a compact player. It needs to feel like a "second song" rather than an afterthought.
+Customer Riman has two orders (EEDF2E72, B09F3424) where:
+- Primary song generation failed after 3 retries → `permanently_failed`
+- Bonus track was fired in parallel and is stuck at `audio_generating` forever
+- The admin UI shows "Bonus Generating..." with no resolution
 
-**File: `src/pages/SongPlayer.tsx`** (lines 957–1124)
+The root cause: when the primary song is marked `permanently_failed` (in `automation-trigger` or the stuck-order recovery in `process-scheduled-deliveries`), **nobody resets the bonus columns**. The bonus callback may never arrive (if the primary API call failed before or during the bonus call), leaving it stuck.
 
-Redesign the bonus section to mirror the primary song's layout:
+### Fix
 
-- **Large album art**: Replace the 48px-tall strip with a full `aspect-video` or large square image (matching the primary song's `aspect-square max-w-md` style but slightly smaller, e.g. `max-w-sm`)
-- **Prominent heading**: Move the genre emoji + title below the image, larger font (`text-2xl md:text-3xl font-bold`), centered like the primary song info
-- **Personalized copy**: Keep the existing genre-aware description but style it more prominently (larger text, not `text-sm`)
-- **Full-size player**: Match the primary player layout — slider on top, play button centered below (same `w-16 h-16 rounded-full` sizing already in place), volume controls on desktop
-- **Unlock CTA**: Make the button full-width and more prominent with a subtle background highlight
-- **Visual separator**: Add a decorative divider or section header above the bonus section (e.g. "✨ We made something extra for you" as a centered label)
+**1. Reset bonus on permanent failure** — In two locations where `permanently_failed` is set:
 
-### Part 2: Add Bonus Play + Checkout Click Tracking
+| File | Location |
+|------|----------|
+| `supabase/functions/automation-trigger/index.ts` | ~line 157, max retries block |
+| `supabase/functions/process-scheduled-deliveries/index.ts` | ~lines 230 and 261, stuck recovery blocks |
 
-Currently there is NO tracking for bonus track plays or checkout clicks. We need two new columns on the `orders` table and tracking calls from the frontend.
-
-**Database migration** — add 4 columns to `orders`:
-```sql
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS bonus_play_count integer DEFAULT 0;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS bonus_first_played_at timestamptz;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS bonus_checkout_clicked_at timestamptz;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS bonus_checkout_click_count integer DEFAULT 0;
+When marking an order as `permanently_failed`, also set:
+```
+bonus_automation_status → "failed"
+bonus_automation_last_error → "Primary song generation permanently failed"
 ```
 
-**File: `supabase/functions/track-song-engagement/index.ts`**
+This stops the admin UI from showing "Bonus Generating..." on dead orders.
 
-Extend the `TrackRequest` interface to support two new actions: `bonus_play` and `bonus_checkout_click`. For `bonus_play`: increment `bonus_play_count`, set `bonus_first_played_at` on first play. For `bonus_checkout_click`: increment `bonus_checkout_click_count`, set `bonus_checkout_clicked_at` on first click.
-
-Add these to the existing `type === "order"` handler alongside the current `play`/`download`/`error` actions.
-
-**File: `src/pages/SongPlayer.tsx`**
-
-- In `toggleBonusPlay`: fire a `bonus_play` tracking call (fire-and-forget, same pattern as primary play tracking)
-- In the unlock button's `onClick`: fire a `bonus_checkout_click` tracking call before initiating checkout
-
-### Part 3: Admin Bonus Engagement Dashboard
-
-**File: `src/components/admin/BonusTrackAnalytics.tsx`**
-
-Add two new metrics to the existing analytics panel:
-- **Previews Played**: count of orders where `bonus_play_count > 0` (with total play count sum)
-- **Checkout Clicks**: count of orders where `bonus_checkout_click_count > 0`
-- **Preview → Click Rate**: percentage of people who played the preview and then clicked to buy
-- **Click → Purchase Rate**: percentage of people who clicked checkout and actually unlocked
-
-These use the same `orders` array already passed as props — just filter on the new columns.
+**2. Also handle it in the callback failure path** — In `automation-suno-callback/index.ts`, when the primary callback reports a failure (error status from Suno), check if bonus is `audio_generating` and fail it too, since there's no point in a bonus without a primary song.
 
 ### Files Modified
 
 | File | Change |
 |------|--------|
-| `src/pages/SongPlayer.tsx` | Redesign bonus section layout; add tracking calls |
-| `supabase/functions/track-song-engagement/index.ts` | Add `bonus_play` and `bonus_checkout_click` actions |
-| `src/components/admin/BonusTrackAnalytics.tsx` | Add engagement funnel metrics |
-| SQL migration | Add 4 tracking columns to `orders` table |
+| `supabase/functions/automation-trigger/index.ts` | Add bonus fail when primary hits permanent failure |
+| `supabase/functions/process-scheduled-deliveries/index.ts` | Add bonus fail in stuck-order recovery |
+
+No database migration needed. The "AI Generate" retry button already clears bonus columns (from our recent fix), so retrying these orders will work correctly after this fix.
 
