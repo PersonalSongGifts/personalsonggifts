@@ -444,6 +444,10 @@ Deno.serve(async (req) => {
             automation_status: "failed",
             automation_last_error: `[CALLBACK] Suno task creation failed: ${task?.errorMessage || "Unknown error"}`,
             automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+            ...((!isBonusCallback && entity.bonus_automation_status === "audio_generating") ? {
+              bonus_automation_status: "failed",
+              bonus_automation_last_error: "Primary song generation failed",
+            } : {}),
           })
           .eq("id", entityId);
         return new Response("Task creation failed", { status: 200, headers: corsHeaders });
@@ -456,6 +460,10 @@ Deno.serve(async (req) => {
             automation_status: "failed",
             automation_last_error: `[CALLBACK] Audio generation failed: ${task?.errorMessage || "Unknown error"}`,
             automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+            ...((!isBonusCallback && entity.bonus_automation_status === "audio_generating") ? {
+              bonus_automation_status: "failed",
+              bonus_automation_last_error: "Primary song generation failed",
+            } : {}),
           })
           .eq("id", entityId);
         return new Response("Audio generation failed", { status: 200, headers: corsHeaders });
@@ -468,6 +476,10 @@ Deno.serve(async (req) => {
             automation_status: "failed",
             automation_last_error: `[CALLBACK] Content filtered by Suno: ${task?.errorMessage || "Sensitive content detected"}`,
             automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+            ...((!isBonusCallback && entity.bonus_automation_status === "audio_generating") ? {
+              bonus_automation_status: "failed",
+              bonus_automation_last_error: "Primary song generation failed",
+            } : {}),
           })
           .eq("id", entityId);
         return new Response("Content filtered", { status: 200, headers: corsHeaders });
@@ -480,6 +492,10 @@ Deno.serve(async (req) => {
             automation_status: "failed",
             automation_last_error: `[CALLBACK] Callback exception: ${task?.errorMessage || "Unknown error"}`,
             automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+            ...((!isBonusCallback && entity.bonus_automation_status === "audio_generating") ? {
+              bonus_automation_status: "failed",
+              bonus_automation_last_error: "Primary song generation failed",
+            } : {}),
           })
           .eq("id", entityId);
         return new Response("Callback exception", { status: 200, headers: corsHeaders });

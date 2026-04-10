@@ -159,6 +159,8 @@ Deno.serve(async (req) => {
         .update({
           automation_status: "permanently_failed",
           automation_last_error: `Exceeded max retries (${MAX_RETRIES})`,
+          bonus_automation_status: "failed",
+          bonus_automation_last_error: "Primary song generation permanently failed",
         })
         .eq("id", entityId);
       
