@@ -204,6 +204,7 @@ Deno.serve(async (req) => {
         automation_retry_count: 0,
         automation_last_error: null,
         automation_started_at: new Date().toISOString(),
+        ...(forceRun ? { short_retry_count: 0 } : {}),
       })
       .eq("id", entityId);
 
