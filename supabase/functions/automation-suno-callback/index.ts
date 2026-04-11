@@ -661,18 +661,42 @@ Deno.serve(async (req) => {
     console.log(`[CALLBACK] Estimated duration: ${estimatedDurationSec}s (${estimatedBitrate}kbps, ${audioBytes.length} bytes)`);
 
     if (estimatedDurationSec < 180) {
-      console.log(`[CALLBACK] ⚠️ Song too short (${estimatedDurationSec}s < 180s), flagging for review`);
+      console.log(`[CALLBACK] ⚠️ Song too short (${estimatedDurationSec}s < 180s)`);
       if (isBonusCallback) {
         await supabase.from(tableName).update({
           bonus_automation_status: "failed",
           bonus_automation_last_error: `Bonus song too short (${estimatedDurationSec}s), expected 180s+.`,
         }).eq("id", entityId);
       } else {
-        await supabase.from(tableName).update({
-          automation_status: "needs_review",
-          automation_last_error: `[CALLBACK] Song too short (${estimatedDurationSec}s), expected 180s+. May need lyrics extension and regeneration.`,
-        }).eq("id", entityId);
-        await logActivity(supabase, entityType, entityId, "audio_too_short", "system", `Audio ${estimatedDurationSec}s, flagged for review`);
+        const currentShortRetry = (entity.short_retry_count as number) || 0;
+        const MAX_SHORT_RETRIES = 2;
+
+        if (currentShortRetry < MAX_SHORT_RETRIES) {
+          console.log(`[CALLBACK] Auto-retrying short song (attempt ${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`);
+          await supabase.from(tableName).update({
+            automation_status: "failed",
+            automation_last_error: `Song too short (${estimatedDurationSec}s), auto-retrying with new lyrics (attempt ${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`,
+            short_retry_count: currentShortRetry + 1,
+            automation_lyrics: null,
+            bonus_automation_status: null,
+            bonus_automation_task_id: null,
+            bonus_automation_started_at: null,
+            bonus_automation_last_error: null,
+            bonus_song_url: null,
+            bonus_preview_url: null,
+            bonus_cover_image_url: null,
+            bonus_song_title: null,
+            bonus_style_prompt: null,
+          }).eq("id", entityId);
+          await logActivity(supabase, entityType, entityId, "audio_too_short_retry", "system", `Audio ${estimatedDurationSec}s, auto-retrying with new lyrics (attempt ${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`);
+        } else {
+          console.log(`[CALLBACK] Max short retries reached, flagging for manual review`);
+          await supabase.from(tableName).update({
+            automation_status: "needs_review",
+            automation_last_error: `Song too short (${estimatedDurationSec}s) after ${MAX_SHORT_RETRIES} auto-retries. Needs manual review.`,
+          }).eq("id", entityId);
+          await logActivity(supabase, entityType, entityId, "audio_too_short", "system", `Audio ${estimatedDurationSec}s after ${MAX_SHORT_RETRIES} retries, flagged for review`);
+        }
       }
 
       return new Response(
