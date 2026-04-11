@@ -112,6 +112,7 @@ export type Database = {
           recipient_name_pronunciation: string | null
           recipient_type: string
           sent_at: string | null
+          short_retry_count: number
           singer_preference: string
           sms_last_error: string | null
           sms_opt_in: boolean
@@ -194,6 +195,7 @@ export type Database = {
           recipient_name_pronunciation?: string | null
           recipient_type: string
           sent_at?: string | null
+          short_retry_count?: number
           singer_preference: string
           sms_last_error?: string | null
           sms_opt_in?: boolean
@@ -276,6 +278,7 @@ export type Database = {
           recipient_name_pronunciation?: string | null
           recipient_type?: string
           sent_at?: string | null
+          short_retry_count?: number
           singer_preference?: string
           sms_last_error?: string | null
           sms_opt_in?: boolean
@@ -437,6 +440,7 @@ export type Database = {
           sender_context: string | null
           sent_at: string | null
           sent_to_emails: Json | null
+          short_retry_count: number
           singer_preference: string
           sms_last_error: string | null
           sms_opt_in: boolean
@@ -554,6 +558,7 @@ export type Database = {
           sender_context?: string | null
           sent_at?: string | null
           sent_to_emails?: Json | null
+          short_retry_count?: number
           singer_preference: string
           sms_last_error?: string | null
           sms_opt_in?: boolean
@@ -671,6 +676,7 @@ export type Database = {
           sender_context?: string | null
           sent_at?: string | null
           sent_to_emails?: Json | null
+          short_retry_count?: number
           singer_preference?: string
           sms_last_error?: string | null
           sms_opt_in?: boolean
@@ -1065,6 +1071,7 @@ export type Database = {
           sender_context: string | null
           sent_at: string | null
           sent_to_emails: Json | null
+          short_retry_count: number
           singer_preference: string
           sms_last_error: string | null
           sms_opt_in: boolean
