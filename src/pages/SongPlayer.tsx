@@ -768,7 +768,7 @@ const SongPlayer = () => {
             ) : (
               <Lock className="h-4 w-4" />
             )}
-            {songData.download_unlocked ? "Download" : "Download Song + Unlimited Commercial Rights & Usage — $49.00 USD"}
+            {songData.download_unlocked ? "Download" : "Download Song + Unlimited Commercial Rights & Usage — $19.99 USD"}
           </Button>
           
           <DropdownMenu>
