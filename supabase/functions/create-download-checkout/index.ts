@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DOWNLOAD_PRICE_ID = "price_1TJLK5Gax2m9otRwT1N6Iceg";
+const DOWNLOAD_PRICE_ID = "price_1TLTh3Gax2m9otRwBESnhYKX";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
