@@ -2749,8 +2749,37 @@ Deno.serve(async (req) => {
         lyrics_raw_attempt_2: null,
       };
 
-      // If clearAssets=true, also wipe the song
+      // If clearAssets=true, backup then wipe the song
       if (clearAssets) {
+        // Fetch the current entity to check for existing song
+        const { data: currentEntity, error: fetchErr } = await supabase
+          .from(entityType)
+          .select("*")
+          .eq("id", entityId!)
+          .maybeSingle();
+
+        if (fetchErr) throw fetchErr;
+
+        // Backup current song before wiping
+        if (currentEntity) {
+          try {
+            const backupResult = await backupSongFile(
+              supabaseUrl, supabaseServiceKey, supabase,
+              entityType === "orders" ? "orders" : "leads",
+              entityId!,
+              currentEntity as Record<string, unknown>
+            );
+            if (backupResult.backed_up) {
+              updates.prev_song_url = backupResult.prev_song_url;
+              updates.prev_automation_lyrics = backupResult.prev_automation_lyrics;
+              updates.prev_cover_image_url = backupResult.prev_cover_image_url;
+              await logActivity(supabase, orderId ? "order" : "lead", entityId!, "song_backup_created", "admin", "Backup created before reset + regenerate");
+            }
+          } catch (backupErr) {
+            console.error("[ADMIN] Backup failed during reset, proceeding anyway:", backupErr);
+          }
+        }
+
         if (entityType === "orders") {
           updates.song_url = null;
           updates.song_title = null;
