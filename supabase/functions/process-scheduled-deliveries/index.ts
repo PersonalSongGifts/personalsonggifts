@@ -1976,17 +1976,16 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
           // Kick off automation immediately
           try {
+            const triggerBody = tableName === "orders"
+              ? { orderId: entity.id, forceRun: true }
+              : { leadId: entity.id, forceRun: true };
             await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${supabaseServiceKey}`,
               },
-              body: JSON.stringify({
-                entityType: tableName === "orders" ? "order" : "lead",
-                entityId: entity.id,
-                forceRun: true,
-              }),
+              body: JSON.stringify(triggerBody),
             });
             recoveryResults.push({ type: tableName, id: entity.id as string, success: true });
           } catch (e) {
