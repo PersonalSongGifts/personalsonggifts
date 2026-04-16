@@ -75,7 +75,25 @@ Deno.serve(async (req) => {
       .eq("revision_token", revision_token)
       .maybeSingle();
 
-    if (orderError || !order) {
+    // If no paid order found, try a lead lookup
+    if (!order || order.price_cents === null || order.price_cents === undefined) {
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("revision_token", revision_token)
+        .maybeSingle();
+
+      if (lead) {
+        return await handleLeadRevision(supabase, supabaseUrl, supabaseServiceKey, lead, fields);
+      }
+
+      return new Response(
+        JSON.stringify({ error: "Order not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (orderError) {
       return new Response(
         JSON.stringify({ error: "Order not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
