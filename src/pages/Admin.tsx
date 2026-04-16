@@ -1023,7 +1023,7 @@ const { data, error } = await listOrders("all", 0, 250);
       try {
         await supabase.functions.invoke("automation-trigger", {
           method: "POST",
-          body: { entityType: "order", entityId: selectedOrder.id, forceRun: true },
+          body: { orderId: selectedOrder.id, forceRun: true },
         });
       } catch (triggerErr) {
         console.warn("Reset succeeded but automation-trigger failed (cron will pick it up):", triggerErr);
