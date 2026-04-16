@@ -91,9 +91,11 @@ export type Database = {
           lyrics_raw_attempt_1: string | null
           lyrics_raw_attempt_2: string | null
           lyrics_word_count: number | null
+          max_revisions: number | null
           next_attempt_at: string | null
           occasion: string
           order_id: string | null
+          pending_revision: boolean | null
           phone: string | null
           phone_e164: string | null
           prev_automation_lyrics: string | null
@@ -111,6 +113,11 @@ export type Database = {
           recipient_name: string
           recipient_name_pronunciation: string | null
           recipient_type: string
+          revision_count: number | null
+          revision_reason: string | null
+          revision_requested_at: string | null
+          revision_status: string | null
+          revision_token: string | null
           sent_at: string | null
           short_retry_count: number
           singer_preference: string
@@ -174,9 +181,11 @@ export type Database = {
           lyrics_raw_attempt_1?: string | null
           lyrics_raw_attempt_2?: string | null
           lyrics_word_count?: number | null
+          max_revisions?: number | null
           next_attempt_at?: string | null
           occasion: string
           order_id?: string | null
+          pending_revision?: boolean | null
           phone?: string | null
           phone_e164?: string | null
           prev_automation_lyrics?: string | null
@@ -194,6 +203,11 @@ export type Database = {
           recipient_name: string
           recipient_name_pronunciation?: string | null
           recipient_type: string
+          revision_count?: number | null
+          revision_reason?: string | null
+          revision_requested_at?: string | null
+          revision_status?: string | null
+          revision_token?: string | null
           sent_at?: string | null
           short_retry_count?: number
           singer_preference: string
@@ -257,9 +271,11 @@ export type Database = {
           lyrics_raw_attempt_1?: string | null
           lyrics_raw_attempt_2?: string | null
           lyrics_word_count?: number | null
+          max_revisions?: number | null
           next_attempt_at?: string | null
           occasion?: string
           order_id?: string | null
+          pending_revision?: boolean | null
           phone?: string | null
           phone_e164?: string | null
           prev_automation_lyrics?: string | null
@@ -277,6 +293,11 @@ export type Database = {
           recipient_name?: string
           recipient_name_pronunciation?: string | null
           recipient_type?: string
+          revision_count?: number | null
+          revision_reason?: string | null
+          revision_requested_at?: string | null
+          revision_status?: string | null
+          revision_token?: string | null
           sent_at?: string | null
           short_retry_count?: number
           singer_preference?: string
@@ -836,8 +857,9 @@ export type Database = {
           id: string
           is_pre_delivery: boolean
           language: string | null
+          lead_id: string | null
           occasion: string | null
-          order_id: string
+          order_id: string | null
           original_values: Json
           recipient_name: string | null
           recipient_name_pronunciation: string | null
@@ -866,8 +888,9 @@ export type Database = {
           id?: string
           is_pre_delivery?: boolean
           language?: string | null
+          lead_id?: string | null
           occasion?: string | null
-          order_id: string
+          order_id?: string | null
           original_values?: Json
           recipient_name?: string | null
           recipient_name_pronunciation?: string | null
@@ -896,8 +919,9 @@ export type Database = {
           id?: string
           is_pre_delivery?: boolean
           language?: string | null
+          lead_id?: string | null
           occasion?: string | null
-          order_id?: string
+          order_id?: string | null
           original_values?: Json
           recipient_name?: string | null
           recipient_name_pronunciation?: string | null

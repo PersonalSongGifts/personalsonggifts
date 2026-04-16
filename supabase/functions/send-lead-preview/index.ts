@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { sendSms } from "../_shared/brevo-sms.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
+import { getActivePromoForBanner, renderPromoBannerHtml, renderPromoBannerText } from "../_shared/email-promo-banner.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password",
@@ -130,7 +131,22 @@ Deno.serve(async (req) => {
     }
 
     const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}`;
+    const revisionUrl = lead.revision_token
+      ? `https://personalsonggifts.lovable.app/song/revision/${lead.revision_token}`
+      : null;
     const messageId = `<${lead.id}.${Date.now()}@personalsonggifts.com>`;
+
+    // Dynamic sale banner
+    const promo = await getActivePromoForBanner(supabase);
+    const bannerHtml = renderPromoBannerHtml(promo);
+    const bannerText = renderPromoBannerText(promo);
+
+    const revisionHtmlBlock = revisionUrl
+      ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">Want changes? <a href="${revisionUrl}" style="color: #1E3A5F;">Request a revision</a> and we'll regenerate your preview within ~12 hours.</p>`
+      : "";
+    const revisionTextBlock = revisionUrl
+      ? `\nWant changes? Request a revision here and we'll regenerate your preview within ~12 hours: ${revisionUrl}\n`
+      : "";
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -140,6 +156,7 @@ Deno.serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
+  ${bannerHtml}
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${lead.customer_name},</p>
 
@@ -158,6 +175,8 @@ Deno.serve(async (req) => {
       <a href="${previewUrl}" style="color: #1E3A5F;">${previewUrl}</a>
     </p>
 
+    ${revisionHtmlBlock}
+
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0;">
       — The Personal Song Gifts Team
     </p>
@@ -174,14 +193,14 @@ Deno.serve(async (req) => {
 </html>
     `;
 
-    const textContent = `Hi ${lead.customer_name},
+    const textContent = `${bannerText}Hi ${lead.customer_name},
 
 We created a personalized ${lead.occasion} song for ${lead.recipient_name} and wanted you to hear it first.
 
 This is a short preview. Once you complete your purchase, you'll receive the full song.
 
 Listen to the preview here: ${previewUrl}
-
+${revisionTextBlock}
 — The Personal Song Gifts Team
 
 ---

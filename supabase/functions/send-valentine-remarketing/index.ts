@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { getActivePromoForBanner, renderPromoBannerHtml, renderPromoBannerText, PromoBannerData } from "../_shared/email-promo-banner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

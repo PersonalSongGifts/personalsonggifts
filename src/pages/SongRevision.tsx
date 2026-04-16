@@ -55,7 +55,7 @@ interface OrderData {
 interface RevisionPageData {
   status: string;
   message?: string;
-  form_type?: "post_delivery_redo" | "pre_delivery_update";
+  form_type?: "post_delivery_redo" | "pre_delivery_update" | "lead_revision";
   revisions_remaining?: number;
   order?: OrderData;
   existing_revision?: any;
@@ -136,6 +136,7 @@ const SongRevision = () => {
   };
 
   const isPostDelivery = pageData?.form_type === "post_delivery_redo";
+  const isLeadRevision = pageData?.form_type === "lead_revision";
 
   const postDeliveryDisclaimers = [
     { id: "replace", label: "My original song will be permanently replaced with the new version" },
@@ -152,7 +153,19 @@ const SongRevision = () => {
     { id: "tos", label: "I agree to the Terms of Service" },
   ];
 
-  const disclaimers = isPostDelivery ? postDeliveryDisclaimers : preDeliveryDisclaimers;
+  const leadRevisionDisclaimers = [
+    { id: "replace", label: "My current 45-second preview will be replaced with a new version" },
+    { id: "uses_revision", label: "I understand this uses my one free revision — it cannot be undone" },
+    { id: "unique", label: "Each remake is uniquely generated and will sound different from the current preview" },
+    { id: "timeline", label: "I'll receive my new preview by email within ~12 hours" },
+    { id: "tos", label: "I agree to the Terms of Service" },
+  ];
+
+  const disclaimers = isLeadRevision
+    ? leadRevisionDisclaimers
+    : isPostDelivery
+      ? postDeliveryDisclaimers
+      : preDeliveryDisclaimers;
   const allDisclaimersChecked = disclaimers.every((d) => disclaimersChecked[d.id]);
 
   const handleSubmit = async () => {
@@ -223,7 +236,14 @@ const SongRevision = () => {
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
               <Check className="h-8 w-8 text-primary" />
             </div>
-            {submittedFormType === "post_delivery_redo" ? (
+            {submittedFormType === "lead_revision" ? (
+              <>
+                <h1 className="text-2xl font-semibold mb-3 text-foreground">Revision Received!</h1>
+                <p className="text-muted-foreground mb-4">
+                  Thanks for your feedback! We're regenerating your 45-second preview now. Your updated preview will be emailed to you within ~12 hours.
+                </p>
+              </>
+            ) : submittedFormType === "post_delivery_redo" ? (
               <>
                 <h1 className="text-2xl font-semibold mb-3 text-foreground">Revision Submitted!</h1>
                 <p className="text-muted-foreground mb-4">
@@ -283,10 +303,19 @@ const SongRevision = () => {
           <div className="text-center mb-8">
             <Music className="w-12 h-12 text-primary mx-auto mb-3" />
             <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              {isPostDelivery ? "Song Remake Request" : "Add or Update Your Song Details"}
+              {isLeadRevision
+                ? "Update Your Preview"
+                : isPostDelivery
+                  ? "Song Remake Request"
+                  : "Add or Update Your Song Details"}
             </h1>
-            {isPostDelivery && pageData.revisions_remaining !== undefined && (
-              <p className="text-sm font-medium text-primary">
+            {isLeadRevision && (
+              <p className="text-sm text-muted-foreground max-w-md mx-auto mt-2">
+                Make changes below and we'll regenerate your 45-second preview. You'll get a new email within ~12 hours.
+              </p>
+            )}
+            {(isPostDelivery || isLeadRevision) && pageData.revisions_remaining !== undefined && (
+              <p className="text-sm font-medium text-primary mt-2">
                 {pageData.revisions_remaining} {pageData.revisions_remaining === 1 ? "redo" : "redos"} remaining
               </p>
             )}
@@ -558,6 +587,8 @@ const SongRevision = () => {
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Submitting...
                 </>
+              ) : isLeadRevision ? (
+                "Submit & Regenerate Preview"
               ) : isPostDelivery ? (
                 "Submit Revision Request"
               ) : (

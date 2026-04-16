@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
 import { logActivity } from "../_shared/activity-log.ts";
+import { getActivePromoForBanner, renderPromoBannerHtml, renderPromoBannerText, PromoBannerData } from "../_shared/email-promo-banner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,16 +22,19 @@ interface ActivePromo {
 }
 
 function buildFollowupEmail(
-  lead: { customer_name: string; recipient_name: string; preview_token: string },
+  lead: { customer_name: string; recipient_name: string; preview_token: string; revision_token?: string | null },
   email: string,
-  promo?: ActivePromo | null
+  promo: ActivePromo | null,
+  bannerData: PromoBannerData | null,
 ) {
   const firstName = lead.customer_name.split(" ")[0];
   const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}?followup=true`;
+  const revisionUrl = lead.revision_token
+    ? `https://personalsonggifts.lovable.app/song/revision/${lead.revision_token}`
+    : null;
 
   const subject = `${lead.recipient_name}'s song is still waiting`;
 
-  // Dynamic pricing copy
   const promoPrice = promo
     ? `$${(promo.lead_price_cents / 100).toFixed(2)}`
     : "$39.99";
@@ -40,7 +44,17 @@ function buildFollowupEmail(
     ? `We're running a sale right now — get the full song for just ${promoPrice} (normally ${originalPrice}). No code needed, the discount is already applied to the link below.`
     : `So we're taking $10 off — no code needed, it's already applied to the link below.`;
 
-  const textContent = `Hi ${firstName},
+  const bannerHtml = renderPromoBannerHtml(bannerData);
+  const bannerText = renderPromoBannerText(bannerData);
+
+  const revisionHtmlBlock = revisionUrl
+    ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">Want changes to the preview? <a href="${revisionUrl}" style="color: #1E3A5F;">Request a revision</a> — we'll regenerate it within ~12 hours.</p>`
+    : "";
+  const revisionTextBlock = revisionUrl
+    ? `\nWant changes to the preview? Request a revision here: ${revisionUrl}\n`
+    : "";
+
+  const textContent = `${bannerText}Hi ${firstName},
 
 You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.
 
@@ -49,7 +63,7 @@ We wanted to reach out because we'd love for ${lead.recipient_name} to actually 
 ${previewUrl}
 
 The full song is between 3–6 minutes long and includes everything you shared with us about ${lead.recipient_name}.
-
+${revisionTextBlock}
 If you have any questions just reply to this email — a real person will get back to you.
 
 — The Personal Song Gifts team
@@ -67,6 +81,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
+  ${bannerHtml}
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${firstName},</p>
 
@@ -85,6 +100,8 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
       The full song is between 3–6 minutes long and includes everything you shared with us about ${lead.recipient_name}.
     </p>
+
+    ${revisionHtmlBlock}
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
       If you have any questions just reply to this email — a real person will get back to you.
@@ -264,7 +281,9 @@ Deno.serve(async (req) => {
       throw new Error("BREVO_API_KEY not configured");
     }
 
-    const { subject, htmlContent, textContent } = buildFollowupEmail(lead, lead.email, activePromo);
+    const bannerData = await getActivePromoForBanner(supabase);
+
+    const { subject, htmlContent, textContent } = buildFollowupEmail(lead, lead.email, activePromo, bannerData);
     const messageId = `<${lead.id}.followup.${Date.now()}@personalsonggifts.com>`;
 
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {

@@ -54,21 +54,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!order) {
-      return new Response(
-        JSON.stringify({ status: "not_found", message: "This page could not be found." }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // If we found an order with a confirmed payment, handle the order flow
+    if (order && order.price_cents !== null && order.price_cents !== undefined) {
+      return handleOrderRequest(supabase, order);
     }
 
-    // Check Stripe payment confirmed
-    if (order.price_cents === null || order.price_cents === undefined) {
-      return new Response(
-        JSON.stringify({ status: "not_found", message: "This order could not be found." }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Otherwise try to find a lead with this revision_token
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("id, captured_at, status, revision_token, revision_count, max_revisions, revision_requested_at, revision_status, preview_song_url, preview_sent_at, recipient_name, customer_name, email, recipient_type, occasion, genre, singer_preference, lyrics_language_code, recipient_name_pronunciation, special_qualities, favorite_memory, special_message")
+      .eq("revision_token", token)
+      .maybeSingle();
+
+    if (lead) {
+      return handleLeadRequest(supabase, lead);
     }
 
+    return new Response(
+      JSON.stringify({ status: "not_found", message: "This page could not be found." }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("get-revision-page error:", error);
+    return new Response(
+      JSON.stringify({ error: "Internal server error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
+
+async function handleOrderRequest(supabase: ReturnType<typeof createClient>, order: any): Promise<Response> {
     // Check token expiry
     const { data: expirySetting } = await supabase
       .from("admin_settings")
@@ -76,7 +91,7 @@ Deno.serve(async (req) => {
       .eq("key", "revision_link_expiry_days")
       .maybeSingle();
 
-    const expiryDays = expirySetting ? parseInt(expirySetting.value, 10) : 90;
+    const expiryDays = expirySetting ? parseInt((expirySetting as any).value, 10) : 90;
     const createdAt = new Date(order.created_at);
     const expiryDate = new Date(createdAt.getTime() + expiryDays * 24 * 60 * 60 * 1000);
 
@@ -137,14 +152,13 @@ Deno.serve(async (req) => {
 
     // Processing
     if (order.revision_status === "processing") {
-      // Estimate hours based on tier
       const { data: delaySetting } = await supabase
         .from("admin_settings")
         .select("value")
         .eq("key", order.pricing_tier === "priority" ? "revision_delivery_delay_hours_rush" : "revision_delivery_delay_hours")
         .maybeSingle();
 
-      const hours = delaySetting ? parseInt(delaySetting.value, 10) : 12;
+      const hours = delaySetting ? parseInt((delaySetting as any).value, 10) : 12;
 
       return new Response(
         JSON.stringify({
@@ -189,14 +203,63 @@ Deno.serve(async (req) => {
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
-    console.error("get-revision-page error:", error);
+}
+
+async function handleLeadRequest(supabase: ReturnType<typeof createClient>, lead: any): Promise<Response> {
+  // Expiry: 90 days from capture (same default as orders)
+  const { data: expirySetting } = await supabase
+    .from("admin_settings")
+    .select("value")
+    .eq("key", "revision_link_expiry_days")
+    .maybeSingle();
+  const expiryDays = expirySetting ? parseInt((expirySetting as any).value, 10) : 90;
+  const expiryDate = new Date(new Date(lead.captured_at).getTime() + expiryDays * 24 * 60 * 60 * 1000);
+  if (new Date() > expiryDate) {
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ status: "expired", message: "This preview link has expired. Please contact support@personalsonggifts.com." }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+
+  if (lead.status === "converted") {
+    return new Response(
+      JSON.stringify({ status: "not_found", message: "This page could not be found." }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Currently regenerating
+  if (lead.revision_status === "processing") {
+    return new Response(
+      JSON.stringify({
+        status: "processing",
+        message: "Your updated 45-second preview is currently being created! You'll receive a new email within ~12 hours.",
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Used all revisions
+  if ((lead.revision_count || 0) >= (lead.max_revisions || 1)) {
+    return new Response(
+      JSON.stringify({
+        status: "no_revisions_left",
+        message: "You've used your free revision. If you need further changes, please contact us at support@personalsonggifts.com.",
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: "form",
+      form_type: "lead_revision",
+      revisions_remaining: Math.max(0, (lead.max_revisions || 1) - (lead.revision_count || 0)),
+      order: buildLeadData(lead),
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
 
 function buildOrderData(order: any) {
   return {
@@ -215,5 +278,25 @@ function buildOrderData(order: any) {
     special_message: order.special_message || "",
     pricing_tier: order.pricing_tier,
     sender_context: order.sender_context || "",
+  };
+}
+
+function buildLeadData(lead: any) {
+  return {
+    id: lead.id,
+    recipient_name: lead.recipient_name,
+    customer_name: lead.customer_name,
+    delivery_email: lead.email,
+    recipient_type: lead.recipient_type,
+    occasion: lead.occasion,
+    genre: lead.genre,
+    singer_preference: lead.singer_preference,
+    language: lead.lyrics_language_code,
+    recipient_name_pronunciation: lead.recipient_name_pronunciation || "",
+    special_qualities: lead.special_qualities,
+    favorite_memory: lead.favorite_memory,
+    special_message: lead.special_message || "",
+    pricing_tier: "lead",
+    sender_context: "",
   };
 }
