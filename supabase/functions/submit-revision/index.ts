@@ -565,3 +565,189 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// ============ LEAD REVISION HANDLER ============
+async function handleLeadRevision(
+  supabase: any,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  lead: any,
+  fields: Record<string, any>,
+): Promise<Response> {
+  // Already processing
+  if (lead.revision_status === "processing") {
+    return new Response(
+      JSON.stringify({ error: "A revision is currently being processed" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Out of revisions
+  if ((lead.revision_count || 0) >= (lead.max_revisions || 1)) {
+    return new Response(
+      JSON.stringify({ error: "No revisions remaining" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Cooldown
+  if (lead.revision_requested_at) {
+    const cooldownEnd = new Date(new Date(lead.revision_requested_at).getTime() + 60 * 60 * 1000);
+    if (new Date() < cooldownEnd) {
+      return new Response(
+        JSON.stringify({ error: "Please wait before submitting another revision request" }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+
+  // Strip URLs from text fields
+  const textFields = ["special_qualities", "favorite_memory", "special_message", "style_notes", "anything_else", "recipient_name_pronunciation"];
+  for (const f of textFields) {
+    if (fields[f]) fields[f] = stripUrls(fields[f]);
+  }
+
+  // Compute changes
+  const leadFieldMap: Record<string, string> = {
+    recipient_name: "recipient_name",
+    customer_name: "customer_name",
+    delivery_email: "email",
+    recipient_type: "recipient_type",
+    occasion: "occasion",
+    genre: "genre",
+    singer_preference: "singer_preference",
+    language: "lyrics_language_code",
+    recipient_name_pronunciation: "recipient_name_pronunciation",
+    special_qualities: "special_qualities",
+    favorite_memory: "favorite_memory",
+    special_message: "special_message",
+  };
+
+  const fieldsChanged: string[] = [];
+  const originalValues: Record<string, any> = {};
+  const summaryParts: string[] = [];
+
+  for (const [field, leadCol] of Object.entries(leadFieldMap)) {
+    const currentVal = (lead as any)[leadCol] ?? "";
+    const submittedVal = fields[field] ?? "";
+    originalValues[field] = currentVal;
+    if (String(currentVal).trim() !== String(submittedVal).trim() && submittedVal !== "") {
+      fieldsChanged.push(field);
+      summaryParts.push(`${field.replace(/_/g, " ")} updated`);
+    }
+  }
+  for (const f of ["style_notes", "tempo", "anything_else"]) {
+    if (fields[f] && fields[f].trim() !== "") {
+      fieldsChanged.push(f);
+      summaryParts.push(`${f.replace(/_/g, " ")} provided`);
+    }
+  }
+
+  const changesSummary = summaryParts.length > 0 ? summaryParts.join("; ") : "No changes detected";
+
+  // Insert revision_request with lead_id
+  const revisionData: Record<string, any> = {
+    lead_id: lead.id,
+    status: "approved",
+    is_pre_delivery: true,
+    changes_summary: changesSummary,
+    original_values: originalValues,
+    fields_changed: fieldsChanged,
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: "auto",
+  };
+  for (const f of EDITABLE_FIELDS) {
+    if (fields[f] !== undefined) revisionData[f] = fields[f];
+  }
+  await supabase.from("revision_requests").insert(revisionData);
+
+  // Apply field updates to lead + backup current preview + clear automation
+  const leadUpdate: Record<string, any> = {
+    revision_status: "processing",
+    revision_requested_at: new Date().toISOString(),
+    revision_reason: changesSummary,
+    revision_count: (lead.revision_count || 0) + 1,
+    pending_revision: false,
+
+    // Snapshot current preview to prev_* slots (single-slot backup)
+    prev_song_url: lead.preview_song_url || null,
+    prev_automation_lyrics: lead.automation_lyrics || null,
+    prev_cover_image_url: lead.cover_image_url || null,
+
+    // Clear automation so it regenerates
+    automation_status: null,
+    automation_task_id: null,
+    automation_lyrics: null,
+    automation_started_at: null,
+    automation_retry_count: 0,
+    automation_last_error: null,
+    automation_raw_callback: null,
+    automation_style_id: null,
+    automation_audio_url_source: null,
+    generated_at: null,
+    inputs_hash: null,
+    next_attempt_at: null,
+    automation_manual_override_at: null,
+    lyrics_language_qa: null,
+    lyrics_raw_attempt_1: null,
+    lyrics_raw_attempt_2: null,
+
+    // Clear preview so it can be re-sent after regen
+    preview_song_url: null,
+    cover_image_url: null,
+    song_title: null,
+    preview_sent_at: null,
+    follow_up_sent_at: null,
+    status: "lead",
+
+    // 12h timer from submission
+    earliest_generate_at: new Date(Date.now() + 1 * 60 * 1000).toISOString(),
+    target_send_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+  };
+
+  // Apply user-edited fields
+  for (const f of fieldsChanged) {
+    const leadCol = leadFieldMap[f];
+    if (leadCol && fields[f] !== undefined && fields[f] !== null) {
+      leadUpdate[leadCol] = fields[f];
+    }
+  }
+
+  await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
+
+  // Trigger automation
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ leadId: lead.id, forceRun: true }),
+    });
+  } catch (e) {
+    console.error("[LEAD-REVISION] trigger error:", e);
+  }
+
+  // Activity log
+  try {
+    await supabase.from("order_activity_log").insert({
+      entity_type: "lead",
+      entity_id: lead.id,
+      event_type: "revision_auto_approved",
+      actor: "system",
+      details: `Lead revision auto-approved: ${fieldsChanged.length} field(s) — regenerating preview`,
+      metadata: { fields_changed: fieldsChanged },
+    });
+  } catch (_) {}
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      form_type: "lead_revision",
+      revisions_remaining: Math.max(0, (lead.max_revisions || 1) - ((lead.revision_count || 0) + 1)),
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
