@@ -690,12 +690,26 @@ Deno.serve(async (req) => {
           }).eq("id", entityId);
           await logActivity(supabase, entityType, entityId, "audio_too_short_retry", "system", `Audio ${estimatedDurationSec}s, auto-retrying with new lyrics (attempt ${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`);
         } else {
-          console.log(`[CALLBACK] Max short retries reached, flagging for manual review`);
-          await supabase.from(tableName).update({
-            automation_status: "needs_review",
-            automation_last_error: `Song too short (${estimatedDurationSec}s) after ${MAX_SHORT_RETRIES} auto-retries. Needs manual review.`,
-          }).eq("id", entityId);
-          await logActivity(supabase, entityType, entityId, "audio_too_short", "system", `Audio ${estimatedDurationSec}s after ${MAX_SHORT_RETRIES} retries, flagged for review`);
+          // INVARIANT: Never write needs_review unless we've actually exhausted retries.
+          // This guards against a regression of the original bug shape (orders flagged
+          // for manual review on the very first short song with short_retry_count=0).
+          if (currentShortRetry < MAX_SHORT_RETRIES) {
+            console.warn(`[CALLBACK] ⚠️ INVARIANT VIOLATION: about to write needs_review with short_retry_count=${currentShortRetry} < ${MAX_SHORT_RETRIES}. Forcing retry path instead.`);
+            await supabase.from(tableName).update({
+              automation_status: "failed",
+              automation_last_error: `Song too short (${estimatedDurationSec}s), invariant-guarded auto-retry (count=${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`,
+              short_retry_count: currentShortRetry + 1,
+              automation_lyrics: null,
+            }).eq("id", entityId);
+            await logActivity(supabase, entityType, entityId, "audio_too_short_retry", "system", `Invariant-guarded retry, count=${currentShortRetry + 1}`);
+          } else {
+            console.log(`[CALLBACK] Max short retries reached, flagging for manual review`);
+            await supabase.from(tableName).update({
+              automation_status: "needs_review",
+              automation_last_error: `Song too short (${estimatedDurationSec}s) after ${MAX_SHORT_RETRIES} auto-retries. Needs manual review.`,
+            }).eq("id", entityId);
+            await logActivity(supabase, entityType, entityId, "audio_too_short", "system", `Audio ${estimatedDurationSec}s after ${MAX_SHORT_RETRIES} retries, flagged for review`);
+          }
         }
       }
 

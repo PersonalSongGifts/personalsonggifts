@@ -1914,6 +1914,95 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       console.error("[FOLLOWUP] Lead follow-up error:", e);
     }
 
+    // ======= NEEDS_REVIEW AUTO-RECOVERY WATCHDOG =======
+    // Rescues orders/leads that landed in `needs_review` due to short-song or legacy
+    // pre-retry-era errors. Caps at 1 auto-recovery per entity (auto_recovery_count).
+    // Real review cases (lyrics QA, etc.) are skipped via the error-pattern filter below.
+    try {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const recoveryResults: Array<{ type: string; id: string; success: boolean; error?: string }> = [];
+
+      // Match the legacy "lyrics extension" error OR any "song too short" error where
+      // short_retry_count hasn't been bumped (indicating the retry loop never ran).
+      const errorMatch = "%too short%,%lyrics extension%";
+
+      for (const tableName of ["orders", "leads"] as const) {
+        const { data: stuck } = await supabase
+          .from(tableName)
+          .select("id, automation_last_error, short_retry_count, auto_recovery_count")
+          .eq("automation_status", "needs_review")
+          .is("dismissed_at", null)
+          .lte("automation_started_at", oneHourAgo)
+          .lt("auto_recovery_count", 1)
+          .or(`automation_last_error.ilike.%lyrics extension%,automation_last_error.ilike.%too short%`)
+          .limit(5);
+
+        for (const entity of (stuck || [])) {
+          // Skip lyrics QA failures — those need a human
+          const err = (entity.automation_last_error as string | null) || "";
+          if (err.toLowerCase().includes("language qa")) continue;
+
+          console.log(`[WATCHDOG] Auto-recovering stuck ${tableName.slice(0, -1)} ${entity.id} (error: ${err.slice(0, 80)})`);
+
+          const { error: updateErr } = await supabase
+            .from(tableName)
+            .update({
+              automation_status: "pending",
+              automation_lyrics: null,
+              automation_last_error: null,
+              automation_task_id: null,
+              automation_started_at: null,
+              short_retry_count: 0,
+              auto_recovery_count: ((entity.auto_recovery_count as number) || 0) + 1,
+              next_attempt_at: null,
+            })
+            .eq("id", entity.id);
+
+          if (updateErr) {
+            console.error(`[WATCHDOG] Reset failed for ${entity.id}:`, updateErr);
+            recoveryResults.push({ type: tableName, id: entity.id as string, success: false, error: updateErr.message });
+            continue;
+          }
+
+          await logActivity(
+            supabase,
+            tableName === "orders" ? "order" : "lead",
+            entity.id as string,
+            "auto_recovered_from_needs_review",
+            "system",
+            `Watchdog auto-recovery (was: ${err.slice(0, 100)})`,
+          );
+
+          // Kick off automation immediately
+          try {
+            await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                entityType: tableName === "orders" ? "order" : "lead",
+                entityId: entity.id,
+                forceRun: true,
+              }),
+            });
+            recoveryResults.push({ type: tableName, id: entity.id as string, success: true });
+          } catch (e) {
+            console.error(`[WATCHDOG] automation-trigger failed for ${entity.id}:`, e);
+            recoveryResults.push({ type: tableName, id: entity.id as string, success: false, error: e instanceof Error ? e.message : "Unknown" });
+          }
+        }
+      }
+
+      results.autoRecovery = { count: recoveryResults.length, details: recoveryResults };
+      if (recoveryResults.length > 0) {
+        console.log(`[WATCHDOG] Auto-recovered ${recoveryResults.length} stuck entities`);
+      }
+    } catch (e) {
+      console.error("[WATCHDOG] Auto-recovery error:", e);
+    }
+
     return new Response(JSON.stringify(results), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

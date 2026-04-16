@@ -1019,11 +1019,21 @@ const { data, error } = await listOrders("all", 0, 250);
 
       if (error) throw error;
 
+      // Immediately kick off regeneration so admin doesn't have to wait for the cron
+      try {
+        await supabase.functions.invoke("automation-trigger", {
+          method: "POST",
+          body: { entityType: "order", entityId: selectedOrder.id, forceRun: true },
+        });
+      } catch (triggerErr) {
+        console.warn("Reset succeeded but automation-trigger failed (cron will pick it up):", triggerErr);
+      }
+
       toast({
-        title: clearAssets ? "Automation Reset + Assets Cleared" : "Automation Reset",
-        description: clearAssets 
-          ? "Song has been deleted. You can now edit inputs and regenerate."
-          : "Automation state cleared. Existing song preserved.",
+        title: clearAssets ? "Reset + Regeneration Started" : "Automation Reset & Regeneration Started",
+        description: clearAssets
+          ? "Song deleted. New generation has been kicked off."
+          : "Automation cleared. Regeneration has been kicked off.",
       });
 
       setShowResetConfirm(null);
