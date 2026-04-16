@@ -1,54 +1,45 @@
 
-## Plan: Lead Revisions + Dynamic Sale Banner
+## Plan: Auto-recover stuck `needs_review` orders + verify admin reset path
 
-Going with all three recommended defaults: 1 revision, auto-approve, 12h timer from submission.
+### What the user is asking
+1. The "Reset + Regenerate" action they expected isn't visible in the admin UI for this order — only "Reset Automation" appears (per screenshot).
+2. Going forward, orders that land in `needs_review` due to short-song issues should **auto-recover** without waiting for admin intervention.
 
-### Part 1: Lead self-service revisions
+### Investigation needed first
+- Confirm what the "Reset Automation" button in the screenshot actually does today (does it call `reset_automation` with `clearAssets=true`, or just clear status?). I'll inspect `LeadFollowupPanel` / order detail dialog and `admin-orders` to see if the "Reset + Regenerate" path is wired into a button.
+- Confirm the legacy error string `"May need lyrics extension and regeneration"` is gone from the current code so a new auto-recovery loop won't fight live logic.
 
-**Migration:**
-- Add to `leads`: `revision_token uuid default gen_random_uuid()`, `revision_count int default 0`, `max_revisions int default 1`, `revision_requested_at timestamptz`, `revision_status text`, `revision_reason text`, `pending_revision boolean default false`
-- Add to `revision_requests`: `lead_id uuid` nullable; make `order_id` nullable; CHECK that exactly one of `order_id`/`lead_id` is set
-- Backfill `revision_token` for existing leads
+### Plan
 
-**`get-revision-page`:** If token doesn't match an order, look up by `leads.revision_token`. Return same response shape with `form_type: "lead_revision"`.
+**Part A — Make admin reset do the right thing in one click**
+- Audit the admin UI: if there's only a "Reset Automation" button and no "Reset + Regenerate", wire the existing button to call `reset_automation` with `clearAssets=true` AND immediately call `automation-trigger` after. Or rename/clarify so the admin has a single, obvious recovery button.
+- This gives admins a working manual escape hatch (which today they don't have for this order).
 
-**`submit-revision`:** Detect lead vs order. For leads:
-- Insert into `revision_requests` with `lead_id`
-- Auto-approve immediately (no admin setting check for leads)
-- Backup `preview_song_url` → `prev_song_url`, `automation_lyrics` → `prev_automation_lyrics`, `cover_image_url` → `prev_cover_image_url` (use existing `backupSongFile` helper pattern)
-- Clear automation fields on the lead
-- Set `target_send_at = now() + 12h`, `revision_status = 'processing'`, increment `revision_count`
-- Trigger `automation-trigger` for the lead
-- Log activity
+**Part B — Auto-recover stuck orders (the real fix)**
+- Add a watchdog branch to `process-scheduled-deliveries` (already a cron) that finds:
+  - `automation_status = 'needs_review'`
+  - AND `automation_last_error ILIKE '%lyrics extension%'` OR `short_retry_count < MAX_SHORT_RETRIES`
+  - AND `dismissed_at IS NULL` AND `status != 'cancelled'`
+  - AND `automation_started_at < now() - interval '1 hour'` (let real review cases breathe briefly)
+- For each match: clear `automation_lyrics`, reset `automation_status='pending'`, reset `short_retry_count=0`, log activity `auto_recovered_from_needs_review`, then call `automation-trigger` with `forceRun=true`.
+- Cap auto-recoveries at 1 per order via a new `auto_recovery_count` column (or reuse `automation_retry_count`) so we don't loop forever. After 1 auto-recovery attempt, leave it for human review.
 
-**`process-scheduled-deliveries`:** Add a lead branch — find leads where `revision_status='processing'` AND `automation_status='completed'` AND `preview_song_url IS NOT NULL` AND `target_send_at <= now()`. Call `send-lead-preview` with `resend: true`, set `revision_status='approved'`.
+**Part C — Backfill existing stuck orders**
+- One-shot SQL migration: same criteria as the watchdog, applied once to clear the backlog (including order 5564954F).
+- After backfill, the cron picks up anything new that lands here.
 
-**`SongRevision.tsx`:** Handle `form_type: "lead_revision"` — copy reads "Your updated 45-second preview will be sent within ~12 hours."
-
-**Revision links:** Add "Want changes? [Request a revision](/song/revision/{token})" to lead preview, follow-up, and remarketing emails.
-
-### Part 2: Dynamic promo banner in lead emails
-
-**New shared helper `_shared/email-promo-banner.ts`:**
-- `getActivePromo(supabase)` — query `promotions` where `is_active=true` AND now between `starts_at`/`ends_at`
-- `renderPromoBannerHtml(promo)` — returns HTML banner styled with `banner_bg_color`/`banner_text_color`/`banner_emoji`/`banner_text`, including the actual `standard_price_cents` formatted (e.g. "Full song just $39.99 — normally $99.99")
-- `renderPromoBannerText(promo)` — plain-text equivalent
-- Returns empty string if no active promo
-
-**Apply to:** `send-lead-preview`, `send-lead-followup` (replace inline promo logic), `send-valentine-remarketing`. Banner sits at top of HTML body and top of text body.
+**Part D — Invariant guard**
+- In `automation-suno-callback`, add an assert before writing `needs_review`: `short_retry_count >= MAX_SHORT_RETRIES`. If not, log a loud warning and force the retry path instead. Prevents the original bug shape from regressing.
 
 ### Files
 
 | File | Change |
 |---|---|
-| `supabase/migrations/<new>.sql` | Lead revision columns + `revision_requests.lead_id` |
-| `supabase/functions/get-revision-page/index.ts` | Resolve lead tokens |
-| `supabase/functions/submit-revision/index.ts` | Lead branch with auto-approve + backup + schedule |
-| `supabase/functions/process-scheduled-deliveries/index.ts` | Dispatch lead preview after regen completes |
-| `supabase/functions/_shared/email-promo-banner.ts` | NEW shared banner renderer |
-| `supabase/functions/send-lead-preview/index.ts` | Banner + revision link |
-| `supabase/functions/send-lead-followup/index.ts` | Use shared banner + revision link |
-| `supabase/functions/send-valentine-remarketing/index.ts` | Banner + revision link |
-| `src/pages/SongRevision.tsx` | `lead_revision` copy |
+| `src/components/admin/*` (order detail dialog) | Wire "Reset + Regenerate" button if missing; or make existing reset button trigger full pipeline |
+| `supabase/functions/process-scheduled-deliveries/index.ts` | Add `needs_review` auto-recovery watchdog branch |
+| `supabase/functions/automation-suno-callback/index.ts` | Invariant guard before writing `needs_review` |
+| `supabase/migrations/<new>.sql` | Add `auto_recovery_count` column; backfill stuck orders |
+| (direct DB action) | Reset & re-trigger 5564954F as part of backfill |
 
-Memory updates after build: extend self-service-revisions and lead-recovery-system entries to note lead revision support; add a small entry for the shared email promo banner helper.
+### Memory updates
+Extend `mem://features/automation/short-song-quality-retries` with the auto-recovery watchdog + invariant guard. Update `mem://features/admin/resend-vs-regenerate-workflow` if the admin button behavior changes.
