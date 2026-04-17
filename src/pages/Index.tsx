@@ -7,6 +7,7 @@ import OccasionsGrid from "@/components/home/OccasionsGrid";
 import Testimonials from "@/components/home/Testimonials";
 import FAQSection from "@/components/home/FAQSection";
 import FinalCTA from "@/components/home/FinalCTA";
+import StickyMobileCTA from "@/components/home/StickyMobileCTA";
 import { useUtmCapture } from "@/hooks/useUtmCapture";
 
 const Index = () => {
@@ -14,14 +15,18 @@ const Index = () => {
   useUtmCapture();
   return (
     <Layout>
-      <HeroSection />
-      <Testimonials />
-      <SamplePlayer />
-      <TrustStrip />
-      <HowItWorks />
-      <OccasionsGrid />
-      <FAQSection />
-      <FinalCTA />
+      {/* pb-20 md:pb-0 ensures sticky mobile CTA bar never covers FinalCTA */}
+      <div className="pb-20 md:pb-0">
+        <HeroSection />
+        <SamplePlayer />
+        <Testimonials />
+        <TrustStrip />
+        <HowItWorks />
+        <OccasionsGrid />
+        <FAQSection />
+        <FinalCTA />
+      </div>
+      <StickyMobileCTA />
     </Layout>
   );
 };

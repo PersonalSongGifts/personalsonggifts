@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { trackEvent } from "@/lib/amplitudeTrack";
 
 interface SampleSong {
   id: string;
