@@ -30,6 +30,8 @@ const SamplePlayer = () => {
   const [volume, setVolume] = useState(0.7);
   const [isMuted, setIsMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playedSongsRef = useRef<Set<string>>(new Set());
+  const completedFiredRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     return () => {
@@ -56,20 +58,57 @@ const SamplePlayer = () => {
       const audio = new Audio(song.audioSrc);
       audio.volume = isMuted ? 0 : volume;
       audioRef.current = audio;
-      
+
+      // Reset completion flag for this play session
+      completedFiredRef.current.delete(song.id);
+
       audio.addEventListener('timeupdate', () => {
         setCurrentTime(audio.currentTime);
+        // Fire Sample Completed at >=90% of duration (once per song)
+        if (
+          audio.duration > 0 &&
+          audio.currentTime >= audio.duration * 0.9 &&
+          !completedFiredRef.current.has(song.id)
+        ) {
+          completedFiredRef.current.add(song.id);
+          trackEvent("Sample Completed", {
+            song_id: song.id,
+            song_title: song.title,
+            occasion: song.occasion,
+            trigger: "ninety_percent",
+          });
+        }
       });
-      
+
       audio.addEventListener('loadedmetadata', () => {
         setDuration(audio.duration);
       });
-      
+
       audio.addEventListener('ended', () => {
         setPlayingId(null);
         setCurrentTime(0);
+        if (!completedFiredRef.current.has(song.id)) {
+          completedFiredRef.current.add(song.id);
+          trackEvent("Sample Completed", {
+            song_id: song.id,
+            song_title: song.title,
+            occasion: song.occasion,
+            trigger: "ended",
+          });
+        }
       });
-      
+
+      // Fire Sample Played once per song per session (first play only)
+      if (!playedSongsRef.current.has(song.id)) {
+        playedSongsRef.current.add(song.id);
+        trackEvent("Sample Played", {
+          song_id: song.id,
+          song_title: song.title,
+          occasion: song.occasion,
+          genre: song.genre,
+        });
+      }
+
       audio.play();
       setPlayingId(song.id);
     }

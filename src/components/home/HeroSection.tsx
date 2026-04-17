@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Pause } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
+import { trackEvent } from "@/lib/amplitudeTrack";
 import asSeenOnImage from "@/assets/as-seen-on.png";
 
 const HeroSection = () => {
@@ -96,9 +97,24 @@ const HeroSection = () => {
         </p>
 
         <div className="flex flex-col items-center justify-center gap-3 md:gap-4 animate-fade-in-up">
-          <Button asChild size="lg" className="text-base md:text-lg px-6 md:px-8 py-5 md:py-6 font-semibold shadow-elevated w-full sm:w-auto">
+          <Button
+            asChild
+            size="lg"
+            className="text-base md:text-lg px-6 md:px-8 py-5 md:py-6 font-semibold shadow-elevated w-full sm:w-auto"
+            onClick={() => trackEvent("Hero CTA Clicked", { location: "hero_primary" })}
+          >
             <Link to="/create">Create Your Song</Link>
           </Button>
+
+          {/* Hear-a-sample badge — smooth-scrolls to SamplePlayer */}
+          <a
+            href="#samples"
+            onClick={() => trackEvent("Hero Sample Badge Clicked")}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors motion-safe:animate-pulse-soft"
+          >
+            <Play className="h-3.5 w-3.5 fill-current" />
+            Hear a sample
+          </a>
         </div>
 
         {/* As Seen On - Above the fold */}
