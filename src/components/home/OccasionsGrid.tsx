@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { trackEvent } from "@/lib/amplitudeTrack";
 
 // Import all occasion images
 import weddingImg from "@/assets/occasions/wedding.jpg";
@@ -55,6 +56,7 @@ const OccasionsGrid = () => {
               key={occasion.id}
               to={`/create?occasion=${occasion.id}`}
               className="group block"
+              onClick={() => trackEvent("Occasion Card Clicked", { occasion: occasion.label })}
             >
               <div className="relative aspect-[4/3] rounded-xl overflow-hidden shadow-soft hover:shadow-elevated transition-shadow duration-300">
                 {/* Background Image */}
