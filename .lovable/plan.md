@@ -1,45 +1,44 @@
 
-## Plan: Auto-recover stuck `needs_review` orders + verify admin reset path
+## Plan: CRO Part 1 — Tracking + Sticky CTA + Hero Badge + SamplePlayer reposition
 
-### What the user is asking
-1. The "Reset + Regenerate" action they expected isn't visible in the admin UI for this order — only "Reset Automation" appears (per screenshot).
-2. Going forward, orders that land in `needs_review` due to short-song issues should **auto-recover** without waiting for admin intervention.
+### 1. Amplitude tracking (try/catch wrapped)
+- **HeroSection.tsx**: fire `Hero CTA Clicked` on primary "Create Your Song" button (also wrap audio Listen-to-Example button — out of scope, leave alone).
+- **SamplePlayer.tsx**: fire `Sample Played` on first play per song (track via ref set), `Sample Completed` on `ended` event OR when `currentTime >= 0.9 * duration` (use a flag to fire once per play).
+- **OccasionsGrid.tsx**: fire `Occasion Card Clicked` with `{ occasion: occasion.label }` on Link click.
+- Helper: small inline `trackEvent(name, props)` util in each file (or one shared `src/lib/amplitudeTrack.ts` — preferred, single try/catch).
 
-### Investigation needed first
-- Confirm what the "Reset Automation" button in the screenshot actually does today (does it call `reset_automation` with `clearAssets=true`, or just clear status?). I'll inspect `LeadFollowupPanel` / order detail dialog and `admin-orders` to see if the "Reset + Regenerate" path is wired into a button.
-- Confirm the legacy error string `"May need lyrics extension and regeneration"` is gone from the current code so a new auto-recovery loop won't fight live logic.
+### 2. StickyMobileCTA component
+- New file `src/components/home/StickyMobileCTA.tsx`.
+- `useLocation()` → render only when `pathname === "/"`.
+- Tailwind: `md:hidden fixed bottom-0 left-0 right-0`, white/cream bg with top border + shadow, `style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}`.
+- Z-index: existing modals (Dialog/Sheet) use Radix defaults (z-50). Use `z-40` so it stays under modals but above content.
+- Copy: **"Create your song →"** (no price — avoids drift with Checkout pricing).
+- onClick → fires `Sticky CTA Clicked` (try/catch) then navigates via `<Link to="/create">`.
+- Mount once in `Index.tsx` so it's auto-scoped to `/`. Add `pb-20 md:pb-0` to the Index root wrapper to prevent the bar from covering FinalCTA.
 
-### Plan
+### 3. Hero badge
+- In HeroSection, add a small pill above (or just under) the primary CTA: `▶ Hear a sample` linking via smooth-scroll to `#samples` (the SamplePlayer section id already exists).
+- Subtle pulse animation wrapped in `@media (prefers-reduced-motion: no-preference)` — add a one-off keyframe in `src/index.css` or use existing `animate-pulse-soft` already in use, gated behind a wrapper class that only animates when motion is allowed (Tailwind's `motion-safe:` variant — already supported).
 
-**Part A — Make admin reset do the right thing in one click**
-- Audit the admin UI: if there's only a "Reset Automation" button and no "Reset + Regenerate", wire the existing button to call `reset_automation` with `clearAssets=true` AND immediately call `automation-trigger` after. Or rename/clarify so the admin has a single, obvious recovery button.
-- This gives admins a working manual escape hatch (which today they don't have for this order).
-
-**Part B — Auto-recover stuck orders (the real fix)**
-- Add a watchdog branch to `process-scheduled-deliveries` (already a cron) that finds:
-  - `automation_status = 'needs_review'`
-  - AND `automation_last_error ILIKE '%lyrics extension%'` OR `short_retry_count < MAX_SHORT_RETRIES`
-  - AND `dismissed_at IS NULL` AND `status != 'cancelled'`
-  - AND `automation_started_at < now() - interval '1 hour'` (let real review cases breathe briefly)
-- For each match: clear `automation_lyrics`, reset `automation_status='pending'`, reset `short_retry_count=0`, log activity `auto_recovered_from_needs_review`, then call `automation-trigger` with `forceRun=true`.
-- Cap auto-recoveries at 1 per order via a new `auto_recovery_count` column (or reuse `automation_retry_count`) so we don't loop forever. After 1 auto-recovery attempt, leave it for human review.
-
-**Part C — Backfill existing stuck orders**
-- One-shot SQL migration: same criteria as the watchdog, applied once to clear the backlog (including order 5564954F).
-- After backfill, the cron picks up anything new that lands here.
-
-**Part D — Invariant guard**
-- In `automation-suno-callback`, add an assert before writing `needs_review`: `short_retry_count >= MAX_SHORT_RETRIES`. If not, log a loud warning and force the retry path instead. Prevents the original bug shape from regressing.
+### 4. Move SamplePlayer above the fold
+- In `src/pages/Index.tsx`, reorder so `<SamplePlayer />` sits directly under `<HeroSection />` and above `<TrustStrip />` / `<OccasionsGrid />`.
+- SamplePlayer already lazy-creates `new Audio(src)` only on play — no autoplay change needed. UI renders immediately, no layout shift.
 
 ### Files
 
 | File | Change |
 |---|---|
-| `src/components/admin/*` (order detail dialog) | Wire "Reset + Regenerate" button if missing; or make existing reset button trigger full pipeline |
-| `supabase/functions/process-scheduled-deliveries/index.ts` | Add `needs_review` auto-recovery watchdog branch |
-| `supabase/functions/automation-suno-callback/index.ts` | Invariant guard before writing `needs_review` |
-| `supabase/migrations/<new>.sql` | Add `auto_recovery_count` column; backfill stuck orders |
-| (direct DB action) | Reset & re-trigger 5564954F as part of backfill |
+| `src/lib/amplitudeTrack.ts` (new) | Shared `trackEvent(name, props?)` with try/catch on `window.amplitude?.track` |
+| `src/components/home/HeroSection.tsx` | Fire `Hero CTA Clicked`; add "▶ Hear a sample" badge linking to `#samples` |
+| `src/components/home/SamplePlayer.tsx` | Fire `Sample Played` (first play) + `Sample Completed` (ended or ≥90%) |
+| `src/components/home/OccasionsGrid.tsx` | Fire `Occasion Card Clicked` with occasion label |
+| `src/components/home/StickyMobileCTA.tsx` (new) | Mobile-only, `/`-only sticky bottom CTA |
+| `src/pages/Index.tsx` | Reorder SamplePlayer above OccasionsGrid; mount StickyMobileCTA; add `pb-20 md:pb-0` wrapper |
 
-### Memory updates
-Extend `mem://features/automation/short-song-quality-retries` with the auto-recovery watchdog + invariant guard. Update `mem://features/admin/resend-vs-regenerate-workflow` if the admin button behavior changes.
+### Out of scope (explicit)
+No changes to Checkout, CreateSong, any /create/* step, SongRevision, or any edge function. No exit-intent. No price in sticky bar or badge. No scroll/FAQ/testimonial events.
+
+### Verification checklist after implementation
+1. Sticky bar absent on `/create`, `/checkout`, `/song/...`, `/revision/...`, `/admin`.
+2. Grep new code for `$` price strings → none.
+3. All `amplitude.track` calls inside try/catch (via shared helper).
