@@ -3359,6 +3359,173 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       );
     }
 
+      // ===== DISABLE SONG ACCESS (soft, reversible) =====
+      // Use this for chargebacks / customer disputes instead of deleting anything.
+      // Snapshots song_url → prev_song_url (the existing single-slot backup), then
+      // clears song_url and reverts status to "paid" so the /song/{id} page returns
+      // a clean "not available" instead of leaking the file. Storage object stays put.
+      if (body?.action === "disable_song_access") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+        if (!orderId) {
+          return new Response(
+            JSON.stringify({ error: "orderId required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: order, error: fetchErr } = await supabase
+          .from("orders")
+          .select("id, status, song_url, prev_song_url, automation_lyrics, prev_automation_lyrics, cover_image_url, prev_cover_image_url, recipient_name")
+          .eq("id", orderId)
+          .maybeSingle();
+
+        if (fetchErr) throw fetchErr;
+        if (!order) {
+          return new Response(
+            JSON.stringify({ error: "Order not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (!order.song_url) {
+          return new Response(
+            JSON.stringify({ error: "This order has no active song to disable." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Snapshot into prev_* slots so Restore Previous Version works.
+        // Skip overwriting an existing prev snapshot (don't lose an older backup).
+        const snapshotUpdate: Record<string, unknown> = {
+          song_url: null,
+          status: "paid", // hides from get-song-page (delivered/ready/completed only)
+        };
+        if (!order.prev_song_url) {
+          snapshotUpdate.prev_song_url = order.song_url;
+          snapshotUpdate.prev_automation_lyrics = order.automation_lyrics;
+          snapshotUpdate.prev_cover_image_url = order.cover_image_url;
+        }
+
+        const { error: updateErr } = await supabase
+          .from("orders")
+          .update(snapshotUpdate)
+          .eq("id", orderId);
+
+        if (updateErr) throw updateErr;
+
+        await logActivity(
+          supabase,
+          "order",
+          orderId,
+          "song_access_disabled",
+          "admin",
+          `Song access disabled${reason ? ` — ${reason}` : ""}. File preserved in storage; can be restored.`,
+          { reason: reason || null, snapshotted: !order.prev_song_url }
+        );
+
+        return new Response(
+          JSON.stringify({ success: true, snapshotted: !order.prev_song_url }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // ===== RESTORE SONG ACCESS =====
+      // One-click undo of disable_song_access. Re-enables song_url from prev_song_url
+      // (if present) OR re-derives from canonical storage path, then flips status back
+      // to "delivered". Used when a chargeback is dropped, etc.
+      if (body?.action === "restore_song_access") {
+        const orderId = typeof body.orderId === "string" ? body.orderId : null;
+        if (!orderId) {
+          return new Response(
+            JSON.stringify({ error: "orderId required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: order, error: fetchErr } = await supabase
+          .from("orders")
+          .select("id, status, song_url, prev_song_url, automation_lyrics, prev_automation_lyrics, cover_image_url, prev_cover_image_url, sent_at, generated_at")
+          .eq("id", orderId)
+          .maybeSingle();
+
+        if (fetchErr) throw fetchErr;
+        if (!order) {
+          return new Response(
+            JSON.stringify({ error: "Order not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Determine the URL to restore.
+        // Priority: existing song_url (already set, just need status flip) →
+        // prev_song_url snapshot → derived canonical path from order ID.
+        let restoredUrl = order.song_url as string | null;
+        let restoredLyrics = order.automation_lyrics as string | null;
+        let restoredCover = order.cover_image_url as string | null;
+        let consumedPrev = false;
+
+        if (!restoredUrl && order.prev_song_url) {
+          restoredUrl = order.prev_song_url as string;
+          restoredLyrics = (order.prev_automation_lyrics as string | null) || restoredLyrics;
+          restoredCover = (order.prev_cover_image_url as string | null) || restoredCover;
+          consumedPrev = true;
+        }
+
+        if (!restoredUrl) {
+          // Last-resort: derive canonical URL (orders/<SHORT>-full.mp3). Only works
+          // if the file actually exists in storage — verify with a HEAD request.
+          const shortId = (orderId as string).slice(0, 8).toUpperCase();
+          const candidate = `${supabaseUrl}/storage/v1/object/public/songs/orders/${shortId}-full.mp3`;
+          try {
+            const head = await fetch(candidate, { method: "HEAD" });
+            if (head.ok) {
+              restoredUrl = candidate;
+            }
+          } catch (_) { /* ignore */ }
+        }
+
+        if (!restoredUrl) {
+          return new Response(
+            JSON.stringify({ error: "Nothing to restore — no previous version snapshot and no canonical file in storage." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const restoreUpdate: Record<string, unknown> = {
+          song_url: restoredUrl,
+          status: "delivered",
+        };
+        if (restoredLyrics) restoreUpdate.automation_lyrics = restoredLyrics;
+        if (restoredCover) restoreUpdate.cover_image_url = restoredCover;
+        if (consumedPrev) {
+          restoreUpdate.prev_song_url = null;
+          restoreUpdate.prev_automation_lyrics = null;
+          restoreUpdate.prev_cover_image_url = null;
+        }
+
+        const { error: updateErr } = await supabase
+          .from("orders")
+          .update(restoreUpdate)
+          .eq("id", orderId);
+
+        if (updateErr) throw updateErr;
+
+        await logActivity(
+          supabase,
+          "order",
+          orderId,
+          "song_access_restored",
+          "admin",
+          `Song access restored. Status flipped back to delivered.`,
+          { consumed_prev_snapshot: consumedPrev }
+        );
+
+        return new Response(
+          JSON.stringify({ success: true, restoredUrl, consumedPrev }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(
         JSON.stringify({ error: "Unknown action", action: typeof body?.action === "string" ? body.action : null }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
