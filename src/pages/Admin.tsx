@@ -2327,6 +2327,48 @@ const { data, error } = await listOrders("all", 0, 250);
                           </TooltipContent>
                         </Tooltip>
                       )}
+
+                      {/* Disable Song Access — for chargebacks / disputes (reversible) */}
+                      {selectedOrder.song_url && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowDisableAccessConfirm(true)}
+                              disabled={disablingAccess}
+                              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-300"
+                            >
+                              <EyeOff className="h-4 w-4 mr-2" />
+                              Disable Song Access
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs text-center">
+                            Use for chargebacks/disputes. Customer's link will show "not available" but the file is preserved and can be restored with one click. Never deletes anything.
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+
+                      {/* Restore Song Access — undo of Disable, or recover from a manual revert */}
+                      {!selectedOrder.song_url && (selectedOrder.prev_song_url || selectedOrder.status === "paid") && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleRestoreSongAccess}
+                              disabled={restoringAccess}
+                              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-300"
+                            >
+                              {restoringAccess ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+                              Restore Song Access
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs text-center">
+                            Re-enable the customer's song link. Restores from snapshot if available, otherwise re-derives the canonical storage URL.
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
                   </div>
                 )}
