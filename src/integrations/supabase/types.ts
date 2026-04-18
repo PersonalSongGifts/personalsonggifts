@@ -393,6 +393,7 @@ export type Database = {
           bonus_checkout_click_count: number | null
           bonus_checkout_clicked_at: string | null
           bonus_cover_image_url: string | null
+          bonus_email_sent_at: string | null
           bonus_first_played_at: string | null
           bonus_play_count: number | null
           bonus_preview_url: string | null
@@ -512,6 +513,7 @@ export type Database = {
           bonus_checkout_click_count?: number | null
           bonus_checkout_clicked_at?: string | null
           bonus_cover_image_url?: string | null
+          bonus_email_sent_at?: string | null
           bonus_first_played_at?: string | null
           bonus_play_count?: number | null
           bonus_preview_url?: string | null
@@ -631,6 +633,7 @@ export type Database = {
           bonus_checkout_click_count?: number | null
           bonus_checkout_clicked_at?: string | null
           bonus_cover_image_url?: string | null
+          bonus_email_sent_at?: string | null
           bonus_first_played_at?: string | null
           bonus_play_count?: number | null
           bonus_preview_url?: string | null
@@ -1030,6 +1033,7 @@ export type Database = {
           bonus_checkout_click_count: number | null
           bonus_checkout_clicked_at: string | null
           bonus_cover_image_url: string | null
+          bonus_email_sent_at: string | null
           bonus_first_played_at: string | null
           bonus_play_count: number | null
           bonus_preview_url: string | null
