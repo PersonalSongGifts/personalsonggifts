@@ -889,7 +889,92 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
-  const cancelEditingOrder = () => {
+  // Handler for soft-disabling song access (chargeback / dispute safe)
+  const handleDisableSongAccess = async () => {
+    if (!selectedOrder || !password) return;
+    setDisablingAccess(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "disable_song_access",
+          orderId: selectedOrder.id,
+          reason: disableAccessReason.trim() || undefined,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      toast({
+        title: "Song Access Disabled",
+        description: `Customer's link will show 'not available'. File is preserved and can be restored.`,
+      });
+      setShowDisableAccessConfirm(false);
+      setDisableAccessReason("");
+      const updated = {
+        ...selectedOrder,
+        song_url: null,
+        status: "paid",
+        ...(data?.snapshotted ? {
+          prev_song_url: selectedOrder.song_url,
+          prev_automation_lyrics: selectedOrder.automation_lyrics,
+          prev_cover_image_url: selectedOrder.cover_image_url,
+        } : {}),
+      };
+      setSelectedOrder(updated as Order);
+      fetchOrders();
+    } catch (err) {
+      console.error("Disable song access failed:", err);
+      toast({
+        title: "Disable Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setDisablingAccess(false);
+    }
+  };
+
+  // Handler for restoring song access (one-click undo of disable)
+  const handleRestoreSongAccess = async () => {
+    if (!selectedOrder || !password) return;
+    setRestoringAccess(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "restore_song_access",
+          orderId: selectedOrder.id,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      toast({
+        title: "Song Access Restored",
+        description: `Customer's song link is live again.`,
+      });
+      const updated = {
+        ...selectedOrder,
+        song_url: data?.restoredUrl ?? selectedOrder.song_url,
+        status: "delivered",
+        ...(data?.consumedPrev ? {
+          prev_song_url: null,
+          prev_automation_lyrics: null,
+          prev_cover_image_url: null,
+        } : {}),
+      };
+      setSelectedOrder(updated as Order);
+      fetchOrders();
+    } catch (err) {
+      console.error("Restore song access failed:", err);
+      toast({
+        title: "Restore Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRestoringAccess(false);
+    }
+  };
     setIsEditingOrder(false);
     setEditedOrder({});
   };
