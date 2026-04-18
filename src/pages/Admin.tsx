@@ -975,6 +975,8 @@ const { data, error } = await listOrders("all", 0, 250);
       setRestoringAccess(false);
     }
   };
+
+  const cancelEditingOrder = () => {
     setIsEditingOrder(false);
     setEditedOrder({});
   };
