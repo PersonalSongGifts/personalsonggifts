@@ -3054,7 +3054,51 @@ const { data, error } = await listOrders("all", 0, 250);
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Regenerate Song Dialog */}
+      {/* Disable Song Access Confirmation Dialog */}
+      <AlertDialog open={showDisableAccessConfirm} onOpenChange={(open) => {
+        setShowDisableAccessConfirm(open);
+        if (!open) setDisableAccessReason("");
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <EyeOff className="h-5 w-5 text-orange-600" />
+              Disable Song Access?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  The customer's link at <code>/song/{selectedOrder?.id?.slice(0, 8).toUpperCase()}</code> will return "not available". The song file <strong>stays in storage</strong> and can be restored with one click later.
+                </p>
+                <p className="text-emerald-700 font-medium">
+                  ✓ Safe for chargebacks — never deletes the file. Use this instead of manually changing status or deleting from storage.
+                </p>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Reason (optional, logged)</label>
+                  <Input
+                    value={disableAccessReason}
+                    onChange={(e) => setDisableAccessReason(e.target.value)}
+                    placeholder="e.g. chargeback opened, customer dispute"
+                    disabled={disablingAccess}
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={disablingAccess}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDisableSongAccess}
+              disabled={disablingAccess}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {disablingAccess ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
+              {disablingAccess ? "Disabling..." : "Disable Access"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={showRegenerateDialog} onOpenChange={(open) => {
         if (!open) {
           setShowRegenerateDialog(false);
