@@ -52,33 +52,28 @@ function buildEmail(order: EligibleOrder): { subject: string; html: string; text
 <div style="max-width:560px;margin:0 auto;padding:32px 20px;">
 <p>Hi ${firstName},</p>
 
-<p>Quick note — when we made ${order.recipient_name}'s song, our team also produced a second version in a different style (acoustic / R&amp;B feel) as a little bonus.</p>
-
-<p>It's sitting on your song page, ready to listen to:</p>
+<p>We loved making your song so much that we also produced a second version in a different style that we think you'd love as a little bonus. It's sitting on your song page, ready to listen (scroll down).</p>
 
 <p><a href="${songLink}" style="color:#1a73e8;">${songLink}</a></p>
 
-<p>Have a listen and see which version you and ${order.recipient_name} like more. Some people end up preferring the bonus.</p>
+<p>Have a listen and see which version you and ${order.recipient_name} like more.</p>
 
 <p>If you'd rather not hear from us about this, just reply with "no thanks" and we'll stop.</p>
 
-<p>— Mike<br>Personal Song Gifts</p>
+<p>— Personal Song Gifts team</p>
 </div></body></html>`;
 
   const text = `Hi ${firstName},
 
-Quick note — when we made ${order.recipient_name}'s song, our team also produced a second version in a different style (acoustic / R&B feel) as a little bonus.
-
-It's sitting on your song page, ready to listen to:
+We loved making your song so much that we also produced a second version in a different style that we think you'd love as a little bonus. It's sitting on your song page, ready to listen (scroll down).
 
 ${songLink}
 
-Have a listen and see which version you and ${order.recipient_name} like more. Some people end up preferring the bonus.
+Have a listen and see which version you and ${order.recipient_name} like more.
 
 If you'd rather not hear from us about this, just reply with "no thanks" and we'll stop.
 
-— Mike
-Personal Song Gifts`;
+— Personal Song Gifts team`;
 
   return { subject, html, text };
 }
