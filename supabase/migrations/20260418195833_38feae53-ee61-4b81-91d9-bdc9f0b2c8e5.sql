@@ -1,0 +1,2 @@
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS bonus_email_sent_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_orders_bonus_email_eligible ON public.orders (bonus_email_sent_at, bonus_first_played_at, bonus_unlocked_at) WHERE bonus_song_url IS NOT NULL;

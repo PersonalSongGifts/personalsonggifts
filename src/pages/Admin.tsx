@@ -44,6 +44,7 @@ import { LeadFollowupPanel } from "@/components/admin/LeadFollowupPanel";
 import { CSAssistant } from "@/components/admin/CSAssistant";
 import { PromosPanel } from "@/components/admin/PromosPanel";
 import { BonusTrackAnalytics } from "@/components/admin/BonusTrackAnalytics";
+import { BonusTrackEmailPanel } from "@/components/admin/BonusTrackEmailPanel";
 import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 import { getCountryFromTimezone } from "@/lib/timezoneCountry";
 
@@ -1730,6 +1731,7 @@ const { data, error } = await listOrders("all", 0, 250);
           <TabsContent value="automation" className="space-y-6">
             <AutomationDashboard adminPassword={password} onRefresh={fetchOrders} orders={allOrders} />
             <UnplayedResendPanel adminPassword={password} allOrders={allOrders} />
+            <BonusTrackEmailPanel adminPassword={password} />
             <LeadFollowupPanel adminPassword={password} />
           </TabsContent>
 
