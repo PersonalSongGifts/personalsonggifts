@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, Music, Send, RefreshCw, Eye, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy, Calendar, Tag } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, EyeOff, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy, Calendar, Tag, ShieldCheck } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
 import { ActivityLog } from "@/components/admin/ActivityLog";
@@ -229,6 +229,10 @@ export default function Admin() {
   const [regenerating, setRegenerating] = useState(false);
   // Restore previous version state
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [showDisableAccessConfirm, setShowDisableAccessConfirm] = useState(false);
+  const [disableAccessReason, setDisableAccessReason] = useState("");
+  const [disablingAccess, setDisablingAccess] = useState(false);
+  const [restoringAccess, setRestoringAccess] = useState(false);
   const [restoringPreviousVersion, setRestoringPreviousVersion] = useState(false);
  // Source filter for direct vs lead conversion orders
   const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
@@ -882,6 +886,93 @@ const { data, error } = await listOrders("all", 0, 250);
       });
     } finally {
       setRestoringPreviousVersion(false);
+    }
+  };
+
+  // Handler for soft-disabling song access (chargeback / dispute safe)
+  const handleDisableSongAccess = async () => {
+    if (!selectedOrder || !password) return;
+    setDisablingAccess(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "disable_song_access",
+          orderId: selectedOrder.id,
+          reason: disableAccessReason.trim() || undefined,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      toast({
+        title: "Song Access Disabled",
+        description: `Customer's link will show 'not available'. File is preserved and can be restored.`,
+      });
+      setShowDisableAccessConfirm(false);
+      setDisableAccessReason("");
+      const updated = {
+        ...selectedOrder,
+        song_url: null,
+        status: "paid",
+        ...(data?.snapshotted ? {
+          prev_song_url: selectedOrder.song_url,
+          prev_automation_lyrics: selectedOrder.automation_lyrics,
+          prev_cover_image_url: selectedOrder.cover_image_url,
+        } : {}),
+      };
+      setSelectedOrder(updated as Order);
+      fetchOrders();
+    } catch (err) {
+      console.error("Disable song access failed:", err);
+      toast({
+        title: "Disable Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setDisablingAccess(false);
+    }
+  };
+
+  // Handler for restoring song access (one-click undo of disable)
+  const handleRestoreSongAccess = async () => {
+    if (!selectedOrder || !password) return;
+    setRestoringAccess(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "restore_song_access",
+          orderId: selectedOrder.id,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      toast({
+        title: "Song Access Restored",
+        description: `Customer's song link is live again.`,
+      });
+      const updated = {
+        ...selectedOrder,
+        song_url: data?.restoredUrl ?? selectedOrder.song_url,
+        status: "delivered",
+        ...(data?.consumedPrev ? {
+          prev_song_url: null,
+          prev_automation_lyrics: null,
+          prev_cover_image_url: null,
+        } : {}),
+      };
+      setSelectedOrder(updated as Order);
+      fetchOrders();
+    } catch (err) {
+      console.error("Restore song access failed:", err);
+      toast({
+        title: "Restore Failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRestoringAccess(false);
     }
   };
 
@@ -2236,6 +2327,48 @@ const { data, error } = await listOrders("all", 0, 250);
                           </TooltipContent>
                         </Tooltip>
                       )}
+
+                      {/* Disable Song Access — for chargebacks / disputes (reversible) */}
+                      {selectedOrder.song_url && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowDisableAccessConfirm(true)}
+                              disabled={disablingAccess}
+                              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-300"
+                            >
+                              <EyeOff className="h-4 w-4 mr-2" />
+                              Disable Song Access
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs text-center">
+                            Use for chargebacks/disputes. Customer's link will show "not available" but the file is preserved and can be restored with one click. Never deletes anything.
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+
+                      {/* Restore Song Access — undo of Disable, or recover from a manual revert */}
+                      {!selectedOrder.song_url && (selectedOrder.prev_song_url || selectedOrder.status === "paid") && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleRestoreSongAccess}
+                              disabled={restoringAccess}
+                              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-300"
+                            >
+                              {restoringAccess ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+                              Restore Song Access
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs text-center">
+                            Re-enable the customer's song link. Restores from snapshot if available, otherwise re-derives the canonical storage URL.
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2921,7 +3054,51 @@ const { data, error } = await listOrders("all", 0, 250);
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Regenerate Song Dialog */}
+      {/* Disable Song Access Confirmation Dialog */}
+      <AlertDialog open={showDisableAccessConfirm} onOpenChange={(open) => {
+        setShowDisableAccessConfirm(open);
+        if (!open) setDisableAccessReason("");
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <EyeOff className="h-5 w-5 text-orange-600" />
+              Disable Song Access?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  The customer's link at <code>/song/{selectedOrder?.id?.slice(0, 8).toUpperCase()}</code> will return "not available". The song file <strong>stays in storage</strong> and can be restored with one click later.
+                </p>
+                <p className="text-emerald-700 font-medium">
+                  ✓ Safe for chargebacks — never deletes the file. Use this instead of manually changing status or deleting from storage.
+                </p>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Reason (optional, logged)</label>
+                  <Input
+                    value={disableAccessReason}
+                    onChange={(e) => setDisableAccessReason(e.target.value)}
+                    placeholder="e.g. chargeback opened, customer dispute"
+                    disabled={disablingAccess}
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={disablingAccess}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDisableSongAccess}
+              disabled={disablingAccess}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {disablingAccess ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
+              {disablingAccess ? "Disabling..." : "Disable Access"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={showRegenerateDialog} onOpenChange={(open) => {
         if (!open) {
           setShowRegenerateDialog(false);
