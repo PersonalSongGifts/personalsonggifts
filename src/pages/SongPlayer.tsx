@@ -111,21 +111,52 @@ const SongPlayer = () => {
 
   const fetchSongData = async () => {
     if (!orderId) return;
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}`
-      );
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Song not found");
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}`;
+    const maxAttempts = 3;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch(url, { cache: "no-store" });
+
+        if (response.ok) {
+          const data = await response.json();
+          setSongData(data);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+
+        // Parse error body safely (may not be JSON on 5xx/edge errors)
+        let serverMsg = "";
+        try {
+          const errorData = await response.json();
+          serverMsg = errorData?.error || "";
+        } catch {
+          serverMsg = "";
+        }
+
+        // 4xx (except 408/429) = real "not found" / bad request — don't retry
+        if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+          setError(serverMsg || "Song not found");
+          setLoading(false);
+          return;
+        }
+
+        // 5xx / 408 / 429 = transient, fall through to retry
+        lastError = new Error(serverMsg || `Server error (${response.status})`);
+      } catch (err) {
+        // Network failure (e.g. iOS in-app browser "Load failed") — retry
+        lastError = err;
       }
-      const data = await response.json();
-      setSongData(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load song");
-    } finally {
-      setLoading(false);
+
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+      }
     }
+
+    setError(lastError instanceof Error ? lastError.message : "Failed to load song");
+    setLoading(false);
   };
 
   useEffect(() => {
