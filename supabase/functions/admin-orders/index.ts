@@ -922,6 +922,66 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Grant +1 revision to a customer (admin comp / chargeback resolved / etc.)
+      if (body?.action === "grant_extra_revision") {
+        const entityType = typeof body.entityType === "string" ? body.entityType : null;
+        const entityId = typeof body.entityId === "string" ? body.entityId : null;
+        const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : null;
+
+        if (!entityId || (entityType !== "order" && entityType !== "lead")) {
+          return new Response(
+            JSON.stringify({ error: "entityId and entityType ('order'|'lead') required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const table = entityType === "order" ? "orders" : "leads";
+
+        const { data: current, error: fetchErr } = await supabase
+          .from(table)
+          .select("id, max_revisions, revision_count")
+          .eq("id", entityId)
+          .single();
+
+        if (fetchErr || !current) {
+          return new Response(
+            JSON.stringify({ error: "Entity not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const newMax = ((current as any).max_revisions ?? 1) + 1;
+
+        const { data: updated, error: updateErr } = await supabase
+          .from(table)
+          .update({ max_revisions: newMax })
+          .eq("id", entityId)
+          .select("*")
+          .single();
+
+        if (updateErr) {
+          console.error("Failed to grant extra revision:", updateErr);
+          throw updateErr;
+        }
+
+        await logActivity(
+          supabase,
+          entityType as "order" | "lead",
+          entityId,
+          "revision_grant",
+          "admin",
+          reason || `Granted +1 revision (now ${newMax} total)`,
+          { previous_max: (current as any).max_revisions ?? 1, new_max: newMax }
+        );
+
+        console.log(`[ADMIN] Granted +1 revision to ${entityType} ${entityId} (${(current as any).max_revisions ?? 1} -> ${newMax})`);
+
+        return new Response(
+          JSON.stringify({ success: true, [entityType]: updated, max_revisions: newMax }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Update order fields (editable fields)
       if (body?.action === "update_order_fields") {
         const orderId = typeof body.orderId === "string" ? body.orderId : null;

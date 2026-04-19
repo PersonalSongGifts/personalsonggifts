@@ -348,6 +348,24 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
                         <span className="text-xs text-muted-foreground">
                           {order.revision_count ?? 0}/{order.max_revisions ?? 1} used
                         </span>
+                        {(order.revision_count ?? 0) >= (order.max_revisions ?? 1) &&
+                          !order.pending_revision &&
+                          (order.revision_status === null || order.revision_status === undefined || order.revision_status === "approved" || order.revision_status === "rejected" || order.revision_status === "completed") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 px-2 text-xs gap-1"
+                              onClick={() => grantExtraRevision("order", order.id)}
+                              disabled={grantingRevisionId === order.id}
+                            >
+                              {grantingRevisionId === order.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <FileEdit className="h-3 w-3" />
+                              )}
+                              Grant +1 Revision
+                            </Button>
+                          )}
                       </div>
 
                       {order.revision_requested_at && (

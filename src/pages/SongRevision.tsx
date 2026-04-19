@@ -534,6 +534,30 @@ const SongRevision = () => {
               placeholder="Describe any changes to the feel, energy, or style you'd like..."
             />
 
+            {/* Tempo */}
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <Label className="text-sm font-medium text-foreground mb-1 block">Tempo</Label>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Want the new version a little slower or faster? Leave on "Same tempo" to keep the current pace.
+                </p>
+                <Select
+                  value={formValues.tempo || "same"}
+                  onValueChange={(v) => updateField("tempo", v === "same" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Same tempo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="same">Same tempo</SelectItem>
+                    <SelectItem value="A bit slower">A bit slower</SelectItem>
+                    <SelectItem value="A bit faster">A bit faster</SelectItem>
+                    <SelectItem value="Much slower">Much slower</SelectItem>
+                    <SelectItem value="Much faster">Much faster</SelectItem>
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
 
             {/* Anything else */}
             <TextAreaField
