@@ -55,7 +55,33 @@ export function CSAssistant({ adminPassword }: CSAssistantProps) {
   const [expandedRevisionOrderId, setExpandedRevisionOrderId] = useState<string | null>(null);
   const [revisionDetails, setRevisionDetails] = useState<Record<string, any[]>>({});
   const [loadingRevisionDetails, setLoadingRevisionDetails] = useState<string | null>(null);
+  const [grantingRevisionId, setGrantingRevisionId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const grantExtraRevision = useCallback(async (entityType: "order" | "lead", entityId: string) => {
+    const reason = window.prompt("Optional reason (e.g. 'CS comp', 'chargeback resolved'):", "") ?? "";
+    if (reason === null) return; // user cancelled
+    setGrantingRevisionId(entityId);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: { action: "grant_extra_revision", entityType, entityId, reason: reason.trim() || null, adminPassword },
+      });
+      if (error) throw error;
+      const newMax = data?.max_revisions;
+      // Patch local state so the button hides immediately
+      if (entityType === "order") {
+        setOrders((prev) => prev.map((o) => (o.id === entityId ? { ...o, max_revisions: newMax } : o)));
+      } else {
+        setLeads((prev) => prev.map((l) => (l.id === entityId ? { ...l, max_revisions: newMax } : l)));
+      }
+      toast({ title: "Revision granted", description: `Customer can now submit another revision (${newMax} total).` });
+    } catch (err) {
+      toast({ title: "Grant failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setGrantingRevisionId(null);
+    }
+  }, [adminPassword, toast]);
 
   const handleLookup = useCallback(async () => {
     if (!email.trim()) return;
