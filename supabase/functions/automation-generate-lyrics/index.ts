@@ -127,6 +127,7 @@ interface EntityData {
   special_message?: string | null;
   automation_manual_override_at?: string | null;
   automation_retry_count?: number | null;
+  content_filter_strikes?: number | null;
   lyrics_language_code: string;
   sender_context?: string | null;
   notes?: string | null;
