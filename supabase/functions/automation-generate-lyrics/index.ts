@@ -147,6 +147,7 @@ function normalizeEntityData(entity: Record<string, unknown>): EntityData {
     special_message: entity.special_message as string | null,
     automation_manual_override_at: entity.automation_manual_override_at as string | null,
     automation_retry_count: entity.automation_retry_count as number | null,
+    content_filter_strikes: entity.content_filter_strikes as number | null,
     lyrics_language_code: (entity.lyrics_language_code as string) || "en",
     sender_context: entity.sender_context as string | null,
     notes: entity.notes as string | null,
