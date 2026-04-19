@@ -1,0 +1,2 @@
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS content_filter_strikes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.leads  ADD COLUMN IF NOT EXISTS content_filter_strikes INTEGER NOT NULL DEFAULT 0;
