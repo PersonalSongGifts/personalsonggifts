@@ -139,6 +139,11 @@ interface Order {
   unplayed_resend_sent_at?: string | null;
   // Revision
   revision_token?: string | null;
+  revision_count?: number | null;
+  max_revisions?: number | null;
+  revision_status?: string | null;
+  pending_revision?: boolean | null;
+  revision_requested_at?: string | null;
   // Billing country
   billing_country_code?: string | null;
   billing_country_name?: string | null;
@@ -207,6 +212,8 @@ export default function Admin() {
   // Order dismissal state
   const [dismissedOrderFilter, setDismissedOrderFilter] = useState<"active" | "cancelled" | "all">("active");
   const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
+  // Grant extra revision state
+  const [grantingRevision, setGrantingRevision] = useState(false);
   // Reset automation state
   const [resettingAutomation, setResettingAutomation] = useState(false);
   const [stoppingAutomation, setStoppingAutomation] = useState(false);
@@ -1145,7 +1152,41 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
-  // Helper to check if order needs attention
+  // Grant +1 extra revision to the customer for the selected order
+  const handleGrantExtraRevision = async () => {
+    if (!selectedOrder || !password) return;
+    const reason = window.prompt("Optional reason (e.g. 'CS comp', 'chargeback resolved'):", "") ?? "";
+    setGrantingRevision(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "grant_extra_revision",
+          entityType: "order",
+          entityId: selectedOrder.id,
+          reason: reason.trim() || null,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      const newMax = data?.max_revisions ?? ((selectedOrder.max_revisions ?? 1) + 1);
+      setSelectedOrder({ ...selectedOrder, max_revisions: newMax } as Order);
+      toast({
+        title: "Revision granted",
+        description: `Customer can now submit another revision (${newMax} total).`,
+      });
+      fetchOrders();
+    } catch (err) {
+      toast({
+        title: "Grant failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setGrantingRevision(false);
+    }
+  };
+
   const orderNeedsAttention = (order: Order): boolean => {
     const now = new Date();
     // Failed automation
@@ -1872,6 +1913,30 @@ const { data, error } = await listOrders("all", 0, 250);
                         >Copy Revision Link 📋</button></>
                       )}
                     </DialogDescription>
+                    {selectedOrder.revision_token && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap text-xs">
+                        <span className="text-muted-foreground">
+                          Revisions: <strong>{selectedOrder.revision_count ?? 0}/{selectedOrder.max_revisions ?? 1}</strong> used
+                        </span>
+                        {selectedOrder.revision_status && (
+                          <Badge variant="outline" className="capitalize">{selectedOrder.revision_status}</Badge>
+                        )}
+                        {selectedOrder.pending_revision && (
+                          <Badge variant="outline" className="bg-yellow-100 text-yellow-800">⏳ Awaiting review</Badge>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-xs gap-1"
+                          onClick={handleGrantExtraRevision}
+                          disabled={grantingRevision || !!selectedOrder.pending_revision}
+                          title={selectedOrder.pending_revision ? "A revision is already pending review" : "Add +1 to this customer's revision allowance"}
+                        >
+                          {grantingRevision ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}
+                          Grant +1 Revision
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   {!isEditingOrder ? (
                     <Button variant="outline" size="sm" onClick={startEditingOrder}>
