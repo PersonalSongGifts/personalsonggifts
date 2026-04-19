@@ -1913,6 +1913,30 @@ const { data, error } = await listOrders("all", 0, 250);
                         >Copy Revision Link 📋</button></>
                       )}
                     </DialogDescription>
+                    {selectedOrder.revision_token && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap text-xs">
+                        <span className="text-muted-foreground">
+                          Revisions: <strong>{selectedOrder.revision_count ?? 0}/{selectedOrder.max_revisions ?? 1}</strong> used
+                        </span>
+                        {selectedOrder.revision_status && (
+                          <Badge variant="outline" className="capitalize">{selectedOrder.revision_status}</Badge>
+                        )}
+                        {selectedOrder.pending_revision && (
+                          <Badge variant="outline" className="bg-yellow-100 text-yellow-800">⏳ Awaiting review</Badge>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-xs gap-1"
+                          onClick={handleGrantExtraRevision}
+                          disabled={grantingRevision || !!selectedOrder.pending_revision}
+                          title={selectedOrder.pending_revision ? "A revision is already pending review" : "Add +1 to this customer's revision allowance"}
+                        >
+                          {grantingRevision ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}
+                          Grant +1 Revision
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   {!isEditingOrder ? (
                     <Button variant="outline" size="sm" onClick={startEditingOrder}>
