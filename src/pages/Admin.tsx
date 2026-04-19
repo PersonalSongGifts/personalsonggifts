@@ -139,6 +139,11 @@ interface Order {
   unplayed_resend_sent_at?: string | null;
   // Revision
   revision_token?: string | null;
+  revision_count?: number | null;
+  max_revisions?: number | null;
+  revision_status?: string | null;
+  pending_revision?: boolean | null;
+  revision_requested_at?: string | null;
   // Billing country
   billing_country_code?: string | null;
   billing_country_name?: string | null;
