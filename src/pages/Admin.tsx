@@ -207,6 +207,8 @@ export default function Admin() {
   // Order dismissal state
   const [dismissedOrderFilter, setDismissedOrderFilter] = useState<"active" | "cancelled" | "all">("active");
   const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
+  // Grant extra revision state
+  const [grantingRevision, setGrantingRevision] = useState(false);
   // Reset automation state
   const [resettingAutomation, setResettingAutomation] = useState(false);
   const [stoppingAutomation, setStoppingAutomation] = useState(false);
