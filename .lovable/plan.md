@@ -1,47 +1,64 @@
 
 
-## Plan: Stop hard-deleting songs, add restore + multi-version history
+## Plan: Admin "Grant Extra Revision" + Tempo question (already wired)
 
-### Problem
-CS clicked "delete song" on order A5ACDCDF during a chargeback. The mp3 was hard-deleted from storage. Customer dropped the chargeback but we can't restore the original — we never kept a copy.
+### Part 1 — Grant Extra Revision (admin action)
 
-Current backup pattern (`prev_song_url`) is single-slot and only populated by regenerations, not by manual deletes. CS deletion bypasses it entirely.
+**Where it lives:** the "Revision Status" section of the order detail panel in `CSAssistant.tsx` (and the matching panel in `LeadsTable.tsx` for leads, since leads also have `max_revisions`/`revision_count`).
 
-### Fix (two parts)
+**UX:**
+- When `revision_count >= max_revisions` and `revision_status` is `null` / `approved` / `rejected` (i.e. customer used their free one), show a small **"Grant +1 Revision"** button next to the "X/Y used" counter.
+- Clicking it opens a tiny confirm dialog with an optional reason note ("CS comp", "chargeback resolved", etc., logged to activity log).
+- On confirm: bumps `max_revisions` by 1, leaves `revision_count` alone. The customer's existing revision link (`/song/revision/:token`) immediately re-opens — `get-revision-page` already gates on `revision_count < max_revisions`, so no other code changes needed.
+- After granting, button becomes a small "Granted +1 (now X total)" label so it's obvious it was used.
 
-**Part 1 — Restore this customer now**
-Click **"Regenerate with Current Lyrics"** on order A5ACDCDF. Same lyrics, fresh song, link works again in ~5 min. Only viable option since the original mp3 is gone.
+**Backend:** new `body.action === "grant_extra_revision"` branch in `supabase/functions/admin-orders/index.ts` that:
+1. Loads the row from `orders` or `leads` (param `entityType`, `entityId`).
+2. `max_revisions = (max_revisions ?? 1) + 1`.
+3. Writes one `order_activity_log` entry: `revision_grant`, actor=`admin`, details=optional reason.
 
-**Part 2 — Never lose a song again**
+**Customer-side resend (optional, asked below):** after granting, optionally email the customer their existing revision link with a short note ("We've added another revision for you — here's your link"). This reuses the same revision URL we already email post-delivery.
 
-**A. Replace hard-delete with soft-disable**
-- Find the existing CS/admin "delete song" UI and the backend action it calls.
-- Replace with **"Disable song access"**: clears `song_url` but keeps the storage object intact. Customer's `/song/{id}` page shows "temporarily unavailable" instead of generic Not Found.
-- Add **"Restore song access"** button that puts `song_url` back.
+### Part 2 — Tempo field in the revision form
 
-**B. Multi-version history table** (new)
-New table `song_versions`:
-- `id`, `order_id`, `song_url`, `automation_lyrics`, `cover_image_url`, `song_title`, `created_at`, `replaced_at`, `reason` (regeneration / revision / manual_disable / cs_action)
+**Good news: it already exists.** The customer-facing revision form at `/song/revision/:token` already has fields for **Style / Vibe Changes**, **Anything Else**, and supports a **`tempo`** field end-to-end in the database (`revision_requests.tempo`) and in `submit-revision`.
 
-Every time a song changes (regenerate, revision, disable, manual edit), snapshot the prior version into `song_versions` BEFORE overwriting. Storage objects in the `songs` bucket are never deleted by app code — only soft-replaced in the DB.
+What's missing is just the **UI input** for tempo on the page — the rest of the pipeline already handles it.
 
-**C. Admin "Song History" panel** on the order detail dialog
-- Lists all prior versions for the order with timestamps + reason
-- Each row has a **"Restore this version"** button that copies that version's `song_url` / lyrics / cover back into the live order columns
-- Existing single-slot `prev_song_url` keeps working for the one-click "undo last regen" case; new table is the durable archive
+**UX add (tiny):** add a Select between "Style / Vibe Changes" and "Anything Else" with options:
+- "Same tempo" (empty/default)
+- "A bit slower"
+- "A bit faster"
+- "Much slower"
+- "Much faster"
 
-**D. Storage protection**
-- Audit codepaths that call `supabase.storage.from('songs').remove(...)` and remove or gate them behind a "permanent purge" admin-only action with explicit confirmation
-- Default: no app code deletes from the `songs` bucket, ever
+### How tempo reaches Suno today
 
-### Files to touch
-- New migration: `song_versions` table + RLS (no public access, service role only)
-- New edge function or extend `admin-orders`: `disable_song`, `restore_song`, `restore_version`, snapshot helper
-- Hook snapshot helper into: regeneration flow, revision flow, manual lyrics edits, the new disable action
-- Admin UI: replace delete button with disable/restore pair, add Song History panel in order detail dialog
-- Audit + remove storage `.remove()` calls from the `songs` bucket
+I traced the pipeline so you know exactly what happens when a customer picks "A bit faster":
 
-### What I need from you
-1. Confirm: regenerate A5ACDCDF with current lyrics now to get the customer working again? (yes/no)
-2. Confirm: build Parts A–D above as one batch? (yes/no)
+1. **`submit-revision`** writes `tempo: "A bit faster"` into `revision_requests`. On approve (manual or auto), it appends it to the order's `notes` field as `"tempo: A bit faster"` and triggers a regeneration.
+2. **`automation-generate-lyrics`** reads `entity.notes` and merges it with `sender_context` into a `SenderContext` block in the Gemini prompt. Gemini then naturally inserts bracketed performance directions like `[upbeat tempo]` or `[slower groove, gentle pace]` into the lyrics.
+3. Suno reads those bracketed cues from the lyrics body and **does** respond to them (this is the same channel used today for instrumental directions — e.g. `[Tempo slows]` is explicitly called out in the lyrics-generation system prompt as a valid direction).
+
+**Will it break anything? No.**
+- Tempo is already an accepted column, validated as a "short field" in `submit-revision`, and already counted as a `contentField` that triggers regeneration. Adding the UI input flips on a path that's already hot.
+- Suno controls tempo via the genre/style prompt + bracketed cues in lyrics, **not** via a numeric BPM parameter. So we get qualitative control ("a bit faster") but not exact BPM. That matches Suno's actual capability — there is no public BPM knob.
+- Risk surface: zero new DB columns, zero edge-function deploys for the tempo UI itself (the backend already accepts it). The only deploy needed is `admin-orders` for the grant action.
+
+### Files I'll touch
+
+**Edge:**
+- `supabase/functions/admin-orders/index.ts` — add `grant_extra_revision` action.
+
+**Admin UI:**
+- `src/components/admin/CSAssistant.tsx` — add "Grant +1 Revision" button + confirm dialog in the Revision Status section.
+- `src/components/admin/LeadsTable.tsx` — same button on the lead detail dialog (leads also have revision counters).
+
+**Customer UI:**
+- `src/pages/SongRevision.tsx` — insert the Tempo `<Select>` between Style Notes and Anything Else.
+
+### Two quick questions before I build
+
+1. **After "Grant +1 Revision", should we auto-email the customer their revision link**, or just unlock it silently and let CS message them manually?
+2. **Tempo options** — keep the 5 I proposed (Same / a bit slower / a bit faster / much slower / much faster), or you want a free-text input instead?
 
