@@ -468,21 +468,52 @@ Deno.serve(async (req) => {
           .eq("id", entityId);
         return new Response("Audio generation failed", { status: 200, headers: corsHeaders });
 
-      case "SENSITIVE_WORD_ERROR":
-        console.error(`[CALLBACK] Task ${taskId} content filtered:`, task?.errorMessage);
-        await supabase
-          .from(tableName)
-          .update({
-            automation_status: "failed",
-            automation_last_error: `[CALLBACK] Content filtered by Suno: ${task?.errorMessage || "Sensitive content detected"}`,
-            automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
-            ...((!isBonusCallback && entity.bonus_automation_status === "audio_generating") ? {
-              bonus_automation_status: "failed",
-              bonus_automation_last_error: "Primary song generation failed",
-            } : {}),
-          })
-          .eq("id", entityId);
+      case "SENSITIVE_WORD_ERROR": {
+        const newStrikes = ((entity.content_filter_strikes as number) || 0) + 1;
+        const MAX_CONTENT_FILTER_STRIKES = 5;
+        const hitCap = newStrikes >= MAX_CONTENT_FILTER_STRIKES;
+
+        console.error(`[CALLBACK] Task ${taskId} content filtered (strike ${newStrikes}/${MAX_CONTENT_FILTER_STRIKES}):`, task?.errorMessage);
+
+        // Build update — clear lyrics & task on each strike so next retry generates fresh
+        // (softer) lyrics. Hit the cap → permanently_failed + alert.
+        const baseUpdate: Record<string, unknown> = {
+          content_filter_strikes: newStrikes,
+          automation_last_error: `[CALLBACK] Content filtered by Suno (strike ${newStrikes}/${MAX_CONTENT_FILTER_STRIKES}): ${task?.errorMessage || "Sensitive content detected"}`,
+          automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+          // Wipe the rejected lyrics so the next retry regenerates with the softening prompt
+          ...(!hitCap ? { automation_lyrics: null, automation_task_id: null } : {}),
+          ...((!isBonusCallback && entity.bonus_automation_status === "audio_generating") ? {
+            bonus_automation_status: "failed",
+            bonus_automation_last_error: "Primary song generation failed",
+          } : {}),
+        };
+
+        if (hitCap) {
+          baseUpdate.automation_status = "permanently_failed";
+        } else {
+          // Stay in 'failed' — process-scheduled-deliveries auto-retry will pick it up
+          // and call automation-trigger again, which calls generate-lyrics with the
+          // softening prompt (since content_filter_strikes > 0).
+          baseUpdate.automation_status = "failed";
+        }
+
+        await supabase.from(tableName).update(baseUpdate).eq("id", entityId);
+
+        // Log every strike for visibility
+        await supabase.from("order_activity_log").insert({
+          entity_type: tableName === "orders" ? "order" : "lead",
+          entity_id: entityId,
+          event_type: hitCap ? "content_filter_alert" : "content_filter_strike",
+          actor: "system",
+          details: hitCap
+            ? `🚨 Suno content filter rejected ${MAX_CONTENT_FILTER_STRIKES} consecutive attempts — needs manual review`
+            : `Suno content filter rejected lyrics (strike ${newStrikes}/${MAX_CONTENT_FILTER_STRIKES}). Auto-retry with softer prompt.`,
+          metadata: { strikes: newStrikes, suno_message: task?.errorMessage || null },
+        });
+
         return new Response("Content filtered", { status: 200, headers: corsHeaders });
+      }
 
       case "CALLBACK_EXCEPTION":
         console.error(`[CALLBACK] Task ${taskId} callback error:`, task?.errorMessage);
