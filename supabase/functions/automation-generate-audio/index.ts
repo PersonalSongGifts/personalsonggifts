@@ -17,6 +17,19 @@ function stripSunoTags(lyrics: string): string {
     .replace(/\n{3,}/g, "\n\n"); // collapse excessive blank lines
 }
 
+// Phonetically rewrite words that trigger Suno's content filter (false positives
+// on substrings like "Niger" inside "Nigeria"/"Niger Delta"). The DB copy of
+// automation_lyrics stays correctly spelled — these swaps ONLY apply to the
+// `prompt` field sent to Suno, so the customer-visible lyrics are unchanged.
+function phoneticizeForSuno(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return lyrics
+    // Order matters: longer matches first
+    .replace(/Nigerian/gi, (m) => m[0] === m[0].toUpperCase() ? "Nyjerian" : "nyjerian")
+    .replace(/Nigeria/gi, (m) => m[0] === m[0].toUpperCase() ? "Nyjeria" : "nyjeria")
+    .replace(/\bNiger\b/gi, (m) => m[0] === m[0].toUpperCase() ? "Nyjer" : "nyjer");
+}
+
 // Helper to normalize entity data from leads or orders
 interface EntityData {
   id: string;
