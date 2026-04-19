@@ -1003,6 +1003,7 @@ Deno.serve(async (req) => {
           generated_at: new Date().toISOString(),
           delivery_status: shouldScheduleDelivery ? "scheduled" : null,
           automation_audio_url_source: usedSource,
+          content_filter_strikes: 0,
         })
         .eq("id", entityId);
 
