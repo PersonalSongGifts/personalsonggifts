@@ -951,6 +951,7 @@ Deno.serve(async (req) => {
           automation_last_error: null,
           generated_at: new Date().toISOString(),
           automation_audio_url_source: usedSource,
+          content_filter_strikes: 0,
         })
         .eq("id", entityId);
 
