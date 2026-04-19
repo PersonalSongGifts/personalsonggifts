@@ -127,6 +127,7 @@ interface EntityData {
   special_message?: string | null;
   automation_manual_override_at?: string | null;
   automation_retry_count?: number | null;
+  content_filter_strikes?: number | null;
   lyrics_language_code: string;
   sender_context?: string | null;
   notes?: string | null;
@@ -146,6 +147,7 @@ function normalizeEntityData(entity: Record<string, unknown>): EntityData {
     special_message: entity.special_message as string | null,
     automation_manual_override_at: entity.automation_manual_override_at as string | null,
     automation_retry_count: entity.automation_retry_count as number | null,
+    content_filter_strikes: entity.content_filter_strikes as number | null,
     lyrics_language_code: (entity.lyrics_language_code as string) || "en",
     sender_context: entity.sender_context as string | null,
     notes: entity.notes as string | null,
@@ -313,6 +315,26 @@ This spelling is intentional for correct pronunciation and must be followed.`
       ? `\nSenderContext: "${senderCtx}"\n\nIMPORTANT: The sender has provided context about themselves.\nUse this to ensure correct gender references and perspective in the lyrics.\nNever assume the sender's gender from the recipient type alone.`
       : "";
 
+    // Content-filter recovery: if Suno has rejected previous attempts, instruct Gemini
+    // to actively soften potentially flagged content while preserving meaning.
+    const strikes = entity.content_filter_strikes || 0;
+    const contentFilterRecoveryBlock = strikes > 0
+      ? `\n\n# 🚨 CRITICAL: CONTENT FILTER RECOVERY (Attempt ${strikes + 1})
+The previous ${strikes} attempt(s) were REJECTED by the Suno content filter.
+You MUST aggressively soften any content that could trip a strict, automated music-AI content filter.
+Apply ALL of the following — even if the original input seemed harmless:
+
+- Replace SPECIFIC PROPER NOUNS (city names, hotel names, restaurant names, regional landmarks, country/region references) with generic equivalents ("a special place", "our favorite spot", "the city we love"). Keep ONLY the recipient's first name.
+- Remove any reference to alcohol, weapons, body parts, violence, money, brands, politicians, or religions (unless the genre is explicitly Prayer/Worship — then keep references generic and reverent).
+- Avoid words that could be misread out of context: "fire", "burn", "shot", "hit", "gun", "blood", "dark", "kill", "dead", "knife", "blade", "smoke", "high", "drug", "wild", "crazy".
+- Avoid intense romantic intensity language: "body", "skin", "touch you", "need you bad", "obsessed". Use wholesome alternatives: "your heart", "your spirit", "by your side", "thinking of you".
+- Replace metaphors that could be misread: "kindle a spark" → "light up my world"; "rock your world" → "brighten my world".
+- Keep the EMOTIONAL meaning of the customer's input, but rephrase the WORDS into the safest, most universal vocabulary possible.
+- Default to extremely tame, Hallmark-card-style language. Wholesome > clever.
+
+The lyrics MUST still feel personal and heartfelt — but err strongly on the side of safety.`
+      : "";
+
     const userPrompt = `Write Suno-ready song lyrics only, no explanations.
 
 RecipientType: ${entity.recipient_type}
@@ -326,6 +348,7 @@ SpecialMessage: "${entity.special_message || ""}"
 ${pronunciationInstruction}
 ${senderContextBlock}
 ${languagePromptBlock}
+${contentFilterRecoveryBlock}
 
 Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.

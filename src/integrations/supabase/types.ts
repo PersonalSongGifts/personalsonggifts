@@ -70,6 +70,7 @@ export type Database = {
           bonus_song_url: string | null
           bonus_style_prompt: string | null
           captured_at: string
+          content_filter_strikes: number
           converted_at: string | null
           cover_image_url: string | null
           customer_name: string
@@ -161,6 +162,7 @@ export type Database = {
           bonus_song_url?: string | null
           bonus_style_prompt?: string | null
           captured_at?: string
+          content_filter_strikes?: number
           converted_at?: string | null
           cover_image_url?: string | null
           customer_name: string
@@ -252,6 +254,7 @@ export type Database = {
           bonus_song_url?: string | null
           bonus_style_prompt?: string | null
           captured_at?: string
+          content_filter_strikes?: number
           converted_at?: string | null
           cover_image_url?: string | null
           customer_name?: string
@@ -404,6 +407,7 @@ export type Database = {
           bonus_unlock_payment_intent_id: string | null
           bonus_unlock_session_id: string | null
           bonus_unlocked_at: string | null
+          content_filter_strikes: number
           cover_image_url: string | null
           created_at: string
           customer_email: string
@@ -524,6 +528,7 @@ export type Database = {
           bonus_unlock_payment_intent_id?: string | null
           bonus_unlock_session_id?: string | null
           bonus_unlocked_at?: string | null
+          content_filter_strikes?: number
           cover_image_url?: string | null
           created_at?: string
           customer_email: string
@@ -644,6 +649,7 @@ export type Database = {
           bonus_unlock_payment_intent_id?: string | null
           bonus_unlock_session_id?: string | null
           bonus_unlocked_at?: string | null
+          content_filter_strikes?: number
           cover_image_url?: string | null
           created_at?: string
           customer_email?: string
@@ -1044,6 +1050,7 @@ export type Database = {
           bonus_unlock_payment_intent_id: string | null
           bonus_unlock_session_id: string | null
           bonus_unlocked_at: string | null
+          content_filter_strikes: number
           cover_image_url: string | null
           created_at: string
           customer_email: string
