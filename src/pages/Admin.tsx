@@ -1147,7 +1147,41 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
-  // Helper to check if order needs attention
+  // Grant +1 extra revision to the customer for the selected order
+  const handleGrantExtraRevision = async () => {
+    if (!selectedOrder || !password) return;
+    const reason = window.prompt("Optional reason (e.g. 'CS comp', 'chargeback resolved'):", "") ?? "";
+    setGrantingRevision(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-orders", {
+        method: "POST",
+        body: {
+          action: "grant_extra_revision",
+          entityType: "order",
+          entityId: selectedOrder.id,
+          reason: reason.trim() || null,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      const newMax = data?.max_revisions ?? ((selectedOrder.max_revisions ?? 1) + 1);
+      setSelectedOrder({ ...selectedOrder, max_revisions: newMax } as Order);
+      toast({
+        title: "Revision granted",
+        description: `Customer can now submit another revision (${newMax} total).`,
+      });
+      fetchOrders();
+    } catch (err) {
+      toast({
+        title: "Grant failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setGrantingRevision(false);
+    }
+  };
+
   const orderNeedsAttention = (order: Order): boolean => {
     const now = new Date();
     // Failed automation
