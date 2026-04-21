@@ -1193,6 +1193,47 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
+  // Comp the bonus track to the customer (admin action, no payment)
+  const handleCompBonusTrack = async () => {
+    if (!selectedOrder || !password) return;
+    setCompingBonus(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-unlock-bonus", {
+        method: "POST",
+        body: {
+          orderId: selectedOrder.id,
+          reason: bonusCompReason.trim() || null,
+          sendEmail: bonusCompSendEmail,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      const unlockedAt = data?.bonus_unlocked_at ?? new Date().toISOString();
+      setSelectedOrder({ ...selectedOrder, bonus_unlocked_at: unlockedAt, bonus_price_cents: 0 } as Order);
+      const emailNote = data?.email?.sent
+        ? ` Email sent to ${data.email.recipient}.`
+        : data?.email?.error
+          ? ` Email skipped: ${data.email.error}`
+          : "";
+      toast({
+        title: "Bonus track unlocked",
+        description: `Customer now has free access to the bonus track.${emailNote}`,
+      });
+      setShowBonusCompDialog(false);
+      setBonusCompReason("");
+      setBonusCompSendEmail(true);
+      fetchOrders();
+    } catch (err) {
+      toast({
+        title: "Unlock failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setCompingBonus(false);
+    }
+  };
+
   const orderNeedsAttention = (order: Order): boolean => {
     const now = new Date();
     // Failed automation
