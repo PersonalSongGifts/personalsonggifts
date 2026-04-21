@@ -1,38 +1,72 @@
 
 
-## You're right — the "$10-off / $39.99" label is wrong
+## $19.99 Flash-Sale Remarketing Campaign — Final Plan
 
-### What's actually happening
+72-hour flash sale to ~17,688 cold US leads who got their preview but never bought. Modeled on existing Valentine remarketing pattern.
 
-The followup email pricing **does** dynamically pull from the active promo (the code reads `lead_price_cents` from the `promotions` table). Right now your active promo is **Early Mother's Day @ $29.99** (`lead_price_cents = 2999`), so the email is correctly showing **$29.99 vs. $99.99**, not $39.99.
+### Audience (unchanged from approved plan)
 
-The bug is purely in the **dashboard label**. In `LeadFollowupPanel.tsx` (and/or `FunnelInsights.tsx`) the text "$10-off / $39.99 followup converts at 1.44%" is a **hardcoded string** — it never reads the actual promo price.
+A lead is eligible only if **all** of these are true:
+- `preview_sent_at IS NOT NULL` AND `preview_song_url IS NOT NULL`
+- `status != 'converted'` AND `dismissed_at IS NULL`
+- `captured_at < now() - interval '5 days'`
+- `last_promo_email_sent_at IS NULL` OR older than 30 days
+- Email **not** in `email_suppressions`
+- Email **not** present in `orders` as `customer_email` of any non-cancelled order
+- `timezone` starts with `America/` (US-only)
 
-So:
-- ✅ Customers see the correct $29.99 offer
-- ❌ Admin dashboard says "$39.99" because that string was hardcoded back when the fallback (no-promo) price was $39.99
-- ⚠️ The 1.44% conversion rate itself is accurate — it's just labeled with the wrong price
+### Email content
 
-### The fix
+- **Subject (with name):** `${recipientName}'s song — $19.99 for 72 hours`
+- **Subject (null/empty fallback):** `Your song — $19.99 for 72 hours`
+- **Body:** Plain personal style (Arial, white bg, bare links). Reminds them their preview is waiting, offers full song at **$19.99 USD** (vs. $99.99) as 72-hour flash sale. CTA → `https://personalsonggifts.com/preview/{preview_token}?promo=flash20`
+- Standard footer + List-Unsubscribe headers
+- Sent from `support@personalsonggifts.com`
 
-Replace the hardcoded label with a dynamic one driven by the active promo:
+### Promo activation (key change: 72h, activated on first send)
 
-1. **Find the hardcoded string** in the admin followup analytics card (`src/components/admin/LeadFollowupPanel.tsx` and/or `FunnelInsights.tsx` — wherever the "$10-off / $39.99 followup converts at X%" text lives).
+- Migration creates `FLASH20` promo row with `is_active = false`, `lead_price_cents = 1999`, no banner
+- On the **first batch send** (canary or full), the edge function flips `is_active = true` and sets `starts_at = now()`, `ends_at = now() + interval '72 hours'`
+- This way the 72-hour clock starts when emails actually go out, not at migration time
+- The existing checkout code already reads `lead_price_cents` from active promos — `?promo=flash20` URL just enables the funnel; pricing is enforced server-side via the active promo lookup
 
-2. **Fetch the active promo price** the same way `send-lead-followup` does: query `promotions` where `is_active=true` and current time is between `starts_at` and `ends_at`. Use the existing `useActivePromo` hook (`src/hooks/useActivePromo.tsx`) — it already does this.
+### Sending mechanics
 
-3. **Render the label dynamically:**
-   - If a promo is active: `"The {promo.name} offer (${lead_price})  followup converts at {rate}%"` → e.g. *"The Early Mother's Day offer ($29.99) followup converts at 1.44%"*
-   - If no promo active: `"The $10-off ($39.99) followup converts at {rate}%"` (matches the email's no-promo fallback)
+- **New edge function:** `send-flash20-remarketing` (POST, admin-password gated)
+- Atomically claims a batch by setting `last_promo_email_sent_at = now()` BEFORE sending (race-safe)
+- Per-email guards at send time: re-check `orders` table, re-check `email_suppressions`
+- `recipient_name` null/empty guard for subject line fallback
+- Logs each send to `order_activity_log` with `event_type='flash20_sent'`
+- Hard cap of 1,000 sends per invocation (Brevo rate limit protection)
 
-4. **Add a small "current offer" badge** next to the followup analytics so it's always obvious what's being sent: `Current followup offer: $29.99 (Early Mother's Day)`.
+### Admin panel
 
-### Files to change
+New `Flash20RemarketingPanel.tsx` in the **Emails** tab (clone of `ValentineRemarketingPanel`):
+- Eligible count (live)
+- Total sent / progress bar
+- Batch size input (default 500)
+- **Send canary (100)** → review → **Resume full send**
+- Pause / Resume toggle
+- Test send to comma-separated emails
+- Reset campaign button
+- Stats: Sent / Converted / Revenue attributed (joins `last_promo_email_sent_at` → `converted_at` → order price)
+- **Promo expiry countdown** showing time remaining once activated
 
-- **Edit** `src/components/admin/LeadFollowupPanel.tsx` — replace hardcoded $39.99 string, use `useActivePromo` hook for dynamic price + name
-- **Edit** `src/components/admin/FunnelInsights.tsx` — same fix if the string also appears there
+### Safety defaults
 
-### Out of scope (flag for later)
+- Starts **paused**
+- Canary must be sent and reviewed before full batches unlock
+- 30-day re-send guard via `last_promo_email_sent_at`
+- 72h promo auto-expires (checkout falls back to standard pricing after `ends_at`)
 
-- The fallback price `$39.99` and the `$10 off` copy in `send-lead-followup/index.ts` (lines 40 & 45) are also hardcoded. They only fire when no promo is active — which is rare for you — but if you ever go promo-less they'd show stale numbers. Easy follow-up: pull the standard price from a config/admin_settings row instead.
+### Files
+
+**New:**
+- `supabase/functions/send-flash20-remarketing/index.ts` — sender, canary/batch logic, promo activation on first send, recipient_name null guard
+- `src/components/admin/Flash20RemarketingPanel.tsx` — admin UI with countdown
+- Migration: insert `FLASH20` promo row (inactive, lead_price_cents=1999, no banner) + insert `flash20_remarketing` admin_settings row (`{ enabled: false, batch_size: 500, total_sent: 0, canary_sent: false, activated_at: null }`)
+
+**Edit:**
+- `src/pages/Admin.tsx` — render new panel under Emails tab
+- `supabase/functions/automation-get-settings/index.ts` — expose `flash20_remarketing` key
 
