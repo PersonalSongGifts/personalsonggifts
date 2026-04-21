@@ -19,6 +19,7 @@ import { createAudioPreview } from "@/lib/audioClipper";
 import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 import { getCountryFromTimezone } from "@/lib/timezoneCountry";
+import { useActivePromo } from "@/hooks/useActivePromo";
 
 export interface Lead {
   id: string;
