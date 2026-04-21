@@ -131,6 +131,11 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [statusFilter, setStatusFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState("all");
   const [dismissedFilter, setDismissedFilter] = useState<"active" | "dismissed" | "all">("active");
+  const { promo } = useActivePromo();
+  const followupPriceLabel = promo.active && promo.leadPriceCents
+    ? `$${(promo.leadPriceCents / 100).toFixed(2)}`
+    : "$39.99";
+  const followupButtonLabel = `Send ${followupPriceLabel} Follow-up`;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
