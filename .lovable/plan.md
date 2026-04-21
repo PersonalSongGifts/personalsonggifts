@@ -1,65 +1,43 @@
 
 
-## Surface upsell revenue across the admin dashboard
+## Diagnosis: Download Unlocks shows $0 despite real data
 
-Today the dashboard's "Total Revenue" only counts the base order `price`. Lyrics unlocks show their own line item, but **bonus track unlocks** ($X) and **download/usage rights unlocks** ($19.99) are completely invisible. That's why the dashboard total is lower than what Stripe + PayPal report — Stripe sees every charge (base + every upsell), the dashboard only sees base orders.
+### What's actually in the database
 
-This plan fixes both halves of your message: **(1) make total revenue match Stripe/PayPal**, and **(2) add visual breakdowns of upsell performance over time.**
+I queried the `orders` table directly:
 
-### 1. Include all upsells in revenue totals
+| Metric | Value |
+|---|---|
+| Orders with `download_unlocked_at` set | **2,501** |
+| Of those, **paid** ($19.99) downloads | **58** = **$1,710.61** |
+| Comped (free) unlocks (CS gave access) | 2,443 |
+| Earliest unlock | 2026-04-06 |
+| Latest unlock | today |
 
-Update the revenue math so every revenue stat = `base price + lyrics_price_cents + download_price_cents + bonus_price_cents` (cents-safe, comped unlocks where `*_price_cents = 0` are excluded automatically).
+So the download upsell IS converting — 58 customers paid $19.99 in the last ~2 weeks. The dashboard showing **$0** is wrong.
 
-Affected stats in `StatsCards.tsx`:
-- **Total Revenue** + Stripe/PayPal split
-- **Revenue Today** + Stripe/PayPal split
-- True Recovery Revenue (also rolls in upsells from recovered orders)
+### Why the dashboard shows $0
 
-A new sub-line under Total Revenue will show the breakdown so you can sanity-check against Stripe:
-> *Base $X · Lyrics $Y · Downloads $Z · Bonus $W*
+The frontend code (`StatsCards.tsx`) is correct — it reads `download_unlocked_at` and `download_price_cents` from each order and sums them. The edge function source (`admin-orders/index.ts`) also correctly includes both columns in its `SELECT` statement.
 
-### 2. Add the missing upsell data to the API
+But the live deployed `admin-orders` function appears to still be running the **previous version** (before we added those two columns). When the deployed SELECT doesn't include a column, Supabase returns `undefined` for that field on every row — making `download_price_cents ?? 0` always `0` and `o.download_unlocked_at` always falsy. Result: Download Unlocks card = `$0`, `0 customers · 0% attach`. This also explains why Lyrics Unlocks works fine — that column was already in the deployed version.
 
-`admin-orders` currently returns `lyrics_price_cents` and `bonus_price_cents` but **not** `download_unlocked_at` / `download_price_cents`. Add those two columns to the SELECT in `supabase/functions/admin-orders/index.ts` (both the analytics fetch and the paginated fetch).
+### The fix
 
-### 3. New "Upsell Revenue" chart on the Analytics tab
+**Re-deploy `supabase/functions/admin-orders/index.ts`** so the live function picks up `download_unlocked_at, download_price_cents` (already in the source on lines 84 and 116). No code changes needed — just a redeploy.
 
-Add a new component `UpsellRevenueChart.tsx` next to the existing Revenue chart. It shows a **stacked area chart over the last 30 days** with three series:
-- Lyrics Unlocks (purple)
-- Download / Usage Rights (blue)
-- Bonus Tracks (gold)
-
-Each day bucket uses the unlock timestamp (`lyrics_unlocked_at`, `download_unlocked_at`, `bonus_unlocked_at`) — not `created_at` — so the chart reflects when the upsell revenue actually came in. Comped unlocks (`price_cents = 0`) are excluded.
-
-Header shows 30-day totals per stream, e.g.:
-> **Upsell Revenue (30d):** $1,240 · 87 lyrics · 24 downloads · 12 bonus
-
-### 4. New "Upsell Performance" stat group
-
-Add a fourth stat row in `StatsCards.tsx` so the upsell numbers are visible without scrolling to the chart:
-
-| Card | Value | Sub-line |
-|------|-------|----------|
-| Lyrics Unlocks | `$X` | `N paid · M comped` |
-| Download Unlocks | `$X` | `N customers · attach rate Y%` |
-| Bonus Track Unlocks | `$X` | `N paid · M comped` |
-| Total Upsell Revenue | `$X` | `Y% of total revenue` |
-
-Attach rate = paid unlocks ÷ delivered orders eligible for that upsell.
-
-### Why this will reconcile with Stripe
-
-Stripe's total = base order charges + lyrics unlock charges + download charges + bonus unlock charges + (PayPal mirrored). After this change, our dashboard total uses the exact same components, all sourced from `*_price_cents` fields populated by the Stripe webhook from `session.amount_total` (your canonical pricing standard). The only legitimate gap left should be Stripe fees — which the dashboard intentionally shows as gross.
+I'll do this by making a no-op touch to the file (e.g., adding a deploy-bump comment at the top) which forces Lovable to redeploy it. After redeploy, the admin should see the **Download Unlocks** card populate to roughly **$1,711 · 2,501 customers · ~X% attach**, and **Total Revenue** + **Total Upsell Revenue** will jump up by the same $1,711 — bringing the dashboard much closer in line with Stripe's reported totals.
 
 ### Files to change
 
-- **Edit** `supabase/functions/admin-orders/index.ts` — add `download_unlocked_at, download_price_cents` to both `orderColumns` strings
-- **Edit** `src/components/admin/StatsCards.tsx` — update revenue math to include all upsells; add new "Upsell Performance" stat group; add `download_*` and `bonus_*` to the `Order` interface
-- **New** `src/components/admin/UpsellRevenueChart.tsx` — stacked 30-day area chart
-- **Edit** `src/pages/Admin.tsx` — render `<UpsellRevenueChart>` in the Analytics tab grid; add `download_unlocked_at` / `download_price_cents` to the `Order` interface
+- **Edit** `supabase/functions/admin-orders/index.ts` — add a single deploy-bump comment near the top to force redeploy. No logic changes.
 
-### Out of scope (flag for later if you want)
+### Verification after deploy
 
-- Refunds: if you process refunds in Stripe, those aren't reflected anywhere in our DB today, so the dashboard will still slightly overstate vs. Stripe net. Could add a `refunded_at` / `refunded_amount_cents` flow later.
-- Per-day drilldown table for upsells (the new chart + stat cards should cover the immediate need).
+Reload the admin page, look at the **Upsell Performance** row:
+- Download Unlocks should show **$1,711 · 2,501 customers · ~X% attach** (instead of `$0 · 0 customers · 0% attach`)
+- Total Revenue's sub-line should now show a non-zero `DL $...` segment
+- Total Upsell Revenue should rise by ~$1,711
+
+If after redeploy it's still $0, the next step would be to inspect a sample order in the network response from `admin-orders` to confirm whether `download_price_cents` is present in the JSON payload, which would point to a deeper issue (e.g., RLS or Postgres column-level security) rather than a stale deploy.
 
