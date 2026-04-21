@@ -3194,6 +3194,7 @@ const { data, error } = await listOrders("all", 0, 250);
         setShowDisableAccessConfirm(open);
         if (!open) setDisableAccessReason("");
       }}>
+      {/* (placeholder anchor for patch) */}
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
