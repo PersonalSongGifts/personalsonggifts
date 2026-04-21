@@ -4,7 +4,7 @@ import { Play, Pause } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/amplitudeTrack";
-import asSeenOnImage from "@/assets/as-seen-on.png";
+import asSeenOnImage from "@/assets/as-seen-on.webp";
 
 const HeroSection = () => {
   const [isPlaying, setIsPlaying] = useState(false);
