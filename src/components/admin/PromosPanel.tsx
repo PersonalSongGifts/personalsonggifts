@@ -36,6 +36,7 @@ interface Promo {
   email_batch_total: number;
   created_at: string;
   computed_status: string;
+  targeted?: boolean;
 }
 
 interface PromoFormData {
@@ -289,6 +290,11 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
                   <div className="flex items-center gap-3">
                     <CardTitle className="text-base">{promo.banner_emoji} {promo.name}</CardTitle>
                     {statusBadge(promo.computed_status)}
+                    {promo.targeted && (
+                      <Badge variant="outline" className="border-purple-500 text-purple-700">
+                        Targeted
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => editPromo(promo)}>
