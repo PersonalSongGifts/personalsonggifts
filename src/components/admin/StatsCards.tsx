@@ -64,20 +64,59 @@ function getPaymentSource(order: Order): "paypal" | "stripe" {
   return order.notes?.startsWith("paypal_order:") ? "paypal" : "stripe";
 }
 
+// Total revenue per order in dollars = base price + paid upsells (cents-safe)
+function orderTotalDollars(o: Order): number {
+  const upsellCents =
+    (o.lyrics_price_cents ?? 0) +
+    (o.download_price_cents ?? 0) +
+    (o.bonus_price_cents ?? 0);
+  return o.price + upsellCents / 100;
+}
+
 function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Revenue with payment source breakdown
+  // Revenue with payment source breakdown — includes base + all upsells
   const activeOrders = orders.filter((o) => o.status !== "cancelled");
-  const totalRevenue = activeOrders.reduce((sum, o) => sum + o.price, 0);
-  const stripeTotal = activeOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + o.price, 0);
-  const paypalTotal = activeOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + o.price, 0);
+  const baseRevenue = activeOrders.reduce((sum, o) => sum + o.price, 0);
+  const lyricsRevAll = activeOrders.reduce((sum, o) => sum + (o.lyrics_price_cents ?? 0), 0) / 100;
+  const downloadRevAll = activeOrders.reduce((sum, o) => sum + (o.download_price_cents ?? 0), 0) / 100;
+  const bonusRevAll = activeOrders.reduce((sum, o) => sum + (o.bonus_price_cents ?? 0), 0) / 100;
+  const totalRevenue = baseRevenue + lyricsRevAll + downloadRevAll + bonusRevAll;
+  const stripeTotal = activeOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + orderTotalDollars(o), 0);
+  const paypalTotal = activeOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + orderTotalDollars(o), 0);
 
+  // Today: include base orders created today + any upsells unlocked today (regardless of order date)
   const todayOrders = activeOrders.filter((o) => new Date(o.created_at) >= today);
-  const revenueToday = todayOrders.reduce((sum, o) => sum + o.price, 0);
-  const stripeTodayRev = todayOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + o.price, 0);
-  const paypalTodayRev = todayOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + o.price, 0);
+  const baseRevToday = todayOrders.reduce((sum, o) => sum + o.price, 0);
+  const isToday = (iso?: string | null) => !!iso && new Date(iso) >= today;
+  const lyricsRevToday = activeOrders
+    .filter((o) => isToday(o.lyrics_unlocked_at))
+    .reduce((s, o) => s + (o.lyrics_price_cents ?? 0), 0) / 100;
+  const downloadRevToday = activeOrders
+    .filter((o) => isToday(o.download_unlocked_at))
+    .reduce((s, o) => s + (o.download_price_cents ?? 0), 0) / 100;
+  const bonusRevToday = activeOrders
+    .filter((o) => isToday(o.bonus_unlocked_at))
+    .reduce((s, o) => s + (o.bonus_price_cents ?? 0), 0) / 100;
+  const revenueToday = baseRevToday + lyricsRevToday + downloadRevToday + bonusRevToday;
+  // Per-source today: base by order created_at + upsells by unlock timestamp on the parent order
+  const sourceTotalToday = (src: "stripe" | "paypal") => {
+    const baseToday = todayOrders.filter((o) => getPaymentSource(o) === src).reduce((s, o) => s + o.price, 0);
+    const upsellToday = activeOrders
+      .filter((o) => getPaymentSource(o) === src)
+      .reduce((s, o) => {
+        let cents = 0;
+        if (isToday(o.lyrics_unlocked_at)) cents += o.lyrics_price_cents ?? 0;
+        if (isToday(o.download_unlocked_at)) cents += o.download_price_cents ?? 0;
+        if (isToday(o.bonus_unlocked_at)) cents += o.bonus_price_cents ?? 0;
+        return s + cents;
+      }, 0) / 100;
+    return baseToday + upsellToday;
+  };
+  const stripeTodayRev = sourceTotalToday("stripe");
+  const paypalTodayRev = sourceTotalToday("paypal");
 
   // Orders
   const totalOrders = orders.length;
@@ -96,7 +135,7 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const trueRecoveryOrderIds = new Set(trueRecoveries.map((l) => l.order_id).filter(Boolean));
   const trueRecoveryRevenue = orders
     .filter((o) => trueRecoveryOrderIds.has(o.id) && o.status !== "cancelled")
-    .reduce((sum, o) => sum + o.price, 0);
+    .reduce((sum, o) => sum + orderTotalDollars(o), 0);
   const recoveryRate = previewsSent > 0 ? Math.round((trueRecoveryCount / previewsSent) * 100) : 0;
 
   // Play-to-buy
@@ -133,16 +172,38 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const unlockRevenueCents = lyricsUnlocked.reduce((sum, o) => sum + (o.lyrics_price_cents || 0), 0);
   const unlockRevenue = unlockRevenueCents / 100;
 
+  // Download / Usage Rights Unlocks
+  const downloadUnlocked = orders.filter((o) => o.download_unlocked_at);
+  const downloadCount = downloadUnlocked.length;
+  const downloadRev = downloadUnlocked.reduce((s, o) => s + (o.download_price_cents ?? 0), 0) / 100;
+  const downloadAttachRate = deliveredOrders.length > 0
+    ? Math.round((downloadCount / deliveredOrders.length) * 100)
+    : 0;
+
+  // Bonus Track Unlocks
+  const bonusUnlocked = orders.filter((o) => o.bonus_unlocked_at);
+  const bonusTotalCount = bonusUnlocked.length;
+  const bonusPaidCount = bonusUnlocked.filter((o) => (o.bonus_price_cents ?? 0) > 0).length;
+  const bonusCompedCount = bonusTotalCount - bonusPaidCount;
+  const bonusRev = bonusUnlocked.reduce((s, o) => s + (o.bonus_price_cents ?? 0), 0) / 100;
+
+  // Lyrics paid/comped breakdown for the Upsell row
+  const lyricsCompedCount = freeUnlocks;
+  const lyricsPaidCount = paidUnlocks;
+
+  const totalUpsellRevenue = unlockRevenue + downloadRev + bonusRev;
+  const upsellShare = totalRevenue > 0 ? Math.round((totalUpsellRevenue / totalRevenue) * 100) : 0;
+
   return [
     {
       label: "Revenue & Orders",
       stats: [
-        { title: "Total Revenue", value: `$${totalRevenue.toLocaleString()}`, description: "All time earnings", icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100", extra: `Stripe $${stripeTotal.toLocaleString()} · PayPal $${paypalTotal.toLocaleString()}` },
-        { title: "Revenue Today", value: `$${revenueToday.toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", extra: `Stripe $${stripeTodayRev.toLocaleString()} · PayPal $${paypalTodayRev.toLocaleString()}` },
+        { title: "Total Revenue", value: `$${Math.round(totalRevenue).toLocaleString()}`, description: `Base $${Math.round(baseRevenue).toLocaleString()} · Lyrics $${Math.round(lyricsRevAll).toLocaleString()} · DL $${Math.round(downloadRevAll).toLocaleString()} · Bonus $${Math.round(bonusRevAll).toLocaleString()}`, icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100", extra: `Stripe $${Math.round(stripeTotal).toLocaleString()} · PayPal $${Math.round(paypalTotal).toLocaleString()}` },
+        { title: "Revenue Today", value: `$${Math.round(revenueToday).toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", extra: `Stripe $${Math.round(stripeTodayRev).toLocaleString()} · PayPal $${Math.round(paypalTodayRev).toLocaleString()}` },
         { title: "Orders Today", value: ordersToday.toString(), description: "New orders today", icon: ShoppingCart, color: "text-blue-600", bgColor: "bg-blue-100" },
         { title: "Total Orders", value: totalOrders.toString(), description: "All time", icon: ShoppingCart, color: "text-slate-600", bgColor: "bg-slate-100" },
         { title: "Pending", value: pendingOrders.toString(), description: "Awaiting completion", icon: Clock, color: "text-amber-600", bgColor: "bg-amber-100" },
-        { title: "AOV", value: `$${activeOrders.length > 0 ? (totalRevenue / activeOrders.length).toFixed(2) : "0.00"}`, description: `Across ${activeOrders.length} orders`, icon: TrendingUp, color: "text-violet-600", bgColor: "bg-violet-100" },
+        { title: "AOV", value: `$${activeOrders.length > 0 ? (totalRevenue / activeOrders.length).toFixed(2) : "0.00"}`, description: `Across ${activeOrders.length} orders (incl. upsells)`, icon: TrendingUp, color: "text-violet-600", bgColor: "bg-violet-100" },
       ],
     },
     {
@@ -150,18 +211,18 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
       stats: [
         { title: "Leads", value: totalLeads.toString(), description: `${convertedLeads} converted, ${unconvertedLeads} pending`, icon: Users, color: "text-indigo-600", bgColor: "bg-indigo-100" },
         { title: "Previews Sent", value: previewsSent.toString(), description: `of ${totalLeads} leads`, icon: Users, color: "text-violet-600", bgColor: "bg-violet-100" },
-        { title: "True Recoveries", value: trueRecoveryCount.toString(), description: `$${trueRecoveryRevenue.toLocaleString()} revenue`, icon: TrendingUp, color: "text-emerald-600", bgColor: "bg-emerald-100" },
+        { title: "True Recoveries", value: trueRecoveryCount.toString(), description: `$${Math.round(trueRecoveryRevenue).toLocaleString()} revenue`, icon: TrendingUp, color: "text-emerald-600", bgColor: "bg-emerald-100" },
         { title: "Recovery Rate", value: `${recoveryRate}%`, description: `${trueRecoveryCount} of ${previewsSent} sent`, icon: RefreshCw, color: "text-teal-600", bgColor: "bg-teal-100" },
         { title: "Play → Buy", value: `${playToBuyRate}%`, description: `${leadsWhoPlayedAndConverted} of ${leadsWhoPlayedPreview} played`, icon: Play, color: "text-purple-600", bgColor: "bg-purple-100" },
       ],
     },
     {
-      label: "Lyrics Unlocks",
+      label: "Upsell Performance",
       stats: [
-        { title: "Total Unlocks", value: totalUnlocks.toString(), description: "All time", icon: BookOpen, color: "text-fuchsia-600", bgColor: "bg-fuchsia-100" },
-        { title: "Unlock Revenue", value: `$${unlockRevenue.toLocaleString()}`, description: `Paid: ${paidUnlocks}, Free: ${freeUnlocks}`, icon: DollarSign, color: "text-fuchsia-600", bgColor: "bg-fuchsia-100" },
-        { title: "Paid Unlocks", value: paidUnlocks.toString(), description: "At $4.99 each", icon: BookOpen, color: "text-green-600", bgColor: "bg-green-100" },
-        { title: "Free Unlocks", value: freeUnlocks.toString(), description: "Admin/comp unlocks", icon: BookOpen, color: "text-slate-600", bgColor: "bg-slate-100" },
+        { title: "Lyrics Unlocks", value: `$${Math.round(unlockRevenue).toLocaleString()}`, description: `${lyricsPaidCount} paid · ${lyricsCompedCount} comped`, icon: BookOpen, color: "text-fuchsia-600", bgColor: "bg-fuchsia-100" },
+        { title: "Download Unlocks", value: `$${Math.round(downloadRev).toLocaleString()}`, description: `${downloadCount} customers · ${downloadAttachRate}% attach`, icon: Download, color: "text-blue-600", bgColor: "bg-blue-100" },
+        { title: "Bonus Track Unlocks", value: `$${Math.round(bonusRev).toLocaleString()}`, description: `${bonusPaidCount} paid · ${bonusCompedCount} comped`, icon: Gift, color: "text-amber-600", bgColor: "bg-amber-100" },
+        { title: "Total Upsell Revenue", value: `$${Math.round(totalUpsellRevenue).toLocaleString()}`, description: `${upsellShare}% of total revenue`, icon: Sparkles, color: "text-violet-600", bgColor: "bg-violet-100" },
       ],
     },
     {
