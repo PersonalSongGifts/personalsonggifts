@@ -15,6 +15,10 @@ interface PreviewData {
   previewUrl: string;
   coverImageUrl: string | null;
   songTitle: string | null;
+  flash20Eligible?: boolean;
+  flash20Expired?: boolean;
+  flash20PriceCents?: number | null;
+  flash20EndsAt?: string | null;
 }
 
 export default function SongPreview() {
@@ -23,7 +27,7 @@ export default function SongPreview() {
   const isFollowup = searchParams.get("followup") === "true";
   const isVday10 = searchParams.get("vday10") === "true";
   const promoParam = searchParams.get("promo");
-  const { promo: activeFlashPromo, refetch: refetchPromo } = useActivePromo();
+  const { refetch: refetchPromo } = useActivePromo();
   
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -263,7 +267,10 @@ export default function SongPreview() {
             tier,
             applyFollowupDiscount: isFollowup,
             applyVday10Discount: isVday10,
-            promoSlug: activeFlashPromo.active ? activeFlashPromo.slug : (promoParam || undefined),
+            // Only send promoSlug when server confirmed eligibility (flash20) OR a non-flash promo param is in URL
+            promoSlug: previewData?.flash20Eligible
+              ? "flash20"
+              : (promoParam && promoParam !== "flash20" ? promoParam : undefined),
           }),
         }
       );
@@ -272,7 +279,22 @@ export default function SongPreview() {
       
       if (!response.ok) {
         if (data.error === "promo_expired") {
-          toast({ title: "This sale has ended", description: "Prices have been updated.", variant: "destructive" });
+          toast({
+            title: "This flash sale has ended",
+            description: "Your song is still available at standard pricing.",
+            variant: "destructive",
+          });
+          await refetchPromo();
+          // Re-fetch preview so UI reflects the expired state
+          window.location.reload();
+          return;
+        }
+        if (data.error === "promo_not_eligible") {
+          toast({
+            title: "Offer not available",
+            description: "Standard pricing applies — your song is ready when you are.",
+            variant: "destructive",
+          });
           await refetchPromo();
           setPurchasing(false);
           return;
@@ -321,18 +343,21 @@ export default function SongPreview() {
 
   if (!previewData) return null;
 
+  const flashEligible = previewData.flash20Eligible === true;
+  const flashExpired = previewData.flash20Expired === true;
+  const flashPriceCents = previewData.flash20PriceCents ?? 1999;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
-      {/* Urgency Banner */}
-      {activeFlashPromo.active && activeFlashPromo.showBanner && (
-        <div
-          className="py-3 px-4 text-center font-bold text-sm md:text-base"
-          style={{
-            backgroundColor: activeFlashPromo.bannerBgColor || "hsl(var(--primary))",
-            color: activeFlashPromo.bannerTextColor || "hsl(var(--primary-foreground))",
-          }}
-        >
-          🔥 Sale happening now — don't miss out!
+      {/* Flash 20 urgency banner — only when this lead is eligible */}
+      {flashEligible && (
+        <div className="py-3 px-4 text-center font-bold text-sm md:text-base bg-primary text-primary-foreground">
+          🔥 72-hour flash sale — ${(flashPriceCents / 100).toFixed(2)} ends soon
+        </div>
+      )}
+      {flashExpired && (
+        <div className="py-3 px-4 text-center text-sm bg-muted text-muted-foreground">
+          The flash sale has ended — your song is still available at standard pricing.
         </div>
       )}
 
@@ -463,8 +488,8 @@ export default function SongPreview() {
               <div>
                 <p className="text-sm text-muted-foreground line-through">$99.99 USD</p>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
-                  {activeFlashPromo.active
-                    ? `$${((activeFlashPromo.leadPriceCents || 4999) / 100).toFixed(2)}`
+                  {flashEligible
+                    ? `$${(flashPriceCents / 100).toFixed(2)}`
                     : isVday10 && isFollowup
                     ? "$29.99"
                     : isVday10
@@ -502,8 +527,8 @@ export default function SongPreview() {
           {/* Promo Badge */}
           <div className="text-center">
             <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
-              {activeFlashPromo.active
-                ? "⏳ Limited time offer — act now"
+              {flashEligible
+                ? "⏳ 72-hour flash sale — act now"
                 : isVday10
                 ? isFollowup
                   ? "Valentine's Day Special + $10 off"

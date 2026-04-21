@@ -16,6 +16,7 @@ export interface ActivePromo {
   bannerBgColor?: string;
   bannerTextColor?: string;
   bonusPriceCents?: number;
+  targeted?: boolean;
 }
 
 interface ActivePromoContextType {

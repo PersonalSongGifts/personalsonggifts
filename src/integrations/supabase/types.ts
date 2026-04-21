@@ -808,6 +808,7 @@ export type Database = {
           slug: string
           standard_price_cents: number
           starts_at: string
+          targeted: boolean
         }
         Insert: {
           banner_bg_color?: string | null
@@ -832,6 +833,7 @@ export type Database = {
           slug: string
           standard_price_cents: number
           starts_at: string
+          targeted?: boolean
         }
         Update: {
           banner_bg_color?: string | null
@@ -856,6 +858,7 @@ export type Database = {
           slug?: string
           standard_price_cents?: number
           starts_at?: string
+          targeted?: boolean
         }
         Relationships: []
       }

@@ -69,6 +69,43 @@ Deno.serve(async (req) => {
       console.log(`Lead ${lead.id} preview opened for first time`);
     }
 
+    // Check FLASH20 eligibility: targeted promo + active + unexpired + lead received the email
+    let flash20Eligible = false;
+    let flash20Expired = false;
+    let flash20PriceCents: number | null = null;
+    let flash20EndsAt: string | null = null;
+    {
+      const { data: promo } = await supabase
+        .from("promotions")
+        .select("is_active, targeted, starts_at, ends_at, lead_price_cents")
+        .eq("slug", "flash20")
+        .maybeSingle();
+
+      if (promo && promo.targeted === true) {
+        const { data: logEntry } = await supabase
+          .from("order_activity_log")
+          .select("id")
+          .eq("entity_type", "lead")
+          .eq("entity_id", lead.id)
+          .eq("event_type", "flash20_sent")
+          .limit(1)
+          .maybeSingle();
+
+        if (logEntry) {
+          const now = new Date();
+          const starts = new Date(promo.starts_at);
+          const ends = new Date(promo.ends_at);
+          if (promo.is_active && now >= starts && now <= ends) {
+            flash20Eligible = true;
+            flash20PriceCents = promo.lead_price_cents;
+            flash20EndsAt = promo.ends_at;
+          } else if (now > ends) {
+            flash20Expired = true;
+          }
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         recipientName: lead.recipient_name,
@@ -78,6 +115,10 @@ Deno.serve(async (req) => {
         previewUrl: lead.preview_song_url,
         coverImageUrl: lead.cover_image_url,
         songTitle: lead.song_title,
+        flash20Eligible,
+        flash20Expired,
+        flash20PriceCents,
+        flash20EndsAt,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

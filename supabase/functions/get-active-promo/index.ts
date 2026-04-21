@@ -21,6 +21,7 @@ Deno.serve(async (req) => {
       .from("promotions")
       .select("*")
       .eq("is_active", true)
+      .eq("targeted", false)
       .lte("starts_at", new Date().toISOString())
       .gte("ends_at", new Date().toISOString())
       .limit(1)
