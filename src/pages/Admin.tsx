@@ -40,6 +40,7 @@ import { AutomationDashboard } from "@/components/admin/AutomationDashboard";
 import { FunnelInsights } from "@/components/admin/FunnelInsights";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 import { ValentineRemarketingPanel } from "@/components/admin/ValentineRemarketingPanel";
+import { Flash20RemarketingPanel } from "@/components/admin/Flash20RemarketingPanel";
 import { CustomOccasionInsights } from "@/components/admin/CustomOccasionInsights";
 import { UnplayedResendPanel } from "@/components/admin/UnplayedResendPanel";
 import { ReactionEmailPanel } from "@/components/admin/ReactionEmailPanel";
@@ -1924,6 +1925,7 @@ const { data, error } = await listOrders("all", 0, 250);
 
           <TabsContent value="emails" className="space-y-6">
             <ValentineRemarketingPanel adminPassword={password} />
+            <Flash20RemarketingPanel adminPassword={password} />
             <ReactionEmailPanel adminPassword={password} allOrders={allOrders as any} />
             <EmailTemplates adminPassword={password} />
           </TabsContent>
