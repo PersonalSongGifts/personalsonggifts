@@ -3178,7 +3178,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (body?.action === "send_batch_followup_DUPLICATE_PLACEHOLDER") {
+    if (body?.action === "send_batch_followup") {
       const MAX_BATCH = 50;
       
       // Get suppressed emails
