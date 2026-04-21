@@ -14,21 +14,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 // Occasion fallback images – ES module imports so Vite bundles them correctly
-import birthdayImg from "@/assets/occasions/birthday.jpg";
-import anniversaryImg from "@/assets/occasions/anniversary.jpg";
-import weddingImg from "@/assets/occasions/wedding.jpg";
-import valentinesImg from "@/assets/occasions/valentines.jpg";
-import mothersDayImg from "@/assets/occasions/mothers-day.jpg";
-import fathersDayImg from "@/assets/occasions/fathers-day.jpg";
-import graduationImg from "@/assets/occasions/graduation.jpg";
-import memorialImg from "@/assets/occasions/memorial.jpg";
-import retirementImg from "@/assets/occasions/retirement.jpg";
-import babyImg from "@/assets/occasions/baby.jpg";
-import proposalImg from "@/assets/occasions/proposal.jpg";
-import justBecauseImg from "@/assets/occasions/just-because.jpg";
-import familyImg from "@/assets/occasions/family.jpg";
-import petCelebrationImg from "@/assets/occasions/pet-celebration.jpg";
-import petMemorialImg from "@/assets/occasions/pet-memorial.jpg";
+import birthdayImg from "@/assets/occasions/birthday.webp";
+import anniversaryImg from "@/assets/occasions/anniversary.webp";
+import weddingImg from "@/assets/occasions/wedding.webp";
+import valentinesImg from "@/assets/occasions/valentines.webp";
+import mothersDayImg from "@/assets/occasions/mothers-day.webp";
+import fathersDayImg from "@/assets/occasions/fathers-day.webp";
+import graduationImg from "@/assets/occasions/graduation.webp";
+import memorialImg from "@/assets/occasions/memorial.webp";
+import retirementImg from "@/assets/occasions/retirement.webp";
+import babyImg from "@/assets/occasions/baby.webp";
+import proposalImg from "@/assets/occasions/proposal.webp";
+import justBecauseImg from "@/assets/occasions/just-because.webp";
+import familyImg from "@/assets/occasions/family.webp";
+import petCelebrationImg from "@/assets/occasions/pet-celebration.webp";
+import petMemorialImg from "@/assets/occasions/pet-memorial.webp";
 
 const occasionImages: Record<string, string> = {
   birthday: birthdayImg,

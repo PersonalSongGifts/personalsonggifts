@@ -23,6 +23,7 @@ import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { AOVChart } from "@/components/admin/AOVChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
+import { UpsellRevenueChart } from "@/components/admin/UpsellRevenueChart";
 import { StatusChart } from "@/components/admin/StatusChart";
 import { GenreChart } from "@/components/admin/GenreChart";
 import { LeadsTable, Lead } from "@/components/admin/LeadsTable";
@@ -132,6 +133,9 @@ interface Order {
   // Lyrics unlock
   lyrics_unlocked_at?: string | null;
   lyrics_price_cents?: number | null;
+  // Download / usage rights unlock
+  download_unlocked_at?: string | null;
+  download_price_cents?: number | null;
   // Previous version backup
   prev_song_url?: string | null;
   prev_automation_lyrics?: string | null;
@@ -1424,6 +1428,7 @@ const { data, error } = await listOrders("all", 0, 250);
               <RevenueChart orders={analyticsOrders} />
               <OrdersChart orders={analyticsOrders} />
               <AOVChart orders={analyticsOrders} />
+              <UpsellRevenueChart orders={analyticsOrders} />
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
