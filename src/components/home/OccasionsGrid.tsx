@@ -3,21 +3,21 @@ import { Button } from "@/components/ui/button";
 import { trackEvent } from "@/lib/amplitudeTrack";
 
 // Import all occasion images
-import weddingImg from "@/assets/occasions/wedding.jpg";
-import anniversaryImg from "@/assets/occasions/anniversary.jpg";
-import birthdayImg from "@/assets/occasions/birthday.jpg";
-import valentinesImg from "@/assets/occasions/valentines.jpg";
-import memorialImg from "@/assets/occasions/memorial.jpg";
-import babyImg from "@/assets/occasions/baby.jpg";
-import familyImg from "@/assets/occasions/family.jpg";
-import justBecauseImg from "@/assets/occasions/just-because.jpg";
-import petCelebrationImg from "@/assets/occasions/pet-celebration.jpg";
-import petMemorialImg from "@/assets/occasions/pet-memorial.jpg";
-import graduationImg from "@/assets/occasions/graduation.jpg";
-import retirementImg from "@/assets/occasions/retirement.jpg";
-import mothersDayImg from "@/assets/occasions/mothers-day.jpg";
-import fathersDayImg from "@/assets/occasions/fathers-day.jpg";
-import proposalImg from "@/assets/occasions/proposal.jpg";
+import weddingImg from "@/assets/occasions/wedding.webp";
+import anniversaryImg from "@/assets/occasions/anniversary.webp";
+import birthdayImg from "@/assets/occasions/birthday.webp";
+import valentinesImg from "@/assets/occasions/valentines.webp";
+import memorialImg from "@/assets/occasions/memorial.webp";
+import babyImg from "@/assets/occasions/baby.webp";
+import familyImg from "@/assets/occasions/family.webp";
+import justBecauseImg from "@/assets/occasions/just-because.webp";
+import petCelebrationImg from "@/assets/occasions/pet-celebration.webp";
+import petMemorialImg from "@/assets/occasions/pet-memorial.webp";
+import graduationImg from "@/assets/occasions/graduation.webp";
+import retirementImg from "@/assets/occasions/retirement.webp";
+import mothersDayImg from "@/assets/occasions/mothers-day.webp";
+import fathersDayImg from "@/assets/occasions/fathers-day.webp";
+import proposalImg from "@/assets/occasions/proposal.webp";
 
 const occasions = [
   { id: "wedding", label: "Wedding", image: weddingImg },
