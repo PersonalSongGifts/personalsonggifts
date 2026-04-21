@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Mail, Send, Users, CheckCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useActivePromo } from "@/hooks/useActivePromo";
 
 interface LeadFollowupPanelProps {
   adminPassword: string;
@@ -22,6 +23,15 @@ export function LeadFollowupPanel({ adminPassword }: LeadFollowupPanelProps) {
   const [lastBatchResult, setLastBatchResult] = useState<number | null>(null);
   const [stats, setStats] = useState<{ eligible: number; sent: number; conversions: number } | null>(null);
   const { toast } = useToast();
+  const { promo } = useActivePromo();
+
+  const followupPriceLabel = promo.active && promo.leadPriceCents
+    ? `$${(promo.leadPriceCents / 100).toFixed(2)}`
+    : "$39.99";
+  const followupOfferName = promo.active && promo.name ? promo.name : "$10 off";
+  const conversionRate = stats && stats.sent > 0
+    ? ((stats.conversions / stats.sent) * 100).toFixed(2)
+    : null;
 
   const fetchStats = async () => {
     try {
@@ -128,6 +138,19 @@ export function LeadFollowupPanel({ adminPassword }: LeadFollowupPanelProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Current offer badge */}
+          <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
+            <span className="text-xs text-muted-foreground">Current followup offer:</span>
+            <Badge variant="secondary" className="font-medium">
+              {followupPriceLabel} · {followupOfferName}
+            </Badge>
+            {conversionRate !== null && (
+              <span className="text-xs text-muted-foreground ml-auto">
+                The {followupOfferName} offer ({followupPriceLabel}) followup converts at {conversionRate}%
+              </span>
+            )}
+          </div>
+
           {/* Toggle */}
           <div className="flex items-center justify-between">
             <div>

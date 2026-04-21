@@ -19,6 +19,7 @@ import { createAudioPreview } from "@/lib/audioClipper";
 import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { genreOptions, singerOptions, occasionOptions, languageOptions, getLanguageLabel } from "@/components/admin/adminDropdownOptions";
 import { getCountryFromTimezone } from "@/lib/timezoneCountry";
+import { useActivePromo } from "@/hooks/useActivePromo";
 
 export interface Lead {
   id: string;
@@ -130,6 +131,11 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [statusFilter, setStatusFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState("all");
   const [dismissedFilter, setDismissedFilter] = useState<"active" | "dismissed" | "all">("active");
+  const { promo } = useActivePromo();
+  const followupPriceLabel = promo.active && promo.leadPriceCents
+    ? `$${(promo.leadPriceCents / 100).toFixed(2)}`
+    : "$39.99";
+  const followupButtonLabel = `Send ${followupPriceLabel} Follow-up`;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -436,7 +442,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
 
       toast({
         title: resend ? "Follow-up Resent!" : "Follow-up Sent!",
-        description: `$5 discount email sent to ${lead.email}`,
+        description: `${followupPriceLabel} offer email sent to ${lead.email}`,
       });
 
       onRefresh?.();
@@ -1361,7 +1367,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                             disabled={sendingFollowup}
                           >
                             <Gift className="h-4 w-4 mr-2" />
-                            {sendingFollowup ? "Sending..." : "Send $10 Follow-up"}
+                            {sendingFollowup ? "Sending..." : followupButtonLabel}
                           </Button>
                         )}
                         {/* Resend follow-up button - show when follow-up was already sent */}
@@ -2449,7 +2455,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     disabled={sendingFollowup}
                   >
                     <Gift className="h-4 w-4 mr-2" />
-                    {sendingFollowup ? "Sending..." : "Send $10 Follow-up"}
+                    {sendingFollowup ? "Sending..." : followupButtonLabel}
                   </Button>
                 )}
                 {/* Resend Follow-up button in dialog - when already sent */}
