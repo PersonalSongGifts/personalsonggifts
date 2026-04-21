@@ -11,8 +11,10 @@ interface LayoutProps {
 const Layout = ({ children, showPromoBanner = true }: LayoutProps) => {
   return (
     <div className="min-h-screen flex flex-col">
-      {showPromoBanner && <PromoBanner />}
-      <Header />
+      <div className="sticky top-0 z-50">
+        {showPromoBanner && <PromoBanner />}
+        <Header />
+      </div>
       <main className="flex-1">{children}</main>
       <Footer />
     </div>
