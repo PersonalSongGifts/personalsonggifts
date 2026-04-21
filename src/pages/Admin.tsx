@@ -18,6 +18,7 @@ import { formatAdminDate } from "@/lib/utils";
 import { ActivityLog } from "@/components/admin/ActivityLog";
 import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { AOVChart } from "@/components/admin/AOVChart";
@@ -214,6 +215,11 @@ export default function Admin() {
   const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
   // Grant extra revision state
   const [grantingRevision, setGrantingRevision] = useState(false);
+  // Bonus comp unlock state
+  const [showBonusCompDialog, setShowBonusCompDialog] = useState(false);
+  const [bonusCompReason, setBonusCompReason] = useState("");
+  const [bonusCompSendEmail, setBonusCompSendEmail] = useState(true);
+  const [compingBonus, setCompingBonus] = useState(false);
   // Reset automation state
   const [resettingAutomation, setResettingAutomation] = useState(false);
   const [stoppingAutomation, setStoppingAutomation] = useState(false);
