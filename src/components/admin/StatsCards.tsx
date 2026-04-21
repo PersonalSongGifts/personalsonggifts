@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen, Loader2, Video } from "lucide-react";
+import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen, Loader2, Video, Gift, Sparkles } from "lucide-react";
 import { LucideIcon } from "lucide-react";
 
 interface Order {
@@ -17,6 +17,11 @@ interface Order {
   sms_status?: string | null;
   lyrics_unlocked_at?: string | null;
   lyrics_price_cents?: number | null;
+  download_unlocked_at?: string | null;
+  download_price_cents?: number | null;
+  bonus_unlocked_at?: string | null;
+  bonus_price_cents?: number | null;
+  bonus_song_url?: string | null;
   notes?: string | null;
   reaction_video_url?: string | null;
   reaction_submitted_at?: string | null;
