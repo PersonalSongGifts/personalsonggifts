@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Mail, Send, Users, CheckCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useActivePromo } from "@/hooks/useActivePromo";
+import { FollowupGeoBreakdown } from "@/components/admin/FollowupGeoBreakdown";
 
 interface LeadFollowupPanelProps {
   adminPassword: string;
@@ -217,6 +218,8 @@ export function LeadFollowupPanel({ adminPassword }: LeadFollowupPanelProps) {
           </div>
         </CardContent>
       </Card>
+
+      <FollowupGeoBreakdown adminPassword={adminPassword} />
 
       <AlertDialog open={showBatchConfirm} onOpenChange={setShowBatchConfirm}>
         <AlertDialogContent>

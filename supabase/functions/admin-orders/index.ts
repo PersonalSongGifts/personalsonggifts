@@ -3086,6 +3086,98 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (body?.action === "get_followup_geo_breakdown") {
+      // Pull all converted leads that received a followup, plus their order's price + timezone
+      const { data: convertedLeads, error: convErr } = await supabase
+        .from("leads")
+        .select("order_id, follow_up_sent_at, converted_at")
+        .not("follow_up_sent_at", "is", null)
+        .eq("status", "converted")
+        .not("order_id", "is", null);
+
+      if (convErr) {
+        return new Response(JSON.stringify({ error: convErr.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const orderIds = (convertedLeads || [])
+        .filter((l) => l.converted_at && l.follow_up_sent_at && new Date(l.converted_at) > new Date(l.follow_up_sent_at))
+        .map((l) => l.order_id as string);
+
+      let orders: Array<{ id: string; price: number; timezone: string | null; billing_country_code: string | null; billing_country_name: string | null }> = [];
+      if (orderIds.length > 0) {
+        const { data: orderRows, error: orderErr } = await supabase
+          .from("orders")
+          .select("id, price, timezone, billing_country_code, billing_country_name")
+          .in("id", orderIds);
+        if (orderErr) {
+          return new Response(JSON.stringify({ error: orderErr.message }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        orders = orderRows || [];
+      }
+
+      function regionFromTz(tz: string | null): string {
+        if (!tz) return "Unknown";
+        if (tz.startsWith("America/")) return "Americas";
+        if (tz.startsWith("Africa/")) return "Africa";
+        if (tz.startsWith("Asia/")) return "Asia";
+        if (tz.startsWith("Europe/")) return "Europe";
+        if (tz.startsWith("Australia/") || tz.startsWith("Pacific/")) return "Oceania/Pacific";
+        if (tz.startsWith("Atlantic/")) return "Atlantic";
+        return "Other";
+      }
+
+      const byRegion: Record<string, { conversions: number; revenue: number }> = {};
+      const byTimezone: Record<string, { conversions: number; revenue: number }> = {};
+      const byCountry: Record<string, { conversions: number; revenue: number }> = {};
+      let totalConversions = 0;
+      let totalRevenue = 0;
+
+      for (const o of orders) {
+        const region = regionFromTz(o.timezone);
+        const tz = o.timezone || "Unknown";
+        const country = o.billing_country_name || o.billing_country_code || "Unknown";
+        byRegion[region] ??= { conversions: 0, revenue: 0 };
+        byRegion[region].conversions++;
+        byRegion[region].revenue += o.price || 0;
+        byTimezone[tz] ??= { conversions: 0, revenue: 0 };
+        byTimezone[tz].conversions++;
+        byTimezone[tz].revenue += o.price || 0;
+        byCountry[country] ??= { conversions: 0, revenue: 0 };
+        byCountry[country].conversions++;
+        byCountry[country].revenue += o.price || 0;
+        totalConversions++;
+        totalRevenue += o.price || 0;
+      }
+
+      const toSorted = (m: Record<string, { conversions: number; revenue: number }>) =>
+        Object.entries(m)
+          .map(([key, v]) => ({
+            key,
+            conversions: v.conversions,
+            revenue: v.revenue,
+            aov: v.conversions > 0 ? Math.round((v.revenue / v.conversions) * 100) / 100 : 0,
+          }))
+          .sort((a, b) => b.conversions - a.conversions);
+
+      return new Response(
+        JSON.stringify({
+          totalConversions,
+          totalRevenue,
+          aov: totalConversions > 0 ? Math.round((totalRevenue / totalConversions) * 100) / 100 : 0,
+          byRegion: toSorted(byRegion),
+          byTimezone: toSorted(byTimezone).slice(0, 25),
+          byCountry: toSorted(byCountry),
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (body?.action === "send_batch_followup") {
       const MAX_BATCH = 50;
       
