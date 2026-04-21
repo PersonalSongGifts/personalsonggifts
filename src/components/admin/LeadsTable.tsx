@@ -442,7 +442,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
 
       toast({
         title: resend ? "Follow-up Resent!" : "Follow-up Sent!",
-        description: `$5 discount email sent to ${lead.email}`,
+        description: `${followupPriceLabel} offer email sent to ${lead.email}`,
       });
 
       onRefresh?.();
