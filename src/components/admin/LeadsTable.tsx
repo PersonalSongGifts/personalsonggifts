@@ -2455,7 +2455,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
                     disabled={sendingFollowup}
                   >
                     <Gift className="h-4 w-4 mr-2" />
-                    {sendingFollowup ? "Sending..." : "Send $10 Follow-up"}
+                    {sendingFollowup ? "Sending..." : followupButtonLabel}
                   </Button>
                 )}
                 {/* Resend Follow-up button in dialog - when already sent */}
