@@ -349,6 +349,8 @@ Deno.serve(async (req) => {
       let totalSent = 0;
       let totalFailed = 0;
       const errors: { email: string; error: string }[] = [];
+      let attemptCounter = 0;
+      const skipped = { claim_failed: 0, missing_token: 0, send_threw: 0 };
       const CHUNK_SIZE = 50;
 
       for (let i = 0; i < eligible.length; i += CHUNK_SIZE) {
@@ -369,6 +371,13 @@ Deno.serve(async (req) => {
 
         const chunk = eligible.slice(i, i + CHUNK_SIZE);
         for (const lead of chunk) {
+          // Guard: skip leads with no preview token (shouldn't happen due to baseQuery filter, but be safe)
+          if (!lead.preview_token) {
+            skipped.missing_token++;
+            console.log(`[FLASH20] Skipped lead ${lead.id}: missing preview_token`);
+            continue;
+          }
+
           // Atomic claim: only set last_promo_email_sent_at if still null OR > 30 days old
           const claimTime = new Date().toISOString();
           const { data: claimed, error: claimErr } = await supabase
@@ -379,11 +388,24 @@ Deno.serve(async (req) => {
             .select("id").maybeSingle();
 
           if (claimErr || !claimed) {
-            console.log(`[FLASH20] Claim skipped for ${lead.id} (race or already sent)`);
+            skipped.claim_failed++;
+            console.log(`[FLASH20] Claim skipped for ${lead.id} (race or already sent)${claimErr ? ` err=${claimErr.message}` : ""}`);
             continue;
           }
 
-          const r = await sendOneEmail(brevoApiKey, lead.email, lead.customer_name, lead.recipient_name, lead.preview_token!, lead.id);
+          attemptCounter++;
+          let r: { ok: boolean; error?: string };
+          try {
+            r = await sendOneEmail(brevoApiKey, lead.email, lead.customer_name, lead.recipient_name, lead.preview_token!, lead.id);
+          } catch (sendErr) {
+            skipped.send_threw++;
+            const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+            console.error(`[FLASH20] sendOneEmail threw for ${lead.email}: ${msg}`);
+            await supabase.from("leads").update({ last_promo_email_sent_at: null }).eq("id", lead.id);
+            totalFailed++;
+            errors.push({ email: lead.email, error: `threw: ${msg}` });
+            continue;
+          }
           if (r.ok) {
             totalSent++;
             // Activity log
