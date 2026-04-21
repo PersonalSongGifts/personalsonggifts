@@ -12,12 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, Music, Send, RefreshCw, Eye, EyeOff, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy, Calendar, Tag, ShieldCheck } from "lucide-react";
+import { Lock, Music, Send, RefreshCw, Eye, EyeOff, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy, Calendar, Tag, ShieldCheck, Gift } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
 import { ActivityLog } from "@/components/admin/ActivityLog";
 import { AlbumArtUpload } from "@/components/admin/AlbumArtUpload";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { AOVChart } from "@/components/admin/AOVChart";
@@ -214,6 +215,11 @@ export default function Admin() {
   const [dismissingOrder, setDismissingOrder] = useState<string | null>(null);
   // Grant extra revision state
   const [grantingRevision, setGrantingRevision] = useState(false);
+  // Bonus comp unlock state
+  const [showBonusCompDialog, setShowBonusCompDialog] = useState(false);
+  const [bonusCompReason, setBonusCompReason] = useState("");
+  const [bonusCompSendEmail, setBonusCompSendEmail] = useState(true);
+  const [compingBonus, setCompingBonus] = useState(false);
   // Reset automation state
   const [resettingAutomation, setResettingAutomation] = useState(false);
   const [stoppingAutomation, setStoppingAutomation] = useState(false);
@@ -1187,6 +1193,47 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
+  // Comp the bonus track to the customer (admin action, no payment)
+  const handleCompBonusTrack = async () => {
+    if (!selectedOrder || !password) return;
+    setCompingBonus(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-unlock-bonus", {
+        method: "POST",
+        body: {
+          orderId: selectedOrder.id,
+          reason: bonusCompReason.trim() || null,
+          sendEmail: bonusCompSendEmail,
+          adminPassword: password,
+        },
+      });
+      if (error) throw error;
+      const unlockedAt = data?.bonus_unlocked_at ?? new Date().toISOString();
+      setSelectedOrder({ ...selectedOrder, bonus_unlocked_at: unlockedAt, bonus_price_cents: 0 } as Order);
+      const emailNote = data?.email?.sent
+        ? ` Email sent to ${data.email.recipient}.`
+        : data?.email?.error
+          ? ` Email skipped: ${data.email.error}`
+          : "";
+      toast({
+        title: "Bonus track unlocked",
+        description: `Customer now has free access to the bonus track.${emailNote}`,
+      });
+      setShowBonusCompDialog(false);
+      setBonusCompReason("");
+      setBonusCompSendEmail(true);
+      fetchOrders();
+    } catch (err) {
+      toast({
+        title: "Unlock failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setCompingBonus(false);
+    }
+  };
+
   const orderNeedsAttention = (order: Order): boolean => {
     const now = new Date();
     // Failed automation
@@ -1935,6 +1982,29 @@ const { data, error } = await listOrders("all", 0, 250);
                           {grantingRevision ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}
                           Grant +1 Revision
                         </Button>
+                      </div>
+                    )}
+                    {selectedOrder.bonus_song_url && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap text-xs">
+                        <span className="text-muted-foreground">Bonus track:</span>
+                        {selectedOrder.bonus_unlocked_at ? (
+                          <Badge variant="outline" className="bg-green-100 text-green-800 gap-1">
+                            <Gift className="h-3 w-3" />
+                            Unlocked {formatAdminDate(selectedOrder.bonus_unlocked_at)}
+                            {selectedOrder.bonus_price_cents === 0 && " (comped)"}
+                          </Badge>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs gap-1"
+                            onClick={() => setShowBonusCompDialog(true)}
+                            title="Give this customer free access to the full bonus track"
+                          >
+                            <Gift className="h-3 w-3" />
+                            Unlock Bonus (Comp)
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3114,6 +3184,69 @@ const { data, error } = await listOrders("all", 0, 250);
             >
               {restoringPreviousVersion ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RotateCcw className="h-4 w-4 mr-2" />}
               {restoringPreviousVersion ? "Restoring..." : "Yes, Restore Previous Version"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Comp Bonus Track Confirmation Dialog */}
+      <AlertDialog open={showBonusCompDialog} onOpenChange={(open) => {
+        setShowBonusCompDialog(open);
+        if (!open) {
+          setBonusCompReason("");
+          setBonusCompSendEmail(true);
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-green-600" />
+              Unlock Bonus Track (Comp)
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Give this customer free access to the full bonus track? They'll be able
+              to play and download it on their song page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label htmlFor="bonus-comp-reason" className="text-xs">
+                Reason (optional, internal log)
+              </Label>
+              <Input
+                id="bonus-comp-reason"
+                placeholder="e.g. Customer prefers bonus version"
+                value={bonusCompReason}
+                onChange={(e) => setBonusCompReason(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="bonus-comp-send-email"
+                checked={bonusCompSendEmail}
+                onCheckedChange={(checked) => setBonusCompSendEmail(checked === true)}
+              />
+              <Label htmlFor="bonus-comp-send-email" className="text-sm font-normal cursor-pointer">
+                Also send unlock email to customer
+              </Label>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={compingBonus}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleCompBonusTrack();
+              }}
+              disabled={compingBonus}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {compingBonus ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Unlocking...</>
+              ) : (
+                <><Gift className="h-4 w-4 mr-2" /> Unlock Bonus Track</>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
