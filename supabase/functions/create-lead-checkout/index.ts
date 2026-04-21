@@ -83,21 +83,57 @@ Deno.serve(async (req) => {
     let allowPromotionCodes = true;
 
     if (promoSlug) {
-      // Frontend sent a promo slug — validate it's still active
+      // Frontend sent a promo slug — fetch + validate
       const { data: promo } = await supabase
         .from("promotions")
         .select("*")
         .eq("slug", promoSlug)
-        .eq("is_active", true)
-        .lte("starts_at", new Date().toISOString())
-        .gte("ends_at", new Date().toISOString())
         .maybeSingle();
 
       if (!promo) {
         return new Response(
+          JSON.stringify({ error: "promo_not_eligible" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const now = new Date();
+      const starts = new Date(promo.starts_at);
+      const ends = new Date(promo.ends_at);
+
+      // Distinguish expired (clock ran out) from not-yet-active / inactive
+      if (now > ends) {
+        return new Response(
           JSON.stringify({ error: "promo_expired" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      }
+      if (!promo.is_active || now < starts) {
+        return new Response(
+          JSON.stringify({ error: "promo_not_eligible" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // For TARGETED promos (e.g. flash20), require this lead to actually have received the email
+      if (promo.targeted === true) {
+        const eventType = `${promoSlug}_sent`;
+        const { data: logEntry } = await supabase
+          .from("order_activity_log")
+          .select("id")
+          .eq("entity_type", "lead")
+          .eq("entity_id", lead.id)
+          .eq("event_type", eventType)
+          .limit(1)
+          .maybeSingle();
+
+        if (!logEntry) {
+          console.log(`Lead ${lead.id} attempted ${promoSlug} but has no ${eventType} log entry`);
+          return new Response(
+            JSON.stringify({ error: "promo_not_eligible" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
 
       // Promo price takes TOTAL precedence — ignore followup and vday10
