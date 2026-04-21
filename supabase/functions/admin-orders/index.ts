@@ -3086,10 +3086,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (body?.action === "send_batch_followup") {
-      // handled below
-    }
-
     if (body?.action === "get_followup_geo_breakdown") {
       // Pull all converted leads that received a followup, plus their order's price + timezone
       const { data: convertedLeads, error: convErr } = await supabase
