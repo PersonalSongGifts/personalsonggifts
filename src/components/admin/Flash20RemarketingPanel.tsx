@@ -195,9 +195,13 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
       if (data.paused) {
         toast({ title: "Campaign is Paused", description: "Resume first." });
       } else {
+        const skippedTotal = data.skipped
+          ? Object.values(data.skipped as Record<string, number>).reduce((a, b) => a + b, 0)
+          : 0;
+        const skippedSuffix = skippedTotal > 0 ? `, ${skippedTotal} skipped` : "";
         toast({
           title: data.canaryBatch ? "Canary Batch Sent" : "Batch Sent",
-          description: `${data.sent} sent, ${data.failed} failed, ${data.remaining} remaining`,
+          description: `${data.sent} sent, ${data.failed} failed${skippedSuffix}, ${data.remaining} remaining`,
         });
         await fetchSettings();
         await refreshStats();

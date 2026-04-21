@@ -222,6 +222,13 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const brevoApiKey = Deno.env.get("BREVO_API_KEY") || "";
 
+    // Hard-fail fast if Brevo key missing for any send-mode call (test or production batch)
+    if ((body.send || (body.testEmails && Array.isArray(body.testEmails) && body.testEmails.length > 0)) && !brevoApiKey) {
+      console.error("[FLASH20] BREVO_API_KEY env var is missing or empty — aborting send.");
+      return new Response(JSON.stringify({ error: "BREVO_API_KEY not configured on the edge function environment." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // Base eligibility filter (5+ days old, US tz, preview sent + token, not converted/dismissed,
     // not already sent flash20 in last 30d). Suppression + paid-customer filters happen post-fetch.
     const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
@@ -342,6 +349,8 @@ Deno.serve(async (req) => {
       let totalSent = 0;
       let totalFailed = 0;
       const errors: { email: string; error: string }[] = [];
+      let attemptCounter = 0;
+      const skipped = { claim_failed: 0, missing_token: 0, send_threw: 0 };
       const CHUNK_SIZE = 50;
 
       for (let i = 0; i < eligible.length; i += CHUNK_SIZE) {
@@ -353,8 +362,8 @@ Deno.serve(async (req) => {
               canary_sent: true,
             });
             return new Response(JSON.stringify({
-              send: true, pausedMidRun: true, attempted: i, sent: totalSent, failed: totalFailed,
-              remaining: eligible.length - i, errors,
+              send: true, pausedMidRun: true, attempted: attemptCounter, sent: totalSent, failed: totalFailed,
+              skipped, remaining: eligible.length - i, errors,
             }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
           }
           await new Promise(r => setTimeout(r, 500));
@@ -362,6 +371,13 @@ Deno.serve(async (req) => {
 
         const chunk = eligible.slice(i, i + CHUNK_SIZE);
         for (const lead of chunk) {
+          // Guard: skip leads with no preview token (shouldn't happen due to baseQuery filter, but be safe)
+          if (!lead.preview_token) {
+            skipped.missing_token++;
+            console.log(`[FLASH20] Skipped lead ${lead.id}: missing preview_token`);
+            continue;
+          }
+
           // Atomic claim: only set last_promo_email_sent_at if still null OR > 30 days old
           const claimTime = new Date().toISOString();
           const { data: claimed, error: claimErr } = await supabase
@@ -372,11 +388,24 @@ Deno.serve(async (req) => {
             .select("id").maybeSingle();
 
           if (claimErr || !claimed) {
-            console.log(`[FLASH20] Claim skipped for ${lead.id} (race or already sent)`);
+            skipped.claim_failed++;
+            console.log(`[FLASH20] Claim skipped for ${lead.id} (race or already sent)${claimErr ? ` err=${claimErr.message}` : ""}`);
             continue;
           }
 
-          const r = await sendOneEmail(brevoApiKey, lead.email, lead.customer_name, lead.recipient_name, lead.preview_token!, lead.id);
+          attemptCounter++;
+          let r: { ok: boolean; error?: string };
+          try {
+            r = await sendOneEmail(brevoApiKey, lead.email, lead.customer_name, lead.recipient_name, lead.preview_token!, lead.id);
+          } catch (sendErr) {
+            skipped.send_threw++;
+            const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+            console.error(`[FLASH20] sendOneEmail threw for ${lead.email}: ${msg}`);
+            await supabase.from("leads").update({ last_promo_email_sent_at: null }).eq("id", lead.id);
+            totalFailed++;
+            errors.push({ email: lead.email, error: `threw: ${msg}` });
+            continue;
+          }
           if (r.ok) {
             totalSent++;
             // Activity log
@@ -403,10 +432,16 @@ Deno.serve(async (req) => {
       // Count remaining
       const { count: remainingCount } = await baseQuery().limit(1);
 
+      console.log(`[FLASH20] Batch complete: eligible=${eligible.length} attempted=${attemptCounter} sent=${totalSent} failed=${totalFailed} skipped=`, skipped);
+      if (errors.length > 0) {
+        console.error("[FLASH20] First error:", errors[0]);
+      }
+
       return new Response(JSON.stringify({
         send: true,
         eligible: eligible.length,
-        attempted: eligible.length,
+        attempted: attemptCounter,
+        skipped,
         sent: totalSent,
         failed: totalFailed,
         remaining: remainingCount || 0,
