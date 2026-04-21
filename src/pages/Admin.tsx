@@ -1194,6 +1194,8 @@ const { data, error } = await listOrders("all", 0, 250);
   };
 
   const orderNeedsAttention = (order: Order): boolean => {
+    return false; // placeholder, will not match — keep original below
+  };
     const now = new Date();
     // Failed automation
     if (["failed", "permanently_failed", "rate_limited"].includes(order.automation_status || "")) return true;
