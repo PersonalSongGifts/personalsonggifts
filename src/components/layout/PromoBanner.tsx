@@ -13,7 +13,7 @@ const PromoBanner = () => {
 
   return (
     <div
-      className={`py-2.5 px-4 relative ${promo.bannerBgColor ? '' : 'bg-primary'} ${promo.bannerTextColor ? '' : 'text-primary-foreground'}`}
+      className={`py-2.5 px-4 relative sticky top-0 z-50 md:static ${promo.bannerBgColor ? '' : 'bg-primary'} ${promo.bannerTextColor ? '' : 'text-primary-foreground'}`}
       style={{
         ...(promo.bannerBgColor ? { backgroundColor: promo.bannerBgColor } : {}),
         ...(promo.bannerTextColor ? { color: promo.bannerTextColor } : {}),
