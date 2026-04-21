@@ -24,6 +24,7 @@ import { RevenueChart } from "@/components/admin/RevenueChart";
 import { AOVChart } from "@/components/admin/AOVChart";
 import { OrdersChart } from "@/components/admin/OrdersChart";
 import { UpsellRevenueChart } from "@/components/admin/UpsellRevenueChart";
+import { DownloadAttachChart } from "@/components/admin/DownloadAttachChart";
 import { StatusChart } from "@/components/admin/StatusChart";
 import { GenreChart } from "@/components/admin/GenreChart";
 import { LeadsTable, Lead } from "@/components/admin/LeadsTable";
