@@ -1,43 +1,38 @@
 
 
-## Diagnosis: Download Unlocks shows $0 despite real data
+## You're right — the "$10-off / $39.99" label is wrong
 
-### What's actually in the database
+### What's actually happening
 
-I queried the `orders` table directly:
+The followup email pricing **does** dynamically pull from the active promo (the code reads `lead_price_cents` from the `promotions` table). Right now your active promo is **Early Mother's Day @ $29.99** (`lead_price_cents = 2999`), so the email is correctly showing **$29.99 vs. $99.99**, not $39.99.
 
-| Metric | Value |
-|---|---|
-| Orders with `download_unlocked_at` set | **2,501** |
-| Of those, **paid** ($19.99) downloads | **58** = **$1,710.61** |
-| Comped (free) unlocks (CS gave access) | 2,443 |
-| Earliest unlock | 2026-04-06 |
-| Latest unlock | today |
+The bug is purely in the **dashboard label**. In `LeadFollowupPanel.tsx` (and/or `FunnelInsights.tsx`) the text "$10-off / $39.99 followup converts at 1.44%" is a **hardcoded string** — it never reads the actual promo price.
 
-So the download upsell IS converting — 58 customers paid $19.99 in the last ~2 weeks. The dashboard showing **$0** is wrong.
-
-### Why the dashboard shows $0
-
-The frontend code (`StatsCards.tsx`) is correct — it reads `download_unlocked_at` and `download_price_cents` from each order and sums them. The edge function source (`admin-orders/index.ts`) also correctly includes both columns in its `SELECT` statement.
-
-But the live deployed `admin-orders` function appears to still be running the **previous version** (before we added those two columns). When the deployed SELECT doesn't include a column, Supabase returns `undefined` for that field on every row — making `download_price_cents ?? 0` always `0` and `o.download_unlocked_at` always falsy. Result: Download Unlocks card = `$0`, `0 customers · 0% attach`. This also explains why Lyrics Unlocks works fine — that column was already in the deployed version.
+So:
+- ✅ Customers see the correct $29.99 offer
+- ❌ Admin dashboard says "$39.99" because that string was hardcoded back when the fallback (no-promo) price was $39.99
+- ⚠️ The 1.44% conversion rate itself is accurate — it's just labeled with the wrong price
 
 ### The fix
 
-**Re-deploy `supabase/functions/admin-orders/index.ts`** so the live function picks up `download_unlocked_at, download_price_cents` (already in the source on lines 84 and 116). No code changes needed — just a redeploy.
+Replace the hardcoded label with a dynamic one driven by the active promo:
 
-I'll do this by making a no-op touch to the file (e.g., adding a deploy-bump comment at the top) which forces Lovable to redeploy it. After redeploy, the admin should see the **Download Unlocks** card populate to roughly **$1,711 · 2,501 customers · ~X% attach**, and **Total Revenue** + **Total Upsell Revenue** will jump up by the same $1,711 — bringing the dashboard much closer in line with Stripe's reported totals.
+1. **Find the hardcoded string** in the admin followup analytics card (`src/components/admin/LeadFollowupPanel.tsx` and/or `FunnelInsights.tsx` — wherever the "$10-off / $39.99 followup converts at X%" text lives).
+
+2. **Fetch the active promo price** the same way `send-lead-followup` does: query `promotions` where `is_active=true` and current time is between `starts_at` and `ends_at`. Use the existing `useActivePromo` hook (`src/hooks/useActivePromo.tsx`) — it already does this.
+
+3. **Render the label dynamically:**
+   - If a promo is active: `"The {promo.name} offer (${lead_price})  followup converts at {rate}%"` → e.g. *"The Early Mother's Day offer ($29.99) followup converts at 1.44%"*
+   - If no promo active: `"The $10-off ($39.99) followup converts at {rate}%"` (matches the email's no-promo fallback)
+
+4. **Add a small "current offer" badge** next to the followup analytics so it's always obvious what's being sent: `Current followup offer: $29.99 (Early Mother's Day)`.
 
 ### Files to change
 
-- **Edit** `supabase/functions/admin-orders/index.ts` — add a single deploy-bump comment near the top to force redeploy. No logic changes.
+- **Edit** `src/components/admin/LeadFollowupPanel.tsx` — replace hardcoded $39.99 string, use `useActivePromo` hook for dynamic price + name
+- **Edit** `src/components/admin/FunnelInsights.tsx` — same fix if the string also appears there
 
-### Verification after deploy
+### Out of scope (flag for later)
 
-Reload the admin page, look at the **Upsell Performance** row:
-- Download Unlocks should show **$1,711 · 2,501 customers · ~X% attach** (instead of `$0 · 0 customers · 0% attach`)
-- Total Revenue's sub-line should now show a non-zero `DL $...` segment
-- Total Upsell Revenue should rise by ~$1,711
-
-If after redeploy it's still $0, the next step would be to inspect a sample order in the network response from `admin-orders` to confirm whether `download_price_cents` is present in the JSON payload, which would point to a deeper issue (e.g., RLS or Postgres column-level security) rather than a stale deploy.
+- The fallback price `$39.99` and the `$10 off` copy in `send-lead-followup/index.ts` (lines 40 & 45) are also hardcoded. They only fire when no promo is active — which is rare for you — but if you ever go promo-less they'd show stale numbers. Easy follow-up: pull the standard price from a config/admin_settings row instead.
 
