@@ -1,48 +1,65 @@
 
 
-## Add "Unlock Bonus Track for Customer" Admin Action
+## Surface upsell revenue across the admin dashboard
 
-Give admins a one-click way to comp the full bonus track to a customer (no payment required), so when someone prefers their acoustic/R&B version we can hand it over without swapping their main song or issuing refunds.
+Today the dashboard's "Total Revenue" only counts the base order `price`. Lyrics unlocks show their own line item, but **bonus track unlocks** ($X) and **download/usage rights unlocks** ($19.99) are completely invisible. That's why the dashboard total is lower than what Stripe + PayPal report — Stripe sees every charge (base + every upsell), the dashboard only sees base orders.
 
-### What the admin sees
+This plan fixes both halves of your message: **(1) make total revenue match Stripe/PayPal**, and **(2) add visual breakdowns of upsell performance over time.**
 
-In the existing order detail dialog (CS Assistant + admin orders panel), add a new button in the bonus track section:
+### 1. Include all upsells in revenue totals
 
-- **"Unlock Bonus Track (Comp)"** — visible only when:
-  - `bonus_song_url` exists (bonus is generated)
-  - `bonus_unlocked_at` is null (not already unlocked)
-- Click → confirm dialog: *"Give this customer free access to the full bonus track? They'll get an email with the unlock link."*
-- On confirm: bonus unlocks instantly + optional delivery email is sent.
+Update the revenue math so every revenue stat = `base price + lyrics_price_cents + download_price_cents + bonus_price_cents` (cents-safe, comped unlocks where `*_price_cents = 0` are excluded automatically).
 
-After unlock, the button is replaced by a green badge: *"Bonus unlocked (comped by admin) on {date}"*.
+Affected stats in `StatsCards.tsx`:
+- **Total Revenue** + Stripe/PayPal split
+- **Revenue Today** + Stripe/PayPal split
+- True Recovery Revenue (also rolls in upsells from recovered orders)
 
-### What happens behind the scenes
+A new sub-line under Total Revenue will show the breakdown so you can sanity-check against Stripe:
+> *Base $X · Lyrics $Y · Downloads $Z · Bonus $W*
 
-1. New edge function `admin-unlock-bonus` (POST, admin-authenticated):
-   - Sets `bonus_unlocked_at = now()`
-   - Sets `bonus_unlock_session_id = 'admin_comp_{adminId}_{timestamp}'` (so we can distinguish comped unlocks from paid ones in analytics)
-   - Sets `bonus_price_cents = 0`
-   - Logs to `order_activity_log`: `event_type='bonus_comped'`, actor=admin, with reason field
-2. Optionally triggers `send-bonus-track-email` so the customer gets the same delivery email a paid unlock would send (with the bonus song link).
-3. Customer's `/song/{shortId}` page automatically shows the full bonus track (existing `get-song-page` logic already serves `bonus_song_url` when `bonus_unlocked_at` is set).
+### 2. Add the missing upsell data to the API
 
-### Why not swap the main song?
+`admin-orders` currently returns `lyrics_price_cents` and `bonus_price_cents` but **not** `download_unlocked_at` / `download_price_cents`. Add those two columns to the SELECT in `supabase/functions/admin-orders/index.ts` (both the analytics fetch and the paginated fetch).
 
-Swapping `song_url` with `bonus_song_url` would break:
-- The original song's revision history / `prev_song_url` backup
-- Lyrics unlock state (lyrics belong to the main song)
-- Reaction video associations
-- Bonus analytics (play counts, etc.)
+### 3. New "Upsell Revenue" chart on the Analytics tab
 
-Comping the bonus is cleaner: the customer keeps both, gets the one they actually want unlocked, and our data stays consistent. If they truly never want the original, no action needed — they just won't play it.
+Add a new component `UpsellRevenueChart.tsx` next to the existing Revenue chart. It shows a **stacked area chart over the last 30 days** with three series:
+- Lyrics Unlocks (purple)
+- Download / Usage Rights (blue)
+- Bonus Tracks (gold)
 
-### Files to add/edit
+Each day bucket uses the unlock timestamp (`lyrics_unlocked_at`, `download_unlocked_at`, `bonus_unlocked_at`) — not `created_at` — so the chart reflects when the upsell revenue actually came in. Comped unlocks (`price_cents = 0`) are excluded.
 
-- **New**: `supabase/functions/admin-unlock-bonus/index.ts` — admin-authed unlock endpoint with activity log + optional email trigger
-- **Edit**: `src/components/admin/CSAssistant.tsx` (and/or wherever the order detail bonus section lives) — add the comp button + confirm dialog + post-unlock badge
-- **Edit**: `src/pages/Admin.tsx` if the bonus section needs the action wired into the orders table row dialog as well
+Header shows 30-day totals per stream, e.g.:
+> **Upsell Revenue (30d):** $1,240 · 87 lyrics · 24 downloads · 12 bonus
 
-### Optional toggle in confirm dialog
+### 4. New "Upsell Performance" stat group
 
-Checkbox: *"Also send unlock email to customer"* (default: on). Lets admins comp silently if they're handling outreach manually over email/SMS.
+Add a fourth stat row in `StatsCards.tsx` so the upsell numbers are visible without scrolling to the chart:
+
+| Card | Value | Sub-line |
+|------|-------|----------|
+| Lyrics Unlocks | `$X` | `N paid · M comped` |
+| Download Unlocks | `$X` | `N customers · attach rate Y%` |
+| Bonus Track Unlocks | `$X` | `N paid · M comped` |
+| Total Upsell Revenue | `$X` | `Y% of total revenue` |
+
+Attach rate = paid unlocks ÷ delivered orders eligible for that upsell.
+
+### Why this will reconcile with Stripe
+
+Stripe's total = base order charges + lyrics unlock charges + download charges + bonus unlock charges + (PayPal mirrored). After this change, our dashboard total uses the exact same components, all sourced from `*_price_cents` fields populated by the Stripe webhook from `session.amount_total` (your canonical pricing standard). The only legitimate gap left should be Stripe fees — which the dashboard intentionally shows as gross.
+
+### Files to change
+
+- **Edit** `supabase/functions/admin-orders/index.ts` — add `download_unlocked_at, download_price_cents` to both `orderColumns` strings
+- **Edit** `src/components/admin/StatsCards.tsx` — update revenue math to include all upsells; add new "Upsell Performance" stat group; add `download_*` and `bonus_*` to the `Order` interface
+- **New** `src/components/admin/UpsellRevenueChart.tsx` — stacked 30-day area chart
+- **Edit** `src/pages/Admin.tsx` — render `<UpsellRevenueChart>` in the Analytics tab grid; add `download_unlocked_at` / `download_price_cents` to the `Order` interface
+
+### Out of scope (flag for later if you want)
+
+- Refunds: if you process refunds in Stripe, those aren't reflected anywhere in our DB today, so the dashboard will still slightly overstate vs. Stripe net. Could add a `refunded_at` / `refunded_amount_cents` flow later.
+- Per-day drilldown table for upsells (the new chart + stat cards should cover the immediate need).
 
