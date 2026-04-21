@@ -362,8 +362,8 @@ Deno.serve(async (req) => {
               canary_sent: true,
             });
             return new Response(JSON.stringify({
-              send: true, pausedMidRun: true, attempted: i, sent: totalSent, failed: totalFailed,
-              remaining: eligible.length - i, errors,
+              send: true, pausedMidRun: true, attempted: attemptCounter, sent: totalSent, failed: totalFailed,
+              skipped, remaining: eligible.length - i, errors,
             }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
           }
           await new Promise(r => setTimeout(r, 500));
