@@ -601,6 +601,9 @@ export function PromosPanel({ adminPassword }: { adminPassword: string }) {
                 : (() => {
                     const startsAt = toggleConfirm ? new Date(toggleConfirm.starts_at) : null;
                     const isFuture = startsAt && startsAt > new Date();
+                    if (toggleConfirm?.targeted) {
+                      return `This will activate the "${toggleConfirm.name}" TARGETED promo. Only leads who received the ${toggleConfirm.slug} email can redeem this price via their personal preview link — site-wide pricing will NOT change.`;
+                    }
                     return isFuture
                       ? `This will activate the promotion, but it will NOT appear on the site until ${startsAt!.toLocaleString()}. Only one promo can be active at a time.`
                       : "This will enable the promotion. Prices will update across the site within 60 seconds. Only one promo can be active at a time.";

@@ -15,6 +15,10 @@ interface PreviewData {
   previewUrl: string;
   coverImageUrl: string | null;
   songTitle: string | null;
+  flash20Eligible?: boolean;
+  flash20Expired?: boolean;
+  flash20PriceCents?: number | null;
+  flash20EndsAt?: string | null;
 }
 
 export default function SongPreview() {
