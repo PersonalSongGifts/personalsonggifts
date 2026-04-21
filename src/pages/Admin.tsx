@@ -3189,12 +3189,74 @@ const { data, error } = await listOrders("all", 0, 250);
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Comp Bonus Track Confirmation Dialog */}
+      <AlertDialog open={showBonusCompDialog} onOpenChange={(open) => {
+        setShowBonusCompDialog(open);
+        if (!open) {
+          setBonusCompReason("");
+          setBonusCompSendEmail(true);
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-green-600" />
+              Unlock Bonus Track (Comp)
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Give this customer free access to the full bonus track? They'll be able
+              to play and download it on their song page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label htmlFor="bonus-comp-reason" className="text-xs">
+                Reason (optional, internal log)
+              </Label>
+              <Input
+                id="bonus-comp-reason"
+                placeholder="e.g. Customer prefers bonus version"
+                value={bonusCompReason}
+                onChange={(e) => setBonusCompReason(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="bonus-comp-send-email"
+                checked={bonusCompSendEmail}
+                onCheckedChange={(checked) => setBonusCompSendEmail(checked === true)}
+              />
+              <Label htmlFor="bonus-comp-send-email" className="text-sm font-normal cursor-pointer">
+                Also send unlock email to customer
+              </Label>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={compingBonus}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleCompBonusTrack();
+              }}
+              disabled={compingBonus}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {compingBonus ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Unlocking...</>
+              ) : (
+                <><Gift className="h-4 w-4 mr-2" /> Unlock Bonus Track</>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Disable Song Access Confirmation Dialog */}
       <AlertDialog open={showDisableAccessConfirm} onOpenChange={(open) => {
         setShowDisableAccessConfirm(open);
         if (!open) setDisableAccessReason("");
       }}>
-      {/* (placeholder anchor for patch) */}
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
