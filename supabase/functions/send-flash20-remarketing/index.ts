@@ -432,10 +432,16 @@ Deno.serve(async (req) => {
       // Count remaining
       const { count: remainingCount } = await baseQuery().limit(1);
 
+      console.log(`[FLASH20] Batch complete: eligible=${eligible.length} attempted=${attemptCounter} sent=${totalSent} failed=${totalFailed} skipped=`, skipped);
+      if (errors.length > 0) {
+        console.error("[FLASH20] First error:", errors[0]);
+      }
+
       return new Response(JSON.stringify({
         send: true,
         eligible: eligible.length,
-        attempted: eligible.length,
+        attempted: attemptCounter,
+        skipped,
         sent: totalSent,
         failed: totalFailed,
         remaining: remainingCount || 0,
