@@ -222,6 +222,13 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const brevoApiKey = Deno.env.get("BREVO_API_KEY") || "";
 
+    // Hard-fail fast if Brevo key missing for any send-mode call (test or production batch)
+    if ((body.send || (body.testEmails && Array.isArray(body.testEmails) && body.testEmails.length > 0)) && !brevoApiKey) {
+      console.error("[FLASH20] BREVO_API_KEY env var is missing or empty — aborting send.");
+      return new Response(JSON.stringify({ error: "BREVO_API_KEY not configured on the edge function environment." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // Base eligibility filter (5+ days old, US tz, preview sent + token, not converted/dismissed,
     // not already sent flash20 in last 30d). Suppression + paid-customer filters happen post-fetch.
     const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
