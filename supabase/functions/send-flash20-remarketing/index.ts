@@ -234,6 +234,8 @@ Deno.serve(async (req) => {
     const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+    const promoWindowFilter = `last_promo_email_sent_at.is.null,last_promo_email_sent_at.lt."${thirtyDaysAgo}"`;
+
     const baseQuery = () =>
       supabase
         .from("leads")
@@ -245,7 +247,7 @@ Deno.serve(async (req) => {
         .is("dismissed_at", null)
         .lt("captured_at", fiveDaysAgo)
         .like("timezone", "America/%")
-        .or(`last_promo_email_sent_at.is.null,last_promo_email_sent_at.lt.${thirtyDaysAgo}`);
+        .or(promoWindowFilter);
 
     // ---- DRY RUN ----
     if (dryRun) {
@@ -380,12 +382,17 @@ Deno.serve(async (req) => {
 
           // Atomic claim: only set last_promo_email_sent_at if still null OR > 30 days old
           const claimTime = new Date().toISOString();
-          const { data: claimed, error: claimErr } = await supabase
+          const priorPromoSentAt = lead.last_promo_email_sent_at ?? null;
+          let claimQuery = supabase
             .from("leads")
             .update({ last_promo_email_sent_at: claimTime })
-            .eq("id", lead.id)
-            .or(`last_promo_email_sent_at.is.null,last_promo_email_sent_at.lt.${thirtyDaysAgo}`)
-            .select("id").maybeSingle();
+            .eq("id", lead.id);
+
+          claimQuery = priorPromoSentAt
+            ? claimQuery.eq("last_promo_email_sent_at", priorPromoSentAt)
+            : claimQuery.is("last_promo_email_sent_at", null);
+
+          const { data: claimed, error: claimErr } = await claimQuery.select("id").maybeSingle();
 
           if (claimErr || !claimed) {
             skipped.claim_failed++;
@@ -401,7 +408,7 @@ Deno.serve(async (req) => {
             skipped.send_threw++;
             const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
             console.error(`[FLASH20] sendOneEmail threw for ${lead.email}: ${msg}`);
-            await supabase.from("leads").update({ last_promo_email_sent_at: null }).eq("id", lead.id);
+            await supabase.from("leads").update({ last_promo_email_sent_at: priorPromoSentAt }).eq("id", lead.id);
             totalFailed++;
             errors.push({ email: lead.email, error: `threw: ${msg}` });
             continue;
@@ -416,7 +423,7 @@ Deno.serve(async (req) => {
             });
           } else {
             // Roll back the claim so it can be retried
-            await supabase.from("leads").update({ last_promo_email_sent_at: null }).eq("id", lead.id);
+            await supabase.from("leads").update({ last_promo_email_sent_at: priorPromoSentAt }).eq("id", lead.id);
             totalFailed++;
             errors.push({ email: lead.email, error: r.error || "unknown" });
           }
