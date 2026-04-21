@@ -1984,6 +1984,29 @@ const { data, error } = await listOrders("all", 0, 250);
                         </Button>
                       </div>
                     )}
+                    {selectedOrder.bonus_song_url && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap text-xs">
+                        <span className="text-muted-foreground">Bonus track:</span>
+                        {selectedOrder.bonus_unlocked_at ? (
+                          <Badge variant="outline" className="bg-green-100 text-green-800 gap-1">
+                            <Gift className="h-3 w-3" />
+                            Unlocked {formatAdminDate(selectedOrder.bonus_unlocked_at)}
+                            {selectedOrder.bonus_price_cents === 0 && " (comped)"}
+                          </Badge>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs gap-1"
+                            onClick={() => setShowBonusCompDialog(true)}
+                            title="Give this customer free access to the full bonus track"
+                          >
+                            <Gift className="h-3 w-3" />
+                            Unlock Bonus (Comp)
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {!isEditingOrder ? (
                     <Button variant="outline" size="sm" onClick={startEditingOrder}>
