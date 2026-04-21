@@ -1431,7 +1431,9 @@ const { data, error } = await listOrders("all", 0, 250);
               <AOVChart orders={analyticsOrders} />
               <UpsellRevenueChart orders={analyticsOrders} />
             </div>
-            
+
+            <DownloadAttachChart orders={analyticsOrders} />
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <StatusChart orders={analyticsOrders} />
               <GenreChart orders={analyticsOrders} />
