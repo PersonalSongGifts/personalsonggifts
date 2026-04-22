@@ -264,6 +264,10 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
             <Badge variant={settings.paused ? "secondary" : "default"} className={settings.paused ? "" : "bg-green-600"}>
               {settings.paused ? "Paused" : "Running"}
             </Badge>
+            <Badge variant="outline" className="border-blue-500 text-blue-700">
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Auto-drain: every 5 min
+            </Badge>
             {stats?.promo?.is_active && timeRemaining !== null && timeRemaining > 0 && (
               <Badge variant="outline" className="border-orange-500 text-orange-700">
                 <Clock className="h-3 w-3 mr-1" />
