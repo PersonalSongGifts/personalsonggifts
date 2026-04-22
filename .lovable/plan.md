@@ -1,50 +1,47 @@
 
 
-## Fix Flash20 silent send failure
+## Auto-drain Flash20 queue every few minutes
 
-The campaign reports `attempted: 100, sent: 0, failed: 0` but no emails leave Brevo and no `[FLASH20]` log lines appear. The current code has three silent failure paths and a hard-coded `attempted` value that masks what actually happened. This plan adds real telemetry, fixes the misleading counter, and surfaces the underlying cause.
+You sent the canary (~100). Right now nothing happens unless someone clicks "Run Next Batch" again. Let's automate the drain.
 
-### Root cause analysis
+### What changes
 
-The DB confirms 5,435 eligible leads with `last_promo_email_sent_at = NULL` and zero prior `flash20_sent` activity logs — so the claim step should succeed. The fact that `sent: 0, failed: 0` happens with `eligible: 100` means one of:
+Add a **pg_cron job** that calls `send-flash20-remarketing` every 5 minutes with `{ send: true }`. Each tick the function will:
 
-1. The candidate loop is being skipped entirely (silent `continue` on every iteration)
-2. `sendOneEmail` is throwing an exception that's swallowed by an outer try/catch
-3. The post-fetch suppressed/paid filter is reducing 100 candidates to 0 eligible (but UI shows 100)
-4. `BREVO_API_KEY` env var is empty, the fetch returns 401, but somehow not counted
+- No-op if `paused = true` (already built-in)
+- No-op if zero eligible leads remain (already built-in)
+- Otherwise send up to `batch_size` (currently 500), then exit
 
-The current code can't distinguish these because `attempted` is hard-coded to `eligible.length` (line 409) and per-lead `console.log` calls aren't reaching the log stream we see.
+So with ~5,400 eligible leads, the queue drains in ~11 ticks (~55 minutes). Pause anytime from the panel and the cron stops sending immediately.
 
-### Fixes — `supabase/functions/send-flash20-remarketing/index.ts`
+### Implementation
 
-1. **Fix the lying `attempted` counter.** Track a real `attemptCounter` that increments inside the loop right before `sendOneEmail` is called. Return that value, not `eligible.length`.
+1. **Enable** `pg_cron` and `pg_net` extensions (no-op if already enabled).
 
-2. **Add a skip counter and reason buckets.** Introduce `skipped: { claim_failed: number, missing_token: number, send_threw: number }` and increment per skip path. Return it in the response.
+2. **Schedule the job** via insert SQL (not migration — contains the project URL + anon key):
+   ```
+   select cron.schedule(
+     'flash20-drain',
+     '*/5 * * * *',
+     $$ select net.http_post(
+       url:='https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/send-flash20-remarketing',
+       headers:='{"Content-Type":"application/json","x-admin-password":"<ADMIN_PASSWORD>"}'::jsonb,
+       body:='{"send":true}'::jsonb
+     ); $$
+   );
+   ```
 
-3. **Wrap `sendOneEmail` in try/catch at the call site.** Currently a thrown fetch (network blip, DNS, etc.) would bubble up and kill the whole batch. Catch, count as `failed`, push to `errors` with the exception message.
+3. **UI affordance** — small "Auto-drain: ON (every 5 min)" badge in the Flash20 panel header so you can see at a glance that the cron is running. Pausing the campaign continues to halt sends; if you want to fully stop the cron, I'll add a one-click "Stop auto-drain" button that runs `cron.unschedule('flash20-drain')`.
 
-4. **Hard-fail fast if `BREVO_API_KEY` is missing.** At the top of the `send` branch, check `if (!brevoApiKey) return 500 with { error: "BREVO_API_KEY not configured" }`. Currently it falls back to empty string and silently calls Brevo with no auth.
+4. **Short delay between batches** is already in place (500ms between 50-email chunks inside one batch). The 5-minute cron interval gives Brevo extra breathing room between batches.
 
-5. **Add a single summary log line per batch.** `console.log("[FLASH20] Batch complete: eligible=X attempted=Y sent=Z failed=W skipped=", skipped)` so the edge function logs always show the outcome even if individual lead logs get truncated.
+### What you do after this ships
 
-6. **Log the first error verbatim.** If `errors.length > 0`, `console.error("[FLASH20] First error:", errors[0])` so the actual Brevo response (e.g. "401 unauthorized", "sender not verified") shows up in logs immediately.
-
-### Fix — `src/components/admin/Flash20RemarketingPanel.tsx`
-
-7. **Surface skipped reasons in the toast and JSON box.** When `data.skipped` is present, show it in the success toast: `${data.sent} sent, ${data.failed} failed, ${total skipped} skipped`. The raw JSON box already renders the full response so no extra UI work needed beyond the toast.
-
-### What this changes for the user
-
-After this ships:
-- Click **Run Next Batch** → if Brevo key is missing you get an immediate clear error instead of silent zeros
-- Response JSON shows real `attempted` count + a `skipped` breakdown so you can see exactly which gate is dropping leads
-- Edge function logs always show `[FLASH20] Batch complete:` and `[FLASH20] First error:` lines so root-causing future issues takes seconds, not a debugging session
-- If the issue was the `BREVO_API_KEY` env var, the next click will tell you so directly
+Nothing. Leave the panel alone. The remaining ~5,300 leads will drain over the next hour. Stats in the panel auto-refresh when you reload it. If anything looks off mid-flight, click **Pause** and the next cron tick becomes a no-op.
 
 ### Out of scope
 
-- Not changing eligibility filters (5+ days, US tz, preview sent, not converted, no flash20 in 30d) — those are correct
-- Not changing the claim mechanism — the WHERE clause is right, we just need visibility into when it skips
-- Not changing the email content, subject, or sender — those work in your existing test sends
-- Not touching the Promos panel or the targeted-promo machinery — that's already shipped and working
+- Not changing eligibility, pacing within a batch, suppression logic, or the email itself
+- Not touching the Valentine remarketing panel or other campaigns
+- Not adding retries beyond what's already there — failed sends already roll back the claim and become eligible again on the next tick
 
