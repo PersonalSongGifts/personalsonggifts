@@ -1,0 +1,1 @@
+UPDATE admin_settings SET value = jsonb_set(value::jsonb, '{paused}', 'true'::jsonb)::text, updated_at = now() WHERE key = 'flash20_remarketing';
