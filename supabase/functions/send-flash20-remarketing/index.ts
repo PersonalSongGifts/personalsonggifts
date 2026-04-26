@@ -25,7 +25,7 @@ interface CampaignSettings {
   last_run_at: string | null;
 }
 
-const SITE_URL = "https://personalsonggifts.com";
+const SITE_URL = "https://www.personalsonggifts.com";
 const PROMO_SLUG = "flash20";
 const SETTINGS_KEY = "flash20_remarketing";
 
