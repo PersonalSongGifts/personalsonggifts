@@ -25,7 +25,7 @@ interface CampaignSettings {
   last_run_at: string | null;
 }
 
-const SITE_URL = "https://personalsonggifts.com";
+const SITE_URL = "https://www.personalsonggifts.com";
 const PROMO_SLUG = "flash20";
 const SETTINGS_KEY = "flash20_remarketing";
 
@@ -105,7 +105,7 @@ A while back you listened to ${safeRecipient}'s personalized song — but never 
 
 For the next 72 hours only, you can unlock the full studio song for $19.99 (normally $99.99).
 
-${ctaUrl}
+Unlock the full song: ${ctaUrl}
 
 The full song is 3–6 minutes long, mastered, and ready to share. Once the 72 hours are up, the price goes back to $99.99.
 
@@ -134,8 +134,8 @@ To unsubscribe: ${unsubscribeUrl}`;
       For the next <strong>72 hours only</strong>, you can unlock the full studio song for <strong>$19.99</strong> (normally $99.99).
     </p>
 
-    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
-      <a href="${ctaUrl}" style="color:#1E3A5F;">${ctaUrl}</a>
+    <p style="margin:0 0 28px 0;">
+      <a href="${ctaUrl}" style="display:inline-block;background-color:#1E3A5F;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:6px;font-family:Arial,Helvetica,sans-serif;">Unlock the full song →</a>
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
