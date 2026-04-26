@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { occasionOptions, getLabelForOption } from "./adminDropdownOptions";
 
 interface Order {
   id: string;
@@ -28,8 +29,9 @@ export function OrdersChart({ orders }: OrdersChartProps) {
     const occasionCounts: Record<string, number> = {};
     
     orders.forEach((order) => {
-      const occasion = order.occasion || "Other";
-      occasionCounts[occasion] = (occasionCounts[occasion] || 0) + 1;
+      const rawOccasion = order.occasion || "other";
+      const label = getLabelForOption(occasionOptions, rawOccasion) || rawOccasion;
+      occasionCounts[label] = (occasionCounts[label] || 0) + 1;
     });
 
     return Object.entries(occasionCounts)
