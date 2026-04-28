@@ -369,9 +369,9 @@ export default function SongPreview() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
       {/* Flash 20 urgency banner — only when this lead is eligible */}
-      {flashEligible && (
+      {flashShowPrice && (
         <div className="py-3 px-4 text-center font-bold text-sm md:text-base bg-primary text-primary-foreground">
-          🔥 72-hour flash sale — ${(flashPriceCents / 100).toFixed(2)} ends soon
+          🔥 72-hour flash sale — ${(flashPriceCents! / 100).toFixed(2)} ends soon
         </div>
       )}
       {flashExpired && (
@@ -507,8 +507,8 @@ export default function SongPreview() {
               <div>
                 <p className="text-sm text-muted-foreground line-through">$99.99 USD</p>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
-                  {flashEligible
-                    ? `$${(flashPriceCents / 100).toFixed(2)}`
+                  {flashShowPrice
+                    ? `$${(flashPriceCents! / 100).toFixed(2)}`
                     : isVday10 && isFollowup
                     ? "$29.99"
                     : isVday10
@@ -546,7 +546,7 @@ export default function SongPreview() {
           {/* Promo Badge */}
           <div className="text-center">
             <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
-              {flashEligible
+              {flashShowPrice
                 ? "⏳ 72-hour flash sale — act now"
                 : isVday10
                 ? isFollowup
