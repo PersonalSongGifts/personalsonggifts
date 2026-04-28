@@ -300,6 +300,17 @@ Deno.serve(async (req) => {
 
         const r = await sendOneEmail(brevoApiKey, email, testCustomer, testRecipient, testToken!, lead?.id || "test");
         results.push({ email, sent: r.ok, error: r.error });
+
+        // Log flash20_sent so the preview page recognizes this lead as eligible (matches production behavior)
+        if (r.ok && lead?.id) {
+          await supabase.from("order_activity_log").insert({
+            entity_type: "lead",
+            entity_id: lead.id,
+            event_type: "flash20_sent",
+            actor: "system",
+            details: `[TEST MODE] Flash $19.99 (72h) remarketing email sent to ${email}`,
+          });
+        }
       }
 
       return new Response(JSON.stringify({
