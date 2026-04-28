@@ -470,7 +470,29 @@ Deno.serve(async (req) => {
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      const candidateEmails = candidates.map(c => c.email.toLowerCase());
+      // Timezone bucketing: only send to leads whose CURRENT local time is in the morning send window.
+      // Allow caller to bypass for emergencies / off-hours testing via { ignoreTimezoneWindow: true }.
+      const ignoreTimezoneWindow = body.ignoreTimezoneWindow === true;
+      const preTzCount = candidates.length;
+      const tzFiltered = ignoreTimezoneWindow
+        ? candidates
+        : candidates.filter(c => isInSendWindow((c as any).timezone));
+      const skippedOutOfWindow = preTzCount - tzFiltered.length;
+
+      if (tzFiltered.length === 0) {
+        return new Response(JSON.stringify({
+          send: true,
+          eligible: 0,
+          sent: 0,
+          failed: 0,
+          skippedOutOfWindow,
+          remaining: preTzCount,
+          sendWindow: { startHourLocal: SEND_WINDOW_START_HOUR, endHourLocal: SEND_WINDOW_END_HOUR },
+          message: `No leads currently in their local ${SEND_WINDOW_START_HOUR}–${SEND_WINDOW_END_HOUR} AM window. ${preTzCount} leads waiting for their morning.`,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const candidateEmails = tzFiltered.map(c => c.email.toLowerCase());
 
       // Filter suppressed
       const { data: suppressed } = await supabase
@@ -482,7 +504,7 @@ Deno.serve(async (req) => {
         .from("orders").select("customer_email").in("customer_email", candidateEmails).neq("status", "cancelled");
       const paidSet = new Set((paidOrders || []).map(o => (o.customer_email as string).toLowerCase()));
 
-      const eligible = candidates.filter(c => {
+      const eligible = tzFiltered.filter(c => {
         const e = c.email.toLowerCase();
         return !suppressedSet.has(e) && !paidSet.has(e);
       }).slice(0, targetBatchSize);
@@ -588,6 +610,9 @@ Deno.serve(async (req) => {
         eligible: eligible.length,
         attempted: attemptCounter,
         skipped,
+        skippedOutOfWindow,
+        sendWindow: { startHourLocal: SEND_WINDOW_START_HOUR, endHourLocal: SEND_WINDOW_END_HOUR },
+        ignoreTimezoneWindow,
         sent: totalSent,
         failed: totalFailed,
         remaining: remainingCount || 0,
