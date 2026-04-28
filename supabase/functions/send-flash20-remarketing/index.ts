@@ -29,6 +29,48 @@ const SITE_URL = "https://www.personalsonggifts.com";
 const PROMO_SLUG = "flash20";
 const SETTINGS_KEY = "flash20_remarketing";
 
+// Local-time send window (inclusive start, exclusive end). 8:00–10:00 local.
+const SEND_WINDOW_START_HOUR = 8;
+const SEND_WINDOW_END_HOUR = 10;
+const FALLBACK_TIMEZONE = "America/New_York";
+
+/**
+ * Returns the current hour (0–23) in the given IANA timezone.
+ * Falls back to FALLBACK_TIMEZONE if the timezone string is invalid.
+ */
+function getLocalHour(timezone: string | null | undefined): number {
+  const tz = timezone && timezone.length > 0 ? timezone : FALLBACK_TIMEZONE;
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date());
+    const hourPart = parts.find(p => p.type === "hour")?.value ?? "0";
+    let h = parseInt(hourPart, 10);
+    if (h === 24) h = 0; // some locales return "24" for midnight
+    return h;
+  } catch {
+    // Invalid timezone — use fallback
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: FALLBACK_TIMEZONE,
+      hour: "numeric",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date());
+    const hourPart = parts.find(p => p.type === "hour")?.value ?? "0";
+    let h = parseInt(hourPart, 10);
+    if (h === 24) h = 0;
+    return h;
+  }
+}
+
+function isInSendWindow(timezone: string | null | undefined): boolean {
+  const h = getLocalHour(timezone);
+  return h >= SEND_WINDOW_START_HOUR && h < SEND_WINDOW_END_HOUR;
+}
+
 async function getCampaignSettings(supabase: ReturnType<typeof createClient>): Promise<CampaignSettings> {
   const { data } = await supabase
     .from("admin_settings")
