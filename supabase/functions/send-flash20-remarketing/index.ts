@@ -352,7 +352,6 @@ Deno.serve(async (req) => {
         .neq("status", "converted")
         .is("dismissed_at", null)
         .lt("captured_at", fiveDaysAgo)
-        .like("timezone", "America/%")
         .or(promoWindowFilter);
 
     // ---- DRY RUN ----
@@ -361,16 +360,38 @@ Deno.serve(async (req) => {
       const { count: suppressedCount } = await supabase
         .from("email_suppressions").select("email", { count: "exact", head: true });
       const settings = await getCampaignSettings(supabase);
+
+      // Bucket a wider sample by current send-window eligibility so the admin
+      // can see how many leads would actually fire right now vs. wait for their
+      // local morning window.
+      const { data: tzSample } = await baseQuery().limit(2000);
+      let inWindowNow = 0;
+      let waiting = 0;
+      const tzBreakdown: Record<string, { total: number; inWindow: number }> = {};
+      for (const l of (tzSample || [])) {
+        const tz = (l as any).timezone || FALLBACK_TIMEZONE;
+        const inWin = isInSendWindow(tz);
+        if (inWin) inWindowNow++; else waiting++;
+        if (!tzBreakdown[tz]) tzBreakdown[tz] = { total: 0, inWindow: 0 };
+        tzBreakdown[tz].total++;
+        if (inWin) tzBreakdown[tz].inWindow++;
+      }
+
       return new Response(JSON.stringify({
         dryRun: true,
         totalEligible: count || 0,
         suppressedEmails: suppressedCount || 0,
+        sendWindow: { startHourLocal: SEND_WINDOW_START_HOUR, endHourLocal: SEND_WINDOW_END_HOUR },
+        inSendWindowNow: inWindowNow,
+        waitingForLocalMorning: waiting,
+        timezoneBreakdownSample: tzBreakdown,
         settings,
         sample: (sample || []).map(l => ({
           email: l.email, customer_name: l.customer_name, recipient_name: l.recipient_name,
-          timezone: l.timezone, has_token: !!l.preview_token,
+          timezone: l.timezone, local_hour: getLocalHour(l.timezone),
+          in_window_now: isInSendWindow(l.timezone), has_token: !!l.preview_token,
         })),
-        note: "Suppressed emails and existing customers will be excluded at send time.",
+        note: "Only leads in their local 8–10 AM window are sent to per run. Re-run hourly to drain all timezones.",
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
