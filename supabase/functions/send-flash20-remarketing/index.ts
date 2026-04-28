@@ -29,6 +29,48 @@ const SITE_URL = "https://www.personalsonggifts.com";
 const PROMO_SLUG = "flash20";
 const SETTINGS_KEY = "flash20_remarketing";
 
+// Local-time send window (inclusive start, exclusive end). 8:00–10:00 local.
+const SEND_WINDOW_START_HOUR = 8;
+const SEND_WINDOW_END_HOUR = 10;
+const FALLBACK_TIMEZONE = "America/New_York";
+
+/**
+ * Returns the current hour (0–23) in the given IANA timezone.
+ * Falls back to FALLBACK_TIMEZONE if the timezone string is invalid.
+ */
+function getLocalHour(timezone: string | null | undefined): number {
+  const tz = timezone && timezone.length > 0 ? timezone : FALLBACK_TIMEZONE;
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date());
+    const hourPart = parts.find(p => p.type === "hour")?.value ?? "0";
+    let h = parseInt(hourPart, 10);
+    if (h === 24) h = 0; // some locales return "24" for midnight
+    return h;
+  } catch {
+    // Invalid timezone — use fallback
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: FALLBACK_TIMEZONE,
+      hour: "numeric",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date());
+    const hourPart = parts.find(p => p.type === "hour")?.value ?? "0";
+    let h = parseInt(hourPart, 10);
+    if (h === 24) h = 0;
+    return h;
+  }
+}
+
+function isInSendWindow(timezone: string | null | undefined): boolean {
+  const h = getLocalHour(timezone);
+  return h >= SEND_WINDOW_START_HOUR && h < SEND_WINDOW_END_HOUR;
+}
+
 async function getCampaignSettings(supabase: ReturnType<typeof createClient>): Promise<CampaignSettings> {
   const { data } = await supabase
     .from("admin_settings")
@@ -310,7 +352,6 @@ Deno.serve(async (req) => {
         .neq("status", "converted")
         .is("dismissed_at", null)
         .lt("captured_at", fiveDaysAgo)
-        .like("timezone", "America/%")
         .or(promoWindowFilter);
 
     // ---- DRY RUN ----
@@ -319,16 +360,38 @@ Deno.serve(async (req) => {
       const { count: suppressedCount } = await supabase
         .from("email_suppressions").select("email", { count: "exact", head: true });
       const settings = await getCampaignSettings(supabase);
+
+      // Bucket a wider sample by current send-window eligibility so the admin
+      // can see how many leads would actually fire right now vs. wait for their
+      // local morning window.
+      const { data: tzSample } = await baseQuery().limit(2000);
+      let inWindowNow = 0;
+      let waiting = 0;
+      const tzBreakdown: Record<string, { total: number; inWindow: number }> = {};
+      for (const l of (tzSample || [])) {
+        const tz = (l as any).timezone || FALLBACK_TIMEZONE;
+        const inWin = isInSendWindow(tz);
+        if (inWin) inWindowNow++; else waiting++;
+        if (!tzBreakdown[tz]) tzBreakdown[tz] = { total: 0, inWindow: 0 };
+        tzBreakdown[tz].total++;
+        if (inWin) tzBreakdown[tz].inWindow++;
+      }
+
       return new Response(JSON.stringify({
         dryRun: true,
         totalEligible: count || 0,
         suppressedEmails: suppressedCount || 0,
+        sendWindow: { startHourLocal: SEND_WINDOW_START_HOUR, endHourLocal: SEND_WINDOW_END_HOUR },
+        inSendWindowNow: inWindowNow,
+        waitingForLocalMorning: waiting,
+        timezoneBreakdownSample: tzBreakdown,
         settings,
         sample: (sample || []).map(l => ({
           email: l.email, customer_name: l.customer_name, recipient_name: l.recipient_name,
-          timezone: l.timezone, has_token: !!l.preview_token,
+          timezone: l.timezone, local_hour: getLocalHour(l.timezone),
+          in_window_now: isInSendWindow(l.timezone), has_token: !!l.preview_token,
         })),
-        note: "Suppressed emails and existing customers will be excluded at send time.",
+        note: "Only leads in their local 8–10 AM window are sent to per run. Re-run hourly to drain all timezones.",
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -407,7 +470,29 @@ Deno.serve(async (req) => {
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      const candidateEmails = candidates.map(c => c.email.toLowerCase());
+      // Timezone bucketing: only send to leads whose CURRENT local time is in the morning send window.
+      // Allow caller to bypass for emergencies / off-hours testing via { ignoreTimezoneWindow: true }.
+      const ignoreTimezoneWindow = body.ignoreTimezoneWindow === true;
+      const preTzCount = candidates.length;
+      const tzFiltered = ignoreTimezoneWindow
+        ? candidates
+        : candidates.filter(c => isInSendWindow((c as any).timezone));
+      const skippedOutOfWindow = preTzCount - tzFiltered.length;
+
+      if (tzFiltered.length === 0) {
+        return new Response(JSON.stringify({
+          send: true,
+          eligible: 0,
+          sent: 0,
+          failed: 0,
+          skippedOutOfWindow,
+          remaining: preTzCount,
+          sendWindow: { startHourLocal: SEND_WINDOW_START_HOUR, endHourLocal: SEND_WINDOW_END_HOUR },
+          message: `No leads currently in their local ${SEND_WINDOW_START_HOUR}–${SEND_WINDOW_END_HOUR} AM window. ${preTzCount} leads waiting for their morning.`,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const candidateEmails = tzFiltered.map(c => c.email.toLowerCase());
 
       // Filter suppressed
       const { data: suppressed } = await supabase
@@ -419,7 +504,7 @@ Deno.serve(async (req) => {
         .from("orders").select("customer_email").in("customer_email", candidateEmails).neq("status", "cancelled");
       const paidSet = new Set((paidOrders || []).map(o => (o.customer_email as string).toLowerCase()));
 
-      const eligible = candidates.filter(c => {
+      const eligible = tzFiltered.filter(c => {
         const e = c.email.toLowerCase();
         return !suppressedSet.has(e) && !paidSet.has(e);
       }).slice(0, targetBatchSize);
@@ -525,6 +610,9 @@ Deno.serve(async (req) => {
         eligible: eligible.length,
         attempted: attemptCounter,
         skipped,
+        skippedOutOfWindow,
+        sendWindow: { startHourLocal: SEND_WINDOW_START_HOUR, endHourLocal: SEND_WINDOW_END_HOUR },
+        ignoreTimezoneWindow,
         sent: totalSent,
         failed: totalFailed,
         remaining: remainingCount || 0,
