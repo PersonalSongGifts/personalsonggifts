@@ -82,15 +82,25 @@ async function ensurePromoActivated(supabase: ReturnType<typeof createClient>) {
   return startsAt.toISOString();
 }
 
-function buildSubject(recipientName: string | null | undefined): string {
+const MD_RECIPIENT_TYPES = new Set(["wife", "mom", "mother", "grandma", "grandmother"]);
+
+function isMothersDayRecipient(recipientType: string | null | undefined): boolean {
+  const t = (recipientType || "").trim().toLowerCase();
+  return MD_RECIPIENT_TYPES.has(t);
+}
+
+function buildSubject(recipientName: string | null | undefined, mothersDay: boolean): string {
   const name = (recipientName || "").trim();
-  if (!name) return `Your song is still waiting`;
-  return `${name}'s song is still waiting`;
+  if (mothersDay) {
+    return name ? `${name}'s Mother's Day song is still waiting` : `Her Mother's Day song is still waiting`;
+  }
+  return name ? `${name}'s song is still waiting` : `Your song is still waiting`;
 }
 
 function buildEmail(
   customerName: string,
   recipientName: string | null | undefined,
+  recipientType: string | null | undefined,
   previewToken: string,
   email: string,
 ) {
@@ -98,8 +108,33 @@ function buildEmail(
   const safeRecipient = (recipientName || "").trim() || "your loved one";
   const ctaUrl = `${SITE_URL}/preview/${previewToken}?promo=flash20`;
   const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(email)}`;
+  const mothersDay = isMothersDayRecipient(recipientType);
 
-  const textContent = `Hi ${firstName},
+  const textContent = mothersDay
+    ? `Hi ${firstName},
+
+Mother's Day is May 11th — and ${safeRecipient}'s song is still sitting there, half-finished.
+
+You already heard the preview. You know how it starts. But the full version — her name woven through it, in a real voice, mastered, 3 to 6 minutes long — is still locked.
+
+Imagine her face when you press play on Mother's Day morning.
+
+For the next 72 hours, ${safeRecipient}'s full song is $19.99 instead of $99.99.
+
+Unlock ${safeRecipient}'s song: ${ctaUrl}
+
+After 72 hours, the price goes back to $99.99 — and Mother's Day is just around the corner.
+
+Questions? Just reply to this email — a real person will get back to you.
+
+— The Personal Song Gifts team
+
+---
+Personal Song Gifts
+2108 N ST STE N, SACRAMENTO, CA 95816
+
+To unsubscribe: ${unsubscribeUrl}`
+    : `Hi ${firstName},
 
 A while back you started writing a song for ${safeRecipient} — and you heard the preview. But the full version is still locked.
 
@@ -121,13 +156,24 @@ Personal Song Gifts
 
 To unsubscribe: ${unsubscribeUrl}`;
 
-  const htmlContent = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
-  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
-    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${firstName},</p>
+  const bodyParagraphs = mothersDay
+    ? `
+    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
+      <strong>Mother's Day is May 11th</strong> — and ${safeRecipient}'s song is still sitting there, half-finished.
+    </p>
 
+    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
+      You already heard the preview. You know how it starts. But the full version — her name woven through it, in a real voice, mastered, 3 to 6 minutes long — is still locked.
+    </p>
+
+    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
+      Imagine her face when you press play on Mother's Day morning.
+    </p>
+
+    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
+      For the next <strong>72 hours</strong>, ${safeRecipient}'s full song is <strong>$19.99</strong> instead of $99.99.
+    </p>`
+    : `
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
       A while back you started writing a song for ${safeRecipient} — and you heard the preview. But the full version is still locked.
     </p>
@@ -138,14 +184,25 @@ To unsubscribe: ${unsubscribeUrl}`;
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
       For the next <strong>72 hours</strong>, ${safeRecipient}'s full song is <strong>$19.99</strong> instead of $99.99.
-    </p>
+    </p>`;
 
+  const afterCta = mothersDay
+    ? `After 72 hours, the price goes back to $99.99 — and Mother's Day is just around the corner.`
+    : `After 72 hours, the price goes back to $99.99.`;
+
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${firstName},</p>
+${bodyParagraphs}
     <p style="margin:0 0 28px 0;">
       <a href="${ctaUrl}" style="display:inline-block;background-color:#1E3A5F;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:6px;font-family:Arial,Helvetica,sans-serif;">Unlock ${safeRecipient}'s song →</a>
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      After 72 hours, the price goes back to $99.99.
+      ${afterCta}
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
@@ -167,7 +224,7 @@ To unsubscribe: ${unsubscribeUrl}`;
 </body>
 </html>`;
 
-  return { subject: buildSubject(recipientName), htmlContent, textContent, ctaUrl };
+  return { subject: buildSubject(recipientName, mothersDay), htmlContent, textContent, ctaUrl, mothersDay };
 }
 
 async function sendOneEmail(
@@ -175,10 +232,11 @@ async function sendOneEmail(
   toEmail: string,
   customerName: string,
   recipientName: string | null | undefined,
+  recipientType: string | null | undefined,
   previewToken: string,
   leadId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const { subject, htmlContent, textContent } = buildEmail(customerName, recipientName, previewToken, toEmail);
+  const { subject, htmlContent, textContent } = buildEmail(customerName, recipientName, recipientType, previewToken, toEmail);
   const messageId = `<${leadId}.flash20.${Date.now()}@personalsonggifts.com>`;
   const senderEmail = "support@personalsonggifts.com";
   const senderName = "Personal Song Gifts";
@@ -223,7 +281,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { dryRun, testEmails, send } = body;
+    const { dryRun, testEmails, send, testRecipientType } = body;
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const brevoApiKey = Deno.env.get("BREVO_API_KEY") || "";
@@ -245,7 +303,7 @@ Deno.serve(async (req) => {
     const baseQuery = () =>
       supabase
         .from("leads")
-        .select("id, email, customer_name, recipient_name, preview_token, last_promo_email_sent_at, timezone", { count: "exact" })
+        .select("id, email, customer_name, recipient_name, recipient_type, preview_token, last_promo_email_sent_at, timezone", { count: "exact" })
         .not("preview_sent_at", "is", null)
         .not("preview_song_url", "is", null)
         .not("preview_token", "is", null)
@@ -279,11 +337,11 @@ Deno.serve(async (req) => {
       // Activate promo if not yet activated (so test links use $19.99)
       await ensurePromoActivated(supabase);
 
-      const results: { email: string; sent: boolean; error?: string }[] = [];
+      const results: { email: string; sent: boolean; variant?: string; error?: string }[] = [];
       for (const email of testEmails) {
         const { data: lead } = await supabase
           .from("leads")
-          .select("id, email, customer_name, recipient_name, preview_token")
+          .select("id, email, customer_name, recipient_name, recipient_type, preview_token")
           .eq("email", email)
           .not("preview_token", "is", null)
           .order("captured_at", { ascending: false })
@@ -292,6 +350,7 @@ Deno.serve(async (req) => {
         let testToken = lead?.preview_token;
         let testCustomer = lead?.customer_name || "Test User";
         let testRecipient: string | null | undefined = lead?.recipient_name || "Sample";
+        let testRecType: string | null | undefined = testRecipientType || lead?.recipient_type || "wife";
 
         if (!testToken) {
           const { data: anyLead } = await supabase
@@ -304,8 +363,8 @@ Deno.serve(async (req) => {
           if (anyLead) testRecipient = anyLead.recipient_name;
         }
 
-        const r = await sendOneEmail(brevoApiKey, email, testCustomer, testRecipient, testToken!, lead?.id || "test");
-        results.push({ email, sent: r.ok, error: r.error });
+        const r = await sendOneEmail(brevoApiKey, email, testCustomer, testRecipient, testRecType, testToken!, lead?.id || "test");
+        results.push({ email, sent: r.ok, variant: isMothersDayRecipient(testRecType) ? "mothers_day" : "generic", error: r.error });
 
         // Log flash20_sent so the preview page recognizes this lead as eligible (matches production behavior)
         if (r.ok && lead?.id) {
@@ -420,7 +479,7 @@ Deno.serve(async (req) => {
           attemptCounter++;
           let r: { ok: boolean; error?: string };
           try {
-            r = await sendOneEmail(brevoApiKey, lead.email, lead.customer_name, lead.recipient_name, lead.preview_token!, lead.id);
+            r = await sendOneEmail(brevoApiKey, lead.email, lead.customer_name, lead.recipient_name, lead.recipient_type, lead.preview_token!, lead.id);
           } catch (sendErr) {
             skipped.send_threw++;
             const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
