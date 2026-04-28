@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Pause, Play, Send, BarChart3, RefreshCw, AlertTriangle, Mail, Clock, RotateCcw } from "lucide-react";
+import { Loader2, Pause, Play, Send, BarChart3, RefreshCw, AlertTriangle, Mail, Clock, RotateCcw, FlaskConical } from "lucide-react";
 
 interface CampaignSettings {
   paused: boolean;
@@ -15,8 +16,9 @@ interface CampaignSettings {
   canary_size: number;
   canary_sent: boolean;
   total_sent: number;
-  activated_at: string | null;
   last_run_at: string | null;
+  // Per-slug activation timestamps (e.g. activated_at_flash25)
+  [key: string]: unknown;
 }
 
 const DEFAULT_SETTINGS: CampaignSettings = {
@@ -25,21 +27,32 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   canary_size: 100,
   canary_sent: false,
   total_sent: 0,
-  activated_at: null,
   last_run_at: null,
 };
 
 interface Stats {
+  promoSlug: string;
   sent: number;
   conversions: number;
   revenueCents: number;
-  promo: { ends_at: string; is_active: boolean; starts_at: string } | null;
+  promo: { ends_at: string; is_active: boolean; starts_at: string; lead_price_cents?: number; standard_price_cents?: number } | null;
   activated_at: string | null;
 }
 
 interface Props {
   adminPassword: string;
 }
+
+interface WaveDef {
+  slug: string;
+  label: string;
+  description: string;
+}
+
+const WAVES: WaveDef[] = [
+  { slug: "flash25", label: "Wave 1 — flash25 ($24.99)", description: "Mother's Day campaign opener (~Apr 28)" },
+  { slug: "flash20", label: "Wave 2 — flash20 ($19.99)", description: "Final push (~May 7, expires May 9)" },
+];
 
 function formatDuration(ms: number): string {
   if (ms <= 0) return "expired";
@@ -50,6 +63,7 @@ function formatDuration(ms: number): string {
 }
 
 export function Flash20RemarketingPanel({ adminPassword }: Props) {
+  const [activeSlug, setActiveSlug] = useState<string>("flash25");
   const [settings, setSettings] = useState<CampaignSettings>(DEFAULT_SETTINGS);
   const [stats, setStats] = useState<Stats | null>(null);
   const [eligibleCount, setEligibleCount] = useState<number | null>(null);
@@ -58,13 +72,13 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [batchSizeInput, setBatchSizeInput] = useState("500");
   const [testEmailsInput, setTestEmailsInput] = useState("");
+  const [testCarrierLeadId, setTestCarrierLeadId] = useState("");
   const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null);
   const [now, setNow] = useState(Date.now());
   const { toast } = useToast();
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
-  // Tick countdown every minute
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
@@ -89,7 +103,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
         }
       }
     } catch (err) {
-      console.error("Failed to fetch flash20 settings:", err);
+      console.error("Failed to fetch remarketing settings:", err);
       setFetchError(String(err));
     } finally {
       setLoading(false);
@@ -117,7 +131,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
     const res = await fetch(`${supabaseUrl}/functions/v1/send-flash20-remarketing`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-admin-password": adminPassword },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ promoSlug: activeSlug, ...body }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -130,6 +144,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
     try {
       const data = await callFn({ stats: true });
       setStats({
+        promoSlug: data.promoSlug || activeSlug,
         sent: data.sent || 0,
         conversions: data.conversions || 0,
         revenueCents: data.revenueCents || 0,
@@ -140,7 +155,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
       console.error("stats failed", err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeSlug]);
 
   useEffect(() => {
     fetchSettings();
@@ -157,7 +172,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
   const handleResume = async () => {
     setActionLoading("resume");
     await updateSetting({ paused: false });
-    toast({ title: "Campaign Resumed", description: "Click 'Run Next Batch' to send." });
+    toast({ title: "Campaign Resumed", description: "Use 'Send Next Batch' or wait for hourly cron." });
     setActionLoading(null);
   };
 
@@ -177,9 +192,12 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
     setActionLoading("dryRun");
     try {
       const data = await callFn({ dryRun: true });
-      setEligibleCount(data.totalEligible);
+      setEligibleCount(data.sampledAndUnsentForThisSlug ?? data.totalEligible ?? 0);
       setLastResult(data);
-      toast({ title: "Dry Run Complete", description: `${data.totalEligible} eligible leads` });
+      toast({
+        title: "Dry Run Complete",
+        description: `${data.sampledAndUnsentForThisSlug ?? 0} eligible & not-yet-sent for ${activeSlug} (sample cap ${data.sampleCap ?? 2000}). Base query matched ${data.baseQueryMatched ?? "?"}.`,
+      });
     } catch (err) {
       toast({ title: "Dry Run Failed", description: String(err), variant: "destructive" });
     } finally {
@@ -201,7 +219,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
         const skippedSuffix = skippedTotal > 0 ? `, ${skippedTotal} skipped` : "";
         toast({
           title: data.canaryBatch ? "Canary Batch Sent" : "Batch Sent",
-          description: `${data.sent} sent, ${data.failed} failed${skippedSuffix}, ${data.remaining} remaining`,
+          description: `${data.sent} sent, ${data.failed} failed${skippedSuffix}. ${data.skippedAlreadySentSlug ?? 0} already-sent-this-wave skipped.`,
         });
         await fetchSettings();
         await refreshStats();
@@ -221,9 +239,14 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
     }
     setActionLoading("test");
     try {
-      const data = await callFn({ testEmails: emails });
+      const body: Record<string, unknown> = { testEmails: emails };
+      if (testCarrierLeadId.trim()) body.testCarrierLeadId = testCarrierLeadId.trim();
+      const data = await callFn(body);
       setLastResult(data);
-      toast({ title: "Test Sent", description: `${data.totalSent} sent, ${data.totalFailed} failed` });
+      toast({
+        title: "Test Sent",
+        description: `${data.totalSent} sent, ${data.totalFailed} failed. ${data.carrierLogWritten ? "Carrier seeded — REMEMBER TO REVERT before production." : (data.carrierLeadId ? "Carrier already had log entry." : "No carrier lead — preview page may not show discount.")}`,
+      });
     } catch (err) {
       toast({ title: "Test Failed", description: String(err), variant: "destructive" });
     } finally {
@@ -231,8 +254,26 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
     }
   };
 
+  const handleRevertCarrier = async () => {
+    if (!testCarrierLeadId.trim()) {
+      toast({ title: "Need carrier lead ID", variant: "destructive" });
+      return;
+    }
+    if (!confirm(`Revert carrier lead ${testCarrierLeadId} for ${activeSlug}? Removes the test ${activeSlug}_sent log entry + clears send-claim. Lead becomes eligible for production sends again.`)) return;
+    setActionLoading("revert");
+    try {
+      const data = await callFn({ revertTestCarrier: true, testCarrierLeadId: testCarrierLeadId.trim() });
+      setLastResult(data);
+      toast({ title: "Carrier Reverted", description: `Removed ${data.deletedLogRows ?? 0} log row(s).` });
+    } catch (err) {
+      toast({ title: "Revert Failed", description: String(err), variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleReset = async () => {
-    if (!confirm("Reset Flash20 campaign counters? (Does NOT clear last_promo_email_sent_at on leads)")) return;
+    if (!confirm("Reset campaign settings? Clears per-slug activated_at + counters. Promo rows are NOT touched. Use this between waves before activating the next slug.")) return;
     setActionLoading("reset");
     try {
       await callFn({ reset: true });
@@ -254,19 +295,17 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
   const promoEndsAt = stats?.promo?.ends_at ? new Date(stats.promo.ends_at).getTime() : null;
   const timeRemaining = promoEndsAt ? promoEndsAt - now : null;
 
+  const currentWave = WAVES.find(w => w.slug === activeSlug);
+
   return (
     <Card className="border-2 border-orange-500/30">
       <CardHeader>
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <CardTitle className="text-lg">⚡ $19.99 Flash Sale (72h) Remarketing</CardTitle>
+          <CardTitle className="text-lg">⚡ Mother's Day Two-Wave Remarketing</CardTitle>
           <div className="flex items-center gap-2">
             {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             <Badge variant={settings.paused ? "secondary" : "default"} className={settings.paused ? "" : "bg-green-600"}>
               {settings.paused ? "Paused" : "Running"}
-            </Badge>
-            <Badge variant="outline" className="border-blue-500 text-blue-700">
-              <RefreshCw className="h-3 w-3 mr-1" />
-              Auto-drain: every 5 min
             </Badge>
             {stats?.promo?.is_active && timeRemaining !== null && timeRemaining > 0 && (
               <Badge variant="outline" className="border-orange-500 text-orange-700">
@@ -278,6 +317,29 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Wave selector */}
+        <div className="space-y-2 rounded-md border p-3 bg-blue-50 border-blue-200">
+          <Label className="text-xs font-semibold flex items-center gap-1">
+            <FlaskConical className="h-3 w-3" /> Active Wave
+          </Label>
+          <Select value={activeSlug} onValueChange={setActiveSlug}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {WAVES.map(w => (
+                <SelectItem key={w.slug} value={w.slug}>{w.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {currentWave && (
+            <p className="text-xs text-muted-foreground">{currentWave.description}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            All actions below (dry run, send, test, stats) target the <code className="bg-white px-1 rounded">{activeSlug}</code> promo slug.
+          </p>
+        </div>
+
         {fetchError && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
@@ -290,11 +352,11 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
           </Alert>
         )}
 
-        {!settings.activated_at && (
+        {!stats?.activated_at && (
           <Alert>
             <Clock className="h-4 w-4" />
             <AlertDescription>
-              <strong>Promo not yet activated.</strong> The 72-hour clock starts when the first batch (canary or test) sends.
+              <strong>{activeSlug} promo not yet activated.</strong> The 72-hour clock starts when the first batch (canary or test) sends.
             </AlertDescription>
           </Alert>
         )}
@@ -303,7 +365,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
         {stats && (
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-md border p-3 bg-muted/30">
-              <div className="text-xs text-muted-foreground">Sent</div>
+              <div className="text-xs text-muted-foreground">Sent ({stats.promoSlug})</div>
               <div className="text-2xl font-semibold">{stats.sent.toLocaleString()}</div>
             </div>
             <div className="rounded-md border p-3 bg-muted/30">
@@ -325,7 +387,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">
               {settings.total_sent} sent
-              {eligibleCount !== null ? ` / ${totalEligibleForProgress} eligible` : ""}
+              {eligibleCount !== null ? ` / ${totalEligibleForProgress} eligible (sample)` : ""}
             </span>
             <span className="text-muted-foreground">
               {!settings.canary_sent ? `Canary pending (first ${settings.canary_size})` : "Post-canary batches"}
@@ -358,7 +420,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
           </Button>
           <Button onClick={handleRunBatch} disabled={!!actionLoading || settings.paused} variant="outline" size="sm">
             {actionLoading === "send" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-            {!settings.canary_sent ? `Send Canary (${settings.canary_size})` : "Run Next Batch"}
+            {!settings.canary_sent ? `Send Canary (${settings.canary_size})` : "Send Next Batch"}
           </Button>
           <Button onClick={() => { fetchSettings(); refreshStats(); }} disabled={!!actionLoading} variant="ghost" size="sm">
             <RefreshCw className="h-4 w-4" />
@@ -372,7 +434,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
         {/* Test Send */}
         <div className="space-y-2 rounded-md border p-3 bg-muted/30">
           <Label className="text-xs font-semibold flex items-center gap-1">
-            <Mail className="h-3 w-3" /> Send Test Email
+            <Mail className="h-3 w-3" /> Send Test Email ({activeSlug})
           </Label>
           <div className="flex gap-2">
             <Input
@@ -381,12 +443,33 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
               onChange={(e) => setTestEmailsInput(e.target.value)}
               className="h-8 text-sm flex-1"
             />
+          </div>
+          <div className="flex gap-2">
+            <Input
+              placeholder="Carrier lead ID (uuid) — preview page will render discounted price for this lead"
+              value={testCarrierLeadId}
+              onChange={(e) => setTestCarrierLeadId(e.target.value)}
+              className="h-8 text-sm flex-1 font-mono"
+            />
             <Button onClick={handleTestSend} disabled={!!actionLoading || !testEmailsInput.trim()} size="sm" variant="outline">
               {actionLoading === "test" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
               Send Test
             </Button>
+            <Button
+              onClick={handleRevertCarrier}
+              disabled={!!actionLoading || !testCarrierLeadId.trim()}
+              size="sm"
+              variant="ghost"
+              className="text-destructive"
+              title="Remove the test {slug}_sent log entry + clear send-claim for the carrier lead"
+            >
+              {actionLoading === "revert" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RotateCcw className="h-4 w-4 mr-1" />}
+              Revert Carrier
+            </Button>
           </div>
-          <p className="text-xs text-muted-foreground">Note: Sending a test ALSO activates the 72h promo window.</p>
+          <p className="text-xs text-muted-foreground">
+            Test send activates the 72h promo window. Provide a carrier lead ID so the preview page renders the {activeSlug} discount when the test recipient clicks the link. Click "Revert Carrier" before going to production so they don't get double-emailed.
+          </p>
         </div>
 
         {/* Batch Size */}
@@ -411,7 +494,7 @@ export function Flash20RemarketingPanel({ adminPassword }: Props) {
 
         {/* Last Result */}
         {lastResult && (
-          <div className="bg-muted rounded-md p-3 text-xs font-mono overflow-auto max-h-40">
+          <div className="bg-muted rounded-md p-3 text-xs font-mono overflow-auto max-h-60">
             <pre>{JSON.stringify(lastResult, null, 2)}</pre>
           </div>
         )}
