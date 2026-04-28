@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
 });
 
 // Helper: find order by short ID using the database function
-async function findOrder(supabase: ReturnType<typeof createClient>, shortId: string) {
+async function findOrder(supabase: any, shortId: string) {
   const { data } = await supabase.rpc("find_orders_by_short_id", {
     short_id: shortId.toUpperCase(),
     status_filter: null,
@@ -58,7 +58,7 @@ async function findOrder(supabase: ReturnType<typeof createClient>, shortId: str
 
 // ── regenerate_song ──
 async function regenerateSong(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   _url: string, _key: string,
   body: { order_id?: string; pronunciation_hints?: string; lyrics_override?: string }
 ) {
@@ -120,7 +120,7 @@ async function regenerateSong(
 
 // ── update_lyrics ──
 async function updateLyrics(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   body: { order_id?: string; new_lyrics?: string }
 ) {
   if (!body.order_id) return json({ error: "order_id required" }, 400);
@@ -143,7 +143,7 @@ async function updateLyrics(
 
 // ── resend_delivery ──
 async function resendDelivery(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   supabaseUrl: string, supabaseServiceKey: string,
   body: { order_id?: string }
 ) {
@@ -191,7 +191,7 @@ async function resendDelivery(
 
 // ── send_preview_link ──
 async function sendPreviewLink(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   supabaseUrl: string, supabaseServiceKey: string,
   body: { email?: string }
 ) {
