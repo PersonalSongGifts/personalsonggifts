@@ -145,10 +145,9 @@ function isMothersDayRecipient(recipientType: string | null | undefined): boolea
 function buildSubject(recipientName: string | null | undefined, mothersDay: boolean): string {
   const name = (recipientName || "").trim();
   if (mothersDay) {
-    return name ? `${name}'s Mother's Day song is still waiting` : `Her Mother's Day song is still waiting`;
+    return name ? `Quick thing about ${name}'s song` : `Quick thing about your song`;
   }
-  // Wave-1 friendly subject (per Ryan + colleague feedback)
-  return name ? `Hey wanted to show you this song for ${name}` : `Hey wanted to show you this song`;
+  return name ? `Did you ever come back to ${name}'s song?` : `Did you ever come back to your song?`;
 }
 
 interface EmailParams {
@@ -172,21 +171,17 @@ function buildEmail(p: EmailParams) {
   const textContent = mothersDay
     ? `Hi ${firstName},
 
-Mother's Day is ${MOTHERS_DAY_DATE_LABEL} — and ${safeRecipient}'s song is still sitting there, half-finished.
+Just a heads up — the full song you started for ${safeRecipient} is already finished and waiting in your account.
 
-You already heard the preview. You know how it starts. But the full version — her name woven through it, in a real voice, mastered, 3 to 6 minutes long — is still locked.
+You only heard the preview, but the full version's been there this whole time.
 
-Imagine her face when you press play on Mother's Day morning.
+Mother's Day is ${MOTHERS_DAY_DATE_LABEL}, so there's still time if you want to use it for that.
 
-For the next 72 hours, ${safeRecipient}'s full song is ${p.priceLabel} instead of ${p.originalLabel}.
+Hear ${safeRecipient}'s full song: ${ctaUrl}
 
-Unlock ${safeRecipient}'s song: ${ctaUrl}
+(${p.priceLabel} right now, down from ${p.originalLabel}.)
 
-After 72 hours, the price goes back to ${p.originalLabel} — and Mother's Day is just around the corner.
-
-Questions? Just reply to this email — a real person will get back to you.
-
-— The Personal Song Gifts team
+— Personal Song Gifts
 
 ---
 Personal Song Gifts
@@ -195,19 +190,15 @@ Personal Song Gifts
 To unsubscribe: ${unsubscribeUrl}`
     : `Hi ${firstName},
 
-A while back you started writing a song for ${safeRecipient} — and you heard the preview. But the full version is still locked.
+Just checking in — the full song you started for ${safeRecipient} is already finished and sitting in your account.
 
-You know how ${safeRecipient} will react when they hear it the whole way through — their name woven into it, in a real voice, mastered, 3 to 6 minutes long.
+You only heard the 30-second preview, but the whole thing's there whenever you want to listen.
 
-For the next 72 hours, ${safeRecipient}'s full song is ${p.priceLabel} instead of ${p.originalLabel}.
+Hear ${safeRecipient}'s full song: ${ctaUrl}
 
-Unlock ${safeRecipient}'s song: ${ctaUrl}
+(It's ${p.priceLabel} right now, down from ${p.originalLabel} for a couple days.)
 
-After 72 hours, the price goes back to ${p.originalLabel}.
-
-Questions? Just reply to this email — a real person will get back to you.
-
-— The Personal Song Gifts team
+— Personal Song Gifts
 
 ---
 Personal Song Gifts
@@ -218,36 +209,28 @@ To unsubscribe: ${unsubscribeUrl}`;
   const bodyParagraphs = mothersDay
     ? `
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      <strong>Mother's Day is ${MOTHERS_DAY_DATE_LABEL}</strong> — and ${safeRecipient}'s song is still sitting there, half-finished.
+      Just a heads up — the full song you started for ${safeRecipient} is already finished and waiting in your account.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      You already heard the preview. You know how it starts. But the full version — her name woven through it, in a real voice, mastered, 3 to 6 minutes long — is still locked.
+      You only heard the preview, but the full version's been there this whole time.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
-      Imagine her face when you press play on Mother's Day morning.
-    </p>
-
-    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
-      For the next <strong>72 hours</strong>, ${safeRecipient}'s full song is <strong>${p.priceLabel}</strong> instead of ${p.originalLabel}.
+      Mother's Day is ${MOTHERS_DAY_DATE_LABEL}, so there's still time if you want to use it for that.
     </p>`
     : `
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      A while back you started writing a song for ${safeRecipient} — and you heard the preview. But the full version is still locked.
-    </p>
-
-    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      You know how ${safeRecipient} will react when they hear it the whole way through — their name woven into it, in a real voice, mastered, 3 to 6 minutes long.
+      Just checking in — the full song you started for ${safeRecipient} is already finished and sitting in your account.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
-      For the next <strong>72 hours</strong>, ${safeRecipient}'s full song is <strong>${p.priceLabel}</strong> instead of ${p.originalLabel}.
+      You only heard the 30-second preview, but the whole thing's there whenever you want to listen.
     </p>`;
 
   const afterCta = mothersDay
-    ? `After 72 hours, the price goes back to ${p.originalLabel} — and Mother's Day is just around the corner.`
-    : `After 72 hours, the price goes back to ${p.originalLabel}.`;
+    ? `(${p.priceLabel} right now, down from ${p.originalLabel}.)`
+    : `(It's ${p.priceLabel} right now, down from ${p.originalLabel} for a couple days.)`;
 
   const htmlContent = `<!DOCTYPE html>
 <html>
@@ -257,19 +240,15 @@ To unsubscribe: ${unsubscribeUrl}`;
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${firstName},</p>
 ${bodyParagraphs}
     <p style="margin:0 0 28px 0;">
-      <a href="${ctaUrl}" style="display:inline-block;background-color:#1E3A5F;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:6px;font-family:Arial,Helvetica,sans-serif;">Unlock ${safeRecipient}'s song →</a>
+      <a href="${ctaUrl}" style="display:inline-block;background-color:#1E3A5F;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:6px;font-family:Arial,Helvetica,sans-serif;">Hear ${safeRecipient}'s full song →</a>
     </p>
 
-    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
+    <p style="color:#666;font-size:14px;line-height:1.6;margin:0 0 16px 0;">
       ${afterCta}
     </p>
 
-    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      Questions? Just reply to this email — a real person will get back to you.
-    </p>
-
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 40px 0;">
-      — The Personal Song Gifts team
+      — Personal Song Gifts
     </p>
 
     <hr style="border:none;border-top:1px solid #eee;margin:0 0 20px 0;">
