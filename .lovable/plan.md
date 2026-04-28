@@ -1,59 +1,75 @@
-# Re-run Flash20 to a Fresh Cohort
+## Two-Wave Mother's Day Campaign — Final Plan v4 (APPROVED, ready to build)
 
-## What's happening today
+### Decisions Locked
+- **Audience:** Global, all 11,852 eligible at q≥70.
+- **Subject lines:** Keep MD variant for wife/mom/grandma → `${name}'s Mother's Day song is still waiting`. Non-MD recipients → `Hey wanted to show you this song for ${name}`.
+- **Eligibility:** Block leads without `full_song_url` (they can't checkout anyway).
+- **Test email:** `Ryan@hyperdrivelab.com` with admin-supplied carrier lead ID.
 
-- **312 leads** already received the Flash20 email (with the broken non-`www` link).
-- **5,247 fresh leads** have never been emailed and meet all eligibility criteria (US timezone, preview sent + listened-ready, not converted, not dismissed, captured 5+ days ago).
-- The promo window expired April 24. The send function is built to **auto-activate a fresh 72-hour window** the moment the first email goes out (`ensurePromoActivated()`).
-- Campaign is currently `paused: true`.
+### Pricing Anchor Decision
+Email body will say **"$24.99 instead of $29.99"** (Wave 1) and **"$19.99 instead of $29.99"** (Wave 2). Drop the `$99.99` anchor — it's not a real price the lead has ever seen and reads as fake.
 
-## What we'll do
+### Implementation Steps
 
-1. **Verify the link works end-to-end** — send a test email to your inbox first. You click it, confirm the preview page loads with the $19.99 Flash20 price visible, and only then do we unleash the batch.
-2. **Send a canary batch of 100** to validate deliverability on real recipients before the full push.
-3. **Resume the campaign** — once canary looks good, the system will continue sending in 500-lead batches until the 5,247 pool is exhausted.
+**Step 1 — Refactor `send-flash20-remarketing/index.ts`**
+- Accept `promoSlug` param (default `flash20` for backwards compat).
+- `SETTINGS_KEY` stays `flash20_remarketing` (single shared settings row), but `activated_at` becomes `activated_at_${slug}` keyed inside the settings JSON.
+- Drop the `last_promo_email_sent_at <30d` filter from `baseQuery`. Replace with NOT-EXISTS subquery on `order_activity_log` for `${promoSlug}_sent`. Keep `last_promo_email_sent_at` CAS as race lock only.
+- Add `.not("full_song_url", "is", null)` to baseQuery.
+- Add `.gte("quality_score", 70)` to baseQuery.
+- Parameterize `buildEmail()`: `priceLabel`, `originalLabel`, `mothersDayDate`, `subjectGeneric`. Use new generic subject `Hey wanted to show you this song for ${recipientName}`. Keep MD subject as-is. Update MD date to **May 10**.
+- Test mode: accept `testCarrierLeadId`. If provided, write a real `${promoSlug}_sent` log entry for that lead (so preview page renders correctly). Add a follow-up admin button "Revert Test Carrier" that deletes that one log row + clears `last_promo_email_sent_at` so the carrier doesn't get double-emailed in production.
+- Activity log writes use `${promoSlug}_sent`.
+- Slug-aware `stats`: count `${promoSlug}_sent` events; conversions = leads with that event whose `converted_at >= activated_at_${slug}`; per-slug revenue.
 
-## Step-by-step (after you approve)
+**Step 2 — Refactor `get-lead-preview/index.ts`**
+- Look up active targeted promos this lead has a `*_sent` log entry for. If multiple, pick the one with the latest `activated_at`.
+- Return new generic fields: `targetedPromoSlug`, `targetedPromoPriceCents`, `targetedPromoEndsAt`, `targetedPromoEligible`, `targetedPromoExpired`.
+- Keep `flash20*` aliases populated (for any cached frontend) — read from the same generic resolution.
 
-### Step 1 — Test send to you
-- Trigger `send-flash20-remarketing` in `testEmails` mode with your email address.
-- This also auto-activates the promo (fresh `starts_at` = now, `ends_at` = now + 72h).
-- **You confirm**: email arrives → button works → `/preview/[token]?promo=flash20` loads → shows "$19.99 / 72 hours" badge → checkout proceeds.
+**Step 3 — Refactor `SongPreview.tsx`**
+- Read `targetedPromo*` fields with `flash20*` fallback.
+- Drop the hardcoded `?? 1999` price fallback (use server-provided cents only).
+- Send dynamic `promoSlug` to `create-lead-checkout`.
 
-### Step 2 — Canary batch (100 leads)
-- Flip `paused: false` in `admin_settings.flash20_remarketing`.
-- Trigger one send run. With `canary_sent: false`, it will send to exactly 100 leads, then mark `canary_sent: true`.
-- Wait ~30 minutes. Check Brevo for bounces/complaints and the `order_activity_log` for `flash20_sent` entries.
+**Step 4 — Update `Flash20RemarketingPanel.tsx`**
+- Wave selector dropdown: Wave 1 = `flash25` ($24.99) / Wave 2 = `flash20` ($19.99). All API calls include the chosen `promoSlug`.
+- Per-wave stats display (sent/conversions/revenue).
+- Test panel: text input for `testCarrierLeadId` next to email input; "Revert Test Carrier" button.
+- "Send Next Hour Batch" manual-fire button (cron fallback).
+- "Enable Cron / Disable Cron" toggle.
 
-### Step 3 — Full batches (500 at a time)
-- Trigger send runs (manually or scheduled) until the eligible pool drains.
-- Each run handles 500 leads, then exits. ~11 runs to clear all 5,247.
-- The promo's 72-hour window starts at Step 1, so all sends should complete inside that window for maximum urgency.
+**Step 5 — Database setup (insert tool)**
+- `UPDATE promotions SET is_active=false, ends_at='2026-04-01' WHERE slug='flash20';`
+- `INSERT INTO promotions (slug='flash25', name='Flash $24.99', lead_price_cents=2499, standard_price_cents=2999, priority_price_cents=3999, targeted=true, is_active=false, starts_at/ends_at=past placeholders, show_banner=false);`
+- Reset `admin_settings.flash20_remarketing` to defaults (paused=true, counters zeroed).
 
-### Step 4 — Auto-cleanup
-- When `eligible = 0`, the function returns "No eligible leads remaining" and the campaign naturally ends.
-- The promo's `ends_at` enforces the 72-hour deadline regardless.
+**Step 6 — Cron setup (insert tool)**
+- Try to enable `pg_cron` + `pg_net` via migration.
+- Schedule hourly job calling send fn with `{send: true, promoSlug: "flash25"}`. Created in **disabled** state; admin panel toggle controls it.
+- If extensions can't be enabled, fall back to admin "Send Next Hour Batch" button.
 
-## Link verification details (your main concern)
+**Step 7 — Verification (sequential, gated by you)**
+1. Deploy edge functions, wait 30s.
+2. Run `dryRun: true, promoSlug: "flash25"` → confirm count after `full_song_url` + `quality_score>=70` filters and timezone breakdown.
+3. I pick the most recent qualified lead from the DB as test carrier. Send test to `Ryan@hyperdrivelab.com` with that `testCarrierLeadId`.
+4. **You verify:**
+   - Email arrives. Non-MD subject reads "Hey wanted to show you this song for [name]" (or MD variant if carrier is wife/mom).
+   - Body says "$24.99 instead of $29.99", date "May 10".
+   - Click link → preview page shows "$24.99" badge.
+   - Click checkout → Stripe shows $24.99 → cancel.
+5. Click "Revert Test Carrier" — carrier's `flash25_sent` log + `last_promo_email_sent_at` cleared.
+6. **You give thumbs up.** Unpause campaign. Fire one canary (100 leads). Wait 30 min.
+7. Check Brevo + activity log + errors. If clean → enable cron toggle. Wave 1 drains over ~36-48 hours.
 
-The current code already has the fix from last time:
-- `SITE_URL = "https://www.personalsonggifts.com"` ✓ (with `www`)
-- HTML uses a styled button with `href` set to the full `www` URL ✓
-- Plain-text version uses the explicit `www` URL ✓
-- Both email and `Unsubscribe` link use the same `SITE_URL` constant ✓
+**Step 8 — Wave 2 handoff (~May 7)**
+- I come back. Disable cron. Reset settings (clears `activated_at_flash25`). Update `flash20` promo dates to fresh window. Reactivate `flash20`. Update cron body to `promoSlug: "flash20"`. Re-enable.
+- May 9 23:59 PST: `flash20` auto-expires.
+- May 10: Mother's Day.
 
-The `/preview/:token` route in `get-lead-preview` checks if the lead received a `flash20_sent` activity log entry AND the promo is active → returns `flash20Eligible: true` and shows the $19.99 price. This is wired correctly.
+### Risk Summary (acknowledged, not blocking)
+- **Brevo throttling at peak hours:** mitigated by `batch_size: 500` per cron run; errors will surface in run output, can lower if needed.
+- **419 unknown-tz leads** default to NY — acceptable.
+- **80 EU leads** will get Wave 1 even though their MD already passed. Acceptable noise.
 
-**The test send in Step 1 is your manual verification gate.** I won't proceed to the canary unless you confirm the link worked.
-
-## Files involved (no code changes needed)
-
-The Flash20 fix is already in place. We only need to:
-- Send test/canary/batch HTTP calls to the existing `send-flash20-remarketing` function.
-- Update `admin_settings.flash20_remarketing.paused` to `false` between steps.
-
-## What I need from you to start
-
-- Your email address for the Step 1 test send.
-
-Once you reply with that, I'll execute Step 1 immediately and wait for your confirmation before each subsequent step.
+Starting now.

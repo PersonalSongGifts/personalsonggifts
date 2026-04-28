@@ -15,6 +15,13 @@ interface PreviewData {
   previewUrl: string;
   coverImageUrl: string | null;
   songTitle: string | null;
+  // New generic targeted-promo fields (preferred)
+  targetedPromoSlug?: string | null;
+  targetedPromoEligible?: boolean;
+  targetedPromoExpired?: boolean;
+  targetedPromoPriceCents?: number | null;
+  targetedPromoEndsAt?: string | null;
+  // Back-compat (older server response)
   flash20Eligible?: boolean;
   flash20Expired?: boolean;
   flash20PriceCents?: number | null;
@@ -257,6 +264,12 @@ export default function SongPreview() {
     
     setPurchasing(true);
     try {
+      // Resolve which targeted promo (if any) the server says this lead can use.
+      // Prefer the new generic field; fall back to legacy flash20 fields.
+      const eligibleSlug = previewData?.targetedPromoEligible
+        ? previewData?.targetedPromoSlug ?? null
+        : (previewData?.flash20Eligible ? "flash20" : null);
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-lead-checkout`,
         {
@@ -267,10 +280,9 @@ export default function SongPreview() {
             tier,
             applyFollowupDiscount: isFollowup,
             applyVday10Discount: isVday10,
-            // Only send promoSlug when server confirmed eligibility (flash20) OR a non-flash promo param is in URL
-            promoSlug: previewData?.flash20Eligible
-              ? "flash20"
-              : (promoParam && promoParam !== "flash20" ? promoParam : undefined),
+            // Only send promoSlug when server confirmed eligibility for a targeted promo,
+            // OR a non-targeted promo param is in URL (rare, legacy).
+            promoSlug: eligibleSlug ?? (promoParam && promoParam !== "flash20" ? promoParam : undefined),
           }),
         }
       );
@@ -343,16 +355,23 @@ export default function SongPreview() {
 
   if (!previewData) return null;
 
-  const flashEligible = previewData.flash20Eligible === true;
-  const flashExpired = previewData.flash20Expired === true;
-  const flashPriceCents = previewData.flash20PriceCents ?? 1999;
+  // Prefer generic targeted-promo fields; fall back to legacy flash20 fields for old API responses.
+  const flashEligible =
+    previewData.targetedPromoEligible === true || previewData.flash20Eligible === true;
+  const flashExpired =
+    previewData.targetedPromoExpired === true || previewData.flash20Expired === true;
+  const flashPriceCents =
+    previewData.targetedPromoPriceCents ?? previewData.flash20PriceCents ?? null;
+  // If the server says eligible but somehow didn't include a price, treat as not-eligible
+  // rather than rendering a hardcoded fallback.
+  const flashShowPrice = flashEligible && typeof flashPriceCents === "number";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
       {/* Flash 20 urgency banner — only when this lead is eligible */}
-      {flashEligible && (
+      {flashShowPrice && (
         <div className="py-3 px-4 text-center font-bold text-sm md:text-base bg-primary text-primary-foreground">
-          🔥 72-hour flash sale — ${(flashPriceCents / 100).toFixed(2)} ends soon
+          🔥 72-hour flash sale — ${(flashPriceCents! / 100).toFixed(2)} ends soon
         </div>
       )}
       {flashExpired && (
@@ -488,8 +507,8 @@ export default function SongPreview() {
               <div>
                 <p className="text-sm text-muted-foreground line-through">$99.99 USD</p>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
-                  {flashEligible
-                    ? `$${(flashPriceCents / 100).toFixed(2)}`
+                  {flashShowPrice
+                    ? `$${(flashPriceCents! / 100).toFixed(2)}`
                     : isVday10 && isFollowup
                     ? "$29.99"
                     : isVday10
@@ -527,7 +546,7 @@ export default function SongPreview() {
           {/* Promo Badge */}
           <div className="text-center">
             <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
-              {flashEligible
+              {flashShowPrice
                 ? "⏳ 72-hour flash sale — act now"
                 : isVday10
                 ? isFollowup

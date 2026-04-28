@@ -6,26 +6,19 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const url = new URL(req.url);
     const previewToken = url.searchParams.get("token");
 
     if (!previewToken || previewToken.length < 16) {
-      return new Response(
-        JSON.stringify({ error: "Invalid preview token" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Invalid preview token" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Find lead by preview token
     const { data: lead, error } = await supabase
       .from("leads")
       .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at, order_id")
@@ -34,99 +27,133 @@ Deno.serve(async (req) => {
 
     if (error || !lead) {
       console.error("Lead not found:", error);
-      return new Response(
-        JSON.stringify({ error: "Preview not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Preview not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Check if lead has been converted - redirect to full song page
     if (lead.status === "converted") {
-      return new Response(
-        JSON.stringify({ 
-          error: "This song has already been purchased", 
-          converted: true,
-          orderId: lead.order_id 
-        }),
-        { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({
+        error: "This song has already been purchased",
+        converted: true,
+        orderId: lead.order_id,
+      }), { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Check if preview song exists
     if (!lead.preview_song_url) {
-      return new Response(
-        JSON.stringify({ error: "Preview not ready yet" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Preview not ready yet" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Update preview_opened_at if this is the first visit
     if (!lead.preview_opened_at) {
-      await supabase
-        .from("leads")
-        .update({ preview_opened_at: new Date().toISOString() })
-        .eq("id", lead.id);
+      await supabase.from("leads").update({ preview_opened_at: new Date().toISOString() }).eq("id", lead.id);
       console.log(`Lead ${lead.id} preview opened for first time`);
     }
 
-    // Check FLASH20 eligibility: targeted promo + active + unexpired + lead received the email
-    let flash20Eligible = false;
-    let flash20Expired = false;
-    let flash20PriceCents: number | null = null;
-    let flash20EndsAt: string | null = null;
-    {
-      const { data: promo } = await supabase
-        .from("promotions")
-        .select("is_active, targeted, starts_at, ends_at, lead_price_cents")
-        .eq("slug", "flash20")
-        .maybeSingle();
+    // Generic targeted-promo discovery:
+    //  1) Find ALL `*_sent` activity log entries for this lead.
+    //  2) Cross-reference with active targeted promotions.
+    //  3) Pick the most recent active one (by starts_at desc).
+    let targetedPromoSlug: string | null = null;
+    let targetedPromoEligible = false;
+    let targetedPromoExpired = false;
+    let targetedPromoPriceCents: number | null = null;
+    let targetedPromoEndsAt: string | null = null;
 
-      if (promo && promo.targeted === true) {
-        const { data: logEntry } = await supabase
+    {
+      // Get all targeted promos (small table, fine to fetch all)
+      const { data: targetedPromos } = await supabase
+        .from("promotions")
+        .select("slug, is_active, starts_at, ends_at, lead_price_cents, targeted")
+        .eq("targeted", true);
+
+      const targetedSlugs = (targetedPromos || []).map(p => (p as { slug: string }).slug);
+      if (targetedSlugs.length > 0) {
+        const sentEvents = targetedSlugs.map(s => `${s}_sent`);
+        const { data: logs } = await supabase
           .from("order_activity_log")
-          .select("id")
+          .select("event_type, created_at")
           .eq("entity_type", "lead")
           .eq("entity_id", lead.id)
-          .eq("event_type", "flash20_sent")
-          .limit(1)
-          .maybeSingle();
+          .in("event_type", sentEvents)
+          .order("created_at", { ascending: false });
 
-        if (logEntry) {
+        const sentSlugs = new Set<string>();
+        for (const l of (logs || [])) {
+          const ev = (l as { event_type: string }).event_type;
+          const slug = ev.endsWith("_sent") ? ev.slice(0, -"_sent".length) : null;
+          if (slug) sentSlugs.add(slug);
+        }
+
+        if (sentSlugs.size > 0) {
           const now = new Date();
-          const starts = new Date(promo.starts_at);
-          const ends = new Date(promo.ends_at);
-          if (promo.is_active && now >= starts && now <= ends) {
-            flash20Eligible = true;
-            flash20PriceCents = promo.lead_price_cents;
-            flash20EndsAt = promo.ends_at;
-          } else if (now > ends) {
-            flash20Expired = true;
+          // Pick the most-recently-started ACTIVE promo this lead has received.
+          // If multiple active, prefer the one with the latest starts_at.
+          const candidates = (targetedPromos || [])
+            .filter(p => sentSlugs.has((p as { slug: string }).slug))
+            .map(p => p as { slug: string; is_active: boolean; starts_at: string; ends_at: string; lead_price_cents: number });
+
+          // Sort by starts_at desc
+          candidates.sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
+
+          // Find first active+unexpired
+          const live = candidates.find(p => {
+            const starts = new Date(p.starts_at);
+            const ends = new Date(p.ends_at);
+            return p.is_active && now >= starts && now <= ends;
+          });
+
+          if (live) {
+            targetedPromoSlug = live.slug;
+            targetedPromoEligible = true;
+            targetedPromoPriceCents = live.lead_price_cents;
+            targetedPromoEndsAt = live.ends_at;
+          } else {
+            // Most-recent received-but-expired (so frontend can show "sale ended" msg)
+            const expired = candidates.find(p => new Date(p.ends_at) < now);
+            if (expired) {
+              targetedPromoSlug = expired.slug;
+              targetedPromoExpired = true;
+              targetedPromoPriceCents = expired.lead_price_cents;
+              targetedPromoEndsAt = expired.ends_at;
+            }
           }
         }
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        recipientName: lead.recipient_name,
-        recipientType: lead.recipient_type,
-        occasion: lead.occasion,
-        genre: lead.genre,
-        previewUrl: lead.preview_song_url,
-        coverImageUrl: lead.cover_image_url,
-        songTitle: lead.song_title,
-        flash20Eligible,
-        flash20Expired,
-        flash20PriceCents,
-        flash20EndsAt,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    // Backwards-compat aliases for any cached/old frontend bundle that still reads `flash20*`.
+    // These fields will be populated only if the resolved promo is flash20 itself.
+    const isFlash20 = targetedPromoSlug === "flash20";
+    const flash20Eligible = isFlash20 && targetedPromoEligible;
+    const flash20Expired = isFlash20 && targetedPromoExpired;
+    const flash20PriceCents = isFlash20 ? targetedPromoPriceCents : null;
+    const flash20EndsAt = isFlash20 ? targetedPromoEndsAt : null;
+
+    return new Response(JSON.stringify({
+      recipientName: lead.recipient_name,
+      recipientType: lead.recipient_type,
+      occasion: lead.occasion,
+      genre: lead.genre,
+      previewUrl: lead.preview_song_url,
+      coverImageUrl: lead.cover_image_url,
+      songTitle: lead.song_title,
+
+      // New generic fields (preferred)
+      targetedPromoSlug,
+      targetedPromoEligible,
+      targetedPromoExpired,
+      targetedPromoPriceCents,
+      targetedPromoEndsAt,
+
+      // Back-compat
+      flash20Eligible,
+      flash20Expired,
+      flash20PriceCents,
+      flash20EndsAt,
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("Get lead preview error:", error);
-    return new Response(
-      JSON.stringify({ error: "Server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: "Server error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
