@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { dryRun, testEmails, send } = body;
+    const { dryRun, testEmails, send, testRecipientType } = body;
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const brevoApiKey = Deno.env.get("BREVO_API_KEY") || "";
@@ -303,7 +303,7 @@ Deno.serve(async (req) => {
     const baseQuery = () =>
       supabase
         .from("leads")
-        .select("id, email, customer_name, recipient_name, preview_token, last_promo_email_sent_at, timezone", { count: "exact" })
+        .select("id, email, customer_name, recipient_name, recipient_type, preview_token, last_promo_email_sent_at, timezone", { count: "exact" })
         .not("preview_sent_at", "is", null)
         .not("preview_song_url", "is", null)
         .not("preview_token", "is", null)
@@ -337,11 +337,11 @@ Deno.serve(async (req) => {
       // Activate promo if not yet activated (so test links use $19.99)
       await ensurePromoActivated(supabase);
 
-      const results: { email: string; sent: boolean; error?: string }[] = [];
+      const results: { email: string; sent: boolean; variant?: string; error?: string }[] = [];
       for (const email of testEmails) {
         const { data: lead } = await supabase
           .from("leads")
-          .select("id, email, customer_name, recipient_name, preview_token")
+          .select("id, email, customer_name, recipient_name, recipient_type, preview_token")
           .eq("email", email)
           .not("preview_token", "is", null)
           .order("captured_at", { ascending: false })
@@ -350,6 +350,7 @@ Deno.serve(async (req) => {
         let testToken = lead?.preview_token;
         let testCustomer = lead?.customer_name || "Test User";
         let testRecipient: string | null | undefined = lead?.recipient_name || "Sample";
+        let testRecType: string | null | undefined = testRecipientType || lead?.recipient_type || "wife";
 
         if (!testToken) {
           const { data: anyLead } = await supabase
@@ -362,8 +363,8 @@ Deno.serve(async (req) => {
           if (anyLead) testRecipient = anyLead.recipient_name;
         }
 
-        const r = await sendOneEmail(brevoApiKey, email, testCustomer, testRecipient, testToken!, lead?.id || "test");
-        results.push({ email, sent: r.ok, error: r.error });
+        const r = await sendOneEmail(brevoApiKey, email, testCustomer, testRecipient, testRecType, testToken!, lead?.id || "test");
+        results.push({ email, sent: r.ok, variant: isMothersDayRecipient(testRecType) ? "mothers_day" : "generic", error: r.error });
 
         // Log flash20_sent so the preview page recognizes this lead as eligible (matches production behavior)
         if (r.ok && lead?.id) {
@@ -478,7 +479,7 @@ Deno.serve(async (req) => {
           attemptCounter++;
           let r: { ok: boolean; error?: string };
           try {
-            r = await sendOneEmail(brevoApiKey, lead.email, lead.customer_name, lead.recipient_name, lead.preview_token!, lead.id);
+            r = await sendOneEmail(brevoApiKey, lead.email, lead.customer_name, lead.recipient_name, lead.recipient_type, lead.preview_token!, lead.id);
           } catch (sendErr) {
             skipped.send_threw++;
             const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
