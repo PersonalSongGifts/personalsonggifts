@@ -84,8 +84,8 @@ async function ensurePromoActivated(supabase: ReturnType<typeof createClient>) {
 
 function buildSubject(recipientName: string | null | undefined): string {
   const name = (recipientName || "").trim();
-  if (!name) return `Your song — $19.99 for 72 hours`;
-  return `${name}'s song — $19.99 for 72 hours`;
+  if (!name) return `Your song is still waiting`;
+  return `${name}'s song is still waiting`;
 }
 
 function buildEmail(
@@ -101,15 +101,17 @@ function buildEmail(
 
   const textContent = `Hi ${firstName},
 
-A while back you listened to ${safeRecipient}'s personalized song — but never picked up the full version.
+A while back you started writing a song for ${safeRecipient} — and you heard the preview. But the full version is still locked.
 
-For the next 72 hours only, you can unlock the full studio song for $19.99 (normally $99.99).
+You know how ${safeRecipient} will react when they hear it the whole way through — their name woven into it, in a real voice, mastered, 3 to 6 minutes long.
 
-Unlock the full song: ${ctaUrl}
+For the next 72 hours, ${safeRecipient}'s full song is $19.99 instead of $99.99.
 
-The full song is 3–6 minutes long, mastered, and ready to share. Once the 72 hours are up, the price goes back to $99.99.
+Unlock ${safeRecipient}'s song: ${ctaUrl}
 
-If you have any questions just reply to this email — a real person will get back to you.
+After 72 hours, the price goes back to $99.99.
+
+Questions? Just reply to this email — a real person will get back to you.
 
 — The Personal Song Gifts team
 
@@ -127,23 +129,27 @@ To unsubscribe: ${unsubscribeUrl}`;
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${firstName},</p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      A while back you listened to ${safeRecipient}'s personalized song — but never picked up the full version.
+      A while back you started writing a song for ${safeRecipient} — and you heard the preview. But the full version is still locked.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      For the next <strong>72 hours only</strong>, you can unlock the full studio song for <strong>$19.99</strong> (normally $99.99).
+      You know how ${safeRecipient} will react when they hear it the whole way through — their name woven into it, in a real voice, mastered, 3 to 6 minutes long.
+    </p>
+
+    <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
+      For the next <strong>72 hours</strong>, ${safeRecipient}'s full song is <strong>$19.99</strong> instead of $99.99.
     </p>
 
     <p style="margin:0 0 28px 0;">
-      <a href="${ctaUrl}" style="display:inline-block;background-color:#1E3A5F;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:6px;font-family:Arial,Helvetica,sans-serif;">Unlock the full song →</a>
+      <a href="${ctaUrl}" style="display:inline-block;background-color:#1E3A5F;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:6px;font-family:Arial,Helvetica,sans-serif;">Unlock ${safeRecipient}'s song →</a>
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      The full song is 3–6 minutes long, mastered, and ready to share. Once the 72 hours are up, the price goes back to $99.99.
+      After 72 hours, the price goes back to $99.99.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      If you have any questions just reply to this email — a real person will get back to you.
+      Questions? Just reply to this email — a real person will get back to you.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 40px 0;">
