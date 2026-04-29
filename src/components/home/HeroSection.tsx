@@ -23,6 +23,7 @@ const HeroSection = () => {
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
+      trackEvent("Hero Listen Button Clicked", { action: "pause", location: "hero_video_overlay" });
     } else {
       try {
         // Reset to beginning if ended
@@ -31,10 +32,12 @@ const HeroSection = () => {
         }
         await audio.play();
         setIsPlaying(true);
+        trackEvent("Hero Listen Button Clicked", { action: "play", location: "hero_video_overlay" });
       } catch (error) {
         console.error("Audio playback failed:", error);
         toast.error("Unable to play audio. Please try again.");
         setIsPlaying(false);
+        trackEvent("Hero Listen Button Clicked", { action: "play_failed", location: "hero_video_overlay" });
       }
     }
   };
