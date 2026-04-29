@@ -162,6 +162,7 @@ interface EmailParams {
   promoSlug: string;
   priceLabel: string; // e.g. "$24.99"
   originalLabel: string; // e.g. "$29.99"
+  endsAt?: string | null; // ISO timestamp for promo end (drives countdown)
 }
 
 function buildEmail(p: EmailParams) {
@@ -175,6 +176,26 @@ function buildEmail(p: EmailParams) {
   const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(p.email)}`;
   const mothersDay = isMothersDayVariant(p.recipientType, p.occasion);
 
+  // Compute a soft countdown phrase from the promo end time.
+  // Plain language only — no "ENDS SOON", no caps, no emoji.
+  let countdownPhrase = "";
+  if (p.endsAt) {
+    const msLeft = new Date(p.endsAt).getTime() - Date.now();
+    if (msLeft > 0) {
+      const hoursLeft = Math.ceil(msLeft / (60 * 60 * 1000));
+      if (hoursLeft <= 24) {
+        countdownPhrase = hoursLeft === 1
+          ? " (about 1 hour left at this price)"
+          : ` (about ${hoursLeft} hours left at this price)`;
+      } else {
+        const daysLeft = Math.ceil(hoursLeft / 24);
+        countdownPhrase = daysLeft === 1
+          ? " (1 day left at this price)"
+          : ` (${daysLeft} days left at this price)`;
+      }
+    }
+  }
+
   const textContent = mothersDay
     ? `Hi ${firstName},
 
@@ -186,7 +207,8 @@ Mother's Day is ${MOTHERS_DAY_DATE_LABEL}, so there's still time if you want to 
 
 Hear ${safeRecipient}'s full song: ${ctaUrl}
 
-(${p.priceLabel} right now, down from ${p.originalLabel}.)
+It's ${p.priceLabel} right now, down from ${p.originalLabel}.${countdownPhrase}
+This offer is available for a limited time.
 
 Personal Song Gifts
 
@@ -203,7 +225,8 @@ You only heard the 30-second preview, but the whole thing's there whenever you w
 
 Hear ${safeRecipient}'s full song: ${ctaUrl}
 
-(It's ${p.priceLabel} right now, down from ${p.originalLabel} for a couple days.)
+It's ${p.priceLabel} right now, down from ${p.originalLabel}.${countdownPhrase}
+This offer is available for a limited time.
 
 Personal Song Gifts
 
@@ -236,8 +259,8 @@ To unsubscribe: ${unsubscribeUrl}`;
     </p>`;
 
   const afterCta = mothersDay
-    ? `(${p.priceLabel} right now, down from ${p.originalLabel}.)`
-    : `(It's ${p.priceLabel} right now, down from ${p.originalLabel} for a couple days.)`;
+    ? `It's ${p.priceLabel} right now, down from ${p.originalLabel}.${countdownPhrase}`
+    : `It's ${p.priceLabel} right now, down from ${p.originalLabel}.${countdownPhrase}`;
 
   const htmlContent = `<!DOCTYPE html>
 <html>
@@ -250,8 +273,11 @@ ${bodyParagraphs}
       <a href="${ctaUrl}" style="display:inline-block;background-color:#1E3A5F;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:6px;font-family:Arial,Helvetica,sans-serif;">Hear ${safeRecipient}'s full song →</a>
     </p>
 
-    <p style="color:#222;font-size:18px;line-height:1.5;font-weight:bold;margin:0 0 16px 0;">
+    <p style="color:#222;font-size:18px;line-height:1.5;font-weight:bold;margin:24px 0 8px 0;">
       ${afterCta}
+    </p>
+    <p style="color:#555;font-size:14px;line-height:1.5;margin:0 0 32px 0;">
+      This offer is available for a limited time.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 40px 0;">
