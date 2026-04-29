@@ -328,7 +328,7 @@ function buildEligibilityQuery(supabase: ReturnType<typeof createClient>, promoS
   return supabase
     .from("leads")
     .select(
-      "id, email, customer_name, recipient_name, recipient_type, preview_token, last_promo_email_sent_at, timezone, quality_score, full_song_url",
+      "id, email, customer_name, recipient_name, recipient_type, occasion, preview_token, last_promo_email_sent_at, timezone, quality_score, full_song_url",
       exact ? { count: "exact" } : undefined,
     )
     .not("preview_sent_at", "is", null)
@@ -508,13 +508,13 @@ Deno.serve(async (req) => {
       await ensurePromoActivated(supabase, promoSlug);
 
       // Resolve carrier lead: explicit testCarrierLeadId (preferred) or by-email match or fallback
-      let carrierLead: { id: string; email: string; customer_name: string; recipient_name: string | null; recipient_type: string | null; preview_token: string | null } | null = null;
+      let carrierLead: { id: string; email: string; customer_name: string; recipient_name: string | null; recipient_type: string | null; occasion: string | null; preview_token: string | null } | null = null;
       let carrierLogWritten = false;
 
       if (typeof testCarrierLeadId === "string" && testCarrierLeadId.length > 0) {
         const { data } = await supabase
           .from("leads")
-          .select("id, email, customer_name, recipient_name, recipient_type, preview_token, full_song_url")
+          .select("id, email, customer_name, recipient_name, recipient_type, occasion, preview_token, full_song_url")
           .eq("id", testCarrierLeadId)
           .maybeSingle();
         if (!data) {
@@ -555,7 +555,7 @@ Deno.serve(async (req) => {
         if (!lead) {
           const { data } = await supabase
             .from("leads")
-            .select("id, email, customer_name, recipient_name, recipient_type, preview_token, full_song_url")
+            .select("id, email, customer_name, recipient_name, recipient_type, occasion, preview_token, full_song_url")
             .eq("email", email)
             .not("preview_token", "is", null)
             .order("captured_at", { ascending: false })
@@ -567,6 +567,7 @@ Deno.serve(async (req) => {
         let testCustomer = lead?.customer_name || "Test User";
         let testRecipient: string | null | undefined = lead?.recipient_name || "Sample";
         let testRecType: string | null | undefined = testRecipientType || lead?.recipient_type || "wife";
+        let testOccasion: string | null | undefined = lead?.occasion || "mothers-day";
 
         if (!testToken) {
           const { data: anyLead } = await supabase
@@ -583,6 +584,7 @@ Deno.serve(async (req) => {
           customerName: testCustomer,
           recipientName: testRecipient,
           recipientType: testRecType,
+          occasion: testOccasion,
           previewToken: testToken!,
           email,
           promoSlug,
