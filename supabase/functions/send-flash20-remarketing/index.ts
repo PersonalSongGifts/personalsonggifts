@@ -540,6 +540,15 @@ Deno.serve(async (req) => {
       // Activate promo if not yet activated for this slug (so test links use the discounted price)
       await ensurePromoActivated(supabase, promoSlug);
 
+      // Re-fetch ends_at after activation so the email countdown reflects the live window.
+      const { data: refreshedPromo } = await supabase
+        .from("promotions")
+        .select("ends_at")
+        .eq("slug", promoSlug)
+        .maybeSingle();
+      const liveEndsAt = (refreshedPromo as { ends_at?: string | null } | null)?.ends_at
+        ?? new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+
       // Resolve carrier lead: explicit testCarrierLeadId (preferred) or by-email match or fallback
       let carrierLead: { id: string; email: string; customer_name: string; recipient_name: string | null; recipient_type: string | null; occasion: string | null; preview_token: string | null } | null = null;
       let carrierLogWritten = false;
@@ -623,7 +632,7 @@ Deno.serve(async (req) => {
           promoSlug,
           priceLabel,
           originalLabel,
-          endsAt: promoRow.ends_at,
+          endsAt: liveEndsAt,
         }, lead?.id || "test");
 
         results.push({
