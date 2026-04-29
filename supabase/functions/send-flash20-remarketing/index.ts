@@ -137,7 +137,6 @@ async function ensurePromoActivated(supabase: ReturnType<typeof createClient>, s
 
 const MD_RECIPIENT_TYPES = new Set(["wife", "mom", "mother", "grandma", "grandmother"]);
 const MD_OCCASIONS = new Set(["mothers-day", "mother's day", "mothers day", "mother day"]);
-const MD_PROMO_SLUGS = new Set(["flash25", "flash20"]);
 
 function isMothersDayVariant(recipientType: string | null | undefined, occasion: string | null | undefined): boolean {
   const t = (recipientType || "").trim().toLowerCase();
@@ -170,7 +169,7 @@ function buildEmail(p: EmailParams) {
   const safeRecipient = (p.recipientName || "").trim() || "your loved one";
   const ctaUrl = `${SITE_URL}/preview/${p.previewToken}?promo=${encodeURIComponent(p.promoSlug)}`;
   const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(p.email)}`;
-  const mothersDay = MD_PROMO_SLUGS.has(p.promoSlug) || isMothersDayVariant(p.recipientType, p.occasion);
+  const mothersDay = isMothersDayVariant(p.recipientType, p.occasion);
 
   const textContent = mothersDay
     ? `Hi ${firstName},
