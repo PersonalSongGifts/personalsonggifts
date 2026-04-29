@@ -5,7 +5,10 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/amplitudeTrack";
 import asSeenOnImage from "@/assets/as-seen-on.webp";
-import heroVideoPoster from "@/assets/hero-video-poster.jpg";
+
+// Still frame extracted from hero-video.mp4 — shown instantly while the
+// video downloads, and remains as a fallback if playback fails.
+const heroVideoPoster = "/videos/hero-video-poster.jpg";
 
 const HeroSection = () => {
   const [isPlaying, setIsPlaying] = useState(false);
