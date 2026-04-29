@@ -129,6 +129,31 @@ Deno.serve(async (req) => {
     const flash20PriceCents = isFlash20 ? targetedPromoPriceCents : null;
     const flash20EndsAt = isFlash20 ? targetedPromoEndsAt : null;
 
+    // Sitewide (non-targeted) active promo — applies to ALL leads as the default lead price
+    // when no targeted promo is in effect. Prevents preview from showing the bare $49.99
+    // fallback during sitewide sales (e.g., Mother's Day at $29.99).
+    let sitewidePromoSlug: string | null = null;
+    let sitewidePromoLeadPriceCents: number | null = null;
+    let sitewidePromoEndsAt: string | null = null;
+    {
+      const nowIso = new Date().toISOString();
+      const { data: sitewide } = await supabase
+        .from("promotions")
+        .select("slug, lead_price_cents, ends_at")
+        .eq("is_active", true)
+        .eq("targeted", false)
+        .lte("starts_at", nowIso)
+        .gte("ends_at", nowIso)
+        .order("starts_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (sitewide) {
+        sitewidePromoSlug = (sitewide as { slug: string }).slug;
+        sitewidePromoLeadPriceCents = (sitewide as { lead_price_cents: number }).lead_price_cents;
+        sitewidePromoEndsAt = (sitewide as { ends_at: string }).ends_at;
+      }
+    }
+
     return new Response(JSON.stringify({
       recipientName: lead.recipient_name,
       recipientType: lead.recipient_type,
@@ -144,6 +169,11 @@ Deno.serve(async (req) => {
       targetedPromoExpired,
       targetedPromoPriceCents,
       targetedPromoEndsAt,
+
+      // Sitewide promo (applies as default lead price floor when no targeted promo is in effect)
+      sitewidePromoSlug,
+      sitewidePromoLeadPriceCents,
+      sitewidePromoEndsAt,
 
       // Back-compat
       flash20Eligible,
