@@ -5,9 +5,12 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/amplitudeTrack";
 import asSeenOnImage from "@/assets/as-seen-on.webp";
+import heroVideoPoster from "@/assets/hero-video-poster.jpg";
 
 const HeroSection = () => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const toggleAudio = async () => {
@@ -53,20 +56,38 @@ const HeroSection = () => {
       <div className="relative z-10 container mx-auto px-4 text-center max-w-4xl py-8 md:py-12">
         {/* Video Container */}
         <div className="relative max-w-2xl mx-auto mb-6 md:mb-10 animate-fade-in">
-          <div className="relative rounded-2xl overflow-hidden shadow-elevated">
-            <video 
-              autoPlay 
-              loop 
-              muted 
-              playsInline
-              className="w-full h-full object-cover"
-            >
-              <source src="/videos/hero-video.mp4?v=2" type="video/mp4" />
-              Your browser does not support the video tag.
-            </video>
+          <div className="relative rounded-2xl overflow-hidden shadow-elevated bg-secondary aspect-video">
+            {/* Poster image — shows instantly, stays as fallback if video fails */}
+            <img
+              src={heroVideoPoster}
+              alt="Couple sharing a custom song together"
+              width={1280}
+              height={800}
+              fetchPriority="high"
+              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${
+                videoReady && !videoFailed ? "opacity-0" : "opacity-100"
+              }`}
+            />
+            {!videoFailed && (
+              <video
+                autoPlay
+                loop
+                muted
+                playsInline
+                preload="metadata"
+                poster={heroVideoPoster}
+                onCanPlay={() => setVideoReady(true)}
+                onError={() => setVideoFailed(true)}
+                className={`relative w-full h-full object-cover transition-opacity duration-700 ${
+                  videoReady ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                <source src="/videos/hero-video.mp4?v=2" type="video/mp4" />
+              </video>
+            )}
             
             {/* Listen to Example Button Overlay */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
               <Button 
                 onClick={toggleAudio}
                 size="lg"
