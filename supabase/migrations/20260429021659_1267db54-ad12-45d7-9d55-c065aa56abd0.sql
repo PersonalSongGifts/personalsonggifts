@@ -1,0 +1,1 @@
+UPDATE public.promotions SET lead_price_cents = 2499 WHERE slug = 'flash20';
