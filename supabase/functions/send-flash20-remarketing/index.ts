@@ -250,7 +250,7 @@ ${bodyParagraphs}
       <a href="${ctaUrl}" style="display:inline-block;background-color:#1E3A5F;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:6px;font-family:Arial,Helvetica,sans-serif;">Hear ${safeRecipient}'s full song →</a>
     </p>
 
-    <p style="color:#666;font-size:14px;line-height:1.6;margin:0 0 16px 0;">
+    <p style="color:#222;font-size:18px;line-height:1.5;font-weight:bold;margin:0 0 16px 0;">
       ${afterCta}
     </p>
 
