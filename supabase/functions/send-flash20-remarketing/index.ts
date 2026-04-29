@@ -136,10 +136,12 @@ async function ensurePromoActivated(supabase: ReturnType<typeof createClient>, s
 }
 
 const MD_RECIPIENT_TYPES = new Set(["wife", "mom", "mother", "grandma", "grandmother"]);
+const MD_OCCASIONS = new Set(["mothers-day", "mother's day", "mothers day", "mother day"]);
 
-function isMothersDayRecipient(recipientType: string | null | undefined): boolean {
+function isMothersDayVariant(recipientType: string | null | undefined, occasion: string | null | undefined): boolean {
   const t = (recipientType || "").trim().toLowerCase();
-  return MD_RECIPIENT_TYPES.has(t);
+  const o = (occasion || "").trim().toLowerCase().replace(/’/g, "'");
+  return MD_RECIPIENT_TYPES.has(t) || MD_OCCASIONS.has(o);
 }
 
 function buildSubject(recipientName: string | null | undefined, mothersDay: boolean): string {
@@ -154,6 +156,7 @@ interface EmailParams {
   customerName: string;
   recipientName: string | null | undefined;
   recipientType: string | null | undefined;
+  occasion: string | null | undefined;
   previewToken: string;
   email: string;
   promoSlug: string;
@@ -166,7 +169,7 @@ function buildEmail(p: EmailParams) {
   const safeRecipient = (p.recipientName || "").trim() || "your loved one";
   const ctaUrl = `${SITE_URL}/preview/${p.previewToken}?promo=${encodeURIComponent(p.promoSlug)}`;
   const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(p.email)}`;
-  const mothersDay = isMothersDayRecipient(p.recipientType);
+  const mothersDay = isMothersDayVariant(p.recipientType, p.occasion);
 
   const textContent = mothersDay
     ? `Hi ${firstName},
