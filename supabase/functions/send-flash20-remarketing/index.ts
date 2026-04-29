@@ -136,10 +136,13 @@ async function ensurePromoActivated(supabase: ReturnType<typeof createClient>, s
 }
 
 const MD_RECIPIENT_TYPES = new Set(["wife", "mom", "mother", "grandma", "grandmother"]);
+const MD_OCCASIONS = new Set(["mothers-day", "mother's day", "mothers day", "mother day"]);
+const MD_PROMO_SLUGS = new Set(["flash25", "flash20"]);
 
-function isMothersDayRecipient(recipientType: string | null | undefined): boolean {
+function isMothersDayVariant(recipientType: string | null | undefined, occasion: string | null | undefined): boolean {
   const t = (recipientType || "").trim().toLowerCase();
-  return MD_RECIPIENT_TYPES.has(t);
+  const o = (occasion || "").trim().toLowerCase().replace(/’/g, "'");
+  return MD_RECIPIENT_TYPES.has(t) || MD_OCCASIONS.has(o);
 }
 
 function buildSubject(recipientName: string | null | undefined, mothersDay: boolean): string {
@@ -154,6 +157,7 @@ interface EmailParams {
   customerName: string;
   recipientName: string | null | undefined;
   recipientType: string | null | undefined;
+  occasion: string | null | undefined;
   previewToken: string;
   email: string;
   promoSlug: string;
@@ -166,7 +170,7 @@ function buildEmail(p: EmailParams) {
   const safeRecipient = (p.recipientName || "").trim() || "your loved one";
   const ctaUrl = `${SITE_URL}/preview/${p.previewToken}?promo=${encodeURIComponent(p.promoSlug)}`;
   const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(p.email)}`;
-  const mothersDay = isMothersDayRecipient(p.recipientType);
+  const mothersDay = MD_PROMO_SLUGS.has(p.promoSlug) || isMothersDayVariant(p.recipientType, p.occasion);
 
   const textContent = mothersDay
     ? `Hi ${firstName},
@@ -325,7 +329,7 @@ function buildEligibilityQuery(supabase: ReturnType<typeof createClient>, promoS
   return supabase
     .from("leads")
     .select(
-      "id, email, customer_name, recipient_name, recipient_type, preview_token, last_promo_email_sent_at, timezone, quality_score, full_song_url",
+      "id, email, customer_name, recipient_name, recipient_type, occasion, preview_token, last_promo_email_sent_at, timezone, quality_score, full_song_url",
       exact ? { count: "exact" } : undefined,
     )
     .not("preview_sent_at", "is", null)
@@ -489,6 +493,8 @@ Deno.serve(async (req) => {
             email: lead.email,
             customer_name: lead.customer_name,
             recipient_name: lead.recipient_name,
+            recipient_type: (lead as { recipient_type?: string | null }).recipient_type,
+            occasion: (lead as { occasion?: string | null }).occasion,
             timezone: lead.timezone,
             local_hour: getLocalHour(lead.timezone),
             in_window_now: isInSendWindow(lead.timezone),
@@ -505,13 +511,13 @@ Deno.serve(async (req) => {
       await ensurePromoActivated(supabase, promoSlug);
 
       // Resolve carrier lead: explicit testCarrierLeadId (preferred) or by-email match or fallback
-      let carrierLead: { id: string; email: string; customer_name: string; recipient_name: string | null; recipient_type: string | null; preview_token: string | null } | null = null;
+      let carrierLead: { id: string; email: string; customer_name: string; recipient_name: string | null; recipient_type: string | null; occasion: string | null; preview_token: string | null } | null = null;
       let carrierLogWritten = false;
 
       if (typeof testCarrierLeadId === "string" && testCarrierLeadId.length > 0) {
         const { data } = await supabase
           .from("leads")
-          .select("id, email, customer_name, recipient_name, recipient_type, preview_token, full_song_url")
+          .select("id, email, customer_name, recipient_name, recipient_type, occasion, preview_token, full_song_url")
           .eq("id", testCarrierLeadId)
           .maybeSingle();
         if (!data) {
@@ -552,7 +558,7 @@ Deno.serve(async (req) => {
         if (!lead) {
           const { data } = await supabase
             .from("leads")
-            .select("id, email, customer_name, recipient_name, recipient_type, preview_token, full_song_url")
+            .select("id, email, customer_name, recipient_name, recipient_type, occasion, preview_token, full_song_url")
             .eq("email", email)
             .not("preview_token", "is", null)
             .order("captured_at", { ascending: false })
@@ -564,6 +570,7 @@ Deno.serve(async (req) => {
         let testCustomer = lead?.customer_name || "Test User";
         let testRecipient: string | null | undefined = lead?.recipient_name || "Sample";
         let testRecType: string | null | undefined = testRecipientType || lead?.recipient_type || "wife";
+        let testOccasion: string | null | undefined = lead?.occasion || "mothers-day";
 
         if (!testToken) {
           const { data: anyLead } = await supabase
@@ -580,6 +587,7 @@ Deno.serve(async (req) => {
           customerName: testCustomer,
           recipientName: testRecipient,
           recipientType: testRecType,
+          occasion: testOccasion,
           previewToken: testToken!,
           email,
           promoSlug,
@@ -714,6 +722,7 @@ Deno.serve(async (req) => {
             customer_name: string;
             recipient_name: string | null;
             recipient_type: string | null;
+            occasion: string | null;
             preview_token: string | null;
             last_promo_email_sent_at: string | null;
           };
@@ -752,6 +761,7 @@ Deno.serve(async (req) => {
               customerName: lead.customer_name,
               recipientName: lead.recipient_name,
               recipientType: lead.recipient_type,
+              occasion: lead.occasion,
               previewToken: lead.preview_token!,
               email: lead.email,
               promoSlug,
