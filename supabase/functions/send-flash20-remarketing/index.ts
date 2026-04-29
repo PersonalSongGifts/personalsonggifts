@@ -673,6 +673,15 @@ Deno.serve(async (req) => {
       // Activate promo on first send (sets ends_at = now + 72h) for this slug
       await ensurePromoActivated(supabase, promoSlug);
 
+      // Re-fetch ends_at after activation so the email countdown reflects the live window.
+      const { data: refreshedProdPromo } = await supabase
+        .from("promotions")
+        .select("ends_at")
+        .eq("slug", promoSlug)
+        .maybeSingle();
+      const liveProdEndsAt = (refreshedProdPromo as { ends_at?: string | null } | null)?.ends_at
+        ?? new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+
       const targetBatchSize = Math.min(1000, settings.canary_sent ? settings.batch_size : settings.canary_size);
 
       // Fetch a generous over-pool so we can filter out already-sent-this-slug leads and still hit batch size.
@@ -808,7 +817,7 @@ Deno.serve(async (req) => {
               promoSlug,
               priceLabel,
               originalLabel,
-              endsAt: promoRow.ends_at,
+              endsAt: liveProdEndsAt,
             }, lead.id);
           } catch (sendErr) {
             skipped.send_threw++;
