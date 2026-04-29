@@ -492,6 +492,8 @@ Deno.serve(async (req) => {
             email: lead.email,
             customer_name: lead.customer_name,
             recipient_name: lead.recipient_name,
+            recipient_type: (lead as { recipient_type?: string | null }).recipient_type,
+            occasion: (lead as { occasion?: string | null }).occasion,
             timezone: lead.timezone,
             local_hour: getLocalHour(lead.timezone),
             in_window_now: isInSendWindow(lead.timezone),
@@ -719,6 +721,7 @@ Deno.serve(async (req) => {
             customer_name: string;
             recipient_name: string | null;
             recipient_type: string | null;
+            occasion: string | null;
             preview_token: string | null;
             last_promo_email_sent_at: string | null;
           };
@@ -757,6 +760,7 @@ Deno.serve(async (req) => {
               customerName: lead.customer_name,
               recipientName: lead.recipient_name,
               recipientType: lead.recipient_type,
+              occasion: lead.occasion,
               previewToken: lead.preview_token!,
               email: lead.email,
               promoSlug,
