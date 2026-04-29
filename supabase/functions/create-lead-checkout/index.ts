@@ -159,6 +159,29 @@ Deno.serve(async (req) => {
           console.log("VDay10 discount requested but vday10_enabled=false, ignoring");
         }
       }
+
+      // Sitewide (non-targeted) active promo acts as a price FLOOR for all leads.
+      // If a sitewide sale (e.g., Early Mother's Day @ $29.99) is cheaper than the
+      // computed default/followup/vday price, charge the sitewide price instead.
+      // Targeted promoSlug requests above bypass this branch entirely.
+      const nowIso = new Date().toISOString();
+      const { data: sitewide } = await supabase
+        .from("promotions")
+        .select("slug, lead_price_cents")
+        .eq("is_active", true)
+        .eq("targeted", false)
+        .lte("starts_at", nowIso)
+        .gte("ends_at", nowIso)
+        .order("starts_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (sitewide && typeof (sitewide as { lead_price_cents: number }).lead_price_cents === "number") {
+        const sitewideCents = (sitewide as { lead_price_cents: number }).lead_price_cents;
+        if (sitewideCents < unitAmount) {
+          console.log(`Applying sitewide promo ${(sitewide as { slug: string }).slug}: ${unitAmount} -> ${sitewideCents}`);
+          unitAmount = sitewideCents;
+        }
+      }
     }
 
     // Get origin for redirect URLs
