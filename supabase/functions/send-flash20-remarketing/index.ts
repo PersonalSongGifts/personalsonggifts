@@ -506,6 +506,7 @@ Deno.serve(async (req) => {
         promoSlug,
         priceLabel,
         originalLabel,
+        endsAt: promoRow.ends_at,
         baseQueryMatched: rawCount || 0,
         alreadyReceivedThisSlug_total: alreadySentTotal || 0,
         sampledAndUnsentForThisSlug: filtered.length,
@@ -622,6 +623,7 @@ Deno.serve(async (req) => {
           promoSlug,
           priceLabel,
           originalLabel,
+          endsAt: promoRow.ends_at,
         }, lead?.id || "test");
 
         results.push({
@@ -639,6 +641,7 @@ Deno.serve(async (req) => {
         promoSlug,
         priceLabel,
         originalLabel,
+        endsAt: promoRow.ends_at,
         carrierLeadId: carrierLead?.id || null,
         carrierLogWritten,
         carrierLogNote: carrierLogWritten
@@ -796,6 +799,7 @@ Deno.serve(async (req) => {
               promoSlug,
               priceLabel,
               originalLabel,
+              endsAt: promoRow.ends_at,
             }, lead.id);
           } catch (sendErr) {
             skipped.send_threw++;
@@ -837,6 +841,7 @@ Deno.serve(async (req) => {
         promoSlug,
         priceLabel,
         originalLabel,
+        endsAt: promoRow.ends_at,
         eligible: eligible.length,
         attempted: attemptCounter,
         skipped,
