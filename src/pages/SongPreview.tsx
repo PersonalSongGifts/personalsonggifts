@@ -21,6 +21,10 @@ interface PreviewData {
   targetedPromoExpired?: boolean;
   targetedPromoPriceCents?: number | null;
   targetedPromoEndsAt?: string | null;
+  // Sitewide non-targeted promo (default lead price floor)
+  sitewidePromoSlug?: string | null;
+  sitewidePromoLeadPriceCents?: number | null;
+  sitewidePromoEndsAt?: string | null;
   // Back-compat (older server response)
   flash20Eligible?: boolean;
   flash20Expired?: boolean;
@@ -366,6 +370,27 @@ export default function SongPreview() {
   // rather than rendering a hardcoded fallback.
   const flashShowPrice = flashEligible && typeof flashPriceCents === "number";
 
+  // Sitewide non-targeted promo (e.g., Early Mother's Day $29.99) — used as the default
+  // lead price when no targeted flash promo is in effect for this lead.
+  const sitewideLeadCents =
+    typeof previewData.sitewidePromoLeadPriceCents === "number"
+      ? previewData.sitewidePromoLeadPriceCents
+      : null;
+
+  // Compute the displayed default price (when no flash promo applies):
+  // pick the cheaper of the configured default ladder and any active sitewide promo.
+  const baseDefaultCents = isVday10 && isFollowup
+    ? 2999
+    : isVday10
+    ? 3999
+    : isFollowup
+    ? 3999
+    : 4999;
+  const effectiveDefaultCents = sitewideLeadCents !== null
+    ? Math.min(baseDefaultCents, sitewideLeadCents)
+    : baseDefaultCents;
+  const formatUsd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
       {/* Flash 20 urgency banner — only when this lead is eligible */}
@@ -509,13 +534,7 @@ export default function SongPreview() {
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
                   {flashShowPrice
                     ? `$${(flashPriceCents! / 100).toFixed(2)}`
-                    : isVday10 && isFollowup
-                    ? "$29.99"
-                    : isVday10
-                    ? "$39.99"
-                    : isFollowup
-                    ? "$39.99"
-                    : "$49.99"}
+                    : formatUsd(effectiveDefaultCents)}
                   <span className="text-sm font-normal text-muted-foreground ml-1">USD</span>
                 </p>
               </div>
