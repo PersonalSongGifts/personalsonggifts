@@ -165,8 +165,12 @@ interface EmailParams {
 }
 
 function buildEmail(p: EmailParams) {
-  const firstName = (p.customerName || "").split(" ")[0] || "there";
-  const safeRecipient = (p.recipientName || "").trim() || "your loved one";
+  const toTitleCase = (s: string) =>
+    s.toLowerCase().replace(/\b([a-z])/g, (_, c) => c.toUpperCase());
+  const rawFirst = (p.customerName || "").trim().split(/\s+/)[0] || "";
+  const firstName = rawFirst ? toTitleCase(rawFirst) : "there";
+  const rawRecipient = (p.recipientName || "").trim();
+  const safeRecipient = rawRecipient ? toTitleCase(rawRecipient) : "your loved one";
   const ctaUrl = `${SITE_URL}/preview/${p.previewToken}?promo=${encodeURIComponent(p.promoSlug)}`;
   const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(p.email)}`;
   const mothersDay = isMothersDayVariant(p.recipientType, p.occasion);
@@ -174,7 +178,7 @@ function buildEmail(p: EmailParams) {
   const textContent = mothersDay
     ? `Hi ${firstName},
 
-Just a heads up — the full song you started for ${safeRecipient} is already finished and waiting in your account.
+Just a heads up, the full song you started for ${safeRecipient} is already finished and waiting in your account.
 
 You only heard the preview, but the full version's been there this whole time.
 
@@ -184,7 +188,7 @@ Hear ${safeRecipient}'s full song: ${ctaUrl}
 
 (${p.priceLabel} right now, down from ${p.originalLabel}.)
 
-— Personal Song Gifts
+Personal Song Gifts
 
 ---
 Personal Song Gifts
@@ -193,7 +197,7 @@ Personal Song Gifts
 To unsubscribe: ${unsubscribeUrl}`
     : `Hi ${firstName},
 
-Just checking in — the full song you started for ${safeRecipient} is already finished and sitting in your account.
+Just checking in, the full song you started for ${safeRecipient} is already finished and sitting in your account.
 
 You only heard the 30-second preview, but the whole thing's there whenever you want to listen.
 
@@ -201,7 +205,7 @@ Hear ${safeRecipient}'s full song: ${ctaUrl}
 
 (It's ${p.priceLabel} right now, down from ${p.originalLabel} for a couple days.)
 
-— Personal Song Gifts
+Personal Song Gifts
 
 ---
 Personal Song Gifts
@@ -212,7 +216,7 @@ To unsubscribe: ${unsubscribeUrl}`;
   const bodyParagraphs = mothersDay
     ? `
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      Just a heads up — the full song you started for ${safeRecipient} is already finished and waiting in your account.
+      Just a heads up, the full song you started for ${safeRecipient} is already finished and waiting in your account.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
@@ -224,7 +228,7 @@ To unsubscribe: ${unsubscribeUrl}`;
     </p>`
     : `
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      Just checking in — the full song you started for ${safeRecipient} is already finished and sitting in your account.
+      Just checking in, the full song you started for ${safeRecipient} is already finished and sitting in your account.
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
@@ -251,7 +255,7 @@ ${bodyParagraphs}
     </p>
 
     <p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 40px 0;">
-      — Personal Song Gifts
+      Personal Song Gifts
     </p>
 
     <hr style="border:none;border-top:1px solid #eee;margin:0 0 20px 0;">
