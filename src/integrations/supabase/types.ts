@@ -432,6 +432,7 @@ export type Database = {
           genre: string
           id: string
           inputs_hash: string | null
+          last_mothers_day_blast_sent_at: string | null
           lyrics_language_code: string
           lyrics_language_qa: Json | null
           lyrics_price_cents: number | null
@@ -553,6 +554,7 @@ export type Database = {
           genre: string
           id?: string
           inputs_hash?: string | null
+          last_mothers_day_blast_sent_at?: string | null
           lyrics_language_code?: string
           lyrics_language_qa?: Json | null
           lyrics_price_cents?: number | null
@@ -674,6 +676,7 @@ export type Database = {
           genre?: string
           id?: string
           inputs_hash?: string | null
+          last_mothers_day_blast_sent_at?: string | null
           lyrics_language_code?: string
           lyrics_language_qa?: Json | null
           lyrics_price_cents?: number | null
@@ -1078,6 +1081,7 @@ export type Database = {
           genre: string
           id: string
           inputs_hash: string | null
+          last_mothers_day_blast_sent_at: string | null
           lyrics_language_code: string
           lyrics_language_qa: Json | null
           lyrics_price_cents: number | null

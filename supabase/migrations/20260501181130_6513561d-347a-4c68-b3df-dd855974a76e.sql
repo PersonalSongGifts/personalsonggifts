@@ -1,0 +1,2 @@
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS last_mothers_day_blast_sent_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_orders_md_blast_sent_email ON public.orders (LOWER(TRIM(customer_email))) WHERE last_mothers_day_blast_sent_at IS NOT NULL;
