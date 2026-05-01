@@ -119,7 +119,21 @@ async function ensurePromoActivated(supabase: ReturnType<typeof createClient>, s
   if (existing) return existing;
 
   const startsAt = new Date();
-  const endsAt = new Date(startsAt.getTime() + 72 * 60 * 60 * 1000);
+  const defaultEndsAt = new Date(startsAt.getTime() + 72 * 60 * 60 * 1000);
+
+  // Respect a manually-set future ends_at on the promo row (campaign extension).
+  // Only overwrite ends_at if the existing value is in the past or missing.
+  const { data: existingPromo } = await supabase
+    .from("promotions")
+    .select("ends_at")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  const currentEndsAt = (existingPromo as { ends_at?: string | null } | null)?.ends_at
+    ? new Date((existingPromo as { ends_at: string }).ends_at)
+    : null;
+  const keepExistingEnd = currentEndsAt && currentEndsAt.getTime() > startsAt.getTime();
+  const endsAt = keepExistingEnd ? currentEndsAt! : defaultEndsAt;
 
   await supabase
     .from("promotions")
@@ -131,7 +145,7 @@ async function ensurePromoActivated(supabase: ReturnType<typeof createClient>, s
     .eq("slug", slug);
 
   await updateCampaignSettings(supabase, { [activatedAtKey(slug)]: startsAt.toISOString() } as Partial<CampaignSettings>);
-  console.log(`[REMARKETING:${slug}] Promo activated. Window: ${startsAt.toISOString()} → ${endsAt.toISOString()}`);
+  console.log(`[REMARKETING:${slug}] Promo activated. Window: ${startsAt.toISOString()} → ${endsAt.toISOString()} (kept existing end: ${keepExistingEnd})`);
   return startsAt.toISOString();
 }
 
