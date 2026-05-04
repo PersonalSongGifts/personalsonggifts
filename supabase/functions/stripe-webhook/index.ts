@@ -609,7 +609,7 @@ Deno.serve(async (req) => {
 
         const { data: leadCandidates } = await supabase
           .from("leads")
-          .select("id, email, captured_at, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, lyrics_language_code")
+          .select("id, email, captured_at, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, lyrics_language_code, full_song_url, preview_song_url, song_title, cover_image_url, automation_lyrics, prev_automation_lyrics, prev_song_url, prev_cover_image_url")
           .ilike("email", (metadata.customerEmail || session.customer_email || "").toLowerCase())
           .neq("status", "converted")
           .order("captured_at", { ascending: false })
@@ -629,6 +629,54 @@ Deno.serve(async (req) => {
             })
             .eq("id", matchingLead.id);
           console.log(`Lead ${matchingLead.id} marked as converted`);
+
+          // CRITICAL: Copy lead's pre-generated song assets onto the order so
+          // the customer actually gets what they previewed. Without this, the
+          // order ships blank because the standard checkout webhook path doesn't
+          // know about the lead's existing song.
+          if (matchingLead.full_song_url || matchingLead.automation_lyrics) {
+            const hasFullSong = !!matchingLead.full_song_url;
+            await supabase
+              .from("orders")
+              .update({
+                song_url: matchingLead.full_song_url,
+                song_title: matchingLead.song_title,
+                cover_image_url: matchingLead.cover_image_url,
+                automation_lyrics: matchingLead.automation_lyrics,
+                automation_status: hasFullSong ? "completed" : (matchingLead.automation_lyrics ? "lyrics_ready" : null),
+                prev_automation_lyrics: matchingLead.prev_automation_lyrics,
+                prev_song_url: matchingLead.prev_song_url,
+                prev_cover_image_url: matchingLead.prev_cover_image_url,
+                ...(hasFullSong ? { status: "delivered", delivered_at: new Date().toISOString() } : {}),
+              })
+              .eq("id", newOrder.id);
+            console.log(`[WEBHOOK] Copied lead assets to order ${newOrder.id} (hasFullSong=${hasFullSong})`);
+
+            // If the song is ready, send the delivery email immediately.
+            if (hasFullSong) {
+              try {
+                await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${supabaseServiceKey}`,
+                  },
+                  body: JSON.stringify({
+                    orderId: newOrder.id,
+                    customerEmail: newOrder.customer_email,
+                    customerName: metadata.customerName || "",
+                    recipientName: newOrder.recipient_name,
+                    occasion: newOrder.occasion,
+                    songUrl: matchingLead.full_song_url,
+                    revisionToken: newOrder.revision_token,
+                  }),
+                });
+                console.log(`[WEBHOOK] Delivery email sent for standard-path lead-converted order ${newOrder.id}`);
+              } catch (e) {
+                console.error("[WEBHOOK] Failed to send delivery for lead-converted order:", e);
+              }
+            }
+          }
         }
       } catch (leadError) {
         console.error("Failed to update lead status:", leadError);
