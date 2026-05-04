@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/lead-order-matching.ts";
+import { buildLeadAssetPatch, shouldDispatchDelivery } from "../_shared/lead-conversion.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -634,26 +635,13 @@ Deno.serve(async (req) => {
           // the customer actually gets what they previewed. Without this, the
           // order ships blank because the standard checkout webhook path doesn't
           // know about the lead's existing song.
-          if (matchingLead.full_song_url || matchingLead.automation_lyrics) {
-            const hasFullSong = !!matchingLead.full_song_url;
-            await supabase
-              .from("orders")
-              .update({
-                song_url: matchingLead.full_song_url,
-                song_title: matchingLead.song_title,
-                cover_image_url: matchingLead.cover_image_url,
-                automation_lyrics: matchingLead.automation_lyrics,
-                automation_status: hasFullSong ? "completed" : (matchingLead.automation_lyrics ? "lyrics_ready" : null),
-                prev_automation_lyrics: matchingLead.prev_automation_lyrics,
-                prev_song_url: matchingLead.prev_song_url,
-                prev_cover_image_url: matchingLead.prev_cover_image_url,
-                ...(hasFullSong ? { status: "delivered", delivered_at: new Date().toISOString() } : {}),
-              })
-              .eq("id", newOrder.id);
-            console.log(`[WEBHOOK] Copied lead assets to order ${newOrder.id} (hasFullSong=${hasFullSong})`);
+          const assetPatch = buildLeadAssetPatch(matchingLead);
+          if (assetPatch) {
+            await supabase.from("orders").update(assetPatch).eq("id", newOrder.id);
+            console.log(`[WEBHOOK] Copied lead assets to order ${newOrder.id} (status=${assetPatch.status ?? "unchanged"})`);
 
             // If the song is ready, send the delivery email immediately.
-            if (hasFullSong) {
+            if (shouldDispatchDelivery(matchingLead)) {
               try {
                 await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
                   method: "POST",
