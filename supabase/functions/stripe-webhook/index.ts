@@ -620,7 +620,37 @@ Deno.serve(async (req) => {
           new Date(lead.captured_at).getTime() <= Date.now() && buildLeadFingerprint(lead) === orderFingerprint
         );
 
-        if (matchingLead) {
+        // Fallback: if no strict-fingerprint match, try a softer match on
+        // email + recipient identity + occasion within the last 24h. This
+        // catches the case where the customer tweaked a field between lead
+        // capture and checkout (single char diff in special_qualities is
+        // enough to bust the strict fingerprint, leaving a fully generated
+        // lead song stranded and the new order shipping blank).
+        let usedFallback = false;
+        let resolvedLead = matchingLead;
+        if (!resolvedLead) {
+          const oneDayMs = 24 * 60 * 60 * 1000;
+          const cutoff = Date.now() - oneDayMs;
+          const softMatches = (leadCandidates || []).filter((lead) => {
+            if (!lead.full_song_url) return false;
+            if (new Date(lead.captured_at).getTime() < cutoff) return false;
+            return (
+              normalizeMatch(lead.recipient_name) === normalizeMatch(metadata.recipientName) &&
+              normalizeMatch(lead.recipient_type) === normalizeMatch(metadata.recipientType) &&
+              normalizeMatch(lead.occasion) === normalizeMatch(metadata.occasion)
+            );
+          });
+          if (softMatches.length === 1) {
+            resolvedLead = softMatches[0];
+            usedFallback = true;
+            console.log(`[WEBHOOK] Soft-fingerprint fallback matched lead ${resolvedLead.id} for order ${newOrder.id}`);
+          } else if (softMatches.length > 1) {
+            console.warn(`[WEBHOOK] Soft-fingerprint match ambiguous (${softMatches.length} candidates) — skipping for safety, order ${newOrder.id}`);
+          }
+        }
+
+        if (resolvedLead) {
+          const matchingLead = resolvedLead;
           await supabase
             .from("leads")
             .update({
@@ -629,7 +659,14 @@ Deno.serve(async (req) => {
               order_id: newOrder.id,
             })
             .eq("id", matchingLead.id);
-          console.log(`Lead ${matchingLead.id} marked as converted`);
+          console.log(`Lead ${matchingLead.id} marked as converted${usedFallback ? " (soft match)" : ""}`);
+
+          if (usedFallback) {
+            try {
+              await logActivity(supabase, "order", newOrder.id, "lead_soft_match", "system",
+                `Linked lead ${matchingLead.id} via soft fingerprint fallback (strict hash differed)`);
+            } catch (_) { /* non-fatal */ }
+          }
 
           // CRITICAL: Copy lead's pre-generated song assets onto the order so
           // the customer actually gets what they previewed. Without this, the
