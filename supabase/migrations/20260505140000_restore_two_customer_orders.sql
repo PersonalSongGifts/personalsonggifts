@@ -70,64 +70,38 @@ WHERE o.source = 'lead_conversion'
   AND lower(rl.email) = lower(o.customer_email)
   AND lower(rl.recipient_name) = lower(o.recipient_name);
 
--- ============================================================
--- BACKFILL #2: Stranded paid orders where lead had a full song.
--- Same pattern as 0596AA4A. Copies lead assets onto the order,
--- marks delivered, links the lead. Does NOT trigger emails — those
--- customers paid days ago; CS will handle outreach manually.
--- ============================================================
-WITH stranded AS (
-  SELECT o.id AS order_id, o.customer_email, o.recipient_name, o.created_at AS order_created_at
-  FROM orders o
-  WHERE o.song_url IS NULL
-    AND o.status IN ('paid','delivered','ready')
-    AND o.created_at >= now() - interval '30 days'
-),
-matched AS (
-  SELECT s.order_id,
-         (SELECT l.id FROM leads l
-          WHERE lower(l.email) = lower(s.customer_email)
-            AND lower(l.recipient_name) = lower(s.recipient_name)
-            AND l.full_song_url IS NOT NULL
-            AND l.captured_at BETWEEN s.order_created_at - interval '24 hours' AND s.order_created_at + interval '1 hour'
-          ORDER BY l.captured_at DESC
-          LIMIT 1) AS lead_id
-  FROM stranded s
-)
-UPDATE orders o
-SET song_url = l.full_song_url,
-    song_title = l.song_title,
-    cover_image_url = l.cover_image_url,
-    automation_lyrics = l.automation_lyrics,
-    automation_status = 'completed',
-    automation_style_id = COALESCE(o.automation_style_id, l.automation_style_id),
-    automation_audio_url_source = COALESCE(o.automation_audio_url_source, l.automation_audio_url_source),
-    inputs_hash = COALESCE(o.inputs_hash, l.inputs_hash),
-    generated_at = COALESCE(o.generated_at, l.generated_at),
-    prev_song_url = COALESCE(o.prev_song_url, l.full_song_url),
-    prev_automation_lyrics = COALESCE(o.prev_automation_lyrics, l.automation_lyrics),
-    prev_cover_image_url = COALESCE(o.prev_cover_image_url, l.cover_image_url),
-    source = 'lead_conversion',
-    notes = COALESCE(o.notes, '') || ' | backfilled_from_lead_' || l.id::text
-FROM matched m
-JOIN leads l ON l.id = m.lead_id
-WHERE o.id = m.order_id
-  AND m.lead_id IS NOT NULL
-  AND o.song_url IS NULL;
 
--- Link those leads to their orders
-UPDATE leads l
-SET status = 'converted',
-    converted_at = COALESCE(l.converted_at, now()),
-    order_id = o.id
+-- ============================================================
+-- STRANDED-ORDER LIST: NOT auto-fixed. CS reviews and uses the
+-- "Restore Previous Version" / manual asset copy in admin per case.
+-- The list is captured below in a one-shot activity-log entry per
+-- affected order so the team can find them in Needs Attention.
+-- ============================================================
+INSERT INTO order_activity_log (entity_type, entity_id, event_type, actor, details, metadata)
+SELECT 'order', o.id, 'stranded_lead_match_detected', 'system',
+       'Paid order has no song; matching lead with full song exists. CS review required.',
+       jsonb_build_object(
+         'matched_lead_id', (
+           SELECT l.id FROM leads l
+           WHERE lower(l.email) = lower(o.customer_email)
+             AND lower(l.recipient_name) = lower(o.recipient_name)
+             AND l.full_song_url IS NOT NULL
+             AND l.captured_at BETWEEN o.created_at - interval '24 hours' AND o.created_at + interval '1 hour'
+           ORDER BY l.captured_at DESC LIMIT 1
+         )
+       )
 FROM orders o
-WHERE o.notes LIKE '%backfilled_from_lead_' || l.id::text || '%'
-  AND (l.order_id IS NULL OR l.status != 'converted');
-
--- Activity log entries for backfilled stranded orders
-INSERT INTO order_activity_log (entity_type, entity_id, event_type, actor, details)
-SELECT 'order', o.id, 'lead_assets_backfilled', 'system',
-       'Backfilled lead assets onto stranded paid order (inputs_hash mismatch). Review delivery.'
-FROM orders o
-WHERE o.notes LIKE '%backfilled_from_lead_%'
-  AND o.delivered_at IS NULL;
+WHERE o.song_url IS NULL
+  AND o.status IN ('paid','delivered','ready')
+  AND o.created_at >= now() - interval '30 days'
+  AND EXISTS (
+    SELECT 1 FROM leads l
+    WHERE lower(l.email) = lower(o.customer_email)
+      AND lower(l.recipient_name) = lower(o.recipient_name)
+      AND l.full_song_url IS NOT NULL
+      AND l.captured_at BETWEEN o.created_at - interval '24 hours' AND o.created_at + interval '1 hour'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM order_activity_log al
+    WHERE al.entity_id = o.id AND al.event_type = 'stranded_lead_match_detected'
+  );
