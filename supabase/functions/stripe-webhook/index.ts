@@ -5,6 +5,10 @@ import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/lead-order-matching.ts";
 import { buildLeadAssetPatch, shouldDispatchDelivery } from "../_shared/lead-conversion.ts";
 
+function normalizeMatch(v?: string | null): string {
+  return (v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
