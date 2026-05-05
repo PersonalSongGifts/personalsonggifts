@@ -54,9 +54,13 @@ export function buildLeadAssetPatch(
     cover_image_url: lead.cover_image_url ?? null,
     automation_lyrics: lead.automation_lyrics ?? null,
     automation_status: hasFullSong ? "completed" : (hasLyrics ? "lyrics_ready" : null),
-    prev_song_url: lead.prev_song_url ?? null,
-    prev_automation_lyrics: lead.prev_automation_lyrics ?? null,
-    prev_cover_image_url: lead.prev_cover_image_url ?? null,
+    // Seed prev_* with the lead's original assets so admins can always
+    // "Restore Previous Version" back to the lead song after a revision.
+    // If the lead already has its own prev_* (rare — lead-side revision),
+    // prefer that as the deeper history; otherwise use the live lead assets.
+    prev_song_url: lead.prev_song_url ?? lead.full_song_url ?? null,
+    prev_automation_lyrics: lead.prev_automation_lyrics ?? lead.automation_lyrics ?? null,
+    prev_cover_image_url: lead.prev_cover_image_url ?? lead.cover_image_url ?? null,
   };
 
   if (hasFullSong) {
