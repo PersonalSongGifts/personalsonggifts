@@ -76,6 +76,16 @@ Deno.test("prev_* snapshot fields are copied through", () => {
   assertEquals(patch!.prev_cover_image_url, withSnap.prev_cover_image_url);
 });
 
+Deno.test("when lead has no prev_*, fall back to live assets so Restore Previous Version always works", () => {
+  // Regression for the bug where lead-converted orders had no prev_song_url
+  // and the admin Restore button was hidden. The patch must seed prev_* with
+  // the lead's live assets when its own prev slots are empty.
+  const patch = buildLeadAssetPatch(fullLead, FROZEN);
+  assertEquals(patch!.prev_song_url, fullLead.full_song_url);
+  assertEquals(patch!.prev_automation_lyrics, fullLead.automation_lyrics);
+  assertEquals(patch!.prev_cover_image_url, fullLead.cover_image_url);
+});
+
 Deno.test("monitor: converted order missing song_url is flagged", () => {
   assertEquals(
     isConvertedOrderMissingAssets({ status: "paid", song_url: null, automation_lyrics: "x" }),

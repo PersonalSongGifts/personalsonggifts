@@ -58,7 +58,48 @@ Deno.serve(async (req) => {
   }
 
   const flagged = (orders || []).filter(isConvertedOrderMissingAssets);
-  if (flagged.length === 0) {
+
+  // ===== ALSO flag stranded direct orders =====
+  // Bug pattern: a paid order with NO automation_status set 30+ minutes after
+  // checkout, while an unconverted lead with a fully generated song exists for
+  // the same email captured in the prior 24h. That's the inputs_hash-mismatch
+  // signature — webhook didn't link them so automation never ran and the
+  // customer never got the lead song they paid for.
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: strandedOrders } = await supabase
+    .from("orders")
+    .select("id, status, song_url, automation_status, customer_email, recipient_name, created_at, notes")
+    .in("status", ["paid"])
+    .is("automation_status", null)
+    .is("song_url", null)
+    .gte("created_at", sevenDaysAgo)
+    .lte("created_at", thirtyMinAgo)
+    .limit(200);
+
+  const strandedToFlag: Array<typeof flagged[number]> = [];
+  for (const o of strandedOrders || []) {
+    if (!o.customer_email) continue;
+    const { data: leadCandidates } = await supabase
+      .from("leads")
+      .select("id")
+      .ilike("email", o.customer_email.toLowerCase())
+      .neq("status", "converted")
+      .not("full_song_url", "is", null)
+      .gte("captured_at", oneDayAgo)
+      .limit(3);
+    if ((leadCandidates || []).length > 0) {
+      strandedToFlag.push({ ...o, automation_lyrics: null } as any);
+    }
+  }
+
+  // De-dup with primary flagged set
+  const allFlagged = [...flagged];
+  for (const s of strandedToFlag) {
+    if (!allFlagged.find((f) => f.id === s.id)) allFlagged.push(s);
+  }
+
+  if (allFlagged.length === 0) {
     return new Response(JSON.stringify({ ok: true, flagged: 0 }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -73,11 +114,11 @@ Deno.serve(async (req) => {
     .eq("event_type", "missing_assets_alerted")
     .gte("created_at", sixHoursAgo);
   const alertedSet = new Set((recentAlerts || []).map((r) => r.entity_id));
-  const newOnes = flagged.filter((o) => !alertedSet.has(o.id));
+  const newOnes = allFlagged.filter((o) => !alertedSet.has(o.id));
 
   if (newOnes.length === 0) {
     return new Response(
-      JSON.stringify({ ok: true, flagged: flagged.length, new: 0, note: "all suppressed" }),
+      JSON.stringify({ ok: true, flagged: allFlagged.length, new: 0, note: "all suppressed" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
@@ -163,7 +204,7 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       ok: true,
-      flagged: flagged.length,
+      flagged: allFlagged.length,
       new: newOnes.length,
       emailSent,
       emailError,
