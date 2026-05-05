@@ -2,7 +2,6 @@
 // list. Skips converted, dismissed, low-quality, and suppressed.
 // POST { dryRun?: boolean, limit?: number }
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
-import { syncLeadToBrevo } from "../brevo-sync-lead/index.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,12 +11,9 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const apiKey = Deno.env.get("BREVO_API_KEY");
-    if (!apiKey) throw new Error("BREVO_API_KEY not configured");
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
     const dryRun = !!body.dryRun;
@@ -45,8 +41,16 @@ Deno.serve(async (req) => {
       for (const lead of leads) {
         if (dryRun) { synced++; continue; }
         try {
-          const result = await syncLeadToBrevo(supabase, apiKey, lead);
-          if ((result as any).synced) synced++;
+          const res = await fetch(`${supabaseUrl}/functions/v1/brevo-sync-lead`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({ leadId: lead.id }),
+          });
+          const j = await res.json();
+          if (j?.success && j?.result?.synced) synced++;
           else skipped++;
         } catch (e) {
           errors++;
