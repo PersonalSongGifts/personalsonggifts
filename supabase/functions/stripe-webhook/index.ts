@@ -405,6 +405,13 @@ Deno.serve(async (req) => {
           .eq("id", lead.id);
 
         await logActivity(supabase, "lead", lead.id, "lead_converted", "system", `Converted to order ${leadOrder.id.slice(0, 8).toUpperCase()} via webhook`);
+
+        // Remove from Brevo lead lists (fire-and-forget)
+        fetch(`${supabaseUrl}/functions/v1/brevo-remove-converted`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseServiceKey}` },
+          body: JSON.stringify({ email: lead.email }),
+        }).catch((e) => console.error("[WEBHOOK] Brevo remove failed:", e));
         await logActivity(supabase, "order", leadOrder.id, "order_created", "system", `Created from lead conversion via webhook, $${leadPriceCents / 100}`);
 
         // Trigger lyrics generation if missing
@@ -664,6 +671,13 @@ Deno.serve(async (req) => {
             })
             .eq("id", matchingLead.id);
           console.log(`Lead ${matchingLead.id} marked as converted${usedFallback ? " (soft match)" : ""}`);
+
+          // Remove from Brevo lead lists (fire-and-forget)
+          fetch(`${supabaseUrl}/functions/v1/brevo-remove-converted`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseServiceKey}` },
+            body: JSON.stringify({ email: matchingLead.email }),
+          }).catch((e) => console.error("[WEBHOOK] Brevo remove failed:", e));
 
           if (usedFallback) {
             try {

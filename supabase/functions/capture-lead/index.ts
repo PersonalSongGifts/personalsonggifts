@@ -554,6 +554,22 @@ Deno.serve(async (req) => {
     // Auto-trigger song generation for high-quality leads
     triggerAutomationIfQualified(data.id, qualityScore);
 
+    // Sync to Brevo lead lists (fire-and-forget; never block lead capture)
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      fetch(`${supabaseUrl}/functions/v1/brevo-sync-lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ leadId: data.id }),
+      }).catch((e) => console.error("[CAPTURE-LEAD] Brevo sync failed:", e));
+    } catch (e) {
+      console.error("[CAPTURE-LEAD] Brevo trigger error:", e);
+    }
+
     console.log("Lead captured:", normalizedEmail, "Quality:", qualityScore);
     return new Response(
       JSON.stringify({ success: true, leadId: data.id, qualityScore }),
