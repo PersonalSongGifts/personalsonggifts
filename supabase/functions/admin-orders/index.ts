@@ -1725,8 +1725,17 @@ Deno.serve(async (req) => {
           : null;
 
         if (!path) {
-          console.warn(`[BACKUP] Could not extract storage path from URL: ${currentSongUrl}`);
-          return { backed_up: false };
+          // Fallback: URL doesn't sit in our songs/ bucket (e.g. legacy lead path
+          // assigned to an order via lead conversion). We can't create a -prev
+          // file copy, but the original URL itself is permanent — point prev_*
+          // straight at it so Restore Previous Version still works.
+          console.warn(`[BACKUP] Non-bucket URL, using URL-as-snapshot fallback: ${currentSongUrl}`);
+          return {
+            backed_up: true,
+            prev_song_url: currentSongUrl,
+            prev_automation_lyrics: (entity.automation_lyrics as string | null) || null,
+            prev_cover_image_url: (entity.cover_image_url as string | null) || null,
+          };
         }
 
         // Derive prev path: insert -prev before the extension
