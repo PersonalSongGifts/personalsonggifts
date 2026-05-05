@@ -672,6 +672,13 @@ Deno.serve(async (req) => {
             .eq("id", matchingLead.id);
           console.log(`Lead ${matchingLead.id} marked as converted${usedFallback ? " (soft match)" : ""}`);
 
+          // Remove from Brevo lead lists (fire-and-forget)
+          fetch(`${supabaseUrl}/functions/v1/brevo-remove-converted`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseServiceKey}` },
+            body: JSON.stringify({ email: matchingLead.email }),
+          }).catch((e) => console.error("[WEBHOOK] Brevo remove failed:", e));
+
           if (usedFallback) {
             try {
               await logActivity(supabase, "order", newOrder.id, "lead_soft_match", "system",
