@@ -291,6 +291,65 @@ Deno.serve(async (req) => {
       console.error("[RECOVERY] Error:", e);
     }
 
+    // ======= 1c. ZOMBIE JOB CLEANUP =======
+    // Any job stuck in an active state >24h is dead (Suno task expired, callback lost,
+    // etc.). Mark failed so it stops occupying scheduler slots forever.
+    try {
+      const zombieCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      let zombieCount = 0;
+
+      for (const table of ["leads", "orders"] as const) {
+        const { data: zombies, error } = await supabase
+          .from(table)
+          .update({
+            automation_status: "failed",
+            automation_last_error: "Auto-cleared: stuck in active state >24h (zombie job)",
+          })
+          .in("automation_status", ACTIVE_STATUSES)
+          .lte("automation_started_at", zombieCutoff)
+          .is("automation_manual_override_at", null)
+          .select("id");
+        if (error) {
+          console.error(`[ZOMBIE] ${table} cleanup error:`, error);
+          continue;
+        }
+        if (zombies && zombies.length > 0) {
+          zombieCount += zombies.length;
+          console.log(`[ZOMBIE] Cleared ${zombies.length} stuck ${table}: ${zombies.map((z: any) => z.id).join(", ")}`);
+        }
+      }
+      results.zombiesCleared = zombieCount;
+    } catch (e) {
+      console.error("[ZOMBIE] Error:", e);
+    }
+
+    // ======= 1d. PAID ORDER STARVATION ALERT =======
+    // Paid orders should be picked up within minutes of earliest_generate_at.
+    // If any sit unprocessed >30 min past that, log a loud alert.
+    try {
+      const starveCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: starvedOrders } = await supabase
+        .from("orders")
+        .select("id, customer_email, recipient_name, earliest_generate_at, pricing_tier")
+        .is("automation_status", null)
+        .neq("status", "cancelled")
+        .is("dismissed_at", null)
+        .not("earliest_generate_at", "is", null)
+        .lte("earliest_generate_at", starveCutoff)
+        .order("earliest_generate_at", { ascending: true })
+        .limit(20);
+
+      if (starvedOrders && starvedOrders.length > 0) {
+        console.error(`[ALERT] 🚨 ${starvedOrders.length} PAID ORDER(S) STARVED >30min past earliest_generate_at:`);
+        for (const o of starvedOrders) {
+          console.error(`[ALERT]   - order ${o.id} (${o.pricing_tier}) ${o.recipient_name} <${o.customer_email}> ready since ${o.earliest_generate_at}`);
+        }
+      }
+      results.starvedPaidOrders = starvedOrders?.length || 0;
+    } catch (e) {
+      console.error("[ALERT] Error:", e);
+    }
+
     // ======= 2. GENERATION QUEUE (Background Automation) =======
     // Pick up entities ready for generation based on earliest_generate_at
     try {
