@@ -315,9 +315,9 @@ Deno.serve(async (req) => {
         const processOrders = automationTarget === "orders" || automationTarget === "both";
         const processLeads = automationTarget === "leads" || automationTarget === "both";
 
-        // --- CONCURRENCY CAP: Count active jobs across both tables ---
-        let activeCount = 0;
-
+        // --- CONCURRENCY CAP ---
+        // Orders are paid and must never be starved by a lead backlog.
+        // Orders get their own full pool; leads only consume what's left after orders.
         const { count: activeOrders } = await supabase
           .from("orders")
           .select("id", { count: "exact", head: true })
@@ -328,16 +328,17 @@ Deno.serve(async (req) => {
           .select("id", { count: "exact", head: true })
           .in("automation_status", ACTIVE_STATUSES);
 
-        activeCount = (activeOrders || 0) + (activeLeads || 0);
-        const availableSlots = Math.max(0, MAX_CONCURRENT_GENERATIONS - activeCount);
+        const activeCount = (activeOrders || 0) + (activeLeads || 0);
+        const orderSlots = Math.max(0, MAX_CONCURRENT_GENERATIONS - (activeOrders || 0));
+        const leadSlots = Math.max(0, MAX_CONCURRENT_GENERATIONS - activeCount);
 
-        console.log(`[SCHEDULER] Active jobs: ${activeCount} (${activeOrders || 0} orders, ${activeLeads || 0} leads), available slots: ${availableSlots}`);
+        console.log(`[SCHEDULER] Active jobs: ${activeCount} (${activeOrders || 0} orders, ${activeLeads || 0} leads), order slots: ${orderSlots}, lead slots: ${leadSlots}`);
 
         let generationsTriggered = 0;
 
-        if (availableSlots > 0) {
+        {
           // Process ORDERS first (priority tier gets priority within orders)
-          if (processOrders && generationsTriggered < availableSlots) {
+          if (processOrders && orderSlots > 0) {
             const { data: pendingOrders } = await supabase
               .from("orders")
               .select("id, pricing_tier")
@@ -349,7 +350,7 @@ Deno.serve(async (req) => {
               .or("next_attempt_at.is.null,next_attempt_at.lte." + now)
               .order("pricing_tier", { ascending: false }) // 'priority' before 'standard'
               .order("earliest_generate_at", { ascending: true })
-              .limit(availableSlots - generationsTriggered);
+              .limit(orderSlots);
 
             for (const order of pendingOrders || []) {
               // Atomic claim: update status only if still null (prevents double-pickup)
@@ -379,8 +380,8 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Process LEADS (only remaining slots, oldest first, quality filtered)
-          if (processLeads && generationsTriggered < availableSlots) {
+          // Process LEADS (only remaining slots after orders, oldest first, quality filtered)
+          if (processLeads && leadSlots > 0) {
             // Get quality threshold for filtering at pickup time
             const { data: thresholdSetting } = await supabase
               .from("admin_settings")
@@ -401,7 +402,7 @@ Deno.serve(async (req) => {
               .gte("quality_score", qualityThreshold) // Quality filter at pickup
               .or("next_attempt_at.is.null,next_attempt_at.lte." + now)
               .order("captured_at", { ascending: true }) // Oldest first
-              .limit(availableSlots - generationsTriggered);
+              .limit(leadSlots);
 
             for (const lead of pendingLeads || []) {
               // Atomic claim
@@ -434,7 +435,8 @@ Deno.serve(async (req) => {
 
         results.generationsTriggered = generationsTriggered;
         results.activeJobs = activeCount;
-        results.availableSlots = availableSlots;
+        results.availableSlots = leadSlots;
+        results.orderSlots = orderSlots;
       } else {
         results.generationsTriggered = 0;
         results.automationDisabled = true;
