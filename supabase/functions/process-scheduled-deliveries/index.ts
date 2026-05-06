@@ -380,8 +380,8 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Process LEADS (only remaining slots, oldest first, quality filtered)
-          if (processLeads && generationsTriggered < availableSlots) {
+          // Process LEADS (only remaining slots after orders, oldest first, quality filtered)
+          if (processLeads && leadSlots > 0) {
             // Get quality threshold for filtering at pickup time
             const { data: thresholdSetting } = await supabase
               .from("admin_settings")
@@ -402,7 +402,7 @@ Deno.serve(async (req) => {
               .gte("quality_score", qualityThreshold) // Quality filter at pickup
               .or("next_attempt_at.is.null,next_attempt_at.lte." + now)
               .order("captured_at", { ascending: true }) // Oldest first
-              .limit(availableSlots - generationsTriggered);
+              .limit(leadSlots);
 
             for (const lead of pendingLeads || []) {
               // Atomic claim
@@ -435,7 +435,8 @@ Deno.serve(async (req) => {
 
         results.generationsTriggered = generationsTriggered;
         results.activeJobs = activeCount;
-        results.availableSlots = availableSlots;
+        results.availableSlots = leadSlots;
+        results.orderSlots = orderSlots;
       } else {
         results.generationsTriggered = 0;
         results.automationDisabled = true;
