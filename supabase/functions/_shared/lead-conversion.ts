@@ -19,6 +19,16 @@ export interface LeadAssetSource {
   prev_song_url?: string | null;
   prev_automation_lyrics?: string | null;
   prev_cover_image_url?: string | null;
+  // Bonus track fields (generated in parallel on the lead). Copy these so
+  // the song page can offer the bonus track upsell after lead → order
+  // conversion. Without this the bonus is stranded on the lead row.
+  bonus_song_url?: string | null;
+  bonus_preview_url?: string | null;
+  bonus_song_title?: string | null;
+  bonus_cover_image_url?: string | null;
+  bonus_style_prompt?: string | null;
+  bonus_automation_status?: string | null;
+  bonus_automation_task_id?: string | null;
 }
 
 export interface OrderAssetPatch {
@@ -32,6 +42,13 @@ export interface OrderAssetPatch {
   prev_cover_image_url: string | null;
   status?: string;
   delivered_at?: string;
+  bonus_song_url?: string | null;
+  bonus_preview_url?: string | null;
+  bonus_song_title?: string | null;
+  bonus_cover_image_url?: string | null;
+  bonus_style_prompt?: string | null;
+  bonus_automation_status?: string | null;
+  bonus_automation_task_id?: string | null;
 }
 
 /**
@@ -67,6 +84,17 @@ export function buildLeadAssetPatch(
     patch.status = "delivered";
     patch.delivered_at = now.toISOString();
   }
+
+  // Copy bonus track fields if the lead generated one. Only set when present
+  // so we never overwrite an existing order-side bonus with nulls.
+  if (lead.bonus_song_url) patch.bonus_song_url = lead.bonus_song_url;
+  if (lead.bonus_preview_url) patch.bonus_preview_url = lead.bonus_preview_url;
+  if (lead.bonus_song_title) patch.bonus_song_title = lead.bonus_song_title;
+  if (lead.bonus_cover_image_url) patch.bonus_cover_image_url = lead.bonus_cover_image_url;
+  if (lead.bonus_style_prompt) patch.bonus_style_prompt = lead.bonus_style_prompt;
+  if (lead.bonus_automation_status) patch.bonus_automation_status = lead.bonus_automation_status;
+  if (lead.bonus_automation_task_id) patch.bonus_automation_task_id = lead.bonus_automation_task_id;
+
   return patch;
 }
 
