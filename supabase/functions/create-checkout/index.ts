@@ -302,6 +302,18 @@ Deno.serve(async (req) => {
           unitAmount = pricingTier === "priority" ? activePromo.priority_price_cents : activePromo.standard_price_cents;
           metadata.promoSlug = activePromo.slug;
           metadata.promoName = activePromo.name;
+          // Stack additional Stripe coupon on top of active promo price
+          if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
+            const stripeCoupon = await lookupStripeCoupon(stripe, upperAdditional);
+            if (stripeCoupon) {
+              if (stripeCoupon.percent_off) {
+                unitAmount = Math.max(1, Math.floor(unitAmount * (100 - stripeCoupon.percent_off) / 100));
+              } else if (stripeCoupon.amount_off) {
+                unitAmount = Math.max(1, unitAmount - stripeCoupon.amount_off);
+              }
+              metadata.additionalPromoCode = upperAdditional;
+            }
+          }
           metadata.amount_total_cents = String(unitAmount);
         } else {
           // Fall back to seasonal discount + optional Stripe coupon
