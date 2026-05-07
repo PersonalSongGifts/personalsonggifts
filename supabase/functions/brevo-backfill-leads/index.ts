@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
     while (collected + skipped < limit) {
       const { data: leads, error } = await supabase
         .from("leads")
-        .select("*")
+        .select("id,email,customer_name,recipient_name,occasion,genre,recipient_type,quality_score,preview_song_url,full_song_url,preview_token,utm_source,captured_at")
         .neq("status", "converted")
         .is("order_id", null)
         .is("dismissed_at", null)
