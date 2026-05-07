@@ -138,21 +138,29 @@ function buildCsv(leads: any[]): string {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
+    const apiKey = Deno.env.get("BREVO_API_KEY");
+    if (!apiKey) throw new Error("BREVO_API_KEY not configured");
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
     const dryRun = !!body.dryRun;
-    const limit = Math.min(Number(body.limit) || 5000, 10000);
+    const limit = Math.min(Number(body.limit) || 25000, 50000);
+    const offset = Math.max(Number(body.offset) || 0, 0);
+
+    await ensureAttributes(apiKey, supabase);
+    const allLeadsListId = await getOrCreateAllLeadsList(apiKey, supabase);
 
     // Page through eligible leads
-    const pageSize = 250;
-    let from = 0;
-    let synced = 0, skipped = 0, errors = 0;
+    const pageSize = 1000;
+    let from = offset;
+    let collected = 0, skipped = 0, errors = 0;
     const errorSamples: string[] = [];
+    const deduped = new Map<string, any>();
 
-    while (synced + skipped < limit) {
+    while (collected + skipped < limit) {
       const { data: leads, error } = await supabase
         .from("leads")
         .select("*")
@@ -166,36 +174,63 @@ Deno.serve(async (req) => {
       if (!leads?.length) break;
 
       for (const lead of leads) {
-        if (dryRun) { synced++; continue; }
-        try {
-          const res = await fetch(`${supabaseUrl}/functions/v1/brevo-sync-lead`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${serviceKey}`,
-            },
-            body: JSON.stringify({ leadId: lead.id }),
-          });
-          const j = await res.json();
-          if (j?.success && j?.result?.synced) synced++;
-          else skipped++;
-        } catch (e) {
-          errors++;
-          if (errorSamples.length < 5) {
-            errorSamples.push(`${lead.id}: ${e instanceof Error ? e.message : String(e)}`);
-          }
+        const email = lead.email?.toLowerCase().trim();
+        if (!email) {
+          skipped++;
+          continue;
         }
-        // Throttle ~10 req/sec (3 Brevo calls per lead = ~330ms)
-        await new Promise((r) => setTimeout(r, 350));
+        deduped.set(email, lead);
+        collected++;
+        if (collected >= limit) break;
       }
 
       from += pageSize;
       if (leads.length < pageSize) break;
     }
 
-    console.log(`[BREVO-BACKFILL] Synced=${synced} Skipped=${skipped} Errors=${errors}`);
+    const leadsToImport = [...deduped.values()];
+    const importJobs: unknown[] = [];
+
+    if (!dryRun) {
+      for (let i = 0; i < leadsToImport.length; i += IMPORT_CHUNK_SIZE) {
+        const chunk = leadsToImport.slice(i, i + IMPORT_CHUNK_SIZE);
+        const res = await brevoFetch(apiKey, "/contacts/import", {
+          method: "POST",
+          body: JSON.stringify({
+            fileBody: buildCsv(chunk),
+            listIds: [allLeadsListId],
+            updateExistingContacts: true,
+            emptyContactsAttributes: false,
+            emailBlacklist: false,
+            smsBlacklist: false,
+          }),
+        });
+        const txt = await res.text();
+        let parsed: unknown = txt;
+        try { parsed = JSON.parse(txt); } catch (_) {}
+        if (!res.ok) {
+          errors++;
+          if (errorSamples.length < 5) errorSamples.push(`chunk ${i / IMPORT_CHUNK_SIZE + 1}: ${txt}`);
+        } else {
+          importJobs.push(parsed);
+        }
+      }
+    }
+
+    console.log(`[BREVO-BACKFILL] Submitted=${leadsToImport.length} Skipped=${skipped} Errors=${errors}`);
     return new Response(
-      JSON.stringify({ success: true, dryRun, synced, skipped, errors, errorSamples }),
+      JSON.stringify({
+        success: true,
+        dryRun,
+        allLeadsListId,
+        eligibleFetched: collected,
+        submitted: dryRun ? 0 : leadsToImport.length,
+        uniqueEmails: leadsToImport.length,
+        skipped,
+        errors,
+        importJobs,
+        errorSamples,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
