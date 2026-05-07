@@ -138,6 +138,34 @@ Deno.serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
     try {
+      const promotionMatch = await lookupCouponForPromoCode(stripe, code.trim());
+      if (promotionMatch) {
+        const { coupon, code: promotionCode } = promotionMatch;
+        if (coupon.percent_off) {
+          return new Response(
+            JSON.stringify({
+              valid: true,
+              type: "percent_off",
+              percent_off: coupon.percent_off,
+              name: promotionCode,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (coupon.amount_off) {
+          return new Response(
+            JSON.stringify({
+              valid: true,
+              type: "amount_off",
+              amount_off: coupon.amount_off,
+              currency: coupon.currency || "usd",
+              name: promotionCode,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
       // Try to retrieve coupon by ID (Stripe coupon IDs are case-sensitive)
       // Try the original case first, then uppercase
       let coupon;
