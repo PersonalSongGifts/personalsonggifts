@@ -28,6 +28,40 @@ const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = 
   "INFLCR-RISE-5Q": { maxUses: 1, settingsKey: "inflcr_rise_5q_usage_count" },
 };
 
+async function lookupCouponForPromoCode(stripe: Stripe, rawCode: string): Promise<{ coupon: Stripe.Coupon; code: string } | null> {
+  const trimmedCode = rawCode.trim();
+  const upperCode = trimmedCode.toUpperCase();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  const promotionCodes = await stripe.promotionCodes.list({
+    code: trimmedCode,
+    active: true,
+    limit: 10,
+  });
+
+  const promotionCode = promotionCodes.data.find((promoCode) => {
+    const matches = promoCode.code.toUpperCase() === upperCode;
+    const expired = promoCode.expires_at !== null && promoCode.expires_at <= nowSeconds;
+    const maxed = promoCode.max_redemptions !== null && promoCode.times_redeemed >= promoCode.max_redemptions;
+    return matches && promoCode.active && !expired && !maxed;
+  });
+
+  if (!promotionCode) return null;
+
+  const promotion = promotionCode.promotion as { type?: string; coupon?: string | Stripe.Coupon };
+  if (promotion.type !== "coupon" || !promotion.coupon) return null;
+
+  const coupon = typeof promotion.coupon === "string"
+    ? await stripe.coupons.retrieve(promotion.coupon)
+    : promotion.coupon;
+
+  if ("valid" in coupon && coupon.valid) {
+    return { coupon, code: promotionCode.code };
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -104,6 +138,34 @@ Deno.serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
     try {
+      const promotionMatch = await lookupCouponForPromoCode(stripe, code.trim());
+      if (promotionMatch) {
+        const { coupon, code: promotionCode } = promotionMatch;
+        if (coupon.percent_off) {
+          return new Response(
+            JSON.stringify({
+              valid: true,
+              type: "percent_off",
+              percent_off: coupon.percent_off,
+              name: promotionCode,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (coupon.amount_off) {
+          return new Response(
+            JSON.stringify({
+              valid: true,
+              type: "amount_off",
+              amount_off: coupon.amount_off,
+              currency: coupon.currency || "usd",
+              name: promotionCode,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
       // Try to retrieve coupon by ID (Stripe coupon IDs are case-sensitive)
       // Try the original case first, then uppercase
       let coupon;
