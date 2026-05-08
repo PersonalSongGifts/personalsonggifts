@@ -101,6 +101,24 @@ async function lookupStripeCoupon(code: string): Promise<{ percent_off?: number;
   const upperCode = code.trim().toUpperCase();
 
   try {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const promotionCodes = await stripe.promotionCodes.list({
+      code: code.trim(),
+      active: true,
+      limit: 10,
+    });
+    const promotionCode = promotionCodes.data.find((p: any) => {
+      const expired = p.expires_at !== null && p.expires_at <= nowSeconds;
+      const maxed = p.max_redemptions !== null && p.times_redeemed >= p.max_redemptions;
+      return p.code.toUpperCase() === upperCode && p.active && !expired && !maxed;
+    });
+    if (promotionCode) {
+      const promotion = promotionCode.promotion as { coupon?: string | any } | undefined;
+      const couponRef = (promotionCode as { coupon?: string | any }).coupon ?? promotion?.coupon;
+      const coupon = typeof couponRef === "string" ? await stripe.coupons.retrieve(couponRef) : couponRef;
+      if (coupon?.valid) return { percent_off: coupon.percent_off ?? undefined, amount_off: coupon.amount_off ?? undefined };
+    }
+
     let coupon;
     try { coupon = await stripe.coupons.retrieve(code.trim()); } catch { /* noop */ }
     if (!coupon) {
