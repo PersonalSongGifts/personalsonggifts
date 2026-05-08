@@ -115,17 +115,21 @@ const Checkout = () => {
   const pricing = useMemo(() => {
     const baseCents = BASE_PRICES_CENTS[selectedTier];
 
-    // If flash promo is active, use promo prices directly
+    // If flash promo is active, use promo prices directly, then stack any entered code.
     if (activeFlashPromo.active) {
       const promoCents = selectedTier === "priority"
         ? (activeFlashPromo.priorityPriceCents || 0)
         : (activeFlashPromo.standardPriceCents || 0);
+      const additionalSavingsCents = additionalPromo
+        ? calculateAdditionalDiscountCents(promoCents, additionalPromo)
+        : 0;
+      const totalCents = Math.max(0, promoCents - additionalSavingsCents);
       return {
         base: baseCents / 100,
         afterSeasonal: promoCents / 100,
         seasonalSavings: (baseCents - promoCents) / 100,
-        additionalSavings: 0,
-        total: promoCents / 100,
+        additionalSavings: additionalSavingsCents / 100,
+        total: totalCents / 100,
       };
     }
 
