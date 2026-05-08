@@ -75,6 +75,33 @@ async function lookupStripeCoupon(stripe: Stripe, code: string): Promise<Stripe.
   const upperCode = code.trim().toUpperCase();
   
   try {
+    // First: look up Stripe Promotion Codes (customer-facing codes like "MOM")
+    try {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const promotionCodes = await stripe.promotionCodes.list({
+        code: code.trim(),
+        active: true,
+        limit: 10,
+      });
+      const promo = promotionCodes.data.find((p) => {
+        const matches = p.code.toUpperCase() === upperCode;
+        const expired = p.expires_at !== null && p.expires_at <= nowSeconds;
+        const maxed = p.max_redemptions !== null && p.times_redeemed >= p.max_redemptions;
+        return matches && p.active && !expired && !maxed;
+      });
+      if (promo) {
+        const couponRef = (promo as { coupon?: string | Stripe.Coupon }).coupon;
+        const coupon = typeof couponRef === "string"
+          ? await stripe.coupons.retrieve(couponRef)
+          : couponRef as Stripe.Coupon | undefined;
+        if (coupon && "valid" in coupon && coupon.valid) {
+          return coupon;
+        }
+      }
+    } catch (e) {
+      console.error("[CHECKOUT] promotionCodes.list error:", e);
+    }
+
     // Try retrieving by ID (original case, then uppercase)
     try {
       return await stripe.coupons.retrieve(code.trim());
