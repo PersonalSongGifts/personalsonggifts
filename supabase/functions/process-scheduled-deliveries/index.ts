@@ -735,6 +735,7 @@ Deno.serve(async (req) => {
                 smsOptIn: order.sms_opt_in,
                 timezone: order.timezone,
                 smsStatus: order.sms_status,
+              isRevision: (order.revision_count || 0) > 0,
               }),
             }
           );
