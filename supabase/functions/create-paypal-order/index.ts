@@ -101,6 +101,24 @@ async function lookupStripeCoupon(code: string): Promise<{ percent_off?: number;
   const upperCode = code.trim().toUpperCase();
 
   try {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const promotionCodes = await stripe.promotionCodes.list({
+      code: code.trim(),
+      active: true,
+      limit: 10,
+    });
+    const promotionCode = promotionCodes.data.find((p: any) => {
+      const expired = p.expires_at !== null && p.expires_at <= nowSeconds;
+      const maxed = p.max_redemptions !== null && p.times_redeemed >= p.max_redemptions;
+      return p.code.toUpperCase() === upperCode && p.active && !expired && !maxed;
+    });
+    if (promotionCode) {
+      const promotion = promotionCode.promotion as { coupon?: string | any } | undefined;
+      const couponRef = (promotionCode as { coupon?: string | any }).coupon ?? promotion?.coupon;
+      const coupon = typeof couponRef === "string" ? await stripe.coupons.retrieve(couponRef) : couponRef;
+      if (coupon?.valid) return { percent_off: coupon.percent_off ?? undefined, amount_off: coupon.amount_off ?? undefined };
+    }
+
     let coupon;
     try { coupon = await stripe.coupons.retrieve(code.trim()); } catch { /* noop */ }
     if (!coupon) {
@@ -258,6 +276,17 @@ Deno.serve(async (req) => {
         unitAmountCents = pricingTier === "priority" ? promo.priority_price_cents : promo.standard_price_cents;
         metadata.promoSlug = promo.slug;
         metadata.promoName = promo.name;
+        if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
+          const stripeCoupon = await lookupStripeCoupon(upperAdditional);
+          if (stripeCoupon) {
+            if (stripeCoupon.percent_off) {
+              unitAmountCents = Math.max(1, Math.floor(unitAmountCents * (100 - stripeCoupon.percent_off) / 100));
+            } else if (stripeCoupon.amount_off) {
+              unitAmountCents = Math.max(1, unitAmountCents - stripeCoupon.amount_off);
+            }
+            metadata.additionalPromoCode = upperAdditional;
+          }
+        }
         metadata.amount_total_cents = String(unitAmountCents);
       } else {
         const { data: activePromo } = await supabaseForPromo
@@ -272,6 +301,17 @@ Deno.serve(async (req) => {
           unitAmountCents = pricingTier === "priority" ? activePromo.priority_price_cents : activePromo.standard_price_cents;
           metadata.promoSlug = activePromo.slug;
           metadata.promoName = activePromo.name;
+          if (upperAdditional && upperAdditional !== "VALENTINES50" && upperAdditional !== "WELCOME50") {
+            const stripeCoupon = await lookupStripeCoupon(upperAdditional);
+            if (stripeCoupon) {
+              if (stripeCoupon.percent_off) {
+                unitAmountCents = Math.max(1, Math.floor(unitAmountCents * (100 - stripeCoupon.percent_off) / 100));
+              } else if (stripeCoupon.amount_off) {
+                unitAmountCents = Math.max(1, unitAmountCents - stripeCoupon.amount_off);
+              }
+              metadata.additionalPromoCode = upperAdditional;
+            }
+          }
           metadata.amount_total_cents = String(unitAmountCents);
         } else {
           let stripeCoupon: { percent_off?: number; amount_off?: number } | null = null;

@@ -90,7 +90,8 @@ async function lookupStripeCoupon(stripe: Stripe, code: string): Promise<Stripe.
         return matches && p.active && !expired && !maxed;
       });
       if (promo) {
-        const couponRef = (promo as { coupon?: string | Stripe.Coupon }).coupon;
+        const promotion = promo.promotion as { coupon?: string | Stripe.Coupon } | undefined;
+        const couponRef = (promo as { coupon?: string | Stripe.Coupon }).coupon ?? promotion?.coupon;
         const coupon = typeof couponRef === "string"
           ? await stripe.coupons.retrieve(couponRef)
           : couponRef as Stripe.Coupon | undefined;
