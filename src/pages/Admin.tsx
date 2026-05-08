@@ -256,6 +256,8 @@ export default function Admin() {
   const [restoringPreviousVersion, setRestoringPreviousVersion] = useState(false);
  // Source filter for direct vs lead conversion orders
   const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
+  // Payment method filter (Stripe vs PayPal)
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "stripe" | "paypal">("all");
   const [pendingLeadId, setPendingLeadId] = useState<string | null>(null);
   // Analytics date range filter
   type DatePreset = "today" | "yesterday" | "7d" | "14d" | "30d" | "90d" | "all" | "custom";
@@ -1517,6 +1519,16 @@ const { data, error } = await listOrders("all", 0, 250);
                  <SelectItem value="lead_conversion">🔄 Converted Leads</SelectItem>
                </SelectContent>
              </Select>
+             <Select value={paymentMethodFilter} onValueChange={(v) => setPaymentMethodFilter(v as "all" | "stripe" | "paypal")}>
+               <SelectTrigger className="w-44">
+                 <SelectValue placeholder="Payment method" />
+               </SelectTrigger>
+               <SelectContent>
+                 <SelectItem value="all">All Payments</SelectItem>
+                 <SelectItem value="stripe">💳 Stripe</SelectItem>
+                 <SelectItem value="paypal">🅿️ PayPal</SelectItem>
+               </SelectContent>
+             </Select>
                <Input
                 placeholder="Search by name, email, order ID, or song link..."
                 value={orderSearch}
@@ -1527,6 +1539,7 @@ const { data, error } = await listOrders("all", 0, 250);
                     setStatusFilter("all");
                     setDismissedOrderFilter("all");
                     setSourceFilter("all");
+                    setPaymentMethodFilter("all");
                   }
                 }}
                 className="w-64"
@@ -1589,6 +1602,13 @@ const { data, error } = await listOrders("all", 0, 250);
                  if (orderSource !== sourceFilter) return false;
                }
                
+                // Payment method filter (PayPal orders have notes starting with "paypal_order:")
+                if (paymentMethodFilter !== "all") {
+                  const isPayPal = order.notes?.startsWith("paypal_order:") ?? false;
+                  const method = isPayPal ? "paypal" : "stripe";
+                  if (method !== paymentMethodFilter) return false;
+                }
+                
                  // Then apply search filter
                 if (!orderSearch.trim()) return true;
                 const rawSearch = orderSearch.trim();
