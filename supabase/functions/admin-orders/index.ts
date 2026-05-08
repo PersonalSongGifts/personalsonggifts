@@ -2600,7 +2600,9 @@ Deno.serve(async (req) => {
 
           const regenNow = Date.now();
           orderUpdate.earliest_generate_at = new Date(regenNow + 1 * 60 * 1000).toISOString();
-          orderUpdate.target_send_at = new Date(regenNow + 12 * 60 * 60 * 1000).toISOString();
+          // Revisions: deliver as soon as regen completes (small buffer so the
+          // delivery cron picks it up shortly after the song is generated).
+          orderUpdate.target_send_at = new Date(regenNow + 15 * 60 * 1000).toISOString();
           // Don't change order status — keep as-is
         }
 
