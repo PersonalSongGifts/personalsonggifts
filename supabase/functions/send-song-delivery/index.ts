@@ -23,6 +23,7 @@ interface SongDeliveryRequest {
   smsStatus?: string | null;
   bonusAvailable?: boolean;
   bonusSongTitle?: string | null;
+  isRevision?: boolean;
 }
 
 Deno.serve(async (req) => {
@@ -54,6 +55,7 @@ Deno.serve(async (req) => {
       smsStatus,
       bonusAvailable,
       bonusSongTitle,
+      isRevision,
     }: SongDeliveryRequest = await req.json();
 
     // Derive bonus genre label from title
@@ -81,14 +83,16 @@ Deno.serve(async (req) => {
 </head>
 <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <p style="color: #1E3A5F; font-size: 22px; font-weight: bold; margin: 0 0 30px 0;">Your song is ready!</p>
+    <p style="color: #1E3A5F; font-size: 22px; font-weight: bold; margin: 0 0 30px 0;">${isRevision ? "Your revised song is ready!" : "Your song is ready!"}</p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
       Dear ${customerName || "Valued Customer"},
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      Your personalized ${occasion} song for <strong>${recipientName}</strong> is complete and ready to share!
+      ${isRevision
+        ? `We've created a new version of your ${occasion} song for <strong>${recipientName}</strong> based on your feedback.`
+        : `Your personalized ${occasion} song for <strong>${recipientName}</strong> is complete and ready to share!`}
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 8px 0;">
@@ -130,11 +134,13 @@ Deno.serve(async (req) => {
 </html>
     `;
 
-    const textContent = `Your song is ready!
+    const textContent = `${isRevision ? "Your revised song is ready!" : "Your song is ready!"}
 
 Dear ${customerName || "Valued Customer"},
 
-Your personalized ${occasion} song for ${recipientName} is complete and ready to share!
+${isRevision
+  ? `We've created a new version of your ${occasion} song for ${recipientName} based on your feedback.`
+  : `Your personalized ${occasion} song for ${recipientName} is complete and ready to share!`}
 
 Listen here: ${songPageUrl}
 
@@ -171,7 +177,9 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         },
         to: [{ email: customerEmail, name: customerName || customerEmail }],
         ...(ccEmail ? { cc: [{ email: ccEmail }] } : {}),
-        subject: `${recipientName}'s song is complete and ready to share`,
+        subject: isRevision
+          ? `${recipientName}'s revised song is ready`
+          : `${recipientName}'s song is complete and ready to share`,
         htmlContent: emailHtml,
         textContent: textContent,
         headers: {
