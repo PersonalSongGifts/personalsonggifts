@@ -48,12 +48,13 @@ async function lookupCouponForPromoCode(stripe: Stripe, rawCode: string): Promis
 
   if (!promotionCode) return null;
 
-  const promotion = promotionCode.promotion as { type?: string; coupon?: string | Stripe.Coupon };
-  if (promotion.type !== "coupon" || !promotion.coupon) return null;
+  const promotion = promotionCode.promotion as { type?: string; coupon?: string | Stripe.Coupon } | undefined;
+  const couponRef = (promotionCode as { coupon?: string | Stripe.Coupon }).coupon ?? promotion?.coupon;
+  if (!couponRef) return null;
 
-  const coupon = typeof promotion.coupon === "string"
-    ? await stripe.coupons.retrieve(promotion.coupon)
-    : promotion.coupon;
+  const coupon = typeof couponRef === "string"
+    ? await stripe.coupons.retrieve(couponRef)
+    : couponRef;
 
   if ("valid" in coupon && coupon.valid) {
     return { coupon, code: promotionCode.code };
