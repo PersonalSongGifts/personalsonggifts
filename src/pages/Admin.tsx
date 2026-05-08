@@ -1519,6 +1519,16 @@ const { data, error } = await listOrders("all", 0, 250);
                  <SelectItem value="lead_conversion">🔄 Converted Leads</SelectItem>
                </SelectContent>
              </Select>
+             <Select value={paymentMethodFilter} onValueChange={(v) => setPaymentMethodFilter(v as "all" | "stripe" | "paypal")}>
+               <SelectTrigger className="w-44">
+                 <SelectValue placeholder="Payment method" />
+               </SelectTrigger>
+               <SelectContent>
+                 <SelectItem value="all">All Payments</SelectItem>
+                 <SelectItem value="stripe">💳 Stripe</SelectItem>
+                 <SelectItem value="paypal">🅿️ PayPal</SelectItem>
+               </SelectContent>
+             </Select>
                <Input
                 placeholder="Search by name, email, order ID, or song link..."
                 value={orderSearch}
@@ -1529,6 +1539,7 @@ const { data, error } = await listOrders("all", 0, 250);
                     setStatusFilter("all");
                     setDismissedOrderFilter("all");
                     setSourceFilter("all");
+                    setPaymentMethodFilter("all");
                   }
                 }}
                 className="w-64"
