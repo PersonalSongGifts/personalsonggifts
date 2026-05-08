@@ -256,6 +256,8 @@ export default function Admin() {
   const [restoringPreviousVersion, setRestoringPreviousVersion] = useState(false);
  // Source filter for direct vs lead conversion orders
   const [sourceFilter, setSourceFilter] = useState<"all" | "direct" | "lead_conversion">("all");
+  // Payment method filter (Stripe vs PayPal)
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<"all" | "stripe" | "paypal">("all");
   const [pendingLeadId, setPendingLeadId] = useState<string | null>(null);
   // Analytics date range filter
   type DatePreset = "today" | "yesterday" | "7d" | "14d" | "30d" | "90d" | "all" | "custom";
