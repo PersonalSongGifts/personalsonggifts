@@ -440,7 +440,9 @@ Deno.serve(async (req) => {
 
         const regenNow = Date.now();
         autoOrderUpdate.earliest_generate_at = new Date(regenNow + 1 * 60 * 1000).toISOString();
-        autoOrderUpdate.target_send_at = new Date(regenNow + 12 * 60 * 60 * 1000).toISOString();
+        // Revisions: deliver as soon as regen completes (small buffer so the
+        // delivery cron picks it up shortly after the song is generated).
+        autoOrderUpdate.target_send_at = new Date(regenNow + 15 * 60 * 1000).toISOString();
       }
 
       await supabase.from("orders").update(autoOrderUpdate).eq("id", order.id);
@@ -499,15 +501,37 @@ Deno.serve(async (req) => {
     const brevoApiKey = Deno.env.get("BREVO_API_KEY");
     if (brevoApiKey) {
       const shortId = order.id.substring(0, 8).toUpperCase();
+      // Use the freshly-updated delivery email if it changed in this revision
+      const newEmail = (fields.delivery_email && typeof fields.delivery_email === "string")
+        ? fields.delivery_email.trim()
+        : null;
+      const confirmationEmail = newEmail || order.customer_email;
+      const confirmationName = (fields.customer_name && typeof fields.customer_name === "string")
+        ? fields.customer_name
+        : order.customer_name;
+
+      // Skip if recipient is on the suppression list
+      let isSuppressed = false;
+      try {
+        const { data: supp } = await supabase
+          .from("email_suppressions")
+          .select("email")
+          .eq("email", confirmationEmail.toLowerCase())
+          .maybeSingle();
+        isSuppressed = !!supp;
+      } catch { /* non-blocking */ }
+
       const emailSubject = isPreDelivery
         ? `Re: Your Personal Song Gifts Order ${shortId} — Details Updated`
         : `Re: Your Personal Song Gifts Order ${shortId} — Revision Requested`;
 
       const emailBody = isPreDelivery
-        ? `Hi ${order.customer_name},\n\nThanks for updating your song details! We've received your changes and our team will incorporate them.\n\nDepending on where we are in the creation process, this may add up to 12-24 hours to your delivery time. We'll make sure everything is perfect.\n\nIf you have any questions, just reply to this email.\n\nBest,\nPersonal Song Gifts Team`
-        : `Hi ${order.customer_name},\n\nThanks for your feedback! We've received your revision request and our team is working on a new version of your song.\n\nYou'll receive your updated song within 12-24 hours.\n\nIf you have any questions, just reply to this email.\n\nBest,\nPersonal Song Gifts Team`;
+        ? `Hi ${confirmationName},\n\nThanks for updating your song details! We've received your changes and our team will incorporate them.\n\nYou should receive your song shortly — usually within an hour or so.\n\nIf you have any questions, just reply to this email.\n\nBest,\nPersonal Song Gifts Team`
+        : `Hi ${confirmationName},\n\nThanks for your feedback! We've received your revision request and we're creating a new version of your song now.\n\nYou'll receive your updated song shortly — usually within an hour or so.\n\nIf you have any questions, just reply to this email.\n\nBest,\nPersonal Song Gifts Team`;
 
-      try {
+      if (isSuppressed) {
+        console.log(`[SUBMIT-REVISION] Skipping confirmation — ${confirmationEmail} is suppressed`);
+      } else try {
         await fetch("https://api.brevo.com/v3/smtp/email", {
           method: "POST",
           headers: {
@@ -516,7 +540,7 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({
             sender: { name: "Personal Song Gifts", email: "support@personalsonggifts.com" },
-            to: [{ email: order.customer_email, name: order.customer_name }],
+            to: [{ email: confirmationEmail, name: confirmationName }],
             subject: emailSubject,
             textContent: emailBody,
             headers: { "Precedence": "transactional" },
