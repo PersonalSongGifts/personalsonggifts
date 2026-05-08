@@ -1602,6 +1602,13 @@ const { data, error } = await listOrders("all", 0, 250);
                  if (orderSource !== sourceFilter) return false;
                }
                
+                // Payment method filter (PayPal orders have notes starting with "paypal_order:")
+                if (paymentMethodFilter !== "all") {
+                  const isPayPal = order.notes?.startsWith("paypal_order:") ?? false;
+                  const method = isPayPal ? "paypal" : "stripe";
+                  if (method !== paymentMethodFilter) return false;
+                }
+                
                  // Then apply search filter
                 if (!orderSearch.trim()) return true;
                 const rawSearch = orderSearch.trim();
