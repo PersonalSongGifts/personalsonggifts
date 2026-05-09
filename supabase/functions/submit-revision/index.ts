@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import { backupSongFile } from "../_shared/song-backup.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -414,6 +415,34 @@ Deno.serve(async (req) => {
       const needsRegen = fieldsChanged.some(f => contentFields.includes(f));
 
       if (needsRegen) {
+        // Snapshot current song to -prev.mp3 BEFORE clearing song_url so the
+        // admin "Restore Previous Version" button works after auto-approved
+        // customer revisions. Soft-fail: don't block the revision if backup fails.
+        try {
+          const { data: orderForBackup } = await supabase
+            .from("orders")
+            .select("song_url, automation_lyrics, cover_image_url")
+            .eq("id", order.id)
+            .maybeSingle();
+          if (orderForBackup?.song_url) {
+            const backup = await backupSongFile(
+              supabaseUrl,
+              supabaseServiceKey,
+              supabase,
+              "orders",
+              order.id,
+              orderForBackup as Record<string, unknown>,
+            );
+            if (backup.backed_up) {
+              autoOrderUpdate.prev_song_url = backup.prev_song_url ?? null;
+              autoOrderUpdate.prev_automation_lyrics = backup.prev_automation_lyrics ?? null;
+              autoOrderUpdate.prev_cover_image_url = backup.prev_cover_image_url ?? null;
+            }
+          }
+        } catch (backupErr) {
+          console.error("[SUBMIT-REVISION] Snapshot failed, proceeding without prev_*:", backupErr);
+        }
+
         // Clear automation for regeneration
         autoOrderUpdate.automation_status = null;
         autoOrderUpdate.automation_task_id = null;
