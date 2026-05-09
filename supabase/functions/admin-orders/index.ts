@@ -1768,72 +1768,28 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Extract prev file path from prev_song_url
-        const bucketBase = `${supabaseUrl}/storage/v1/object/public/songs/`;
-        const prevPath = prevSongUrl.includes(bucketBase)
-          ? prevSongUrl.slice(bucketBase.length).split("?")[0]
-          : null;
-
-        if (!prevPath) {
-          return new Response(
-            JSON.stringify({ error: "Could not parse previous song path from URL." }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Derive main path (remove -prev before extension)
-        const prevExt = prevPath.lastIndexOf(".");
-        const ext = prevExt !== -1 ? prevPath.slice(prevExt) : ".mp3";
-        const baseWithoutExt = prevExt !== -1 ? prevPath.slice(0, prevExt) : prevPath;
-        // Remove trailing -prev suffix
-        const mainBasePath = baseWithoutExt.endsWith("-prev")
-          ? baseWithoutExt.slice(0, -5)
-          : baseWithoutExt;
-        const mainPath = `${mainBasePath}${ext}`;
-
-        console.log(`[RESTORE] Restoring ${prevPath} → ${mainPath}`);
-
-        // Download prev file
-        let fileBytes: ArrayBuffer;
-        try {
-          const downloadRes = await fetch(prevSongUrl);
-          if (!downloadRes.ok) throw new Error(`Download failed: ${downloadRes.status}`);
-          fileBytes = await downloadRes.arrayBuffer();
-        } catch (e) {
-          console.error(`[RESTORE] Failed to download prev song:`, e);
-          return new Response(
-            JSON.stringify({ error: "Could not download previous song file." }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Re-upload to main slot with cache-busting suffix
-        const { error: uploadError } = await supabase.storage
-          .from("songs")
-          .upload(mainPath, fileBytes, {
-            contentType: "audio/mpeg",
-            upsert: true,
-          });
-
-        if (uploadError) {
-          console.error(`[RESTORE] Upload failed:`, uploadError);
-          return new Response(
-            JSON.stringify({ error: "Failed to restore song file to storage." }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const cacheBust = `?v=${Date.now()}`;
-        const restoredUrl = `${supabaseUrl}/storage/v1/object/public/songs/${mainPath}${cacheBust}`;
+        // Pointer-swap restore. Both files live on permanent versioned paths,
+        // so we never need to download/re-upload — we just swap which URL
+        // sits in song_url vs prev_song_url. This means a user can keep
+        // toggling between any two versions, or chain Restore after a
+        // future revision and still recover the older one.
+        const currentSongUrl = entityType === "orders"
+          ? (entity.song_url as string | null)
+          : (entity.full_song_url as string | null);
+        const currentLyrics = (entity.automation_lyrics as string | null) || null;
+        const currentCoverImageUrl = (entity.cover_image_url as string | null) || null;
 
         const prevLyrics = entity.prev_automation_lyrics as string | null;
         const prevCoverImageUrl = entity.prev_cover_image_url as string | null;
 
-        // Build restore DB update
+        const restoredUrl = prevSongUrl;
+
         const restoreUpdate: Record<string, unknown> = {
-          prev_song_url: null,
-          prev_automation_lyrics: null,
-          prev_cover_image_url: null,
+          // Swap: previous slot now holds what was current
+          prev_song_url: currentSongUrl,
+          prev_automation_lyrics: currentLyrics,
+          prev_cover_image_url: currentCoverImageUrl,
+          // Current slot now holds what was previous
           cover_image_url: prevCoverImageUrl,
           automation_lyrics: prevLyrics,
         };
@@ -1843,6 +1799,8 @@ Deno.serve(async (req) => {
         } else {
           restoreUpdate.full_song_url = restoredUrl;
         }
+
+        console.log(`[RESTORE] Pointer-swap for ${entityType} ${entityId}: ${currentSongUrl} ⇄ ${prevSongUrl}`);
 
         const { error: updateError } = await supabase
           .from(entityType)
@@ -1863,7 +1821,7 @@ Deno.serve(async (req) => {
           entityId!,
           "song_restored",
           "admin",
-          `Previous version restored from ${prevPath}`
+          `Previous version restored (pointer-swap)`
         );
 
         console.log(`[RESTORE] ✅ Restore complete for ${entityType} ${entityId}`);
