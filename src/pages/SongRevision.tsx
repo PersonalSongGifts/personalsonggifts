@@ -328,7 +328,7 @@ const SongRevision = () => {
             </div>
           )}
 
-          {isPostDelivery && (
+          {(isPostDelivery || !isLeadRevision || isLeadRevision) && (
             <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-5">
               <h3 className="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600" />
@@ -337,11 +337,11 @@ const SongRevision = () => {
               <ul className="space-y-2 text-sm text-amber-800">
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  Your original song will be <strong>permanently replaced</strong> with a new version
+                  Your {isLeadRevision ? "current 45-second preview" : "current song"} will be <strong>replaced</strong> with a new version on your song page
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  You get <strong>1 redo</strong> — it cannot be undone
+                  You get <strong>{pageData.revisions_remaining ?? 1} {(pageData.revisions_remaining ?? 1) === 1 ? "revision" : "revisions"}</strong> — this creates a brand-new version, not an edit to the existing one
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
@@ -349,11 +349,11 @@ const SongRevision = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  We can only rework what was in your original order — new details (names, stories, etc.) can't be guaranteed
+                  If your requested changes don't all fit, some content may be trimmed
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  If your requested changes don't all fit, some content may be trimmed
+                  Prefer the original after hearing the new version? Just reply to our support email and we can restore it for you.
                 </li>
               </ul>
             </div>
