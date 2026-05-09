@@ -336,11 +336,15 @@ const SongRevision = () => {
               <ul className="space-y-2 text-sm text-amber-800">
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  Your {isLeadRevision ? "current 45-second preview" : "current song"} will be <strong>replaced</strong> with a new version on your song page
+                  {isLeadRevision ? (
+                    <>Your current 45-second preview will be <strong>permanently replaced</strong> with a new version</>
+                  ) : (
+                    <>Your original song will be <strong>permanently replaced</strong> with a new version</>
+                  )}
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  You get <strong>{pageData.revisions_remaining ?? 1} {(pageData.revisions_remaining ?? 1) === 1 ? "revision" : "revisions"}</strong> — this creates a brand-new version, not an edit to the existing one
+                  You get <strong>{pageData.revisions_remaining ?? 1} {(pageData.revisions_remaining ?? 1) === 1 ? "redo" : "redos"}</strong> — it cannot be undone
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
@@ -348,11 +352,11 @@ const SongRevision = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  If your requested changes don't all fit, some content may be trimmed
+                  We can only rework what was in your original order — new details (names, stories, etc.) can't be guaranteed
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  Prefer the original after hearing the new version? Just reply to our support email and we can restore it for you.
+                  If your requested changes don't all fit, some content may be trimmed
                 </li>
             </ul>
           </div>
