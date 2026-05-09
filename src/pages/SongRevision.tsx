@@ -328,8 +328,7 @@ const SongRevision = () => {
             </div>
           )}
 
-          {(isPostDelivery || !isLeadRevision || isLeadRevision) && (
-            <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-5">
+          <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-5">
               <h3 className="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600" />
                 Important — please read before submitting
@@ -355,9 +354,8 @@ const SongRevision = () => {
                   <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
                   Prefer the original after hearing the new version? Just reply to our support email and we can restore it for you.
                 </li>
-              </ul>
-            </div>
-          )}
+            </ul>
+          </div>
 
           {emptyFieldWarnings.length > 0 && !confirmedEmpty && (
             <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
