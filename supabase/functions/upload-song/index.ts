@@ -187,14 +187,18 @@ Deno.serve(async (req) => {
 
     // Handle ORDER uploads
     if (entryType === "order" || orderId) {
-      const storagePath = `${shortId}${extension}`;
-      
-      // Upload audio to storage (upsert to allow replacing existing files)
+      // Versioned path — never overwrite an existing song file. Every manual
+      // re-upload writes to a NEW path so prior versions remain available
+      // forever via prev_song_url / activity log history.
+      const versionSuffix = `-${Date.now()}`;
+      const storagePath = `${shortId}${versionSuffix}${extension}`;
+
+      // Upload audio to storage
       const { error: uploadError } = await supabase.storage
         .from("songs")
         .upload(storagePath, uint8Array, {
           contentType: file.type || "audio/mpeg",
-          upsert: true,
+          upsert: false,
         });
 
       if (uploadError) {
@@ -339,14 +343,16 @@ Deno.serve(async (req) => {
     }
 
     // Handle LEAD uploads
-    const fullStoragePath = `leads/${shortId}-full${extension}`;
+    // Versioned paths — same no-overwrite policy as orders.
+    const leadVersionSuffix = `-${Date.now()}`;
+    const fullStoragePath = `leads/${shortId}-full${leadVersionSuffix}${extension}`;
     
     // Upload full song
     const { error: fullUploadError } = await supabase.storage
       .from("songs")
       .upload(fullStoragePath, uint8Array, {
         contentType: file.type || "audio/mpeg",
-        upsert: true,
+        upsert: false,
       });
 
     if (fullUploadError) {
@@ -367,13 +373,13 @@ Deno.serve(async (req) => {
       previewBytes = new Uint8Array(await previewFile.arrayBuffer());
       previewContentType = previewFile.type || "audio/wav";
       // Use .wav extension for client-generated previews
-      previewStoragePath = `leads/${shortId}-preview.wav`;
+      previewStoragePath = `leads/${shortId}-preview${leadVersionSuffix}.wav`;
     } else {
       // Fallback to byte-slicing (less accurate, for backwards compatibility)
       console.log("Falling back to byte-slicing preview");
       previewBytes = createPreviewClip(uint8Array, 45);
       previewContentType = file.type || "audio/mpeg";
-      previewStoragePath = `leads/${shortId}-preview${extension}`;
+      previewStoragePath = `leads/${shortId}-preview${leadVersionSuffix}${extension}`;
     }
 
     // Upload preview
@@ -381,7 +387,7 @@ Deno.serve(async (req) => {
       .from("songs")
       .upload(previewStoragePath, previewBytes, {
         contentType: previewContentType,
-        upsert: true,
+        upsert: false,
       });
 
     if (previewUploadError) {
