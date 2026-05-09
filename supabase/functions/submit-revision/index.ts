@@ -410,9 +410,16 @@ Deno.serve(async (req) => {
         autoOrderUpdate.notes = notesParts.join(" | ");
       }
 
-      // Check if content fields changed — needs regeneration
-      const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language", "style_notes", "tempo", "anything_else", "sender_context"];
-      const needsRegen = fieldsChanged.some(f => contentFields.includes(f));
+      // Regenerate by default for ANY field change, except a small explicit
+      // blacklist of fields that don't affect the song (delivery/contact info
+      // and admin-only metadata). This prevents silent bugs when new editable
+      // fields are added — they'll trigger regen automatically.
+      const NON_REGEN_FIELDS = new Set([
+        "customer_name",   // sender's display name — doesn't affect song
+        "delivery_email",  // where to email — doesn't affect song
+        "recipient_type",  // relationship label — doesn't affect lyrics/audio
+      ]);
+      const needsRegen = fieldsChanged.some(f => !NON_REGEN_FIELDS.has(f));
 
       if (needsRegen) {
         // Snapshot current song to -prev.mp3 BEFORE clearing song_url so the
