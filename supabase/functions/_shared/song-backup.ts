@@ -1,13 +1,14 @@
 // Shared helper: snapshot the current song file to a "-prev.mp3" slot in
 // storage and return the values to write into the entity's prev_* columns.
 //
-// Used by both admin-initiated revisions (admin-orders/approve-revision) and
-// customer self-service auto-approved revisions (submit-revision) so the
-// "Restore Previous Version" button is consistently available afterward.
+// As of the "no song is ever overwritten" policy, every newly generated /
+// uploaded song writes to a UNIQUE versioned storage path (e.g.
+// `orders/<SHORTID>-full-<timestamp>.mp3`). Because the current file is now
+// permanent and can never be clobbered by a future generation, a snapshot is
+// just a pointer — we copy the URL into prev_song_url and the file stays
+// where it is, forever. No download, no re-upload, no "-prev.mp3" slot.
 //
-// Failure policy: callers decide. Admin path treats failure as fatal (blocks
-// regeneration); customer auto-approve path treats failure as soft (logs and
-// proceeds without a snapshot — better to ship the revision than to block).
+// This guarantees unlimited revisions never destroy an earlier version.
 
 // deno-lint-ignore no-explicit-any
 type AnySupabase = any;
@@ -20,9 +21,9 @@ export interface BackupResult {
 }
 
 export async function backupSongFile(
-  supabaseUrl: string,
+  _supabaseUrl: string,
   _supabaseServiceKey: string,
-  supabase: AnySupabase,
+  _supabase: AnySupabase,
   entityType: "orders" | "leads",
   entityId: string,
   entity: Record<string, unknown>,
@@ -32,59 +33,17 @@ export async function backupSongFile(
     : (entity.full_song_url as string | null);
 
   if (!currentSongUrl) {
-    console.log(`[BACKUP] No current song for ${entityType} ${entityId}, skipping backup`);
+    console.log(`[BACKUP] No current song for ${entityType} ${entityId}, skipping snapshot`);
     return { backed_up: false };
   }
 
-  const bucketBase = `${supabaseUrl}/storage/v1/object/public/songs/`;
-  const path = currentSongUrl.includes(bucketBase)
-    ? currentSongUrl.slice(currentSongUrl.indexOf(bucketBase) + bucketBase.length).split("?")[0]
-    : null;
-
-  if (!path) {
-    // Non-bucket URL (e.g. legacy lead-hosted URL assigned to an order). The
-    // original URL is permanent — point prev_* straight at it.
-    console.warn(`[BACKUP] Non-bucket URL, using URL-as-snapshot fallback: ${currentSongUrl}`);
-    return {
-      backed_up: true,
-      prev_song_url: currentSongUrl,
-      prev_automation_lyrics: (entity.automation_lyrics as string | null) || null,
-      prev_cover_image_url: (entity.cover_image_url as string | null) || null,
-    };
-  }
-
-  const lastDot = path.lastIndexOf(".");
-  const ext = lastDot !== -1 ? path.slice(lastDot) : ".mp3";
-  const basePath = lastDot !== -1 ? path.slice(0, lastDot) : path;
-  const prevPath = `${basePath}-prev${ext}`;
-
-  console.log(`[BACKUP] Copying ${path} → ${prevPath}`);
-
-  let fileBytes: ArrayBuffer;
-  try {
-    const downloadRes = await fetch(currentSongUrl);
-    if (!downloadRes.ok) throw new Error(`Download failed: ${downloadRes.status}`);
-    fileBytes = await downloadRes.arrayBuffer();
-  } catch (e) {
-    console.error(`[BACKUP] Failed to download song for backup:`, e);
-    throw new Error("Could not back up current song.");
-  }
-
-  const { error: uploadError } = await supabase.storage
-    .from("songs")
-    .upload(prevPath, fileBytes, { contentType: "audio/mpeg", upsert: true });
-
-  if (uploadError) {
-    console.error(`[BACKUP] Failed to upload backup:`, uploadError);
-    throw new Error("Could not upload song backup.");
-  }
-
-  const prevPublicUrl = `${supabaseUrl}/storage/v1/object/public/songs/${prevPath}`;
-  console.log(`[BACKUP] ✅ Backup created at ${prevPath}`);
-
+  // Pure pointer snapshot — the file at `currentSongUrl` is on a versioned
+  // path (or a legacy permanent path) and will never be overwritten by a
+  // subsequent generation. Just record the URL.
+  console.log(`[BACKUP] ✅ Pointer snapshot for ${entityType} ${entityId}: ${currentSongUrl}`);
   return {
     backed_up: true,
-    prev_song_url: prevPublicUrl,
+    prev_song_url: currentSongUrl,
     prev_automation_lyrics: (entity.automation_lyrics as string | null) || null,
     prev_cover_image_url: (entity.cover_image_url as string | null) || null,
   };
