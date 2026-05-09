@@ -750,12 +750,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Deterministic storage path for idempotency
+    // Versioned storage paths — every generation writes to a UNIQUE path so
+    // a song file is NEVER overwritten by a subsequent revision. Unlimited
+    // versions are retained in storage. The DB columns (song_url, prev_song_url)
+    // simply point at whichever versions are "current" and "previous".
     const shortId = entityId.slice(0, 8).toUpperCase();
     const folderPrefix = entityType === "order" ? "orders" : "leads";
     const bonusSuffix = isBonusCallback ? "-bonus" : "";
-    const fullStoragePath = `${folderPrefix}/${shortId}${bonusSuffix}-full.mp3`;
-    const previewStoragePath = `${folderPrefix}/${shortId}${bonusSuffix}-preview.mp3`;
+    const versionSuffix = `-${Date.now()}`;
+    const fullStoragePath = `${folderPrefix}/${shortId}${bonusSuffix}-full${versionSuffix}.mp3`;
+    const previewStoragePath = `${folderPrefix}/${shortId}${bonusSuffix}-preview${versionSuffix}.mp3`;
 
     // Upload full song
     console.log(`[CALLBACK] Uploading full song to: ${fullStoragePath}`);
@@ -763,7 +767,7 @@ Deno.serve(async (req) => {
       .from("songs")
       .upload(fullStoragePath, audioBytes, {
         contentType: "audio/mpeg",
-        upsert: true,
+        upsert: false,
       });
 
     if (fullUploadError) {
@@ -780,7 +784,7 @@ Deno.serve(async (req) => {
         .from("songs")
         .upload(previewStoragePath, previewBytes, {
           contentType: "audio/mpeg",
-          upsert: true,
+          upsert: false,
         });
 
       if (previewUploadError) {
@@ -812,13 +816,13 @@ Deno.serve(async (req) => {
         if (coverResponse.ok) {
           const coverBuffer = await coverResponse.arrayBuffer();
           const coverBytes = new Uint8Array(coverBuffer);
-          const coverPath = `${folderPrefix}/${shortId}-cover.jpg`;
+          const coverPath = `${folderPrefix}/${shortId}-cover${versionSuffix}.jpg`;
           
           const { error: coverUploadError } = await supabase.storage
             .from("songs")
             .upload(coverPath, coverBytes, {
               contentType: "image/jpeg",
-              upsert: true,
+              upsert: false,
             });
           
           if (!coverUploadError) {
@@ -853,13 +857,13 @@ Deno.serve(async (req) => {
             
             const format = picture.format || "image/jpeg";
             const ext = format.includes("png") ? "png" : "jpg";
-            const coverPath = `${folderPrefix}/${shortId}-cover.${ext}`;
+            const coverPath = `${folderPrefix}/${shortId}-cover${versionSuffix}.${ext}`;
             
             const { error: coverUploadError } = await supabase.storage
               .from("songs")
               .upload(coverPath, coverBytes, {
                 contentType: format,
-                upsert: true,
+                upsert: false,
               });
             
             if (!coverUploadError) {
