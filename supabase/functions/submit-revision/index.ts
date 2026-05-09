@@ -411,7 +411,7 @@ Deno.serve(async (req) => {
       }
 
       // Check if content fields changed — needs regeneration
-      const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language", "style_notes", "tempo", "sender_context"];
+      const contentFields = ["recipient_name", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "occasion", "genre", "singer_preference", "language", "style_notes", "tempo", "anything_else", "sender_context"];
       const needsRegen = fieldsChanged.some(f => contentFields.includes(f));
 
       if (needsRegen) {
