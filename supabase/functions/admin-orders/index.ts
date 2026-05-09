@@ -1699,87 +1699,33 @@ Deno.serve(async (req) => {
         );
       }
 
-      // ===== HELPER: BACKUP SONG FILE TO -prev SLOT =====
+      // ===== HELPER: SNAPSHOT CURRENT SONG AS PREVIOUS VERSION =====
+      // No file copy needed — every newly generated song is written to a
+      // UNIQUE versioned storage path, so the file at `currentSongUrl` is
+      // permanent and cannot be overwritten by a future regeneration. We
+      // just record its URL into prev_song_url. Unlimited revisions are
+      // safe; older versions live in storage forever.
       async function backupSongFile(
-        supabaseUrl: string,
-        supabaseServiceKey: string,
-        supabase: ReturnType<typeof createClient>,
+        _supabaseUrl: string,
+        _supabaseServiceKey: string,
+        _supabase: ReturnType<typeof createClient>,
         entityType: "orders" | "leads",
         entityId: string,
         entity: Record<string, unknown>
       ): Promise<{ backed_up: boolean; prev_song_url?: string | null; prev_automation_lyrics?: string | null; prev_cover_image_url?: string | null }> {
-        // Determine current song URL based on entity type
         const currentSongUrl = entityType === "orders"
           ? (entity.song_url as string | null)
           : (entity.full_song_url as string | null);
 
         if (!currentSongUrl) {
-          console.log(`[BACKUP] No current song for ${entityType} ${entityId}, skipping backup`);
+          console.log(`[BACKUP] No current song for ${entityType} ${entityId}, skipping snapshot`);
           return { backed_up: false };
         }
 
-        // Extract path from public URL: strip everything up to and including /object/public/songs/
-        const bucketBase = `${supabaseUrl}/storage/v1/object/public/songs/`;
-        const path = currentSongUrl.includes(bucketBase)
-          ? currentSongUrl.slice(bucketBase.length).split("?")[0]  // strip query params
-          : null;
-
-        if (!path) {
-          // Fallback: URL doesn't sit in our songs/ bucket (e.g. legacy lead path
-          // assigned to an order via lead conversion). We can't create a -prev
-          // file copy, but the original URL itself is permanent — point prev_*
-          // straight at it so Restore Previous Version still works.
-          console.warn(`[BACKUP] Non-bucket URL, using URL-as-snapshot fallback: ${currentSongUrl}`);
-          return {
-            backed_up: true,
-            prev_song_url: currentSongUrl,
-            prev_automation_lyrics: (entity.automation_lyrics as string | null) || null,
-            prev_cover_image_url: (entity.cover_image_url as string | null) || null,
-          };
-        }
-
-        // Derive prev path: insert -prev before the extension
-        const lastDot = path.lastIndexOf(".");
-        const ext = lastDot !== -1 ? path.slice(lastDot) : ".mp3";
-        const basePath = lastDot !== -1 ? path.slice(0, lastDot) : path;
-        const prevPath = `${basePath}-prev${ext}`;
-
-        console.log(`[BACKUP] Copying ${path} → ${prevPath}`);
-
-        // Download current file
-        let fileBytes: ArrayBuffer;
-        try {
-          const downloadRes = await fetch(currentSongUrl);
-          if (!downloadRes.ok) {
-            throw new Error(`Download failed: ${downloadRes.status}`);
-          }
-          fileBytes = await downloadRes.arrayBuffer();
-        } catch (e) {
-          console.error(`[BACKUP] Failed to download song for backup:`, e);
-          throw new Error("Could not back up current song — regeneration blocked.");
-        }
-
-        // Upload to -prev slot
-        const { error: uploadError } = await supabase.storage
-          .from("songs")
-          .upload(prevPath, fileBytes, {
-            contentType: "audio/mpeg",
-            upsert: true,
-          });
-
-        if (uploadError) {
-          console.error(`[BACKUP] Failed to upload backup:`, uploadError);
-          throw new Error("Could not upload song backup — regeneration blocked.");
-        }
-
-        // Build public URL for the prev file
-        const prevPublicUrl = `${supabaseUrl}/storage/v1/object/public/songs/${prevPath}`;
-
-        console.log(`[BACKUP] ✅ Backup created at ${prevPath}`);
-
+        console.log(`[BACKUP] ✅ Pointer snapshot for ${entityType} ${entityId}: ${currentSongUrl}`);
         return {
           backed_up: true,
-          prev_song_url: prevPublicUrl,
+          prev_song_url: currentSongUrl,
           prev_automation_lyrics: (entity.automation_lyrics as string | null) || null,
           prev_cover_image_url: (entity.cover_image_url as string | null) || null,
         };
