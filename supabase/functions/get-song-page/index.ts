@@ -17,6 +17,33 @@ function generateLyricsPreview(lyrics: string): string {
   return preview.join("\n");
 }
 
+// In-memory per-instance caches.
+// - successCache: short TTL on successful 200 responses, lets us absorb
+//   bursts of repeat traffic without re-hitting the DB and serve through
+//   transient PGRST002 storms.
+// - staleCache: longer TTL fallback used ONLY when the DB is currently
+//   failing with transient errors after all retries exhaust. Better to
+//   serve a slightly stale song page than a 503.
+type CachedResponse = { body: string; status: number; expiresAt: number };
+const SUCCESS_TTL_MS = 30_000;
+const STALE_TTL_MS = 10 * 60_000;
+const successCache = new Map<string, CachedResponse>();
+const staleCache = new Map<string, CachedResponse>();
+
+function getFresh(key: string): CachedResponse | null {
+  const hit = successCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit;
+  if (hit) successCache.delete(key);
+  return null;
+}
+
+function getStale(key: string): CachedResponse | null {
+  const hit = staleCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit;
+  if (hit) staleCache.delete(key);
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -41,6 +68,20 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Invalid order ID format" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
       );
+    }
+
+    const cacheKey = orderId.toLowerCase();
+    const fresh = getFresh(cacheKey);
+    if (fresh) {
+      return new Response(fresh.body, {
+        status: fresh.status,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "X-Cache": "HIT",
+        },
+      });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -102,6 +143,18 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error("Database error:", error);
+      const stale = getStale(cacheKey);
+      if (stale) {
+        return new Response(stale.body, {
+          status: stale.status,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+            "X-Cache": "STALE",
+          },
+        });
+      }
       return new Response(
         JSON.stringify({ error: "Failed to fetch order" }),
         { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
@@ -214,9 +267,14 @@ Deno.serve(async (req) => {
       response.lyrics_preview = swapName(generateLyricsPreview(order.automation_lyrics));
     }
 
+    const body = JSON.stringify(response);
+    const now = Date.now();
+    successCache.set(cacheKey, { body, status: 200, expiresAt: now + SUCCESS_TTL_MS });
+    staleCache.set(cacheKey, { body, status: 200, expiresAt: now + STALE_TTL_MS });
+
     return new Response(
-      JSON.stringify(response),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
+      body,
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store", "X-Cache": "MISS" } }
     );
   } catch (error) {
     console.error("Get song page error:", error);
