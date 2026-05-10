@@ -847,6 +847,13 @@ const SongPlayer = () => {
           </Button>
         </div>
 
+        {/* Download nudge — only show when not yet unlocked */}
+        {!songData.download_unlocked && (
+          <p className="text-center text-sm text-muted-foreground -mt-4 mb-8 px-4 max-w-md mx-auto">
+            Streaming links won't be around forever — download your song to keep it safe for years to come.
+          </p>
+        )}
+
         {/* Revision Button */}
         {songData.revision_available && songData.revision_token && (
           <div className="text-center mb-6">
