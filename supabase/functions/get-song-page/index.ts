@@ -52,36 +52,59 @@ Deno.serve(async (req) => {
     let orders: any[] | null = null;
     let error: any = null;
 
-    if (isShortId) {
-      const result = await supabase
-        .rpc("find_orders_by_short_id", {
+    // Retry transient backend errors (e.g. PGRST002 schema cache, 5xx)
+    // before giving up. True 404s fall through unchanged.
+    const isTransientError = (e: any): boolean => {
+      if (!e) return false;
+      const code = e.code || "";
+      const msg = (e.message || "").toLowerCase();
+      return (
+        code === "PGRST002" ||
+        code === "PGRST001" ||
+        code === "08000" || code === "08003" || code === "08006" ||
+        code === "57P03" || code === "53300" || code === "XX000" ||
+        msg.includes("schema cache") ||
+        msg.includes("fetch failed") ||
+        msg.includes("timeout") ||
+        msg.includes("network") ||
+        msg.includes("connection")
+      );
+    };
+
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (isShortId) {
+        const result = await supabase.rpc("find_orders_by_short_id", {
           short_id: orderId,
           status_filter: ["delivered", "ready", "completed"],
           require_song_url: true,
           max_results: 2,
         });
-
-      if (result.error) {
         error = result.error;
+        orders = result.error ? null : (result.data || []);
       } else {
-        orders = result.data || [];
+        const result = await supabase
+          .from("orders")
+          .select(selectFields)
+          .eq("id", orderId)
+          .limit(1);
+        error = result.error;
+        orders = result.data;
       }
-    } else {
-      const result = await supabase
-        .from("orders")
-        .select(selectFields)
-        .eq("id", orderId)
-        .limit(1);
 
-      orders = result.data;
-      error = result.error;
+      if (!error) break;
+      if (!isTransientError(error)) break;
+      if (attempt < maxAttempts) {
+        console.warn(`get-song-page transient error (attempt ${attempt}):`, error?.code, error?.message);
+        await new Promise((r) => setTimeout(r, 250 * attempt));
+      }
     }
 
     if (error) {
       console.error("Database error:", error);
       return new Response(
         JSON.stringify({ error: "Failed to fetch order" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
       );
     }
 
@@ -112,17 +135,27 @@ Deno.serve(async (req) => {
     const hasLyrics = !!order.automation_lyrics && order.automation_lyrics.trim().length > 0;
     const lyricsUnlocked = !!order.lyrics_unlocked_at;
 
-    // Check if revisions feature is enabled
+    // Check if revisions feature is enabled (best-effort, non-fatal)
     let revisionAvailable = false;
     let selfServiceEnabled = false;
-    try {
-      const { data: revSetting } = await supabase
-        .from("admin_settings")
-        .select("value")
-        .eq("key", "self_service_revisions_enabled")
-        .maybeSingle();
-      selfServiceEnabled = revSetting?.value === "true";
-    } catch { /* ignore */ }
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const { data: revSetting, error: revErr } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", "self_service_revisions_enabled")
+          .maybeSingle();
+        if (revErr) {
+          if (isTransientError(revErr) && attempt < 3) {
+            await new Promise((r) => setTimeout(r, 200 * attempt));
+            continue;
+          }
+          break;
+        }
+        selfServiceEnabled = revSetting?.value === "true";
+        break;
+      } catch { break; }
+    }
 
     if (selfServiceEnabled && order.revision_token) {
       const isPreDelivery = !order.sent_at;
