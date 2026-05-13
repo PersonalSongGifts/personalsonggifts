@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useActivePromo } from "@/hooks/useActivePromo";
 import { useParams, Link, useSearchParams } from "react-router-dom";
-import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Pencil } from "lucide-react";
+import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Pencil, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import TipJar from "@/components/song/TipJar";
+import TipDialog from "@/components/song/TipDialog";
 
 // Occasion fallback images – ES module imports so Vite bundles them correctly
 import birthdayImg from "@/assets/occasions/birthday.webp";
