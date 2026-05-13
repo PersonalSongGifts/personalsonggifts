@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useActivePromo } from "@/hooks/useActivePromo";
 import { useParams, Link, useSearchParams } from "react-router-dom";
-import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Pencil } from "lucide-react";
+import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Pencil, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import TipJar from "@/components/song/TipJar";
+import TipDialog from "@/components/song/TipDialog";
 
 // Occasion fallback images – ES module imports so Vite bundles them correctly
 import birthdayImg from "@/assets/occasions/birthday.webp";
@@ -91,6 +93,7 @@ const SongPlayer = () => {
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [bonusLoading, setBonusLoading] = useState(false);
   const [lyricsCopied, setLyricsCopied] = useState(false);
+  const [tipDialogOpen, setTipDialogOpen] = useState(false);
 
   // Bonus audio player state
   const bonusAudioRef = useRef<HTMLAudioElement>(null);
@@ -255,6 +258,40 @@ const SongPlayer = () => {
 
     verifyBonusPurchase();
   }, [searchParams]);
+
+  // Handle tip success redirect from Stripe
+  useEffect(() => {
+    const tipSessionId = searchParams.get("tip_session_id");
+    const tipStatus = searchParams.get("tip");
+    if (tipStatus === "cancelled") {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (!tipSessionId) return;
+
+    const verifyTip = async () => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-tip`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: tipSessionId }),
+          },
+        );
+        const data = await response.json();
+        if (response.ok && data.status === "paid") {
+          toast.success("Thank you — your tip means the world to us. 💛");
+        }
+      } catch (err) {
+        console.error("Tip verification failed:", err);
+      } finally {
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    verifyTip();
+  }, [searchParams, setSearchParams]);
 
   // Bonus audio event handlers
   useEffect(() => {
@@ -845,6 +882,17 @@ const SongPlayer = () => {
             <Copy className="h-4 w-4" />
             Copy Link
           </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => setTipDialogOpen(true)}
+            className="gap-2"
+            aria-label="Leave a tip"
+            title="Leave a tip"
+          >
+            <Heart className="h-4 w-4 text-primary fill-primary/20" />
+            Tip
+          </Button>
         </div>
 
         {/* Download nudge — only show when not yet unlocked */}
@@ -853,6 +901,9 @@ const SongPlayer = () => {
             Streaming links won't be around forever — download your song to keep it safe for years to come.
           </p>
         )}
+
+        {/* Tip jar */}
+        {orderId && <TipJar orderId={orderId} />}
 
         {/* Revision Button */}
         {songData.revision_available && songData.revision_token && (
@@ -1241,6 +1292,13 @@ const SongPlayer = () => {
           </Link>
         </div>
       </div>
+      {orderId && (
+        <TipDialog
+          open={tipDialogOpen}
+          onOpenChange={setTipDialogOpen}
+          orderId={orderId}
+        />
+      )}
     </div>
   );
 };
