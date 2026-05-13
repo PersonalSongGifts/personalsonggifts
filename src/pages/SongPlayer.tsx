@@ -93,6 +93,7 @@ const SongPlayer = () => {
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [bonusLoading, setBonusLoading] = useState(false);
   const [lyricsCopied, setLyricsCopied] = useState(false);
+  const [tipDialogOpen, setTipDialogOpen] = useState(false);
 
   // Bonus audio player state
   const bonusAudioRef = useRef<HTMLAudioElement>(null);
