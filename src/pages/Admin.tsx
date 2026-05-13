@@ -50,6 +50,7 @@ import { CSAssistant } from "@/components/admin/CSAssistant";
 import { PromosPanel } from "@/components/admin/PromosPanel";
 import { BonusTrackAnalytics } from "@/components/admin/BonusTrackAnalytics";
 import { BonusTrackEmailPanel } from "@/components/admin/BonusTrackEmailPanel";
+import { TipsAnalytics } from "@/components/admin/TipsAnalytics";
 import { subDays, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 import { getCountryFromTimezone } from "@/lib/timezoneCountry";
 
@@ -1456,6 +1457,9 @@ const { data, error } = await listOrders("all", 0, 250);
 
             {/* Bonus Track Analytics */}
             <BonusTrackAnalytics orders={analyticsOrders} />
+
+            {/* Tips Analytics */}
+            <TipsAnalytics adminPassword={password} />
 
             {/* Hot Leads - most engaged unconverted */}
             <HotLeadsCard
