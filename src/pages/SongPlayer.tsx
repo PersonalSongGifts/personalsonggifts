@@ -259,6 +259,40 @@ const SongPlayer = () => {
     verifyBonusPurchase();
   }, [searchParams]);
 
+  // Handle tip success redirect from Stripe
+  useEffect(() => {
+    const tipSessionId = searchParams.get("tip_session_id");
+    const tipStatus = searchParams.get("tip");
+    if (tipStatus === "cancelled") {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (!tipSessionId) return;
+
+    const verifyTip = async () => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-tip`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: tipSessionId }),
+          },
+        );
+        const data = await response.json();
+        if (response.ok && data.status === "paid") {
+          toast.success("Thank you — your tip means the world to us. 💛");
+        }
+      } catch (err) {
+        console.error("Tip verification failed:", err);
+      } finally {
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    verifyTip();
+  }, [searchParams, setSearchParams]);
+
   // Bonus audio event handlers
   useEffect(() => {
     const audio = bonusAudioRef.current;
