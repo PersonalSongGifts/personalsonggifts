@@ -282,6 +282,14 @@ const SongPlayer = () => {
         const data = await response.json();
         if (response.ok && data.status === "paid") {
           toast.success("Thank you — your tip means the world to us. 💛");
+          if (orderId) {
+            try {
+              window.sessionStorage.setItem(`tip_thanked_${orderId}`, "1");
+              window.dispatchEvent(new Event("tip-thanked"));
+            } catch {
+              /* sessionStorage may be unavailable in some browsers */
+            }
+          }
         }
       } catch (err) {
         console.error("Tip verification failed:", err);
