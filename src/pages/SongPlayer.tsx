@@ -1292,6 +1292,13 @@ const SongPlayer = () => {
           </Link>
         </div>
       </div>
+      {orderId && (
+        <TipDialog
+          open={tipDialogOpen}
+          onOpenChange={setTipDialogOpen}
+          orderId={orderId}
+        />
+      )}
     </div>
   );
 };
