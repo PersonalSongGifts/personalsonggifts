@@ -113,6 +113,57 @@ Deno.serve(async (req) => {
 
     console.log(`Received webhook event: ${event.type}`);
 
+    // --- charge.refunded handler for tips (idempotent) ---
+    if (event.type === "charge.refunded") {
+      const charge = event.data.object as Stripe.Charge;
+      const paymentIntentId = typeof charge.payment_intent === "string"
+        ? charge.payment_intent
+        : charge.payment_intent?.id;
+
+      if (paymentIntentId) {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        );
+
+        const { data: tip } = await supabase
+          .from("song_tips")
+          .select("id, order_id, amount_cents, refunded_at")
+          .eq("stripe_payment_intent_id", paymentIntentId)
+          .maybeSingle();
+
+        if (tip) {
+          // Idempotent: COALESCE-style guard so retries / manual->webhook race don't overwrite
+          const { error } = await supabase
+            .from("song_tips")
+            .update({
+              refunded_at: tip.refunded_at ?? new Date().toISOString(),
+              refunded_by: tip.refunded_at ? undefined : "webhook",
+            })
+            .eq("id", tip.id);
+
+          if (error) {
+            console.error("[WEBHOOK] Failed to mark tip refunded:", error);
+          } else if (!tip.refunded_at) {
+            await logActivity(
+              supabase,
+              "order",
+              tip.order_id,
+              "tip_refunded",
+              "system",
+              `Tip of $${(tip.amount_cents / 100).toFixed(2)} refunded via Stripe`,
+            );
+          }
+
+          return new Response(
+            JSON.stringify({ received: true, type: "tip_refunded", tipId: tip.id }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+      // Not a tip — fall through to "unhandled" acknowledgement
+    }
+
     // Handle checkout.session.completed event
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
