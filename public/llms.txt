@@ -1,0 +1,14 @@
+# PersonalSongGifts
+
+> Custom, one-of-a-kind songs crafted from your story and memories — perfect for anniversaries, birthdays, weddings, memorials, and other meaningful moments. Delivered in 24–48 hours.
+
+## Pages
+
+- [Home](/): Overview, samples, how it works, and customer reviews.
+- [Create Your Song](/create): Step-by-step form to order a custom song (recipient, occasion, story, music style).
+- [Privacy Policy](/privacy): How we handle your information.
+- [Terms of Service](/terms): Terms governing use of the service.
+
+## Optional
+
+- Contact: support@personalsonggifts.com
