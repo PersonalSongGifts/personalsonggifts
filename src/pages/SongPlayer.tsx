@@ -882,6 +882,17 @@ const SongPlayer = () => {
             <Copy className="h-4 w-4" />
             Copy Link
           </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => setTipDialogOpen(true)}
+            className="gap-2"
+            aria-label="Leave a tip"
+            title="Leave a tip"
+          >
+            <Heart className="h-4 w-4 text-primary fill-primary/20" />
+            Tip
+          </Button>
         </div>
 
         {/* Download nudge — only show when not yet unlocked */}
@@ -890,6 +901,9 @@ const SongPlayer = () => {
             Streaming links won't be around forever — download your song to keep it safe for years to come.
           </p>
         )}
+
+        {/* Tip jar */}
+        {orderId && <TipJar orderId={orderId} />}
 
         {/* Revision Button */}
         {songData.revision_available && songData.revision_token && (
