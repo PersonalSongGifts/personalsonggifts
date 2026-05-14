@@ -736,6 +736,8 @@ Deno.serve(async (req) => {
                 timezone: order.timezone,
                 smsStatus: order.sms_status,
               isRevision: (order.revision_count || 0) > 0,
+              bonusAvailable: !!order.bonus_song_url,
+              bonusSongTitle: order.bonus_song_title,
               }),
             }
           );
@@ -855,6 +857,9 @@ Deno.serve(async (req) => {
               songUrl: order.song_url,
               ccEmail: order.customer_email_cc,
               revisionToken: order.revision_token,
+              isRevision: (order.revision_count || 0) > 0,
+              bonusAvailable: !!order.bonus_song_url,
+              bonusSongTitle: order.bonus_song_title,
             }),
           });
 
@@ -950,6 +955,9 @@ Deno.serve(async (req) => {
               smsOptIn: order.sms_opt_in,
               timezone: order.timezone,
               smsStatus: null, // Allow SMS to re-fire on resend
+              isRevision: (order.revision_count || 0) > 0,
+              bonusAvailable: !!order.bonus_song_url,
+              bonusSongTitle: order.bonus_song_title,
             }),
           });
 
