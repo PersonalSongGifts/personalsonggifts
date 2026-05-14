@@ -231,6 +231,8 @@ Deno.serve(async (req) => {
       revision_token: order.revision_token || null,
       revision_available: revisionAvailable,
       revision_status: order.revision_status || null,
+      revision_count: order.revision_count || 0,
+      delivered_at: order.delivered_at || null,
       download_unlocked: !!order.download_unlocked_at,
       genre: order.genre || null,
       bonus_available: !!(order.bonus_preview_url || order.bonus_song_url),

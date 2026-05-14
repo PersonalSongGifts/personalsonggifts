@@ -63,6 +63,13 @@ Deno.serve(async (req) => {
       ? (bonusSongTitle.includes("(R&B") ? "R&B" : "acoustic")
       : "acoustic";
 
+    // For revisions with a bonus, fold the bonus mention into the main lead
+    // paragraph instead of a separate P.S. — customers were emailing in
+    // asking where the refreshed bonus was after a revision.
+    const bonusArticle = bonusGenreLabel === "R&B" ? "an R&B" : "an acoustic";
+    const showBonusInline = isRevision && !!bonusAvailable;
+    const showBonusPS = !!bonusAvailable && !showBonusInline;
+
     if (!customerEmail || !orderId || !songUrl) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
@@ -91,7 +98,9 @@ Deno.serve(async (req) => {
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
       ${isRevision
-        ? `We've created a new version of your ${occasion} song for <strong>${recipientName}</strong> based on your feedback.`
+        ? (showBonusInline
+            ? `We've created a new version of your ${occasion} song for <strong>${recipientName}</strong> based on your feedback, and we also refreshed the ${bonusArticle} bonus version to match. Both are on your song page.`
+            : `We've created a new version of your ${occasion} song for <strong>${recipientName}</strong> based on your feedback.`)
         : `Your personalized ${occasion} song for <strong>${recipientName}</strong> is complete and ready to share!`}
     </p>
 
@@ -113,7 +122,7 @@ Deno.serve(async (req) => {
       <a href="https://personalsonggifts.lovable.app/song/revision/${revisionToken}" style="color: #1E3A5F;">Request a revision</a>
     </p>` : ''}
 
-    ${bonusAvailable ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 16px 0;">
+    ${showBonusPS ? `<p style="color: #555555; font-size: 14px; line-height: 1.6; margin: 16px 0;">
       P.S. We also made ${bonusGenreLabel === "R&B" ? "an R&B" : "an acoustic"} version of your song — visit your song page to check it out.
     </p>` : ''}
 
@@ -139,14 +148,16 @@ Deno.serve(async (req) => {
 Dear ${customerName || "Valued Customer"},
 
 ${isRevision
-  ? `We've created a new version of your ${occasion} song for ${recipientName} based on your feedback.`
+  ? (showBonusInline
+      ? `We've created a new version of your ${occasion} song for ${recipientName} based on your feedback, and we also refreshed the ${bonusArticle} bonus version to match. Both are on your song page.`
+      : `We've created a new version of your ${occasion} song for ${recipientName} based on your feedback.`)
   : `Your personalized ${occasion} song for ${recipientName} is complete and ready to share!`}
 
 Listen here: ${songPageUrl}
 
 Order ID: ${orderId.slice(0, 8).toUpperCase()}
 ${revisionToken ? `\nWant changes? Request a revision: https://personalsonggifts.lovable.app/song/revision/${revisionToken}\n` : ''}
-${bonusAvailable ? `P.S. We also made ${bonusGenreLabel === "R&B" ? "an R&B" : "an acoustic"} version of your song — visit your song page to check it out.\n` : ''}
+${showBonusPS ? `P.S. We also made ${bonusGenreLabel === "R&B" ? "an R&B" : "an acoustic"} version of your song — visit your song page to check it out.\n` : ''}
 We hope it brings joy!
 
 Warm regards,

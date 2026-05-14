@@ -69,6 +69,8 @@ interface SongData {
   revision_token?: string;
   revision_available?: boolean;
   revision_status?: string;
+  revision_count?: number;
+  delivered_at?: string | null;
   download_unlocked: boolean;
   bonus_available?: boolean;
   bonus_preview_url?: string | null;
@@ -769,6 +771,12 @@ const SongPlayer = () => {
           <p className="text-muted-foreground capitalize">
             {songData.occasion} • For {songData.recipient_name}
           </p>
+          {(songData.revision_count || 0) > 0 && songData.revision_status === "approved" && (
+            <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Revised version{songData.delivered_at ? ` • Updated ${new Date(songData.delivered_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+            </div>
+          )}
         </div>
 
         {/* Audio Player Controls */}
