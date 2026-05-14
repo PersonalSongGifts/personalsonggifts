@@ -69,6 +69,8 @@ interface SongData {
   revision_token?: string;
   revision_available?: boolean;
   revision_status?: string;
+  revision_count?: number;
+  delivered_at?: string | null;
   download_unlocked: boolean;
   bonus_available?: boolean;
   bonus_preview_url?: string | null;
