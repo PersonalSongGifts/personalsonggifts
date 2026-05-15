@@ -179,6 +179,53 @@ Deno.serve(async (req) => {
 
       // --- Lyrics Unlock handler (early return before order creation) ---
       const sessionMetadata = session.metadata || {};
+      // --- Song Tip handler (canonical: client-side verify-tip is best-effort only) ---
+      if (sessionMetadata.entitlement === "song_tip") {
+        const tipOrderId = sessionMetadata.orderId;
+        console.log(`[WEBHOOK] Song tip for order ${tipOrderId}, session ${session.id}`);
+
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        );
+
+        const amountCents = session.amount_total ?? Number(sessionMetadata.amountCents) ?? 0;
+        const customerEmail = session.customer_details?.email ?? null;
+        const paymentIntent = typeof session.payment_intent === "string" ? session.payment_intent : null;
+
+        // Idempotent: only flip rows still pending for this session
+        const { data: updated, error: tipErr } = await supabase
+          .from("song_tips")
+          .update({
+            status: "paid",
+            amount_cents: amountCents,
+            stripe_payment_intent_id: paymentIntent,
+            customer_email: customerEmail,
+            paid_at: new Date().toISOString(),
+          })
+          .eq("stripe_session_id", session.id)
+          .eq("status", "pending")
+          .select("id");
+
+        if (tipErr) {
+          console.error("[WEBHOOK] Failed to mark tip paid:", tipErr);
+        } else if (updated && updated.length > 0 && tipOrderId) {
+          await logActivity(
+            supabase,
+            "order",
+            tipOrderId,
+            "tip_received",
+            "system",
+            `Tip of $${(amountCents / 100).toFixed(2)} received (via webhook)`,
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ received: true, type: "song_tip", orderId: tipOrderId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       if (sessionMetadata.entitlement === "lyrics_unlock") {
         const lyricsOrderId = sessionMetadata.orderId;
         console.log(`[WEBHOOK] Lyrics unlock for order ${lyricsOrderId}`);
