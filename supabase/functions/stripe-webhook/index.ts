@@ -835,6 +835,23 @@ Deno.serve(async (req) => {
                 console.error("[WEBHOOK] Failed to send delivery for lead-converted order:", e);
               }
             }
+            // Lead had lyrics but no song — order is now at lyrics_ready.
+            // Trigger audio generation so the customer doesn't get stuck.
+            else if (matchingLead.automation_lyrics && !matchingLead.full_song_url) {
+              try {
+                console.log(`[WEBHOOK] Lyrics-only lead ${matchingLead.id} — triggering audio for order ${newOrder.id}`);
+                await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${supabaseServiceKey}`,
+                  },
+                  body: JSON.stringify({ orderId: newOrder.id, skipLyrics: true, forceRun: true }),
+                });
+              } catch (e) {
+                console.error("[WEBHOOK] Failed to trigger audio for lyrics-only order:", e);
+              }
+            }
           }
         }
       } catch (leadError) {
