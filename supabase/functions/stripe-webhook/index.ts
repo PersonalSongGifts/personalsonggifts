@@ -529,6 +529,24 @@ Deno.serve(async (req) => {
             console.error("[WEBHOOK] Failed to trigger lyrics generation:", e);
           }
         }
+        // If lead has lyrics but NO full song, kick off audio generation now.
+        // Without this, the converted order sits at automation_status='lyrics_ready'
+        // forever and the customer never receives a song.
+        else if (!lead.full_song_url) {
+          try {
+            console.log(`[WEBHOOK] Lead ${lead.id} has lyrics but no song — triggering audio for order ${leadOrder.id}`);
+            await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ orderId: leadOrder.id, skipLyrics: true, forceRun: true }),
+            });
+          } catch (e) {
+            console.error("[WEBHOOK] Failed to trigger audio for lyrics-only lead order:", e);
+          }
+        }
 
         // Send delivery email if song exists
         if (lead.full_song_url) {
