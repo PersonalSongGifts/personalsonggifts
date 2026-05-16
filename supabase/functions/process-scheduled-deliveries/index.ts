@@ -291,6 +291,66 @@ Deno.serve(async (req) => {
       console.error("[RECOVERY] Error:", e);
     }
 
+    // ======= 1b-bis. LYRICS_READY DEAD-END RECOVERY =======
+    // If an order/lead has lyrics but no audio and is sitting at
+    // automation_status='lyrics_ready' (no active task in flight), nothing
+    // else will ever pick it up. This happens for lead-converted orders
+    // where the lead had only generated lyrics. Trigger audio with
+    // skipLyrics=true so the customer actually gets a song.
+    try {
+      const lyricsReadyCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      let lyricsReadyTriggered = 0;
+
+      for (const table of ["orders", "leads"] as const) {
+        const songCol = table === "orders" ? "song_url" : "preview_song_url";
+        const { data: stuck } = await supabase
+          .from(table)
+          .select(`id, automation_status, ${songCol}, automation_lyrics, automation_started_at, automation_retry_count`)
+          .eq("automation_status", "lyrics_ready")
+          .is(songCol, null)
+          .not("automation_lyrics", "is", null)
+          .is("automation_manual_override_at", null)
+          .is("dismissed_at", null)
+          .or(`automation_started_at.is.null,automation_started_at.lte.${lyricsReadyCutoff}`)
+          .limit(MAX_RETRIES_PER_RUN);
+
+        for (const row of stuck || []) {
+          const retryCount = (row.automation_retry_count || 0) + 1;
+          if (retryCount > MAX_AUTO_RETRIES) {
+            console.log(`[RECOVERY] ${table} ${row.id} stuck at lyrics_ready, exceeded max retries → permanently_failed`);
+            await supabase.from(table).update({
+              automation_status: "permanently_failed",
+              automation_last_error: `Stuck at lyrics_ready, audio trigger failed ${MAX_AUTO_RETRIES} times`,
+            }).eq("id", row.id);
+            continue;
+          }
+          try {
+            console.log(`[RECOVERY] ${table} ${row.id} stuck at lyrics_ready — triggering audio (retry ${retryCount}/${MAX_AUTO_RETRIES})`);
+            await supabase.from(table).update({ automation_retry_count: retryCount }).eq("id", row.id);
+            const body = table === "orders" ? { orderId: row.id } : { leadId: row.id };
+            await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ ...body, skipLyrics: true, forceRun: true }),
+            });
+            lyricsReadyTriggered++;
+          } catch (e) {
+            console.error(`[RECOVERY] Failed to trigger audio for ${table} ${row.id}:`, e);
+          }
+        }
+      }
+
+      if (lyricsReadyTriggered > 0) {
+        console.log(`[RECOVERY] Re-triggered audio for ${lyricsReadyTriggered} lyrics_ready items`);
+      }
+      results.lyricsReadyRecoveries = lyricsReadyTriggered;
+    } catch (e) {
+      console.error("[RECOVERY:lyrics_ready] Error:", e);
+    }
+
     // ======= 1c. ZOMBIE JOB CLEANUP =======
     // Any job stuck in an active state >24h is dead (Suno task expired, callback lost,
     // etc.). Mark failed so it stops occupying scheduler slots forever.
