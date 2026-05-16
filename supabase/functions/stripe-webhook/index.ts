@@ -529,6 +529,24 @@ Deno.serve(async (req) => {
             console.error("[WEBHOOK] Failed to trigger lyrics generation:", e);
           }
         }
+        // If lead has lyrics but NO full song, kick off audio generation now.
+        // Without this, the converted order sits at automation_status='lyrics_ready'
+        // forever and the customer never receives a song.
+        else if (!lead.full_song_url) {
+          try {
+            console.log(`[WEBHOOK] Lead ${lead.id} has lyrics but no song — triggering audio for order ${leadOrder.id}`);
+            await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ orderId: leadOrder.id, skipLyrics: true, forceRun: true }),
+            });
+          } catch (e) {
+            console.error("[WEBHOOK] Failed to trigger audio for lyrics-only lead order:", e);
+          }
+        }
 
         // Send delivery email if song exists
         if (lead.full_song_url) {
@@ -815,6 +833,23 @@ Deno.serve(async (req) => {
                 console.log(`[WEBHOOK] Delivery email sent for standard-path lead-converted order ${newOrder.id}`);
               } catch (e) {
                 console.error("[WEBHOOK] Failed to send delivery for lead-converted order:", e);
+              }
+            }
+            // Lead had lyrics but no song — order is now at lyrics_ready.
+            // Trigger audio generation so the customer doesn't get stuck.
+            else if (matchingLead.automation_lyrics && !matchingLead.full_song_url) {
+              try {
+                console.log(`[WEBHOOK] Lyrics-only lead ${matchingLead.id} — triggering audio for order ${newOrder.id}`);
+                await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${supabaseServiceKey}`,
+                  },
+                  body: JSON.stringify({ orderId: newOrder.id, skipLyrics: true, forceRun: true }),
+                });
+              } catch (e) {
+                console.error("[WEBHOOK] Failed to trigger audio for lyrics-only order:", e);
               }
             }
           }
