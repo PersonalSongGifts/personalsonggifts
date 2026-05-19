@@ -3238,28 +3238,7 @@ const { data, error } = await listOrders("all", 0, 250);
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Restore Previous Version Confirmation Dialog */}
-      <AlertDialog open={showRestoreConfirm} onOpenChange={setShowRestoreConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Restore Previous Version?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will revert the song and lyrics to the version before the last regeneration. Your <strong>current song and lyrics will be permanently replaced</strong>. Only one previous version is kept, so this cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={restoringPreviousVersion}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleRestorePreviousVersion}
-              disabled={restoringPreviousVersion}
-              className="bg-teal-600 hover:bg-teal-700 text-white"
-            >
-              {restoringPreviousVersion ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RotateCcw className="h-4 w-4 mr-2" />}
-              {restoringPreviousVersion ? "Restoring..." : "Yes, Restore Previous Version"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* (Legacy confirm dialog removed — restore picker lives in the order toolbar dropdown) */}
 
       {/* Comp Bonus Track Confirmation Dialog */}
       <AlertDialog open={showBonusCompDialog} onOpenChange={(open) => {
