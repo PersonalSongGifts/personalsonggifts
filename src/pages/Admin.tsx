@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Lock, Music, Send, RefreshCw, Eye, EyeOff, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy, Calendar, Tag, ShieldCheck, Gift } from "lucide-react";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { SongVersionTimeline } from "@/components/admin/SongVersionTimeline";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
 import { ActivityLog } from "@/components/admin/ActivityLog";
@@ -258,6 +258,7 @@ export default function Admin() {
   const [regenerating, setRegenerating] = useState(false);
   // Restore previous version state
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [showVersionTimeline, setShowVersionTimeline] = useState(false);
   const [showDisableAccessConfirm, setShowDisableAccessConfirm] = useState(false);
   const [disableAccessReason, setDisableAccessReason] = useState("");
   const [disablingAccess, setDisablingAccess] = useState(false);
@@ -2487,51 +2488,31 @@ const { data, error } = await listOrders("all", 0, 250);
                         </div>
                       )}
 
-                      {/* Restore Previous Version — dropdown of up to 10 history slots */}
+                      {/* Version History — opens timeline with previews + restore */}
                       {(() => {
                         const history = (selectedOrder.song_history || []) as Array<{ song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string }>;
-                        // Fallback for orders predating the multi-slot column.
-                        const effective = history.length > 0
-                          ? history
-                          : (selectedOrder.prev_song_url
-                              ? [{ song_url: selectedOrder.prev_song_url, automation_lyrics: selectedOrder.prev_automation_lyrics ?? null, cover_image_url: null, snapshotted_at: "" }]
-                              : []);
-                        if (effective.length === 0) return null;
+                        const effectiveCount = history.length > 0
+                          ? history.length
+                          : (selectedOrder.prev_song_url ? 1 : 0);
+                        if (effectiveCount === 0 && !selectedOrder.song_url) return null;
                         return (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
                               <Button
                                 variant="outline"
                                 size="sm"
+                                onClick={() => setShowVersionTimeline(true)}
                                 disabled={restoringPreviousVersion}
                                 className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 border-teal-300"
                               >
                                 {restoringPreviousVersion ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
-                                Restore Previous Version ({effective.length})
+                                Version History{effectiveCount > 0 ? ` (${effectiveCount})` : ""}
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="w-72">
-                              <DropdownMenuLabel>Pick a version to restore</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              {effective.map((entry, idx) => {
-                                const ts = entry.snapshotted_at
-                                  ? new Date(entry.snapshotted_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })
-                                  : "Older version";
-                                return (
-                                  <DropdownMenuItem
-                                    key={`${entry.song_url}-${idx}`}
-                                    onSelect={() => handleRestorePreviousVersion(idx)}
-                                    className="flex flex-col items-start gap-0.5"
-                                  >
-                                    <span className="text-sm font-medium">
-                                      Slot {idx + 1}{idx === 0 ? " · most recent" : ""}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">{ts} PST</span>
-                                  </DropdownMenuItem>
-                                );
-                              })}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs text-center">
+                              Preview and restore any of the last 10 song versions. Restoring swaps versions in place — the current song becomes a history entry, so you can always undo.
+                            </TooltipContent>
+                          </Tooltip>
                         );
                       })()}
 
@@ -3239,6 +3220,35 @@ const { data, error } = await listOrders("all", 0, 250);
       </AlertDialog>
 
       {/* (Legacy confirm dialog removed — restore picker lives in the order toolbar dropdown) */}
+
+      {/* Song Version Timeline (multi-slot restore) */}
+      {selectedOrder && (
+        <SongVersionTimeline
+          open={showVersionTimeline}
+          onOpenChange={setShowVersionTimeline}
+          recipientName={selectedOrder.recipient_name}
+          currentSongUrl={selectedOrder.song_url || null}
+          currentLyrics={selectedOrder.automation_lyrics || null}
+          currentCoverUrl={selectedOrder.cover_image_url || null}
+          currentGeneratedAt={selectedOrder.generated_at || selectedOrder.delivered_at || null}
+          history={(() => {
+            const h = (selectedOrder.song_history || []) as Array<{ song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string }>;
+            if (h.length > 0) return h;
+            // Back-compat for orders that only have legacy prev_* fields
+            if (selectedOrder.prev_song_url) {
+              return [{
+                song_url: selectedOrder.prev_song_url,
+                automation_lyrics: selectedOrder.prev_automation_lyrics ?? null,
+                cover_image_url: null,
+                snapshotted_at: "",
+              }];
+            }
+            return [];
+          })()}
+          onRestore={handleRestorePreviousVersion}
+          restoring={restoringPreviousVersion}
+        />
+      )}
 
       {/* Comp Bonus Track Confirmation Dialog */}
       <AlertDialog open={showBonusCompDialog} onOpenChange={(open) => {
