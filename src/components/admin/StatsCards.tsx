@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen, Loader2, Video, Gift, Sparkles } from "lucide-react";
+import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen, Loader2, Video, Gift, Sparkles, Heart } from "lucide-react";
 import { LucideIcon } from "lucide-react";
 
 interface Order {
@@ -43,6 +44,7 @@ interface StatsCardsProps {
   orders: Order[];
   leads?: Lead[];
   loadingMore?: boolean;
+  adminPassword?: string;
 }
 
 interface StatItem {
@@ -73,7 +75,14 @@ function orderTotalDollars(o: Order): number {
   return o.price + upsellCents / 100;
 }
 
-function useStats(orders: Order[], leads: Lead[]): StatSection[] {
+interface TipsSummary {
+  countAll: number;
+  sumCentsAll: number;
+  countToday: number;
+  sumCentsToday: number;
+}
+
+function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): StatSection[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -86,6 +95,12 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const totalRevenue = baseRevenue + lyricsRevAll + downloadRevAll + bonusRevAll;
   const stripeTotal = activeOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + orderTotalDollars(o), 0);
   const paypalTotal = activeOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + orderTotalDollars(o), 0);
+
+  // Tips (donations) — separate revenue stream
+  const tipsRevAll = tips ? tips.sumCentsAll / 100 : 0;
+  const tipsCountAll = tips?.countAll ?? 0;
+  const tipsRevToday = tips ? tips.sumCentsToday / 100 : 0;
+  const tipsCountToday = tips?.countToday ?? 0;
 
   // Today: include base orders created today + any upsells unlocked today (regardless of order date)
   const todayOrders = activeOrders.filter((o) => new Date(o.created_at) >= today);
@@ -100,7 +115,7 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const bonusRevToday = activeOrders
     .filter((o) => isToday(o.bonus_unlocked_at))
     .reduce((s, o) => s + (o.bonus_price_cents ?? 0), 0) / 100;
-  const revenueToday = baseRevToday + lyricsRevToday + downloadRevToday + bonusRevToday;
+  const revenueToday = baseRevToday + lyricsRevToday + downloadRevToday + bonusRevToday + tipsRevToday;
   // Per-source today: base by order created_at + upsells by unlock timestamp on the parent order
   const sourceTotalToday = (src: "stripe" | "paypal") => {
     const baseToday = todayOrders.filter((o) => getPaymentSource(o) === src).reduce((s, o) => s + o.price, 0);
@@ -117,6 +132,8 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   };
   const stripeTodayRev = sourceTotalToday("stripe");
   const paypalTodayRev = sourceTotalToday("paypal");
+
+  const grandTotalRevenue = totalRevenue + tipsRevAll;
 
   // Orders
   const totalOrders = orders.length;
@@ -192,18 +209,19 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   const lyricsPaidCount = paidUnlocks;
 
   const totalUpsellRevenue = unlockRevenue + downloadRev + bonusRev;
-  const upsellShare = totalRevenue > 0 ? Math.round((totalUpsellRevenue / totalRevenue) * 100) : 0;
+  const upsellShare = grandTotalRevenue > 0 ? Math.round((totalUpsellRevenue / grandTotalRevenue) * 100) : 0;
 
   return [
     {
       label: "Revenue & Orders",
       stats: [
-        { title: "Total Revenue", value: `$${Math.round(totalRevenue).toLocaleString()}`, description: `Base $${Math.round(baseRevenue).toLocaleString()} · Lyrics $${Math.round(lyricsRevAll).toLocaleString()} · DL $${Math.round(downloadRevAll).toLocaleString()} · Bonus $${Math.round(bonusRevAll).toLocaleString()}`, icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100", extra: `Stripe $${Math.round(stripeTotal).toLocaleString()} · PayPal $${Math.round(paypalTotal).toLocaleString()}` },
-        { title: "Revenue Today", value: `$${Math.round(revenueToday).toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", extra: `Stripe $${Math.round(stripeTodayRev).toLocaleString()} · PayPal $${Math.round(paypalTodayRev).toLocaleString()}` },
+        { title: "Total Revenue", value: `$${Math.round(grandTotalRevenue).toLocaleString()}`, description: `Base $${Math.round(baseRevenue).toLocaleString()} · Lyrics $${Math.round(lyricsRevAll).toLocaleString()} · DL $${Math.round(downloadRevAll).toLocaleString()} · Bonus $${Math.round(bonusRevAll).toLocaleString()} · Tips $${Math.round(tipsRevAll).toLocaleString()}`, icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100", extra: `Stripe $${Math.round(stripeTotal).toLocaleString()} · PayPal $${Math.round(paypalTotal).toLocaleString()} · Tips $${Math.round(tipsRevAll).toLocaleString()}` },
+        { title: "Revenue Today", value: `$${Math.round(revenueToday).toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", extra: `Stripe $${Math.round(stripeTodayRev).toLocaleString()} · PayPal $${Math.round(paypalTodayRev).toLocaleString()} · Tips $${Math.round(tipsRevToday).toLocaleString()}` },
+        { title: "Tips / Donations", value: tipsCountAll.toString(), description: `$${Math.round(tipsRevAll).toLocaleString()} all-time${tipsCountAll > 0 ? ` · avg $${(tipsRevAll / tipsCountAll).toFixed(2)}` : ""}`, icon: Heart, color: "text-pink-600", bgColor: "bg-pink-100", extra: `${tipsCountToday} today · $${Math.round(tipsRevToday).toLocaleString()}` },
         { title: "Orders Today", value: ordersToday.toString(), description: "New orders today", icon: ShoppingCart, color: "text-blue-600", bgColor: "bg-blue-100" },
         { title: "Total Orders", value: totalOrders.toString(), description: "All time", icon: ShoppingCart, color: "text-slate-600", bgColor: "bg-slate-100" },
         { title: "Pending", value: pendingOrders.toString(), description: "Awaiting completion", icon: Clock, color: "text-amber-600", bgColor: "bg-amber-100" },
-        { title: "AOV", value: `$${activeOrders.length > 0 ? (totalRevenue / activeOrders.length).toFixed(2) : "0.00"}`, description: `Across ${activeOrders.length} orders (incl. upsells)`, icon: TrendingUp, color: "text-violet-600", bgColor: "bg-violet-100" },
+        { title: "AOV", value: `$${activeOrders.length > 0 ? (totalRevenue / activeOrders.length).toFixed(2) : "0.00"}`, description: `Across ${activeOrders.length} orders (incl. upsells, excl. tips)`, icon: TrendingUp, color: "text-violet-600", bgColor: "bg-violet-100" },
       ],
     },
     {
@@ -238,8 +256,49 @@ function useStats(orders: Order[], leads: Lead[]): StatSection[] {
   ];
 }
 
-export function StatsCards({ orders, leads = [], loadingMore = false }: StatsCardsProps) {
-  const sections = useStats(orders, leads);
+export function StatsCards({ orders, leads = [], loadingMore = false, adminPassword }: StatsCardsProps) {
+  const [tips, setTips] = useState<TipsSummary | null>(null);
+
+  useEffect(() => {
+    if (!adminPassword) return;
+    let cancelled = false;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const fetchTips = async () => {
+      try {
+        const [allRes, todayRes] = await Promise.all([
+          fetch(`${supabaseUrl}/functions/v1/admin-tips-stats`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-admin-password": adminPassword },
+            body: JSON.stringify({ windowDays: null, tippersLimit: 1 }),
+          }).then((r) => r.json()),
+          fetch(`${supabaseUrl}/functions/v1/admin-tips-stats`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-admin-password": adminPassword },
+            body: JSON.stringify({ windowDays: 1, tippersLimit: 1 }),
+          }).then((r) => r.json()),
+        ]);
+        if (cancelled) return;
+        // Today = PST calendar day from the daily bucket
+        const pstToday = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Los_Angeles",
+          year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(new Date());
+        const todayBucket = (todayRes?.daily || []).find((d: { date: string }) => d.date === pstToday);
+        setTips({
+          countAll: allRes?.totals?.count ?? 0,
+          sumCentsAll: allRes?.totals?.sumCents ?? 0,
+          countToday: todayBucket?.count ?? 0,
+          sumCentsToday: todayBucket?.cents ?? 0,
+        });
+      } catch (e) {
+        console.error("Failed to load tips summary:", e);
+      }
+    };
+    fetchTips();
+    return () => { cancelled = true; };
+  }, [adminPassword]);
+
+  const sections = useStats(orders, leads, tips);
 
   return (
     <div className="space-y-6 mb-8">
