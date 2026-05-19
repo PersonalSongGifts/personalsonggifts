@@ -144,6 +144,13 @@ interface Order {
   prev_song_url?: string | null;
   prev_automation_lyrics?: string | null;
   prev_cover_image_url?: string | null;
+  // Multi-slot version history (newest first, max 10 entries)
+  song_history?: Array<{
+    song_url: string;
+    automation_lyrics: string | null;
+    cover_image_url: string | null;
+    snapshotted_at: string;
+  }> | null;
   // Unplayed re-send
   unplayed_resend_sent_at?: string | null;
   // Revision
