@@ -1712,7 +1712,7 @@ Deno.serve(async (req) => {
         entityType: "orders" | "leads",
         entityId: string,
         entity: Record<string, unknown>
-      ): Promise<{ backed_up: boolean; prev_song_url?: string | null; prev_automation_lyrics?: string | null; prev_cover_image_url?: string | null }> {
+      ): Promise<{ backed_up: boolean; prev_song_url?: string | null; prev_automation_lyrics?: string | null; prev_cover_image_url?: string | null; song_history?: Array<{ song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string }> }> {
         const currentSongUrl = entityType === "orders"
           ? (entity.song_url as string | null)
           : (entity.full_song_url as string | null);
@@ -1722,12 +1722,25 @@ Deno.serve(async (req) => {
           return { backed_up: false };
         }
 
-        console.log(`[BACKUP] ✅ Pointer snapshot for ${entityType} ${entityId}: ${currentSongUrl}`);
+        const currentLyrics = (entity.automation_lyrics as string | null) || null;
+        const currentCover = (entity.cover_image_url as string | null) || null;
+        const existingHistory = Array.isArray((entity as { song_history?: unknown }).song_history)
+          ? ((entity as { song_history: Array<{ song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string }> }).song_history)
+          : [];
+        const newEntry = {
+          song_url: currentSongUrl,
+          automation_lyrics: currentLyrics,
+          cover_image_url: currentCover,
+          snapshotted_at: new Date().toISOString(),
+        };
+        const nextHistory = [newEntry, ...existingHistory].slice(0, 10);
+        console.log(`[BACKUP] ✅ Pointer snapshot for ${entityType} ${entityId}: ${currentSongUrl} (history depth ${nextHistory.length})`);
         return {
           backed_up: true,
           prev_song_url: currentSongUrl,
-          prev_automation_lyrics: (entity.automation_lyrics as string | null) || null,
-          prev_cover_image_url: (entity.cover_image_url as string | null) || null,
+          prev_automation_lyrics: currentLyrics,
+          prev_cover_image_url: currentCover,
+          song_history: nextHistory,
         };
       }
 
@@ -1735,6 +1748,9 @@ Deno.serve(async (req) => {
       if (body?.action === "restore_previous_version") {
         const orderId = typeof body.orderId === "string" ? body.orderId : null;
         const leadId = typeof body.leadId === "string" ? body.leadId : null;
+        // Optional history slot (0 = most recent, up to 9). Defaults to 0 to
+        // preserve old single-button behavior.
+        const requestedSlot = Number.isInteger(body?.slot) ? (body.slot as number) : 0;
 
         if ((!!orderId && !!leadId) || (!orderId && !leadId)) {
           return new Response(
@@ -1760,38 +1776,61 @@ Deno.serve(async (req) => {
           );
         }
 
-        const prevSongUrl = entity.prev_song_url as string | null;
-        if (!prevSongUrl) {
+        // Build a working history. Prefer the new song_history array; fall
+        // back to the legacy prev_* trio so older rows still work for slot 0.
+        type HEntry = { song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string };
+        let history: HEntry[] = Array.isArray((entity as { song_history?: unknown }).song_history)
+          ? ((entity as { song_history: HEntry[] }).song_history)
+          : [];
+        if (history.length === 0 && entity.prev_song_url) {
+          history = [{
+            song_url: entity.prev_song_url as string,
+            automation_lyrics: (entity.prev_automation_lyrics as string | null) || null,
+            cover_image_url: (entity.prev_cover_image_url as string | null) || null,
+            snapshotted_at: new Date(0).toISOString(),
+          }];
+        }
+
+        if (requestedSlot < 0 || requestedSlot >= history.length) {
           return new Response(
-            JSON.stringify({ error: "No previous version available to restore." }),
+            JSON.stringify({ error: `No version available at slot ${requestedSlot}.` }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        // Pointer-swap restore. Both files live on permanent versioned paths,
-        // so we never need to download/re-upload — we just swap which URL
-        // sits in song_url vs prev_song_url. This means a user can keep
-        // toggling between any two versions, or chain Restore after a
-        // future revision and still recover the older one.
         const currentSongUrl = entityType === "orders"
           ? (entity.song_url as string | null)
           : (entity.full_song_url as string | null);
         const currentLyrics = (entity.automation_lyrics as string | null) || null;
         const currentCoverImageUrl = (entity.cover_image_url as string | null) || null;
 
-        const prevLyrics = entity.prev_automation_lyrics as string | null;
-        const prevCoverImageUrl = entity.prev_cover_image_url as string | null;
+        const target = history[requestedSlot];
 
-        const restoredUrl = prevSongUrl;
+        // In-place swap: target becomes current, old current takes target's
+        // slot. Order preserved so deeper history stays accessible and
+        // ping-pong works (restoring same slot twice returns you to start).
+        const newHistory = [...history];
+        if (currentSongUrl) {
+          newHistory[requestedSlot] = {
+            song_url: currentSongUrl,
+            automation_lyrics: currentLyrics,
+            cover_image_url: currentCoverImageUrl,
+            snapshotted_at: new Date().toISOString(),
+          };
+        } else {
+          // No current song to push back — just remove the consumed entry.
+          newHistory.splice(requestedSlot, 1);
+        }
 
+        const restoredUrl = target.song_url;
         const restoreUpdate: Record<string, unknown> = {
-          // Swap: previous slot now holds what was current
-          prev_song_url: currentSongUrl,
-          prev_automation_lyrics: currentLyrics,
-          prev_cover_image_url: currentCoverImageUrl,
-          // Current slot now holds what was previous
-          cover_image_url: prevCoverImageUrl,
-          automation_lyrics: prevLyrics,
+          song_history: newHistory,
+          // Keep prev_* mirror in sync with slot 0 for backward compatibility.
+          prev_song_url: newHistory[0]?.song_url ?? null,
+          prev_automation_lyrics: newHistory[0]?.automation_lyrics ?? null,
+          prev_cover_image_url: newHistory[0]?.cover_image_url ?? null,
+          cover_image_url: target.cover_image_url,
+          automation_lyrics: target.automation_lyrics,
         };
 
         if (entityType === "orders") {
@@ -1800,7 +1839,7 @@ Deno.serve(async (req) => {
           restoreUpdate.full_song_url = restoredUrl;
         }
 
-        console.log(`[RESTORE] Pointer-swap for ${entityType} ${entityId}: ${currentSongUrl} ⇄ ${prevSongUrl}`);
+        console.log(`[RESTORE] Slot ${requestedSlot} swap for ${entityType} ${entityId}: ${currentSongUrl} ⇄ ${restoredUrl}`);
 
         const { error: updateError } = await supabase
           .from(entityType)
@@ -1821,13 +1860,13 @@ Deno.serve(async (req) => {
           entityId!,
           "song_restored",
           "admin",
-          `Previous version restored (pointer-swap)`
+          `Version restored from slot ${requestedSlot} (pointer-swap)`
         );
 
         console.log(`[RESTORE] ✅ Restore complete for ${entityType} ${entityId}`);
 
         return new Response(
-          JSON.stringify({ success: true, restoredUrl, lyricsRestored: !!prevLyrics }),
+          JSON.stringify({ success: true, restoredUrl, lyricsRestored: !!target.automation_lyrics, slot: requestedSlot, historyDepth: newHistory.length }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
