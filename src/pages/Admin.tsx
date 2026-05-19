@@ -3221,6 +3221,35 @@ const { data, error } = await listOrders("all", 0, 250);
 
       {/* (Legacy confirm dialog removed — restore picker lives in the order toolbar dropdown) */}
 
+      {/* Song Version Timeline (multi-slot restore) */}
+      {selectedOrder && (
+        <SongVersionTimeline
+          open={showVersionTimeline}
+          onOpenChange={setShowVersionTimeline}
+          recipientName={selectedOrder.recipient_name}
+          currentSongUrl={selectedOrder.song_url || null}
+          currentLyrics={selectedOrder.automation_lyrics || null}
+          currentCoverUrl={selectedOrder.cover_image_url || null}
+          currentGeneratedAt={selectedOrder.generated_at || selectedOrder.delivered_at || null}
+          history={(() => {
+            const h = (selectedOrder.song_history || []) as Array<{ song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string }>;
+            if (h.length > 0) return h;
+            // Back-compat for orders that only have legacy prev_* fields
+            if (selectedOrder.prev_song_url) {
+              return [{
+                song_url: selectedOrder.prev_song_url,
+                automation_lyrics: selectedOrder.prev_automation_lyrics ?? null,
+                cover_image_url: null,
+                snapshotted_at: "",
+              }];
+            }
+            return [];
+          })()}
+          onRestore={handleRestorePreviousVersion}
+          restoring={restoringPreviousVersion}
+        />
+      )}
+
       {/* Comp Bonus Track Confirmation Dialog */}
       <AlertDialog open={showBonusCompDialog} onOpenChange={(open) => {
         setShowBonusCompDialog(open);
