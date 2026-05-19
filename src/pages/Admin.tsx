@@ -2487,26 +2487,53 @@ const { data, error } = await listOrders("all", 0, 250);
                         </div>
                       )}
 
-                      {/* Restore Previous Version Button */}
-                      {selectedOrder.prev_song_url && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setShowRestoreConfirm(true)}
-                              disabled={restoringPreviousVersion}
-                              className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 border-teal-300"
-                            >
-                              <RotateCcw className="h-4 w-4 mr-2" />
-                              Restore Previous Version
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="max-w-xs text-center">
-                            Revert to the version before the last regeneration. Only one previous version is kept — current song and lyrics will be replaced.
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
+                      {/* Restore Previous Version — dropdown of up to 10 history slots */}
+                      {(() => {
+                        const history = (selectedOrder.song_history || []) as Array<{ song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string }>;
+                        // Fallback for orders predating the multi-slot column.
+                        const effective = history.length > 0
+                          ? history
+                          : (selectedOrder.prev_song_url
+                              ? [{ song_url: selectedOrder.prev_song_url, automation_lyrics: selectedOrder.prev_automation_lyrics ?? null, cover_image_url: null, snapshotted_at: "" }]
+                              : []);
+                        if (effective.length === 0) return null;
+                        return (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={restoringPreviousVersion}
+                                className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 border-teal-300"
+                              >
+                                {restoringPreviousVersion ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+                                Restore Previous Version ({effective.length})
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="w-72">
+                              <DropdownMenuLabel>Pick a version to restore</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {effective.map((entry, idx) => {
+                                const ts = entry.snapshotted_at
+                                  ? new Date(entry.snapshotted_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })
+                                  : "Older version";
+                                return (
+                                  <DropdownMenuItem
+                                    key={`${entry.song_url}-${idx}`}
+                                    onSelect={() => handleRestorePreviousVersion(idx)}
+                                    className="flex flex-col items-start gap-0.5"
+                                  >
+                                    <span className="text-sm font-medium">
+                                      Slot {idx + 1}{idx === 0 ? " · most recent" : ""}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">{ts} PST</span>
+                                  </DropdownMenuItem>
+                                );
+                              })}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        );
+                      })()}
 
                       {/* Disable Song Access — for chargebacks / disputes (reversible) */}
                       {selectedOrder.song_url && (
