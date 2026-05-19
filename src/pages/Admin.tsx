@@ -259,6 +259,7 @@ export default function Admin() {
   const [regenerating, setRegenerating] = useState(false);
   // Restore previous version state
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [showVersionTimeline, setShowVersionTimeline] = useState(false);
   const [showDisableAccessConfirm, setShowDisableAccessConfirm] = useState(false);
   const [disableAccessReason, setDisableAccessReason] = useState("");
   const [disablingAccess, setDisablingAccess] = useState(false);
