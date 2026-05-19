@@ -2491,7 +2491,7 @@ Deno.serve(async (req) => {
           // Fetch full order for backup
           const { data: fullOrder } = await supabase
             .from("orders")
-            .select("song_url, automation_lyrics, cover_image_url")
+            .select("song_url, automation_lyrics, cover_image_url, song_history")
             .eq("id", rev.order_id)
             .maybeSingle();
 
