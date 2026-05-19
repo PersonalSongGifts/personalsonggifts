@@ -1944,6 +1944,7 @@ Deno.serve(async (req) => {
               prev_song_url: backup.prev_song_url,
               prev_automation_lyrics: backup.prev_automation_lyrics,
               prev_cover_image_url: backup.prev_cover_image_url,
+              song_history: backup.song_history,
             }).eq("id", entityId!);
             await logActivity(supabase, orderId ? "order" : "lead", entityId!, "song_backup_created", "admin", `Backup created before regenerate_with_lyrics`);
             console.log(`[REGENERATE_WITH_LYRICS] Backup saved to prev slot`);
@@ -2156,6 +2157,7 @@ Deno.serve(async (req) => {
               prev_song_url: backup.prev_song_url,
               prev_automation_lyrics: backup.prev_automation_lyrics,
               prev_cover_image_url: backup.prev_cover_image_url,
+              song_history: backup.song_history,
             }).eq("id", entityId!);
             await logActivity(supabase, orderId ? "order" : "lead", entityId!, "song_backup_created", "admin", `Backup created before regenerate_song`);
             console.log(`[REGENERATE] Backup saved to prev slot`);
@@ -2501,6 +2503,7 @@ Deno.serve(async (req) => {
                 orderUpdate.prev_song_url = backup.prev_song_url;
                 orderUpdate.prev_automation_lyrics = backup.prev_automation_lyrics;
                 orderUpdate.prev_cover_image_url = backup.prev_cover_image_url;
+                orderUpdate.song_history = backup.song_history;
               }
             } catch (backupErr) {
               console.error("[REVISION-APPROVE] Backup failed:", backupErr);
@@ -2787,6 +2790,7 @@ Deno.serve(async (req) => {
               updates.prev_song_url = backupResult.prev_song_url;
               updates.prev_automation_lyrics = backupResult.prev_automation_lyrics;
               updates.prev_cover_image_url = backupResult.prev_cover_image_url;
+              updates.song_history = backupResult.song_history;
               await logActivity(supabase, orderId ? "order" : "lead", entityId!, "song_backup_created", "admin", "Backup created before reset + regenerate");
             }
           } catch (backupErr) {
