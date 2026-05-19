@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Lock, Music, Send, RefreshCw, Eye, EyeOff, Package, Clock, CheckCircle, AlertCircle, BarChart3, List, Users, Mail, Upload, FileAudio, Video, CalendarClock, Pencil, X, Save, Bot, Wand2, Loader2, RotateCcw, Archive, Bug, Trash2, AlertTriangle, Copy, Calendar, Tag, ShieldCheck, Gift } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatAdminDate } from "@/lib/utils";
 import { ActivityLog } from "@/components/admin/ActivityLog";
@@ -144,6 +145,13 @@ interface Order {
   prev_song_url?: string | null;
   prev_automation_lyrics?: string | null;
   prev_cover_image_url?: string | null;
+  // Multi-slot version history (newest first, max 10 entries)
+  song_history?: Array<{
+    song_url: string;
+    automation_lyrics: string | null;
+    cover_image_url: string | null;
+    snapshotted_at: string;
+  }> | null;
   // Unplayed re-send
   unplayed_resend_sent_at?: string | null;
   // Revision
@@ -878,28 +886,29 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
-  // Handler for restoring previous version
-  const handleRestorePreviousVersion = async () => {
+  // Handler for restoring a previous version from any history slot (0 = most recent, up to 9)
+  const handleRestorePreviousVersion = async (slot: number = 0) => {
     if (!selectedOrder || !password) return;
     setRestoringPreviousVersion(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-orders", {
+      const { error } = await supabase.functions.invoke("admin-orders", {
         method: "POST",
         body: {
           action: "restore_previous_version",
           orderId: selectedOrder.id,
+          slot,
           adminPassword: password,
         },
       });
       if (error) throw error;
       toast({
         title: "Song Restored",
-        description: `Previous version of the song for ${selectedOrder.recipient_name} has been restored.`,
+        description: `Version from slot ${slot + 1} restored for ${selectedOrder.recipient_name}.`,
       });
       setShowRestoreConfirm(false);
-      const updatedOrder = { ...selectedOrder, prev_song_url: null, prev_automation_lyrics: null, prev_cover_image_url: null, song_url: data?.restoredUrl ?? selectedOrder.song_url, automation_lyrics: data?.lyricsRestored ? selectedOrder.prev_automation_lyrics : selectedOrder.automation_lyrics };
-      setSelectedOrder(updatedOrder as Order);
-      fetchOrders();
+      // Refetch to pick up the swapped history — backend does an in-place
+      // pointer swap so optimistic state would be misleading.
+      await fetchOrders();
     } catch (err) {
       console.error("Restore failed:", err);
       toast({
@@ -2478,26 +2487,53 @@ const { data, error } = await listOrders("all", 0, 250);
                         </div>
                       )}
 
-                      {/* Restore Previous Version Button */}
-                      {selectedOrder.prev_song_url && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setShowRestoreConfirm(true)}
-                              disabled={restoringPreviousVersion}
-                              className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 border-teal-300"
-                            >
-                              <RotateCcw className="h-4 w-4 mr-2" />
-                              Restore Previous Version
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="max-w-xs text-center">
-                            Revert to the version before the last regeneration. Only one previous version is kept — current song and lyrics will be replaced.
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
+                      {/* Restore Previous Version — dropdown of up to 10 history slots */}
+                      {(() => {
+                        const history = (selectedOrder.song_history || []) as Array<{ song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string }>;
+                        // Fallback for orders predating the multi-slot column.
+                        const effective = history.length > 0
+                          ? history
+                          : (selectedOrder.prev_song_url
+                              ? [{ song_url: selectedOrder.prev_song_url, automation_lyrics: selectedOrder.prev_automation_lyrics ?? null, cover_image_url: null, snapshotted_at: "" }]
+                              : []);
+                        if (effective.length === 0) return null;
+                        return (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={restoringPreviousVersion}
+                                className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 border-teal-300"
+                              >
+                                {restoringPreviousVersion ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+                                Restore Previous Version ({effective.length})
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="w-72">
+                              <DropdownMenuLabel>Pick a version to restore</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {effective.map((entry, idx) => {
+                                const ts = entry.snapshotted_at
+                                  ? new Date(entry.snapshotted_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })
+                                  : "Older version";
+                                return (
+                                  <DropdownMenuItem
+                                    key={`${entry.song_url}-${idx}`}
+                                    onSelect={() => handleRestorePreviousVersion(idx)}
+                                    className="flex flex-col items-start gap-0.5"
+                                  >
+                                    <span className="text-sm font-medium">
+                                      Slot {idx + 1}{idx === 0 ? " · most recent" : ""}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">{ts} PST</span>
+                                  </DropdownMenuItem>
+                                );
+                              })}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        );
+                      })()}
 
                       {/* Disable Song Access — for chargebacks / disputes (reversible) */}
                       {selectedOrder.song_url && (
@@ -3202,28 +3238,7 @@ const { data, error } = await listOrders("all", 0, 250);
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Restore Previous Version Confirmation Dialog */}
-      <AlertDialog open={showRestoreConfirm} onOpenChange={setShowRestoreConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Restore Previous Version?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will revert the song and lyrics to the version before the last regeneration. Your <strong>current song and lyrics will be permanently replaced</strong>. Only one previous version is kept, so this cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={restoringPreviousVersion}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleRestorePreviousVersion}
-              disabled={restoringPreviousVersion}
-              className="bg-teal-600 hover:bg-teal-700 text-white"
-            >
-              {restoringPreviousVersion ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RotateCcw className="h-4 w-4 mr-2" />}
-              {restoringPreviousVersion ? "Restoring..." : "Yes, Restore Previous Version"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* (Legacy confirm dialog removed — restore picker lives in the order toolbar dropdown) */}
 
       {/* Comp Bonus Track Confirmation Dialog */}
       <AlertDialog open={showBonusCompDialog} onOpenChange={(open) => {

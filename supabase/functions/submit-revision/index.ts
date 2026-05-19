@@ -428,7 +428,7 @@ Deno.serve(async (req) => {
         try {
           const { data: orderForBackup } = await supabase
             .from("orders")
-            .select("song_url, automation_lyrics, cover_image_url")
+            .select("song_url, automation_lyrics, cover_image_url, song_history")
             .eq("id", order.id)
             .maybeSingle();
           if (orderForBackup?.song_url) {
@@ -444,6 +444,7 @@ Deno.serve(async (req) => {
               autoOrderUpdate.prev_song_url = backup.prev_song_url ?? null;
               autoOrderUpdate.prev_automation_lyrics = backup.prev_automation_lyrics ?? null;
               autoOrderUpdate.prev_cover_image_url = backup.prev_cover_image_url ?? null;
+              autoOrderUpdate.song_history = backup.song_history ?? [];
             }
           }
         } catch (backupErr) {

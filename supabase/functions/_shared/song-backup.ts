@@ -13,11 +13,23 @@
 // deno-lint-ignore no-explicit-any
 type AnySupabase = any;
 
+export interface SongHistoryEntry {
+  song_url: string;
+  automation_lyrics: string | null;
+  cover_image_url: string | null;
+  snapshotted_at: string;
+}
+
+export const SONG_HISTORY_MAX = 10;
+
 export interface BackupResult {
   backed_up: boolean;
   prev_song_url?: string | null;
   prev_automation_lyrics?: string | null;
   prev_cover_image_url?: string | null;
+  // New: full multi-slot history (newest first, capped at SONG_HISTORY_MAX).
+  // Callers should write this to the entity's `song_history` column.
+  song_history?: SongHistoryEntry[];
 }
 
 export async function backupSongFile(
@@ -40,11 +52,24 @@ export async function backupSongFile(
   // Pure pointer snapshot — the file at `currentSongUrl` is on a versioned
   // path (or a legacy permanent path) and will never be overwritten by a
   // subsequent generation. Just record the URL.
-  console.log(`[BACKUP] ✅ Pointer snapshot for ${entityType} ${entityId}: ${currentSongUrl}`);
+  const currentLyrics = (entity.automation_lyrics as string | null) || null;
+  const currentCover = (entity.cover_image_url as string | null) || null;
+  const existingHistory = Array.isArray(entity.song_history)
+    ? (entity.song_history as SongHistoryEntry[])
+    : [];
+  const newEntry: SongHistoryEntry = {
+    song_url: currentSongUrl,
+    automation_lyrics: currentLyrics,
+    cover_image_url: currentCover,
+    snapshotted_at: new Date().toISOString(),
+  };
+  const nextHistory = [newEntry, ...existingHistory].slice(0, SONG_HISTORY_MAX);
+  console.log(`[BACKUP] ✅ Pointer snapshot for ${entityType} ${entityId}: ${currentSongUrl} (history depth ${nextHistory.length})`);
   return {
     backed_up: true,
     prev_song_url: currentSongUrl,
-    prev_automation_lyrics: (entity.automation_lyrics as string | null) || null,
-    prev_cover_image_url: (entity.cover_image_url as string | null) || null,
+    prev_automation_lyrics: currentLyrics,
+    prev_cover_image_url: currentCover,
+    song_history: nextHistory,
   };
 }
