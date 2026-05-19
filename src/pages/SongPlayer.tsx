@@ -116,13 +116,16 @@ const SongPlayer = () => {
 
   const fetchSongData = async () => {
     if (!orderId) return;
-    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}`;
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}&t=${Date.now()}`;
     const maxAttempts = 3;
     let lastError: unknown = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+
       try {
-        const response = await fetch(url, { cache: "no-store" });
+        const response = await fetch(url, { cache: "no-store", signal: controller.signal });
 
         if (response.ok) {
           const data = await response.json();
@@ -153,6 +156,8 @@ const SongPlayer = () => {
       } catch (err) {
         // Network failure (e.g. iOS in-app browser "Load failed") — retry
         lastError = err;
+      } finally {
+        window.clearTimeout(timeoutId);
       }
 
       if (attempt < maxAttempts) {
