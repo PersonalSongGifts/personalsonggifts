@@ -128,6 +128,7 @@ export type Database = {
           sms_scheduled_for: string | null
           sms_sent_at: string | null
           sms_status: string | null
+          song_history: Json
           song_title: string | null
           special_message: string | null
           special_qualities: string
@@ -220,6 +221,7 @@ export type Database = {
           sms_scheduled_for?: string | null
           sms_sent_at?: string | null
           sms_status?: string | null
+          song_history?: Json
           song_title?: string | null
           special_message?: string | null
           special_qualities: string
@@ -312,6 +314,7 @@ export type Database = {
           sms_scheduled_for?: string | null
           sms_sent_at?: string | null
           sms_status?: string | null
+          song_history?: Json
           song_title?: string | null
           special_message?: string | null
           special_qualities?: string
@@ -480,6 +483,7 @@ export type Database = {
           sms_status: string | null
           song_download_count: number | null
           song_downloaded_at: string | null
+          song_history: Json
           song_play_count: number | null
           song_played_at: string | null
           song_title: string | null
@@ -602,6 +606,7 @@ export type Database = {
           sms_status?: string | null
           song_download_count?: number | null
           song_downloaded_at?: string | null
+          song_history?: Json
           song_play_count?: number | null
           song_played_at?: string | null
           song_title?: string | null
@@ -724,6 +729,7 @@ export type Database = {
           sms_status?: string | null
           song_download_count?: number | null
           song_downloaded_at?: string | null
+          song_history?: Json
           song_play_count?: number | null
           song_played_at?: string | null
           song_title?: string | null
@@ -1174,6 +1180,7 @@ export type Database = {
           sms_status: string | null
           song_download_count: number | null
           song_downloaded_at: string | null
+          song_history: Json
           song_play_count: number | null
           song_played_at: string | null
           song_title: string | null
