@@ -907,9 +907,11 @@ const { data, error } = await listOrders("all", 0, 250);
         description: `Version from slot ${slot + 1} restored for ${selectedOrder.recipient_name}.`,
       });
       setShowRestoreConfirm(false);
-      // Refetch to pick up the swapped history — backend does an in-place
-      // pointer swap so optimistic state would be misleading.
-      await fetchOrders();
+      // Drop the spinner immediately — the restore itself is done. Refresh
+      // the table in the background so a slow/timing-out list query can't
+      // leave the dialog stuck "Restoring..." forever.
+      setRestoringPreviousVersion(false);
+      fetchOrders().catch((e) => console.warn("Background refresh after restore failed:", e));
     } catch (err) {
       console.error("Restore failed:", err);
       toast({
@@ -917,7 +919,6 @@ const { data, error } = await listOrders("all", 0, 250);
         description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       });
-    } finally {
       setRestoringPreviousVersion(false);
     }
   };
