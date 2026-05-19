@@ -277,6 +277,7 @@ function VersionCard({
   coverUrl,
   lyrics,
   onRestore,
+  onCompare,
   restoring,
   pendingSlot,
   slot,
@@ -288,6 +289,7 @@ function VersionCard({
   coverUrl: string | null;
   lyrics: string | null;
   onRestore?: () => void;
+  onCompare?: () => void;
   restoring: boolean;
   pendingSlot: number | null;
   slot: number | null;
@@ -324,21 +326,37 @@ function VersionCard({
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{timestamp}</p>
           </div>
-          {!isCurrent && onRestore && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onRestore}
-              disabled={restoring}
-              className="text-teal-700 hover:bg-teal-50 border-teal-300 shrink-0"
-            >
-              {isThisRestoring ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+          {!isCurrent && (
+            <div className="flex gap-2 shrink-0">
+              {onCompare && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onCompare}
+                  disabled={restoring}
+                  className="text-slate-700 hover:bg-slate-50"
+                >
+                  <GitCompare className="h-3.5 w-3.5 mr-1.5" />
+                  Compare
+                </Button>
               )}
-              {isThisRestoring ? "Restoring..." : "Restore"}
-            </Button>
+              {onRestore && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onRestore}
+                  disabled={restoring}
+                  className="text-teal-700 hover:bg-teal-50 border-teal-300"
+                >
+                  {isThisRestoring ? (
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                  )}
+                  {isThisRestoring ? "Restoring..." : "Restore"}
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
@@ -397,6 +415,7 @@ export function SongVersionTimeline({
   restoring,
 }: Props) {
   const [pendingSlot, setPendingSlot] = useState<number | null>(null);
+  const [diffSlot, setDiffSlot] = useState<number | null>(null);
 
   const handleRestore = async (slot: number) => {
     setPendingSlot(slot);
@@ -406,6 +425,8 @@ export function SongVersionTimeline({
       setPendingSlot(null);
     }
   };
+
+  const diffEntry = diffSlot !== null ? history[diffSlot] : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -451,6 +472,7 @@ export function SongVersionTimeline({
                   coverUrl={entry.cover_image_url}
                   lyrics={entry.automation_lyrics}
                   onRestore={() => handleRestore(idx)}
+                  onCompare={() => setDiffSlot(idx)}
                   restoring={restoring}
                   pendingSlot={pendingSlot}
                   slot={idx}
@@ -460,6 +482,22 @@ export function SongVersionTimeline({
           </div>
         </ScrollArea>
       </DialogContent>
+      {diffEntry && (
+        <DiffDialog
+          open={diffSlot !== null}
+          onOpenChange={(o) => { if (!o) setDiffSlot(null); }}
+          recipientName={recipientName}
+          selectedLabel={`Slot ${(diffSlot ?? 0) + 1}`}
+          selectedTimestamp={formatPST(diffEntry.snapshotted_at)}
+          currentTimestamp={formatPST(currentGeneratedAt)}
+          selectedLyrics={diffEntry.automation_lyrics}
+          currentLyrics={currentLyrics}
+          selectedCoverUrl={diffEntry.cover_image_url}
+          currentCoverUrl={currentCoverUrl}
+          selectedSongUrl={diffEntry.song_url}
+          currentSongUrl={currentSongUrl}
+        />
+      )}
     </Dialog>
   );
 }
