@@ -2488,51 +2488,31 @@ const { data, error } = await listOrders("all", 0, 250);
                         </div>
                       )}
 
-                      {/* Restore Previous Version — dropdown of up to 10 history slots */}
+                      {/* Version History — opens timeline with previews + restore */}
                       {(() => {
                         const history = (selectedOrder.song_history || []) as Array<{ song_url: string; automation_lyrics: string | null; cover_image_url: string | null; snapshotted_at: string }>;
-                        // Fallback for orders predating the multi-slot column.
-                        const effective = history.length > 0
-                          ? history
-                          : (selectedOrder.prev_song_url
-                              ? [{ song_url: selectedOrder.prev_song_url, automation_lyrics: selectedOrder.prev_automation_lyrics ?? null, cover_image_url: null, snapshotted_at: "" }]
-                              : []);
-                        if (effective.length === 0) return null;
+                        const effectiveCount = history.length > 0
+                          ? history.length
+                          : (selectedOrder.prev_song_url ? 1 : 0);
+                        if (effectiveCount === 0 && !selectedOrder.song_url) return null;
                         return (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
                               <Button
                                 variant="outline"
                                 size="sm"
+                                onClick={() => setShowVersionTimeline(true)}
                                 disabled={restoringPreviousVersion}
                                 className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 border-teal-300"
                               >
                                 {restoringPreviousVersion ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
-                                Restore Previous Version ({effective.length})
+                                Version History{effectiveCount > 0 ? ` (${effectiveCount})` : ""}
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="w-72">
-                              <DropdownMenuLabel>Pick a version to restore</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              {effective.map((entry, idx) => {
-                                const ts = entry.snapshotted_at
-                                  ? new Date(entry.snapshotted_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })
-                                  : "Older version";
-                                return (
-                                  <DropdownMenuItem
-                                    key={`${entry.song_url}-${idx}`}
-                                    onSelect={() => handleRestorePreviousVersion(idx)}
-                                    className="flex flex-col items-start gap-0.5"
-                                  >
-                                    <span className="text-sm font-medium">
-                                      Slot {idx + 1}{idx === 0 ? " · most recent" : ""}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">{ts} PST</span>
-                                  </DropdownMenuItem>
-                                );
-                              })}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs text-center">
+                              Preview and restore any of the last 10 song versions. Restoring swaps versions in place — the current song becomes a history entry, so you can always undo.
+                            </TooltipContent>
+                          </Tooltip>
                         );
                       })()}
 
