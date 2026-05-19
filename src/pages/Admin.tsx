@@ -885,28 +885,29 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
-  // Handler for restoring previous version
-  const handleRestorePreviousVersion = async () => {
+  // Handler for restoring a previous version from any history slot (0 = most recent, up to 9)
+  const handleRestorePreviousVersion = async (slot: number = 0) => {
     if (!selectedOrder || !password) return;
     setRestoringPreviousVersion(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-orders", {
+      const { error } = await supabase.functions.invoke("admin-orders", {
         method: "POST",
         body: {
           action: "restore_previous_version",
           orderId: selectedOrder.id,
+          slot,
           adminPassword: password,
         },
       });
       if (error) throw error;
       toast({
         title: "Song Restored",
-        description: `Previous version of the song for ${selectedOrder.recipient_name} has been restored.`,
+        description: `Version from slot ${slot + 1} restored for ${selectedOrder.recipient_name}.`,
       });
       setShowRestoreConfirm(false);
-      const updatedOrder = { ...selectedOrder, prev_song_url: null, prev_automation_lyrics: null, prev_cover_image_url: null, song_url: data?.restoredUrl ?? selectedOrder.song_url, automation_lyrics: data?.lyricsRestored ? selectedOrder.prev_automation_lyrics : selectedOrder.automation_lyrics };
-      setSelectedOrder(updatedOrder as Order);
-      fetchOrders();
+      // Refetch to pick up the swapped history — backend does an in-place
+      // pointer swap so optimistic state would be misleading.
+      await fetchOrders();
     } catch (err) {
       console.error("Restore failed:", err);
       toast({
