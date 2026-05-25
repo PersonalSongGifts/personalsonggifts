@@ -391,14 +391,14 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({ orderId: order.id, forceRun: true }),
           });
-          await logActivity({
+          await logActivity(
             supabase,
-            entityType: "order",
-            entityId: order.id,
-            eventType: "auto_recovery_never_started",
-            actor: "system:scheduler",
-            details: `Auto-recovered never-started order ${Math.round((Date.now() - new Date(order.created_at).getTime()) / 60000)}min after creation`,
-          });
+            "order",
+            order.id,
+            "auto_recovery_never_started",
+            "system",
+            `Auto-recovered never-started order ${Math.round((Date.now() - new Date(order.created_at).getTime()) / 60000)}min after creation`,
+          );
           neverStartedTriggered++;
         } catch (e) {
           console.error(`[RECOVERY] Failed to auto-trigger order ${order.id}:`, e);
@@ -435,14 +435,14 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({ leadId: lead.id, forceRun: true }),
           });
-          await logActivity({
+          await logActivity(
             supabase,
-            entityType: "lead",
-            entityId: lead.id,
-            eventType: "auto_recovery_never_started",
-            actor: "system:scheduler",
-            details: `Auto-recovered never-started lead ${Math.round((Date.now() - new Date(lead.created_at).getTime()) / 60000)}min after capture`,
-          });
+            "lead",
+            lead.id,
+            "auto_recovery_never_started",
+            "system",
+            `Auto-recovered never-started lead ${Math.round((Date.now() - new Date(lead.created_at).getTime()) / 60000)}min after capture`,
+          );
           neverStartedTriggered++;
         } catch (e) {
           console.error(`[RECOVERY] Failed to auto-trigger lead ${lead.id}:`, e);
