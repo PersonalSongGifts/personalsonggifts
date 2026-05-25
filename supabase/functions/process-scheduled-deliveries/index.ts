@@ -351,6 +351,112 @@ Deno.serve(async (req) => {
       console.error("[RECOVERY:lyrics_ready] Error:", e);
     }
 
+    // ======= 1b-ter. NEVER-STARTED RECOVERY =======
+    // Catches paid orders / qualified leads that were never picked up by the
+    // scheduler at all (automation_status IS NULL AND automation_started_at IS NULL)
+    // and have been sitting >30 min past creation. Root causes: scheduler paused
+    // during creation, trigger error swallowed, etc. Conservative: only one
+    // auto-recovery attempt (auto_recovery_count = 0), then flag for manual review.
+    try {
+      const neverStartedCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      let neverStartedTriggered = 0;
+
+      // Orders: only paid/ready ones that should have started
+      const { data: neverStartedOrders } = await supabase
+        .from("orders")
+        .select("id, created_at, customer_name, auto_recovery_count")
+        .is("automation_status", null)
+        .is("automation_started_at", null)
+        .is("automation_manual_override_at", null)
+        .is("dismissed_at", null)
+        .is("song_url", null)
+        .in("status", ["paid", "ready"])
+        .eq("auto_recovery_count", 0)
+        .lte("created_at", neverStartedCutoff)
+        .order("created_at", { ascending: true })
+        .limit(MAX_RETRIES_PER_RUN);
+
+      for (const order of neverStartedOrders || []) {
+        try {
+          console.log(`[RECOVERY] Order ${order.id} (${order.customer_name}) never started — triggering automation (auto_recovery 1/1)`);
+          await supabase
+            .from("orders")
+            .update({ auto_recovery_count: 1 })
+            .eq("id", order.id);
+          await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({ orderId: order.id, forceRun: true }),
+          });
+          await logActivity({
+            supabase,
+            entityType: "order",
+            entityId: order.id,
+            eventType: "auto_recovery_never_started",
+            actor: "system:scheduler",
+            details: `Auto-recovered never-started order ${Math.round((Date.now() - new Date(order.created_at).getTime()) / 60000)}min after creation`,
+          });
+          neverStartedTriggered++;
+        } catch (e) {
+          console.error(`[RECOVERY] Failed to auto-trigger order ${order.id}:`, e);
+        }
+      }
+
+      // Leads: only those with target_send_at in the past (i.e. scheduler should have run)
+      const { data: neverStartedLeads } = await supabase
+        .from("leads")
+        .select("id, created_at:captured_at, customer_name, auto_recovery_count")
+        .is("automation_status", null)
+        .is("automation_started_at", null)
+        .is("automation_manual_override_at", null)
+        .is("dismissed_at", null)
+        .is("preview_song_url", null)
+        .eq("auto_recovery_count", 0)
+        .lte("captured_at", neverStartedCutoff)
+        .lte("target_send_at", now)
+        .order("captured_at", { ascending: true })
+        .limit(MAX_RETRIES_PER_RUN);
+
+      for (const lead of neverStartedLeads || []) {
+        try {
+          console.log(`[RECOVERY] Lead ${lead.id} (${lead.customer_name}) never started — triggering automation (auto_recovery 1/1)`);
+          await supabase
+            .from("leads")
+            .update({ auto_recovery_count: 1 })
+            .eq("id", lead.id);
+          await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({ leadId: lead.id, forceRun: true }),
+          });
+          await logActivity({
+            supabase,
+            entityType: "lead",
+            entityId: lead.id,
+            eventType: "auto_recovery_never_started",
+            actor: "system:scheduler",
+            details: `Auto-recovered never-started lead ${Math.round((Date.now() - new Date(lead.created_at).getTime()) / 60000)}min after capture`,
+          });
+          neverStartedTriggered++;
+        } catch (e) {
+          console.error(`[RECOVERY] Failed to auto-trigger lead ${lead.id}:`, e);
+        }
+      }
+
+      if (neverStartedTriggered > 0) {
+        console.log(`[RECOVERY] Triggered ${neverStartedTriggered} never-started items`);
+      }
+      results.neverStartedRecoveries = neverStartedTriggered;
+    } catch (e) {
+      console.error("[RECOVERY:never_started] Error:", e);
+    }
+
     // ======= 1c. ZOMBIE JOB CLEANUP =======
     // Any job stuck in an active state >24h is dead (Suno task expired, callback lost,
     // etc.). Mark failed so it stops occupying scheduler slots forever.
