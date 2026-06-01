@@ -20,7 +20,6 @@ const occasions = [
   { id: "birthday", label: "Birthday" },
   { id: "graduation", label: "Graduation" },
   { id: "retirement", label: "Retirement" },
-  { id: "fathers-day", label: "Father's Day" },
   { id: "proposal", label: "Proposal" },
   { id: "friendship", label: "Friendship" },
   { id: "thank-you", label: "Thank You" },
@@ -28,7 +27,7 @@ const occasions = [
 ];
 
 const OccasionStep = ({ formData, updateFormData, errors, onAutoAdvance }: OccasionStepProps) => {
-  const isMothersSelected = formData.occasion === "mothers-day";
+  const isFathersSelected = formData.occasion === "fathers-day";
 
   return (
     <div className="space-y-6">
@@ -36,24 +35,24 @@ const OccasionStep = ({ formData, updateFormData, errors, onAutoAdvance }: Occas
         <p className="text-destructive text-sm text-center">{errors.occasion}</p>
       )}
 
-      {/* Featured Mother's Day Button */}
+      {/* Featured Father's Day Button */}
       <div className="flex justify-center">
         <button
           type="button"
           onClick={() => {
-            updateFormData({ occasion: "mothers-day" });
+            updateFormData({ occasion: "fathers-day" });
             onAutoAdvance?.();
           }}
           className={`w-full max-w-md mx-auto flex flex-col items-center gap-1 rounded-xl border-2 px-6 py-5 cursor-pointer transition-all duration-200 ${
-            isMothersSelected
-              ? "border-pink-500 ring-2 ring-pink-400 bg-gradient-to-r from-pink-100 to-rose-100 shadow-lg"
-              : "border-pink-300 bg-gradient-to-r from-pink-50 to-rose-50 hover:border-pink-400 hover:shadow-md"
+            isFathersSelected
+              ? "border-blue-500 ring-2 ring-blue-400 bg-gradient-to-r from-blue-100 to-sky-100 shadow-lg"
+              : "border-blue-300 bg-gradient-to-r from-blue-50 to-sky-50 hover:border-blue-400 hover:shadow-md"
           }`}
         >
-          <span className="text-lg sm:text-xl font-bold text-pink-700">
-            🌸 💝 Mother's Day 💝 🌸
+          <span className="text-lg sm:text-xl font-bold text-blue-700">
+            🤵 💙 Father's Day 💙 🤵
           </span>
-          <span className="text-sm text-pink-500">💐 🌷 🌺</span>
+          <span className="text-sm text-blue-500">👔 🎩 ⛳</span>
         </button>
       </div>
 
