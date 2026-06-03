@@ -688,14 +688,14 @@ const Checkout = () => {
               {isSubmitting ? "Processing..." : `Pay with Card — $${pricing.total.toFixed(2)} USD`}
             </Button>
 
-            {/* Divider */}
+            {/* PayPal temporarily hidden — uncomment block below to re-enable */}
+            {/*
             <div className="flex items-center gap-3">
               <div className="flex-1 border-t border-border" />
               <span className="text-sm text-muted-foreground">or</span>
               <div className="flex-1 border-t border-border" />
             </div>
 
-            {/* PayPal button */}
             <Button
               onClick={handlePayPalCheckout}
               size="lg"
@@ -712,10 +712,11 @@ const Checkout = () => {
               )}
               {isPayPalLoading ? "Connecting to PayPal..." : `Pay with PayPal — $${pricing.total.toFixed(2)} USD`}
             </Button>
+            */}
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
-            🔒 Secure checkout powered by Stripe & PayPal
+            🔒 Secure checkout powered by Stripe
           </p>
         </div>
       </div>
