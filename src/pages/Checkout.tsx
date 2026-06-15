@@ -688,8 +688,6 @@ const Checkout = () => {
               {isSubmitting ? "Processing..." : `Pay with Card — $${pricing.total.toFixed(2)} USD`}
             </Button>
 
-            {/* PayPal temporarily hidden — uncomment block below to re-enable */}
-            {/*
             <div className="flex items-center gap-3">
               <div className="flex-1 border-t border-border" />
               <span className="text-sm text-muted-foreground">or</span>
@@ -712,7 +710,6 @@ const Checkout = () => {
               )}
               {isPayPalLoading ? "Connecting to PayPal..." : `Pay with PayPal — $${pricing.total.toFixed(2)} USD`}
             </Button>
-            */}
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
