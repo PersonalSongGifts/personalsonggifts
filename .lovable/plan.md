@@ -1,31 +1,32 @@
 ## Goal
-
-Replace the prominent featured "Mother's Day" button at the top of the Occasion step with a "Father's Day" featured button, styled in blue to match the current Early Father's Day Sale banner, and remove the redundant "Father's Day" tile from the regular grid.
-
-## Scope
-
-Single file: `src/components/create/OccasionStep.tsx`. No business logic, no backend, no schema changes. Same auto-advance behavior.
+Father's Day has passed. Replace the Father's Day branding in the active site-wide promo with a generic red "Flash Sale" banner, and remove the big blue Father's Day promo card from the Create flow's Occasion step. Leave normal "Father's Day" catalog options (home occasions grid, sample player, admin dropdowns) alone — those are year-round options, not promo copy.
 
 ## Changes
 
-1. **Featured button** (currently Mother's Day):
-   - Change `occasion` id it sets from `"mothers-day"` to `"fathers-day"`.
-   - Change `isMothersSelected` → `isFathersSelected` checking `formData.occasion === "fathers-day"`.
-   - Swap label content to: `🤵 💙 Father's Day 💙 🤵` with a sub-line of dad-appropriate emojis (e.g. `👔 🎩 ⛳`), matching the banner's tuxedo + blue heart vibe.
-   - Replace pink color classes with blue equivalents mirroring the banner tone (banner uses `bg-primary` ≈ navy `#1E3A5F`). Use a softer blue background gradient so it reads as a featured card, not the dark banner:
-     - Border: `border-blue-300` → selected `border-blue-500` + `ring-blue-400`
-     - Background: `from-blue-50 to-sky-50` → selected `from-blue-100 to-sky-100`
-     - Text: `text-blue-700` for heading, `text-blue-500` for subline
-   - Keep the same sizing, rounded-xl, shadow, and hover behavior.
+### 1. Update the active promo in the database (no schema changes)
+The site banner is driven by the `promotions` row with slug `early-father-s-day` (currently `show_banner = true`, blue background, Father's Day copy). Update only these display fields on that row:
 
-2. **Regular occasion grid**:
-   - Remove the `{ id: "fathers-day", label: "Father's Day" }` entry from the `occasions` array so it isn't duplicated below the featured button (mirrors how Mother's Day was excluded from the grid).
+- `name` → `Flash Sale`
+- `banner_text` → `Flash Sale! Starting at Just $29.99`
+- `banner_emoji` → `🔥` (neutral, no Father's Day icons)
+- `banner_bg_color` → `#DC2626` (red)
+- `banner_text_color` → `#FFFFFF` (white, for contrast on red)
 
-3. **No other changes** — Valentine's, Mother's Day handling elsewhere in the codebase, pricing, and create flow logic remain untouched. The Mother's Day featured treatment is simply replaced (not preserved as a second featured button) since it's no longer the active seasonal push.
+Leave pricing, dates, `is_active`, `show_banner`, slug, and all other promo logic untouched so the existing discount keeps working exactly as it does today. The banner component (`src/components/layout/PromoBanner.tsx`) already reads these fields, so no code change is needed there.
 
-## Technical notes
+### 2. Remove the featured Father's Day card from the Occasion step
+File: `src/components/create/OccasionStep.tsx`
 
-- File touched: `src/components/create/OccasionStep.tsx` only.
-- Auto-advance via `onAutoAdvance?.()` preserved.
-- Tailwind classes only; no new tokens needed.
-- The downstream form already accepts `"fathers-day"` as a valid occasion id (it's currently listed in the grid), so no validation or prompt-mapping changes are required.
+- Delete the "Featured Father's Day Button" block (the big blue card at the top with `🤵 💙 Father's Day 💙 🤵`).
+- Delete the now-unused `isFathersSelected` variable.
+- Leave the regular occasion grid (Valentine's, Wedding, Birthday, etc.) unchanged. Father's Day is not in that grid today, so removing the featured card simply removes it from this step entirely — consistent with the season being over.
+
+## Out of scope (intentionally untouched)
+- Home page `OccasionsGrid` "Father's Day" tile, `SamplePlayer` sample tagged "Father's Day", admin dropdown options — these are evergreen catalog entries, not seasonal promo copy.
+- No edits to `PromoBanner.tsx`, `useActivePromo.tsx`, edge functions, or any other order/checkout logic.
+- No new migrations, no schema changes, no other promos modified.
+
+## Verification after build
+- Banner shows red background with white text reading `🔥 Flash Sale! Starting at Just $29.99` and the "Create Your Song →" link still works.
+- `/create` step 3 shows only the standard occasion grid — no blue Father's Day card.
+- Checkout pricing and promo discount behavior unchanged (same `early-father-s-day` row, same dates and prices).
