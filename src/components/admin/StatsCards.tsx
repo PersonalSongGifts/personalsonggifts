@@ -83,8 +83,23 @@ interface TipsSummary {
 }
 
 function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): StatSection[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // PST midnight (America/Los_Angeles) as an absolute UTC timestamp, so
+  // "today" matches server-side PST logic instead of the browser's local tz.
+  const today = (() => {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(now);
+    const y = parts.find(p => p.type === "year")!.value;
+    const m = parts.find(p => p.type === "month")!.value;
+    const d = parts.find(p => p.type === "day")!.value;
+    const tzName = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles", timeZoneName: "short",
+    }).formatToParts(now).find(p => p.type === "timeZoneName")!.value;
+    const offset = tzName === "PDT" ? "-07:00" : "-08:00";
+    return new Date(`${y}-${m}-${d}T00:00:00${offset}`);
+  })();
 
   // Revenue with payment source breakdown — includes base + all upsells
   const activeOrders = orders.filter((o) => o.status !== "cancelled");
@@ -144,6 +159,7 @@ function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): Sta
   const totalLeads = leads.length;
   const unconvertedLeads = leads.filter((l) => l.status === "lead").length;
   const convertedLeads = leads.filter((l) => l.status === "converted").length;
+  const previewSentLeads = leads.filter((l) => l.status === "preview_sent").length;
 
   // Lead recovery
   const previewsSent = leads.filter((l) => l.preview_sent_at).length;
@@ -227,7 +243,7 @@ function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): Sta
     {
       label: "Lead Recovery",
       stats: [
-        { title: "Leads", value: totalLeads.toString(), description: `${convertedLeads} converted, ${unconvertedLeads} pending`, icon: Users, color: "text-indigo-600", bgColor: "bg-indigo-100" },
+        { title: "Leads", value: totalLeads.toString(), description: `${convertedLeads} converted · ${previewSentLeads} preview sent · ${unconvertedLeads} new`, icon: Users, color: "text-indigo-600", bgColor: "bg-indigo-100" },
         { title: "Previews Sent", value: previewsSent.toString(), description: `of ${totalLeads} leads`, icon: Users, color: "text-violet-600", bgColor: "bg-violet-100" },
         { title: "True Recoveries", value: trueRecoveryCount.toString(), description: `$${Math.round(trueRecoveryRevenue).toLocaleString()} revenue`, icon: TrendingUp, color: "text-emerald-600", bgColor: "bg-emerald-100" },
         { title: "Recovery Rate", value: `${recoveryRate}%`, description: `${trueRecoveryCount} of ${previewsSent} sent`, icon: RefreshCw, color: "text-teal-600", bgColor: "bg-teal-100" },
