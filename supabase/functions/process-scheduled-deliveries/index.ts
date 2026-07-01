@@ -878,6 +878,23 @@ Deno.serve(async (req) => {
           // Determine effective recipient email (override > original)
           const effectiveEmail = order.customer_email_override || order.customer_email;
 
+          // Guard: skip orders with no recipient email. Mark needs_review so the
+          // query stops re-selecting them (prevents infinite retry loop) and
+          // surfaces them to an admin.
+          if (!effectiveEmail || !effectiveEmail.trim()) {
+            console.error(`[DELIVERY] Order ${order.id} has no recipient email — marking needs_review`);
+            await supabase
+              .from("orders")
+              .update({
+                delivery_status: "needs_review",
+                delivery_last_error: "Missing recipient email (customer_email and customer_email_override both empty)",
+                delivered_at: null,
+              })
+              .eq("id", order.id);
+            orderDeliveryResults.push({ orderId: order.id, success: false, error: "Missing recipient email" });
+            continue;
+          }
+
           // Send delivery email (with SMS fields)
           const emailResponse = await fetch(
             `${supabaseUrl}/functions/v1/send-song-delivery`,
