@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
     const swapName = (text: string): string => {
       if (!shouldSwapName) return text;
       const escaped = order.recipient_name_pronunciation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      return text.replace(new RegExp(escaped, "gi"), order.recipient_name);
+      return text.replace(new RegExp("(?<![A-Za-z])" + escaped + "(?![A-Za-z])", "gi"), order.recipient_name);
     };
 
     if (hasLyrics && lyricsUnlocked) {
