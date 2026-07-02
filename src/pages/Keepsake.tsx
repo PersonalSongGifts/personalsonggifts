@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { Loader2, Printer } from "lucide-react";
@@ -66,8 +66,8 @@ const Keepsake = () => {
     data?.has_lyrics && data.lyrics_unlocked && data.lyrics && data.lyrics.trim().length > 0
   );
 
-  const lyricsNodes = useMemo(() => {
-    if (!data?.lyrics) return null;
+  const { lyricsNodes, nonEmptyCount } = useMemo(() => {
+    if (!data?.lyrics) return { lyricsNodes: null as React.ReactNode, nonEmptyCount: 0 };
     // 1) strip bracketed stage-direction lines entirely
     // 2) collapse runs of blank lines into a single stanza gap
     const rawLines = data.lyrics.split(/\r?\n/).map((l) => l.trim());
@@ -79,7 +79,7 @@ const Keepsake = () => {
     }
     while (kept.length && kept[kept.length - 1] === "") kept.pop();
 
-    return kept.map((line, i) => {
+    const nodes = kept.map((line, i) => {
       if (line === "") return <div key={i} style={{ height: "0.75em" }} aria-hidden />;
       return (
         <p key={i} style={{ margin: 0 }}>
@@ -87,63 +87,20 @@ const Keepsake = () => {
         </p>
       );
     });
+    const nonEmpty = kept.filter((l) => l !== "").length;
+    return { lyricsNodes: nodes, nonEmptyCount: nonEmpty };
   }, [data]);
 
-  // Auto-fit ladder — prioritize readability:
-  //   1) 1 column @ 16px  → 2) 2 columns @ 16px  → 3) 2 columns, shrink to 12px floor
-  const lyricsRef = useRef<HTMLDivElement | null>(null);
-  const [columns, setColumns] = useState<1 | 2>(1);
-  const [fontScale, setFontScale] = useState<number>(16);
-
-  const lhFor = (size: number) => Math.max(1.35, 1.6 - (16 - size) * 0.02);
-
-  useLayoutEffect(() => {
-    if (!lyricsAvailable) return;
-
-    const applyAndMeasure = (cols: 1 | 2, size: number) => {
-      const node = lyricsRef.current;
-      if (!node) return true;
-      node.style.columnCount = String(cols);
-      node.style.fontSize = `${size}px`;
-      node.style.lineHeight = `${lhFor(size)}`;
-      // force reflow
-      void node.offsetHeight;
-      return node.scrollHeight <= node.clientHeight + 1;
-    };
-
-    const fit = () => {
-      const node = lyricsRef.current;
-      if (!node) return;
-
-      // Step 1: single column @ 16px
-      if (applyAndMeasure(1, 16)) {
-        setColumns(1);
-        setFontScale(16);
-        return;
-      }
-      // Step 2: two columns @ 16px
-      if (applyAndMeasure(2, 16)) {
-        setColumns(2);
-        setFontScale(16);
-        return;
-      }
-      // Step 3: two columns, shrink from 16 → 12
-      let size = 16;
-      let guard = 0;
-      while (size > 12 && guard < 40) {
-        size = Math.max(12, size - 0.5);
-        if (applyAndMeasure(2, size)) break;
-        guard++;
-      }
-      setColumns(2);
-      setFontScale(size);
-    };
-
-    requestAnimationFrame(() => {
-      fit();
-      setTimeout(fit, 200);
-    });
-  }, [lyricsNodes, lyricsAvailable, qrDataUrl]);
+  // Deterministic sizing based on non-empty line count — reliable in print
+  // (DOM measurement doesn't fire during print media).
+  const { columns, fontScale, lineHeight } = useMemo(() => {
+    const N = nonEmptyCount;
+    if (N <= 16) return { columns: 1 as 1 | 2, fontScale: 16, lineHeight: 1.6 };
+    if (N <= 30) return { columns: 2 as 1 | 2, fontScale: 16, lineHeight: 1.6 };
+    if (N <= 42) return { columns: 2 as 1 | 2, fontScale: 14, lineHeight: 1.5 };
+    if (N <= 56) return { columns: 2 as 1 | 2, fontScale: 12.5, lineHeight: 1.45 };
+    return { columns: 2 as 1 | 2, fontScale: 11, lineHeight: 1.45 };
+  }, [nonEmptyCount]);
 
   if (loading) {
     return (
@@ -211,8 +168,8 @@ const Keepsake = () => {
         .ks-sheet {
           position: relative;
           width: 8.5in;
-          height: 11in;
-          overflow: hidden;
+          min-height: 11in;
+          overflow: visible;
           background: ${PAPER};
           padding: 0.4in;
           -webkit-print-color-adjust: exact;
@@ -223,8 +180,8 @@ const Keepsake = () => {
         .ks-frame {
           border: 1px solid ${GOLD};
           padding: 6px;
-          height: calc(11in - 0.8in);
-          overflow: hidden;
+          min-height: calc(11in - 0.8in);
+          overflow: visible;
           display: flex;
           flex-direction: column;
         }
@@ -233,7 +190,7 @@ const Keepsake = () => {
           padding: 0.55in 0.65in 0.5in;
           flex: 1;
           min-height: 0;
-          overflow: hidden;
+          overflow: visible;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -292,7 +249,7 @@ const Keepsake = () => {
           max-width: 6.6in;
           flex: 1;
           min-height: 0;
-          overflow: hidden;
+          overflow: visible;
           columns: 1;
           column-gap: 2.5rem;
           column-fill: balance;
@@ -411,15 +368,16 @@ const Keepsake = () => {
           .ks-toolbar { display: none !important; }
           .ks-sheet {
             width: 8.5in !important;
-            height: 11in !important;
-            overflow: hidden !important;
+            min-height: 11in !important;
+            height: auto !important;
+            overflow: visible !important;
             box-shadow: none !important;
             margin: 0 !important;
             padding: 0.4in !important;
           }
-          .ks-frame { height: calc(11in - 0.8in) !important; overflow: hidden !important; }
-          .ks-frame-inner { overflow: hidden !important; }
-          .ks-lyrics { overflow: hidden !important; }
+          .ks-frame { min-height: calc(11in - 0.8in) !important; height: auto !important; overflow: visible !important; }
+          .ks-frame-inner { overflow: visible !important; }
+          .ks-lyrics { overflow: visible !important; }
           .ks-signature { break-inside: avoid !important; page-break-inside: avoid !important; }
           .ks-vinyl, .ks-vinyl-label, .ks-cover, .ks-frame, .ks-frame-inner,
           .ks-ornament .rule, .ks-vinyl-label::after {
@@ -456,11 +414,10 @@ const Keepsake = () => {
             {lyricsAvailable ? (
               <div
                 className="ks-lyrics"
-                ref={lyricsRef}
                 style={{
                   columnCount: columns,
                   fontSize: `${fontScale}px`,
-                  lineHeight: Math.max(1.35, 1.6 - (16 - fontScale) * 0.02),
+                  lineHeight: lineHeight,
                 }}
               >
                 {lyricsNodes}
