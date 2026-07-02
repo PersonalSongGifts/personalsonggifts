@@ -117,11 +117,11 @@ const Checkout = () => {
     }
   }, [selectedTier, selectedAddons.rush]);
 
-  const addonsTotalCents = (addonsEnabled ? (
+  const addonsTotalCents = addonsEnabled ? (
     (selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0)
     + (selectedAddons.rush && selectedTier === "standard" ? ADDON_PRICES_CENTS.rush : 0)
-  ) : 0);
-  const displayTotal = pricing_placeholder_will_be_replaced_below;
+  ) : 0;
+  const hasAddonSelected = addonsEnabled && addonsTotalCents > 0;
   
   // Auto-detect user timezone
   const userTimezone = useMemo(() => {
