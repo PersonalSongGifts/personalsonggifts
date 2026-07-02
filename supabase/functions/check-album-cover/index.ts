@@ -1,0 +1,142 @@
+import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+function extractImageUrl(record: unknown): string | null {
+  const r = record as Record<string, unknown> | null;
+  if (!r) return null;
+  const candidates: unknown[] = [
+    r.resultUrls, r.resultUrl, r.imageUrl, r.imageUrls, r.output, r.outputUrl,
+    (r.response as Record<string, unknown> | undefined)?.resultUrls,
+    (r.response as Record<string, unknown> | undefined)?.imageUrl,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.startsWith("http")) return c;
+    if (Array.isArray(c)) {
+      const first = c.find((x) => typeof x === "string" && (x as string).startsWith("http"));
+      if (first) return first as string;
+    }
+  }
+  // deep search JSON stringify fallback
+  try {
+    const s = JSON.stringify(r);
+    const m = s.match(/https?:\/\/[^"\s]+\.(?:png|jpg|jpeg|webp)/i);
+    if (m) return m[0];
+  } catch { /* ignore */ }
+  return null;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  try {
+    const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
+    if (!KIE_API_KEY) throw new Error("KIE_API_KEY not configured");
+    const { orderId } = await req.json();
+    if (!orderId) {
+      return new Response(JSON.stringify({ error: "orderId required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id, album_cover_task_id, album_cover_status, album_cover_url")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (!order) {
+      return new Response(JSON.stringify({ error: "Order not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (order.album_cover_status === "ready" && order.album_cover_url) {
+      return new Response(JSON.stringify({ status: "ready", url: order.album_cover_url }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const taskId = order.album_cover_task_id;
+    if (!taskId) {
+      return new Response(JSON.stringify({ status: order.album_cover_status || "none" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const infoRes = await fetch(`https://api.kie.ai/api/v1/gpt4o-image/record-info?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { "Authorization": `Bearer ${KIE_API_KEY}` },
+    });
+    const infoJson = await infoRes.json().catch(() => ({}));
+    if (!infoRes.ok) {
+      console.error("[check-album-cover] info error", infoRes.status, infoJson);
+      return new Response(JSON.stringify({ status: "generating" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const data = (infoJson?.data ?? infoJson) as Record<string, unknown>;
+    const statusStr = String(
+      data?.status ?? data?.state ?? data?.successFlag ?? ""
+    ).toLowerCase();
+    const isSuccess = statusStr === "success" || statusStr === "succeeded" || statusStr === "completed" || statusStr === "1";
+    const isFailed = statusStr === "failed" || statusStr === "error" || statusStr === "2" || statusStr === "3";
+
+    if (isSuccess) {
+      const imgUrl = extractImageUrl(data);
+      if (!imgUrl) {
+        console.error("[check-album-cover] success but no image url", data);
+        return new Response(JSON.stringify({ status: "generating" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Download from Kie with a browser UA (default fetch UA gets 403)
+      const dlRes = await fetch(imgUrl, { headers: { "User-Agent": BROWSER_UA, "Accept": "image/*" } });
+      if (!dlRes.ok) {
+        console.error("[check-album-cover] download failed", dlRes.status);
+        return new Response(JSON.stringify({ status: "generating" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const bytes = new Uint8Array(await dlRes.arrayBuffer());
+      const ct = dlRes.headers.get("content-type") || "image/png";
+      const ext = ct.includes("webp") ? "webp" : ct.includes("jpeg") || ct.includes("jpg") ? "jpg" : "png";
+      const shortId = String(order.id).slice(0, 8).toUpperCase();
+      const path = `cover-photos/${shortId}-ai-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("songs").upload(path, bytes, {
+        contentType: ct, upsert: true,
+      });
+      if (upErr) throw new Error(`Store failed: ${upErr.message}`);
+      const { data: pub } = supabase.storage.from("songs").getPublicUrl(path);
+      const storedUrl = `${pub.publicUrl}?v=${Date.now()}`;
+      await supabase.from("orders").update({
+        album_cover_url: storedUrl,
+        album_cover_status: "ready",
+      }).eq("id", order.id);
+      return new Response(JSON.stringify({ status: "ready", url: storedUrl }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (isFailed) {
+      await supabase.from("orders").update({ album_cover_status: "failed" }).eq("id", order.id);
+      return new Response(JSON.stringify({ status: "failed", detail: data }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ status: "generating" }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Server error";
+    console.error("[check-album-cover] error", msg);
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
