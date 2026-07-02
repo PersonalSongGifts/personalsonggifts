@@ -1807,7 +1807,7 @@ const { data, error } = await listOrders("all", 0, 250);
                           <p className="text-sm text-muted-foreground">
                             <strong>Order ID:</strong> {order.id.slice(0, 8).toUpperCase()}
                             {order.status === "delivered" && order.song_url && (
-                              <> · <a href={`/song/${order.id.slice(0, 8)}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">🔗 Song Page</a></>
+                              <> · <a href={`/song/${order.id.slice(0, 8)}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">🔗 Song Page</a> · <a href={`/keepsake/${order.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">📜 Keepsake</a></>
                             )}
                           </p>
                           <p className="text-sm text-muted-foreground">
@@ -2017,7 +2017,7 @@ const { data, error } = await listOrders("all", 0, 250);
                     <DialogDescription>
                       Order ID: {selectedOrder.id.slice(0, 8).toUpperCase()}
                       {selectedOrder.status === "delivered" && selectedOrder.song_url && (
-                        <> · <a href={`/song/${selectedOrder.id.slice(0, 8)}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View Song Page ↗</a></>
+                        <> · <a href={`/song/${selectedOrder.id.slice(0, 8)}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View Song Page ↗</a> · <a href={`/keepsake/${selectedOrder.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View / Print Keepsake ↗</a></>
                       )}
                       {selectedOrder.revision_token && (
                         <> · <button
