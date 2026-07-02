@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import AlbumCoverStudio from "@/components/song/AlbumCoverStudio";
 import { useActivePromo } from "@/hooks/useActivePromo";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Download, Facebook, Instagram, Mail, MessageCircle, Youtube, AlertCircle, Lock, Check, Pencil, Heart } from "lucide-react";
@@ -82,6 +83,10 @@ interface SongData {
   genre?: string;
   bonus_genre_label?: string;
   bonus_asset_version?: string | null;
+  package_unlocked?: boolean;
+  album_cover_url?: string | null;
+  album_cover_photo_url?: string | null;
+  album_cover_status?: string | null;
 }
 
 const SongPlayer = () => {
@@ -94,6 +99,7 @@ const SongPlayer = () => {
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [bonusLoading, setBonusLoading] = useState(false);
+  const [packageLoading, setPackageLoading] = useState(false);
   const [lyricsCopied, setLyricsCopied] = useState(false);
   const [tipDialogOpen, setTipDialogOpen] = useState(false);
 
