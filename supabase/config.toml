@@ -119,3 +119,12 @@ verify_jwt = false
 
 [functions.verify-download-purchase]
 verify_jwt = false
+
+[functions.upload-cover-photo]
+verify_jwt = false
+
+[functions.generate-album-cover]
+verify_jwt = false
+
+[functions.check-album-cover]
+verify_jwt = false

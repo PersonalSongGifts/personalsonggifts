@@ -379,6 +379,10 @@ export type Database = {
       }
       orders: {
         Row: {
+          album_cover_photo_url: string | null
+          album_cover_status: string
+          album_cover_task_id: string | null
+          album_cover_url: string | null
           auto_recovery_count: number
           automation_audio_url_source: string | null
           automation_last_error: string | null
@@ -502,6 +506,10 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          album_cover_photo_url?: string | null
+          album_cover_status?: string
+          album_cover_task_id?: string | null
+          album_cover_url?: string | null
           auto_recovery_count?: number
           automation_audio_url_source?: string | null
           automation_last_error?: string | null
@@ -625,6 +633,10 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          album_cover_photo_url?: string | null
+          album_cover_status?: string
+          album_cover_task_id?: string | null
+          album_cover_url?: string | null
           auto_recovery_count?: number
           automation_audio_url_source?: string | null
           automation_last_error?: string | null
@@ -1076,6 +1088,10 @@ export type Database = {
           status_filter?: string[]
         }
         Returns: {
+          album_cover_photo_url: string | null
+          album_cover_status: string
+          album_cover_task_id: string | null
+          album_cover_url: string | null
           auto_recovery_count: number
           automation_audio_url_source: string | null
           automation_last_error: string | null
