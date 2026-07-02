@@ -353,6 +353,72 @@ Deno.serve(async (req) => {
       }
       // --- End Bonus Unlock handler ---
 
+      // --- Package Unlock handler (early return before order creation) ---
+      if (sessionMetadata.type === "package_unlock" || sessionMetadata.entitlement === "package_unlock") {
+        const packageOrderId = sessionMetadata.orderId;
+        console.log(`[WEBHOOK] Package unlock for order ${packageOrderId}`);
+
+        if (!packageOrderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(packageOrderId)) {
+          console.error("[WEBHOOK] Invalid orderId in package_unlock metadata");
+          return new Response(
+            JSON.stringify({ received: true, error: "Invalid orderId in metadata" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        const nowIso = new Date().toISOString();
+        const amountTotal = session.amount_total ?? 0;
+        const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+
+        // Idempotent: only update if package_unlocked_at IS NULL
+        const { error: packageUpdateError } = await supabase
+          .from("orders")
+          .update({
+            package_unlocked_at: nowIso,
+            package_unlock_session_id: session.id,
+            package_unlock_payment_intent_id: paymentIntentId,
+            package_price_cents: amountTotal,
+          })
+          .eq("id", packageOrderId)
+          .is("package_unlocked_at", null);
+
+        if (packageUpdateError) {
+          console.error("[WEBHOOK] Failed to unlock package:", packageUpdateError);
+        } else {
+          console.log(`[WEBHOOK] Package unlocked for order ${packageOrderId}`);
+          await logActivity(supabase, "order", packageOrderId, "package_unlocked", "system", `Forever Memory Package unlocked via Stripe webhook, $${(amountTotal / 100).toFixed(2)}`);
+        }
+
+        // Bundle: unlock each individual entitlement idempotently ($0 because included)
+        await supabase
+          .from("orders")
+          .update({ lyrics_unlocked_at: nowIso, lyrics_price_cents: 0 })
+          .eq("id", packageOrderId)
+          .is("lyrics_unlocked_at", null);
+
+        await supabase
+          .from("orders")
+          .update({ download_unlocked_at: nowIso, download_price_cents: 0 })
+          .eq("id", packageOrderId)
+          .is("download_unlocked_at", null);
+
+        await supabase
+          .from("orders")
+          .update({ bonus_unlocked_at: nowIso, bonus_price_cents: 0 })
+          .eq("id", packageOrderId)
+          .is("bonus_unlocked_at", null);
+
+        return new Response(
+          JSON.stringify({ received: true, type: "package_unlock", orderId: packageOrderId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // --- End Package Unlock handler ---
+
       // Initialize Supabase
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
