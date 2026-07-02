@@ -29,6 +29,10 @@ import { useActivePromo } from "@/hooks/useActivePromo";
 
 type PricingTier = "standard" | "priority";
 
+// Phase 1 add-ons (UI preview only — not wired to payment yet)
+const ADDON_PRICES_CENTS = { forever_memory: 2400, rush: 1000 } as const;
+type AddonKey = keyof typeof ADDON_PRICES_CENTS;
+
 interface AdditionalPromo {
   code: string;
   type: "amount_off" | "percent_off";
@@ -95,6 +99,29 @@ const Checkout = () => {
   const [additionalPromo, setAdditionalPromo] = useState<AdditionalPromo | null>(null);
   const [promoError, setPromoError] = useState("");
   const [isValidating, setIsValidating] = useState(false);
+
+  // Phase 1 add-ons: gated behind env flag or ?addons=preview query param.
+  const addonsEnabled = import.meta.env.VITE_CHECKOUT_ADDONS_ENABLED === "true"
+    || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("addons") === "preview");
+  const [selectedAddons, setSelectedAddons] = useState<Record<AddonKey, boolean>>({
+    forever_memory: false,
+    rush: false,
+  });
+  const toggleAddon = (key: AddonKey) =>
+    setSelectedAddons((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // Auto-clear Rush if user switches to priority (priority already includes rush).
+  useEffect(() => {
+    if (selectedTier === "priority" && selectedAddons.rush) {
+      setSelectedAddons((prev) => ({ ...prev, rush: false }));
+    }
+  }, [selectedTier, selectedAddons.rush]);
+
+  const addonsTotalCents = (addonsEnabled ? (
+    (selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0)
+    + (selectedAddons.rush && selectedTier === "standard" ? ADDON_PRICES_CENTS.rush : 0)
+  ) : 0);
+  const displayTotal = pricing_placeholder_will_be_replaced_below;
   
   // Auto-detect user timezone
   const userTimezone = useMemo(() => {
