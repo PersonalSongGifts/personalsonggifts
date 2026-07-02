@@ -68,26 +68,72 @@ const Keepsake = () => {
 
   const { lyricsNodes, nonEmptyCount } = useMemo(() => {
     if (!data?.lyrics) return { lyricsNodes: null as React.ReactNode, nonEmptyCount: 0 };
-    // 1) strip bracketed stage-direction lines entirely
-    // 2) collapse runs of blank lines into a single stanza gap
+    // Bracketed lines split into:
+    //   A) section headers (verse/chorus/bridge/etc) → kept as labeled sections
+    //   B) stage directions → removed
+    // Then collapse runs of blank lines into a single stanza gap.
+    const SECTION_RE = /^(intro|verse|chorus|pre[\s-]?chorus|post[\s-]?chorus|hook|bridge|refrain|outro|interlude|coda|breakdown|drop)\b/i;
+    type Item = { kind: "text"; text: string } | { kind: "section"; text: string } | { kind: "gap" };
     const rawLines = data.lyrics.split(/\r?\n/).map((l) => l.trim());
-    const kept: string[] = [];
+    const items: Item[] = [];
     for (const line of rawLines) {
-      if (/^\[.*\]$/.test(line)) continue;
-      if (line === "" && (kept.length === 0 || kept[kept.length - 1] === "")) continue;
-      kept.push(line);
+      const bracket = line.match(/^\[(.+)\]$/);
+      if (bracket) {
+        const inner = bracket[1].trim();
+        if (SECTION_RE.test(inner)) {
+          items.push({ kind: "section", text: inner });
+        }
+        // stage directions → dropped
+        continue;
+      }
+      if (line === "") {
+        const prev = items[items.length - 1];
+        if (!prev || prev.kind === "gap" || prev.kind === "section") continue;
+        items.push({ kind: "gap" });
+        continue;
+      }
+      items.push({ kind: "text", text: line });
     }
-    while (kept.length && kept[kept.length - 1] === "") kept.pop();
+    while (items.length && items[items.length - 1].kind === "gap") items.pop();
 
-    const nodes = kept.map((line, i) => {
-      if (line === "") return <div key={i} style={{ height: "0.75em" }} aria-hidden />;
+    let seenSection = false;
+    const nodes = items.map((item, i) => {
+      if (item.kind === "gap") {
+        return <div key={i} style={{ height: "0.9em" }} aria-hidden />;
+      }
+      if (item.kind === "section") {
+        const isFirst = !seenSection;
+        seenSection = true;
+        return (
+          <div
+            key={i}
+            className="ks-section-label"
+            style={{
+              color: GOLD,
+              fontFamily: '"EB Garamond", Georgia, serif',
+              fontSize: "10.5px",
+              letterSpacing: "0.14em",
+              fontWeight: 500,
+              textTransform: "uppercase",
+              marginTop: isFirst ? 0 : "1.3em",
+              marginBottom: "0.4em",
+              breakAfter: "avoid",
+              pageBreakAfter: "avoid",
+              breakInside: "avoid",
+              pageBreakInside: "avoid",
+            }}
+          >
+            {item.text}
+          </div>
+        );
+      }
       return (
         <p key={i} style={{ margin: 0 }}>
-          {line}
+          {item.text}
         </p>
       );
     });
-    const nonEmpty = kept.filter((l) => l !== "").length;
+    const nonEmpty = items.filter((it) => it.kind !== "gap").length;
     return { lyricsNodes: nodes, nonEmptyCount: nonEmpty };
   }, [data]);
 
