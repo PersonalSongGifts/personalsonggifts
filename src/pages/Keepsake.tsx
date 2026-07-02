@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { Loader2, Printer } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 interface SongData {
   song_title: string | null;
@@ -14,10 +13,13 @@ interface SongData {
   lyrics?: string;
 }
 
+const PAPER = "#FAF6EC";
+const INK = "#211E1A";
+const GOLD = "#B0894F";
+const MUTED = "#8A7F6C";
+
 const formatOccasion = (o: string) =>
-  o
-    ? o.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-    : "";
+  o ? o.replace(/[-_]/g, " ").toUpperCase() : "";
 
 const Keepsake = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,7 +27,7 @@ const Keepsake = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const printedTitle = useRef<string>(document.title);
+  const originalTitle = useRef<string>(document.title);
 
   useEffect(() => {
     if (!id) return;
@@ -44,55 +46,45 @@ const Keepsake = () => {
     if (!id) return;
     const songUrl = `https://www.personalsonggifts.com/song/${id}`;
     QRCode.toDataURL(songUrl, {
-      margin: 1,
-      width: 320,
-      color: { dark: "#1E3A5F", light: "#00000000" },
+      margin: 0,
+      width: 480,
+      color: { dark: GOLD, light: "#00000000" },
     })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(null));
   }, [id]);
 
   useEffect(() => {
-    if (data?.song_title) {
-      document.title = `${data.song_title} — Keepsake`;
-    }
+    if (data?.song_title) document.title = `${data.song_title} — Keepsake`;
+    const prev = originalTitle.current;
     return () => {
-      document.title = printedTitle.current;
+      document.title = prev;
     };
   }, [data]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#FDF8F3" }}>
-        <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#1E3A5F" }} />
-      </div>
-    );
-  }
+  const lyricsAvailable = !!(
+    data?.has_lyrics && data.lyrics_unlocked && data.lyrics && data.lyrics.trim().length > 0
+  );
 
-  if (error || !data) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "#FDF8F3" }}>
-        <p className="font-display text-2xl" style={{ color: "#1E3A5F" }}>
-          We couldn't find this keepsake.
-        </p>
-      </div>
-    );
-  }
-
-  const lyricsAvailable = data.has_lyrics && data.lyrics_unlocked && data.lyrics && data.lyrics.trim().length > 0;
-
-  const renderLyrics = (raw: string) => {
-    const lines = raw.split(/\r?\n/);
-    return lines.map((line, i) => {
+  const lyricsNodes = useMemo(() => {
+    if (!data?.lyrics) return null;
+    return data.lyrics.split(/\r?\n/).map((line, i) => {
       const trimmed = line.trim();
-      if (trimmed === "") return <div key={i} className="h-4" aria-hidden />;
+      if (trimmed === "") return <div key={i} style={{ height: "0.75em" }} aria-hidden />;
       const isTag = /^\[.*\]$/.test(trimmed);
       if (isTag) {
         return (
           <p
             key={i}
-            className="italic tracking-wide text-[13px] md:text-sm my-2"
-            style={{ color: "#8A8578", fontFamily: "Georgia, serif" }}
+            className="ks-tag"
+            style={{
+              color: MUTED,
+              fontStyle: "italic",
+              fontSize: "12.5px",
+              margin: "0.9em 0 0.15em 0",
+              breakAfter: "avoid",
+              pageBreakAfter: "avoid",
+            }}
           >
             {trimmed}
           </p>
@@ -101,96 +93,327 @@ const Keepsake = () => {
       return (
         <p
           key={i}
-          className="text-lg md:text-xl leading-relaxed"
-          style={{ color: "#1E3A5F", fontFamily: "Georgia, serif" }}
+          style={{
+            color: INK,
+            fontSize: "15px",
+            lineHeight: 1.55,
+            margin: 0,
+          }}
         >
           {trimmed}
         </p>
       );
     });
-  };
+  }, [data]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: PAPER }}>
+        <Loader2 className="h-6 w-6 animate-spin" style={{ color: GOLD }} />
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: PAPER }}>
+        <p style={{ color: INK, fontFamily: '"Cormorant Garamond", Georgia, serif', fontSize: 28 }}>
+          We couldn't find this keepsake.
+        </p>
+      </div>
+    );
+  }
+
+  const eyebrow = [
+    formatOccasion(data.occasion),
+    data.recipient_name ? `FOR ${data.recipient_name.toUpperCase()}` : "",
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
 
   return (
-    <div className="keepsake-page min-h-screen" style={{ background: "#FDF8F3" }}>
+    <div className="keepsake-root">
       <style>{`
+        .keepsake-root {
+          min-height: 100vh;
+          background: #E8E2D4;
+          padding: 32px 16px 80px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          font-family: "EB Garamond", Georgia, serif;
+          color: ${INK};
+        }
+        .ks-toolbar {
+          width: 100%;
+          max-width: 8.5in;
+          display: flex;
+          justify-content: flex-end;
+          margin-bottom: 20px;
+        }
+        .ks-print-btn {
+          font-family: "EB Garamond", Georgia, serif;
+          background: transparent;
+          color: ${INK};
+          border: 1px solid ${GOLD};
+          padding: 10px 20px;
+          letter-spacing: 0.22em;
+          font-size: 11px;
+          text-transform: uppercase;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          border-radius: 2px;
+          transition: background 0.2s, color 0.2s;
+        }
+        .ks-print-btn:hover { background: ${GOLD}; color: ${PAPER}; }
+
+        .ks-sheet {
+          position: relative;
+          width: 8.5in;
+          min-height: 11in;
+          background: ${PAPER};
+          padding: 0.4in;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+          color-adjust: exact;
+          box-shadow: 0 30px 60px -30px rgba(0,0,0,0.25);
+        }
+        .ks-frame {
+          border: 1px solid ${GOLD};
+          padding: 6px;
+          min-height: calc(11in - 0.8in);
+          display: flex;
+          flex-direction: column;
+        }
+        .ks-frame-inner {
+          border: 1px solid ${GOLD};
+          padding: 0.55in 0.65in 0.5in;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+
+        .ks-cover {
+          width: 2.1in;
+          height: 2.1in;
+          object-fit: cover;
+          border: 1px solid ${GOLD};
+          border-radius: 3px;
+          display: block;
+          background: transparent;
+        }
+
+        .ks-title {
+          font-family: "Cormorant Garamond", Georgia, serif;
+          font-weight: 600;
+          color: ${INK};
+          font-size: clamp(40px, 6vw, 60px);
+          line-height: 1.05;
+          letter-spacing: -0.01em;
+          margin: 26px 0 14px;
+        }
+
+        .ks-eyebrow {
+          font-family: "EB Garamond", Georgia, serif;
+          color: ${MUTED};
+          text-transform: uppercase;
+          letter-spacing: 0.22em;
+          font-size: 12px;
+        }
+
+        .ks-ornament {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          margin: 22px 0 20px;
+          color: ${GOLD};
+        }
+        .ks-ornament .rule {
+          width: 56px;
+          height: 1px;
+          background: ${GOLD};
+        }
+        .ks-ornament .diamond {
+          font-size: 10px;
+          transform: translateY(-1px);
+        }
+
+        .ks-lyrics {
+          width: 100%;
+          max-width: 6.6in;
+          columns: 2;
+          column-gap: 2.5rem;
+          column-rule: 1px solid rgba(176, 137, 79, 0.25);
+          text-align: left;
+          margin: 0 auto 28px;
+          font-size: 15px;
+          line-height: 1.55;
+          color: ${INK};
+        }
+        .ks-lyrics p { orphans: 2; widows: 2; }
+
+        .ks-lyrics-missing {
+          font-style: italic;
+          color: ${MUTED};
+          font-size: 16px;
+          margin: 60px 0;
+        }
+
+        .ks-signature {
+          margin-top: auto;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding-top: 14px;
+        }
+
+        .ks-vinyl {
+          position: relative;
+          width: 150px;
+          height: 150px;
+          border-radius: 50%;
+          background:
+            repeating-radial-gradient(
+              circle at 50% 50%,
+              ${GOLD} 0px,
+              ${GOLD} 1px,
+              transparent 1px,
+              transparent 4px
+            );
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid ${GOLD};
+        }
+        .ks-vinyl::before {
+          content: "";
+          position: absolute;
+          inset: 6px;
+          border-radius: 50%;
+          border: 1px solid rgba(33, 30, 26, 0.25);
+          pointer-events: none;
+        }
+        .ks-vinyl-label {
+          position: relative;
+          width: 96px;
+          height: 96px;
+          border-radius: 50%;
+          background: ${PAPER};
+          border: 1px solid ${GOLD};
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .ks-vinyl-label img {
+          width: 78px;
+          height: 78px;
+          display: block;
+        }
+        .ks-vinyl-label::after {
+          content: "";
+          position: absolute;
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: ${GOLD};
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          box-shadow: 0 0 0 2px ${PAPER};
+        }
+
+        .ks-scan-caption {
+          margin-top: 14px;
+          color: ${MUTED};
+          text-transform: uppercase;
+          letter-spacing: 0.22em;
+          font-size: 11px;
+        }
+
+        .ks-footer {
+          margin-top: 22px;
+          color: ${MUTED};
+          text-transform: uppercase;
+          letter-spacing: 0.22em;
+          font-size: 10px;
+        }
+
+        @media (max-width: 900px) {
+          .ks-sheet { width: 100%; min-height: 0; padding: 20px; }
+          .ks-frame-inner { padding: 28px 22px; }
+          .ks-lyrics { columns: 1; max-width: 100%; }
+        }
+
         @media print {
-          @page { size: Letter; margin: 0.6in; }
-          html, body { background: #FDF8F3 !important; }
+          @page { size: Letter; margin: 0; }
+          html, body { background: ${PAPER} !important; margin: 0 !important; padding: 0 !important; }
           header, nav, footer, .no-print { display: none !important; }
-          .keepsake-page { min-height: 0 !important; padding: 0 !important; }
-          .keepsake-frame { box-shadow: none !important; border: none !important; padding: 0 !important; max-width: 100% !important; }
+          .keepsake-root { background: ${PAPER} !important; padding: 0 !important; min-height: 0 !important; }
+          .ks-toolbar { display: none !important; }
+          .ks-sheet {
+            width: 8.5in !important;
+            min-height: 11in !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+            padding: 0.4in !important;
+          }
+          .ks-vinyl, .ks-vinyl-label, .ks-cover, .ks-frame, .ks-frame-inner,
+          .ks-ornament .rule, .ks-vinyl-label::after {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
 
-      <div className="no-print flex justify-end max-w-3xl mx-auto px-6 pt-6">
-        <Button
-          onClick={() => window.print()}
-          className="rounded-full"
-          style={{ background: "#1E3A5F", color: "#FDF8F3" }}
-        >
-          <Printer className="h-4 w-4 mr-2" />
+      <div className="ks-toolbar no-print">
+        <button className="ks-print-btn" onClick={() => window.print()}>
+          <Printer className="h-3.5 w-3.5" />
           Print / Save as PDF
-        </Button>
+        </button>
       </div>
 
-      <article className="keepsake-frame max-w-3xl mx-auto px-8 md:px-16 py-12 md:py-16 text-center">
-        {data.cover_image_url && (
-          <img
-            src={data.cover_image_url}
-            alt=""
-            className="mx-auto mb-10 w-64 h-64 md:w-72 md:h-72 object-cover rounded-2xl"
-            style={{ boxShadow: "0 20px 40px -20px rgba(30, 58, 95, 0.35)" }}
-          />
-        )}
+      <article className="ks-sheet">
+        <div className="ks-frame">
+          <div className="ks-frame-inner">
+            {data.cover_image_url && (
+              <img className="ks-cover" src={data.cover_image_url} alt="" />
+            )}
 
-        <h1
-          className="font-display text-4xl md:text-6xl leading-tight mb-3"
-          style={{ color: "#1E3A5F" }}
-        >
-          {data.song_title || "Untitled"}
-        </h1>
-        <p
-          className="text-sm md:text-base tracking-widest uppercase mb-12"
-          style={{ color: "#8A8578", fontFamily: "Georgia, serif" }}
-        >
-          {formatOccasion(data.occasion)}
-          {data.recipient_name ? ` • For ${data.recipient_name}` : ""}
-        </p>
+            <h1 className="ks-title">{data.song_title || "Untitled"}</h1>
 
-        <div
-          className="mx-auto mb-12"
-          style={{ maxWidth: "36rem", borderTop: "1px solid rgba(30,58,95,0.15)", borderBottom: "1px solid rgba(30,58,95,0.15)", padding: "2.5rem 0" }}
-        >
-          {lyricsAvailable ? (
-            <div className="space-y-1">{renderLyrics(data.lyrics!)}</div>
-          ) : (
-            <p
-              className="italic text-lg"
-              style={{ color: "#8A8578", fontFamily: "Georgia, serif" }}
-            >
-              Lyrics for this song aren't available yet.
-            </p>
-          )}
-        </div>
+            {eyebrow && <div className="ks-eyebrow">{eyebrow}</div>}
 
-        {qrDataUrl && (
-          <div className="flex flex-col items-center mb-10">
-            <img src={qrDataUrl} alt="Scan to listen" className="w-32 h-32" />
-            <p
-              className="mt-3 text-xs tracking-widest uppercase"
-              style={{ color: "#8A8578", fontFamily: "Georgia, serif" }}
-            >
-              Scan to listen
-            </p>
+            <div className="ks-ornament" aria-hidden>
+              <span className="rule" />
+              <span className="diamond">◆</span>
+              <span className="rule" />
+            </div>
+
+            {lyricsAvailable ? (
+              <div className="ks-lyrics">{lyricsNodes}</div>
+            ) : (
+              <p className="ks-lyrics-missing">Lyrics for this song aren't available yet.</p>
+            )}
+
+            <div className="ks-signature">
+              <div className="ks-vinyl" aria-hidden>
+                <div className="ks-vinyl-label">
+                  {qrDataUrl && <img src={qrDataUrl} alt="Scan to play" />}
+                </div>
+              </div>
+              <div className="ks-scan-caption">Scan to play</div>
+              <div className="ks-footer">
+                Personal Song Gifts · {new Date().getFullYear()}
+              </div>
+            </div>
           </div>
-        )}
-
-        <p
-          className="text-xs tracking-widest uppercase"
-          style={{ color: "#8A8578", fontFamily: "Georgia, serif" }}
-        >
-          Made with ♥ by PersonalSongGifts
-        </p>
+        </div>
       </article>
     </div>
   );
