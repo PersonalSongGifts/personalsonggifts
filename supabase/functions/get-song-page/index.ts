@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, download_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_cover_image_url, bonus_unlocked_at, bonus_automation_status, bonus_automation_task_id, bonus_automation_started_at, bonus_style_prompt, genre";
+    const selectFields = "id, song_url, song_title, cover_image_url, occasion, recipient_name, recipient_name_pronunciation, status, delivered_at, automation_lyrics, lyrics_unlocked_at, download_unlocked_at, revision_token, revision_count, max_revisions, revision_status, sent_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_cover_image_url, bonus_unlocked_at, bonus_automation_status, bonus_automation_task_id, bonus_automation_started_at, bonus_style_prompt, genre, package_unlocked_at, album_cover_url, album_cover_photo_url, album_cover_status";
 
     let orders: any[] | null = null;
     let error: any = null;
@@ -234,6 +234,10 @@ Deno.serve(async (req) => {
       revision_count: order.revision_count || 0,
       delivered_at: order.delivered_at || null,
       download_unlocked: !!order.download_unlocked_at,
+      package_unlocked: !!order.package_unlocked_at,
+      album_cover_url: order.album_cover_url || null,
+      album_cover_photo_url: order.album_cover_photo_url || null,
+      album_cover_status: order.album_cover_status || null,
       genre: order.genre || null,
       bonus_available: !!(order.bonus_preview_url || order.bonus_song_url),
       bonus_preview_url: order.bonus_preview_url || null,

@@ -24,7 +24,7 @@ function genreStyle(genreRaw: string | null | undefined): string {
 
 function occasionGuardrail(occRaw: string | null | undefined): string {
   const o = (occRaw || "").toLowerCase().trim();
-  if (o.includes("memorial") || o.includes("memory of") || o.includes("in loving")) return "Tender, reverent, soft muted palette. Absolutely no upbeat or celebratory cues; respectful and dignified only.";
+  if (o.includes("memorial") || o.includes("memory of") || o.includes("in loving") || o.includes("pet-memorial") || o.includes("pet memorial")) return "MEMORIAL — reverent remembrance ONLY. Tender, soft, muted palette (dusty rose, ivory, warm grey, gentle golden light). Absolutely no celebratory or peppy cues, no confetti, no bright neon, no upbeat/energetic styling, no cheerful taglines or slogans. This guardrail OVERRIDES the genre's usual upbeat treatment — even if the genre style suggests vibrant/glossy/energetic looks, keep it hushed, dignified and respectful. Serene, still, memorial-portrait feeling.";
   if (o.includes("birthday")) return "Warm, celebratory but tasteful mood.";
   if (o.includes("anniversary") || o.includes("valentine") || o.includes("proposal") || o.includes("wedding")) return "Romantic, intimate, tender mood.";
   if (o.includes("mother")) return "Warm, heartfelt, loving mood.";
@@ -44,7 +44,7 @@ function buildPrompt(args: { title: string; recipient: string; genre: string; oc
     `COMPOSITION: Balanced square 1:1 album cover; the person prominent and FULLY in frame, not cut off; title readable and not covering their face; premium, like a real released single.`,
     `GENRE STYLE (${args.genre || "default"}): ${style}`,
     `OCCASION GUARDRAIL (${args.occasion || "default"}): ${guard}`,
-    `Render the song title text on the cover exactly as: "${title}". Place it tastefully so it does not cover the person's face.`,
+    `TITLE RENDERING: Render the song title EXACTLY as: "${title}" — every word, spelled correctly, no substitutions, no truncation, no invented text. Break it naturally across one to three lines if it is long; keep it prominent, legible and well-sized (a real album-cover title, not tiny). Place it tastefully so it does not cover the person's face. Do NOT add any other text, subtitle, artist name, or tagline.`,
     "No watermarks, no logos, no borders, no extra text besides the title.",
   ].join("\n\n");
 }
