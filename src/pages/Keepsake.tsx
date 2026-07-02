@@ -46,9 +46,9 @@ const Keepsake = () => {
     if (!id) return;
     const songUrl = `https://www.personalsonggifts.com/song/${id}`;
     QRCode.toDataURL(songUrl, {
-      margin: 0,
+      margin: 1,
       width: 480,
-      color: { dark: GOLD, light: "#00000000" },
+      color: { dark: INK, light: "#00000000" },
     })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(null));
