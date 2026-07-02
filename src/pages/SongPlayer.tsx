@@ -963,6 +963,116 @@ const SongPlayer = () => {
         {/* Tip jar */}
         {orderId && <TipJar orderId={orderId} />}
 
+        {/* --- Forever Memory Package (flag-gated: VITE_MEMORY_PACKAGE_ENABLED=true or ?preview=1) --- */}
+        {(() => {
+          const flagEnabled =
+            import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" ||
+            searchParams.get("preview") === "1";
+          if (!flagEnabled || !orderId) return null;
+
+          const unlocked = !!songData.package_unlocked;
+
+          if (!unlocked) {
+            return (
+              <Card className="mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5">
+                <CardContent className="pt-6 text-center space-y-3">
+                  <div className="flex items-center justify-center gap-2">
+                    <Gift className="h-5 w-5 text-primary" />
+                    <h2 className="text-2xl font-bold">Forever Memory Package</h2>
+                  </div>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                    Everything to make it a keepsake — a printable lyric art sheet, a custom album cover made from your photo, plus full lyrics, the high-quality download, and the acoustic version.
+                  </p>
+                  <div className="flex items-baseline justify-center gap-2">
+                    <span className="text-3xl font-bold text-primary">$24</span>
+                    <span className="text-sm text-muted-foreground line-through">$45 value</span>
+                  </div>
+                  <Button
+                    size="lg"
+                    disabled={packageLoading}
+                    className="gap-2"
+                    onClick={async () => {
+                      setPackageLoading(true);
+                      try {
+                        const response = await fetch(
+                          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-package-checkout`,
+                          {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ orderId }),
+                          }
+                        );
+                        const data = await response.json();
+                        if (data.alreadyUnlocked) {
+                          await fetchSongData();
+                          toast.success("Already unlocked!");
+                          return;
+                        }
+                        if (data.url) {
+                          window.location.href = data.url;
+                        } else {
+                          toast.error(data.error || "Failed to start checkout");
+                        }
+                      } catch {
+                        toast.error("Failed to start package checkout");
+                      } finally {
+                        setPackageLoading(false);
+                      }
+                    }}
+                  >
+                    {packageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                    Unlock the Forever Memory Package
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          }
+
+          // Unlocked — show the "Your Forever Memory" section
+          return (
+            <Card className="mb-8 border-primary/30">
+              <CardContent className="pt-6 space-y-6">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <Check className="h-5 w-5 text-primary" />
+                    <h2 className="text-2xl font-bold">Your Forever Memory</h2>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Everything in your package is ready.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold mb-2">Printable lyric keepsake</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    A gallery-style print of the lyrics — perfect to frame.
+                  </p>
+                  <a href={`/keepsake/${orderId}`} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" className="gap-2">
+                      <Pencil className="h-4 w-4" />
+                      Open Keepsake (print / save)
+                    </Button>
+                  </a>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold mb-2">Custom album cover from your photo</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Upload a photo of the recipient; we'll style it into an album cover matched to the song's mood.
+                  </p>
+                  <AlbumCoverStudio
+                    orderId={orderId}
+                    initialAiUrl={songData.album_cover_url || null}
+                    initialPhotoUrl={songData.album_cover_photo_url || null}
+                    initialStatus={songData.album_cover_status || null}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
+        {/* --- End Forever Memory Package --- */}
+
         {/* Revision Button */}
         {songData.revision_available && songData.revision_token && (
           <div className="text-center mb-6">
