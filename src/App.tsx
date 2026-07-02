@@ -21,6 +21,7 @@ import TermsOfService from "./pages/TermsOfService";
 import SongRevision from "./pages/SongRevision";
 import ShareReaction from "./pages/ShareReaction";
 import Keepsake from "./pages/Keepsake";
+import CoverStudio from "./pages/CoverStudio";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ const App = () => (
           <Route path="/admin" element={<Admin />} />
           <Route path="/song/:orderId" element={<SongPlayer />} />
           <Route path="/keepsake/:id" element={<Keepsake />} />
+          <Route path="/cover-studio/:orderId" element={<CoverStudio />} />
           <Route path="/preview/:token" element={<SongPreview />} />
           <Route path="/submit-reaction" element={<SubmitReaction />} />
           <Route path="/song/revision/:token" element={<SongRevision />} />
