@@ -45,6 +45,9 @@ interface StatsCardsProps {
   leads?: Lead[];
   loadingMore?: boolean;
   adminPassword?: string;
+  rangeStart?: Date | null;
+  rangeEnd?: Date | null;
+  rangeLabel?: string;
 }
 
 interface StatItem {
@@ -78,11 +81,20 @@ function orderTotalDollars(o: Order): number {
 interface TipsSummary {
   countAll: number;
   sumCentsAll: number;
+  countInRange: number;
+  sumCentsInRange: number;
   countToday: number;
   sumCentsToday: number;
 }
 
-function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): StatSection[] {
+function useStats(
+  orders: Order[],
+  leads: Lead[],
+  tips: TipsSummary | null,
+  rangeStart: Date | null,
+  rangeEnd: Date | null,
+  rangeLabel: string,
+): StatSection[] {
   // PST midnight (America/Los_Angeles) as an absolute UTC timestamp, so
   // "today" matches server-side PST logic instead of the browser's local tz.
   const today = (() => {
@@ -101,6 +113,18 @@ function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): Sta
     return new Date(`${y}-${m}-${d}T00:00:00${offset}`);
   })();
 
+  // Effective range = user-selected range, or all-time if none provided.
+  const isAllTime = !rangeStart && !rangeEnd;
+  const rStart = rangeStart ?? new Date(0);
+  const rEnd = rangeEnd ?? new Date(8640000000000000);
+  const inRange = (iso?: string | null) => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    return d >= rStart && d <= rEnd;
+  };
+  const rangeSuffix = isAllTime ? "all time" : rangeLabel.toLowerCase();
+  const rangeTitle = isAllTime ? "All Time" : rangeLabel;
+
   // Revenue with payment source breakdown — includes base + all upsells
   const activeOrders = orders.filter((o) => o.status !== "cancelled");
   const baseRevenue = activeOrders.reduce((sum, o) => sum + o.price, 0);
@@ -111,9 +135,11 @@ function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): Sta
   const stripeTotal = activeOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + orderTotalDollars(o), 0);
   const paypalTotal = activeOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + orderTotalDollars(o), 0);
 
-  // Tips (donations) — separate revenue stream
+  // Tips (donations) — separate revenue stream. Respect selected range.
   const tipsRevAll = tips ? tips.sumCentsAll / 100 : 0;
   const tipsCountAll = tips?.countAll ?? 0;
+  const tipsRevInRange = tips ? (isAllTime ? tips.sumCentsAll : tips.sumCentsInRange) / 100 : 0;
+  const tipsCountInRange = tips ? (isAllTime ? tips.countAll : tips.countInRange) : 0;
   const tipsRevToday = tips ? tips.sumCentsToday / 100 : 0;
   const tipsCountToday = tips?.countToday ?? 0;
 
@@ -148,22 +174,24 @@ function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): Sta
   const stripeTodayRev = sourceTotalToday("stripe");
   const paypalTodayRev = sourceTotalToday("paypal");
 
-  const grandTotalRevenue = totalRevenue + tipsRevAll;
+  // Grand total for the selected range: base+upsells (already range-filtered via `orders`) + tips-in-range.
+  const grandTotalRevenue = totalRevenue + tipsRevInRange;
 
   // Orders
   const totalOrders = orders.length;
   const ordersToday = orders.filter((o) => new Date(o.created_at) >= today).length;
   const pendingOrders = orders.filter((o) => ["paid", "in_progress"].includes(o.status)).length;
 
-  // Lead basics
-  const totalLeads = leads.length;
-  const unconvertedLeads = leads.filter((l) => l.status === "lead").length;
-  const convertedLeads = leads.filter((l) => l.status === "converted").length;
-  const previewSentLeads = leads.filter((l) => l.status === "preview_sent").length;
+  // Lead basics — filter by captured_at when a range is selected
+  const leadsInRange = isAllTime ? leads : leads.filter((l) => inRange(l.captured_at));
+  const totalLeads = leadsInRange.length;
+  const unconvertedLeads = leadsInRange.filter((l) => l.status === "lead").length;
+  const convertedLeads = leadsInRange.filter((l) => l.status === "converted").length;
+  const previewSentLeads = leadsInRange.filter((l) => l.status === "preview_sent").length;
 
-  // Lead recovery
-  const previewsSent = leads.filter((l) => l.preview_sent_at).length;
-  const trueRecoveries = leads.filter((l) => l.preview_sent_at && l.status === "converted");
+  // Lead recovery — scope to range by preview_sent_at
+  const previewsSent = leadsInRange.filter((l) => (isAllTime ? l.preview_sent_at : inRange(l.preview_sent_at))).length;
+  const trueRecoveries = leadsInRange.filter((l) => l.preview_sent_at && l.status === "converted");
   const trueRecoveryCount = trueRecoveries.length;
   const trueRecoveryOrderIds = new Set(trueRecoveries.map((l) => l.order_id).filter(Boolean));
   const trueRecoveryRevenue = orders
@@ -172,10 +200,10 @@ function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): Sta
   const recoveryRate = previewsSent > 0 ? Math.round((trueRecoveryCount / previewsSent) * 100) : 0;
 
   // Play-to-buy
-  const leadsWhoPlayedAndConverted = leads.filter(
+  const leadsWhoPlayedAndConverted = leadsInRange.filter(
     (l) => l.preview_sent_at && l.preview_played_at && l.status === "converted"
   ).length;
-  const leadsWhoPlayedPreview = leads.filter(
+  const leadsWhoPlayedPreview = leadsInRange.filter(
     (l) => l.preview_sent_at && l.preview_played_at
   ).length;
   const playToBuyRate = leadsWhoPlayedPreview > 0
@@ -229,19 +257,19 @@ function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): Sta
 
   return [
     {
-      label: "Revenue & Orders",
+      label: `Revenue & Orders · ${rangeTitle}`,
       stats: [
-        { title: "Total Revenue", value: `$${Math.round(grandTotalRevenue).toLocaleString()}`, description: `Base $${Math.round(baseRevenue).toLocaleString()} · Lyrics $${Math.round(lyricsRevAll).toLocaleString()} · DL $${Math.round(downloadRevAll).toLocaleString()} · Bonus $${Math.round(bonusRevAll).toLocaleString()} · Tips $${Math.round(tipsRevAll).toLocaleString()}`, icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100", extra: `Stripe $${Math.round(stripeTotal).toLocaleString()} · PayPal $${Math.round(paypalTotal).toLocaleString()} · Tips $${Math.round(tipsRevAll).toLocaleString()}` },
-        { title: "Revenue Today", value: `$${Math.round(revenueToday).toLocaleString()}`, description: `${ordersToday} orders today`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", extra: `Stripe $${Math.round(stripeTodayRev).toLocaleString()} · PayPal $${Math.round(paypalTodayRev).toLocaleString()} · Tips $${Math.round(tipsRevToday).toLocaleString()}` },
-        { title: "Tips / Donations", value: tipsCountAll.toString(), description: `$${Math.round(tipsRevAll).toLocaleString()} all-time${tipsCountAll > 0 ? ` · avg $${(tipsRevAll / tipsCountAll).toFixed(2)}` : ""}`, icon: Heart, color: "text-pink-600", bgColor: "bg-pink-100", extra: `${tipsCountToday} today · $${Math.round(tipsRevToday).toLocaleString()}` },
-        { title: "Orders Today", value: ordersToday.toString(), description: "New orders today", icon: ShoppingCart, color: "text-blue-600", bgColor: "bg-blue-100" },
-        { title: "Total Orders", value: totalOrders.toString(), description: "All time", icon: ShoppingCart, color: "text-slate-600", bgColor: "bg-slate-100" },
+        { title: `Revenue (${rangeTitle})`, value: `$${Math.round(grandTotalRevenue).toLocaleString()}`, description: `Base $${Math.round(baseRevenue).toLocaleString()} · Lyrics $${Math.round(lyricsRevAll).toLocaleString()} · DL $${Math.round(downloadRevAll).toLocaleString()} · Bonus $${Math.round(bonusRevAll).toLocaleString()} · Tips $${Math.round(tipsRevInRange).toLocaleString()}`, icon: DollarSign, color: "text-green-600", bgColor: "bg-green-100", extra: `Stripe $${Math.round(stripeTotal).toLocaleString()} · PayPal $${Math.round(paypalTotal).toLocaleString()} · Tips $${Math.round(tipsRevInRange).toLocaleString()}` },
+        { title: "Revenue Today", value: `$${Math.round(revenueToday).toLocaleString()}`, description: `${ordersToday} orders today (PST)`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", extra: `Stripe $${Math.round(stripeTodayRev).toLocaleString()} · PayPal $${Math.round(paypalTodayRev).toLocaleString()} · Tips $${Math.round(tipsRevToday).toLocaleString()}` },
+        { title: `Tips / Donations (${rangeTitle})`, value: tipsCountInRange.toString(), description: `$${Math.round(tipsRevInRange).toLocaleString()} ${rangeSuffix}${tipsCountInRange > 0 ? ` · avg $${(tipsRevInRange / tipsCountInRange).toFixed(2)}` : ""}`, icon: Heart, color: "text-pink-600", bgColor: "bg-pink-100", extra: `All-time: ${tipsCountAll} · $${Math.round(tipsRevAll).toLocaleString()} · Today: ${tipsCountToday} · $${Math.round(tipsRevToday).toLocaleString()}` },
+        { title: "Orders Today", value: ordersToday.toString(), description: "New orders today (PST)", icon: ShoppingCart, color: "text-blue-600", bgColor: "bg-blue-100" },
+        { title: `Orders (${rangeTitle})`, value: totalOrders.toString(), description: rangeSuffix, icon: ShoppingCart, color: "text-slate-600", bgColor: "bg-slate-100" },
         { title: "Pending", value: pendingOrders.toString(), description: "Awaiting completion", icon: Clock, color: "text-amber-600", bgColor: "bg-amber-100" },
         { title: "AOV", value: `$${activeOrders.length > 0 ? (totalRevenue / activeOrders.length).toFixed(2) : "0.00"}`, description: `Across ${activeOrders.length} orders (incl. upsells, excl. tips)`, icon: TrendingUp, color: "text-violet-600", bgColor: "bg-violet-100" },
       ],
     },
     {
-      label: "Lead Recovery",
+      label: `Lead Recovery · ${rangeTitle}`,
       stats: [
         { title: "Leads", value: totalLeads.toString(), description: `${convertedLeads} converted · ${previewSentLeads} preview sent · ${unconvertedLeads} new`, icon: Users, color: "text-indigo-600", bgColor: "bg-indigo-100" },
         { title: "Previews Sent", value: previewsSent.toString(), description: `of ${totalLeads} leads`, icon: Users, color: "text-violet-600", bgColor: "bg-violet-100" },
@@ -272,8 +300,9 @@ function useStats(orders: Order[], leads: Lead[], tips: TipsSummary | null): Sta
   ];
 }
 
-export function StatsCards({ orders, leads = [], loadingMore = false, adminPassword }: StatsCardsProps) {
+export function StatsCards({ orders, leads = [], loadingMore = false, adminPassword, rangeStart = null, rangeEnd = null, rangeLabel = "All Time" }: StatsCardsProps) {
   const [tips, setTips] = useState<TipsSummary | null>(null);
+  const [tipsDaily, setTipsDaily] = useState<Array<{ date: string; cents: number; count: number }>>([]);
 
   useEffect(() => {
     if (!adminPassword) return;
@@ -281,28 +310,25 @@ export function StatsCards({ orders, leads = [], loadingMore = false, adminPassw
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const fetchTips = async () => {
       try {
-        const [allRes, todayRes] = await Promise.all([
-          fetch(`${supabaseUrl}/functions/v1/admin-tips-stats`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-admin-password": adminPassword },
-            body: JSON.stringify({ windowDays: null, tippersLimit: 1 }),
-          }).then((r) => r.json()),
-          fetch(`${supabaseUrl}/functions/v1/admin-tips-stats`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-admin-password": adminPassword },
-            body: JSON.stringify({ windowDays: 1, tippersLimit: 1 }),
-          }).then((r) => r.json()),
-        ]);
+        const allRes = await fetch(`${supabaseUrl}/functions/v1/admin-tips-stats`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-admin-password": adminPassword },
+          body: JSON.stringify({ windowDays: null, tippersLimit: 1 }),
+        }).then((r) => r.json());
         if (cancelled) return;
+        const daily: Array<{ date: string; cents: number; count: number }> = allRes?.daily || [];
         // Today = PST calendar day from the daily bucket
         const pstToday = new Intl.DateTimeFormat("en-CA", {
           timeZone: "America/Los_Angeles",
           year: "numeric", month: "2-digit", day: "2-digit",
         }).format(new Date());
-        const todayBucket = (todayRes?.daily || []).find((d: { date: string }) => d.date === pstToday);
+        const todayBucket = daily.find((d) => d.date === pstToday);
+        setTipsDaily(daily);
         setTips({
           countAll: allRes?.totals?.count ?? 0,
           sumCentsAll: allRes?.totals?.sumCents ?? 0,
+          countInRange: allRes?.totals?.count ?? 0,
+          sumCentsInRange: allRes?.totals?.sumCents ?? 0,
           countToday: todayBucket?.count ?? 0,
           sumCentsToday: todayBucket?.cents ?? 0,
         });
@@ -314,7 +340,27 @@ export function StatsCards({ orders, leads = [], loadingMore = false, adminPassw
     return () => { cancelled = true; };
   }, [adminPassword]);
 
-  const sections = useStats(orders, leads, tips);
+  // Recompute tips-in-range whenever the range or the daily buckets change.
+  const tipsForRange: TipsSummary | null = (() => {
+    if (!tips) return null;
+    if (!rangeStart && !rangeEnd) return tips;
+    const startKey = rangeStart
+      ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(rangeStart)
+      : "0000-00-00";
+    const endKey = rangeEnd
+      ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(rangeEnd)
+      : "9999-99-99";
+    let cents = 0, count = 0;
+    for (const d of tipsDaily) {
+      if (d.date >= startKey && d.date <= endKey) {
+        cents += d.cents;
+        count += d.count;
+      }
+    }
+    return { ...tips, sumCentsInRange: cents, countInRange: count };
+  })();
+
+  const sections = useStats(orders, leads, tipsForRange, rangeStart, rangeEnd, rangeLabel);
 
   return (
     <div className="space-y-6 mb-8">

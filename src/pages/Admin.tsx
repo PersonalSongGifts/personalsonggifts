@@ -304,6 +304,29 @@ export default function Admin() {
     return allOrders.filter((o) => parseISO(o.created_at) >= cutoff);
   })();
 
+  // Derive rangeStart/rangeEnd/rangeLabel for downstream stat cards (mirrors analyticsOrders logic).
+  const { rangeStart, rangeEnd, rangeLabel } = (() => {
+    if (analyticsPreset === "all") return { rangeStart: null as Date | null, rangeEnd: null as Date | null, rangeLabel: "All Time" };
+    if (analyticsPreset === "custom") {
+      if (!analyticsFrom && !analyticsTo) return { rangeStart: null as Date | null, rangeEnd: null as Date | null, rangeLabel: "All Time" };
+      const start = analyticsFrom ? startOfDay(parseISO(analyticsFrom)) : null;
+      const end = analyticsTo ? endOfDay(parseISO(analyticsTo)) : new Date();
+      return { rangeStart: start, rangeEnd: end, rangeLabel: "Custom" };
+    }
+    if (analyticsPreset === "today") {
+      return { rangeStart: startOfDay(new Date()), rangeEnd: new Date(), rangeLabel: "Today" };
+    }
+    if (analyticsPreset === "yesterday") {
+      const yStart = startOfDay(subDays(new Date(), 1));
+      const yEnd = endOfDay(subDays(new Date(), 1));
+      return { rangeStart: yStart, rangeEnd: yEnd, rangeLabel: "Yesterday" };
+    }
+    const days = analyticsPreset === "7d" ? 7 : analyticsPreset === "14d" ? 14 : analyticsPreset === "90d" ? 90 : 30;
+    const cutoff = startOfDay(subDays(new Date(), days - 1));
+    const labelMap: Record<string, string> = { "7d": "Last 7 Days", "14d": "Last 14 Days", "30d": "Last 30 Days", "90d": "Last 90 Days" };
+    return { rangeStart: cutoff, rangeEnd: new Date(), rangeLabel: labelMap[analyticsPreset] || "Range" };
+  })();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -1435,7 +1458,7 @@ const { data, error } = await listOrders("all", 0, 250);
               </span>
             </div>
 
-            <StatsCards orders={analyticsOrders} leads={leads} loadingMore={loadingMore} adminPassword={password} />
+            <StatsCards orders={analyticsOrders} leads={leads} loadingMore={loadingMore} adminPassword={password} rangeStart={rangeStart} rangeEnd={rangeEnd} rangeLabel={rangeLabel} />
             
             <SalesVelocity orders={allOrders} />
             
