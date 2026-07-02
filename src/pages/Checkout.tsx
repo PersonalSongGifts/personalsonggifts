@@ -568,6 +568,68 @@ const Checkout = () => {
             <ValentineDeliveryNotice />
           </div>
 
+          {/* Phase 1: Optional add-ons (feature-flagged) */}
+          {addonsEnabled && (
+            <div className="mb-8 space-y-4">
+              <h3 className="font-semibold text-foreground">Optional add-ons</h3>
+              <Card
+                onClick={() => toggleAddon("forever_memory")}
+                className={`p-5 cursor-pointer transition-all duration-200 ${
+                  selectedAddons.forever_memory ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"
+                }`}
+              >
+                <div className="flex items-start gap-4">
+                  <div className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                    selectedAddons.forever_memory ? "bg-primary border-primary" : "border-muted-foreground"
+                  }`}>
+                    {selectedAddons.forever_memory && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h4 className="font-semibold text-foreground">Forever Memory Package</h4>
+                      <span className="font-semibold text-foreground whitespace-nowrap">$24.00</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">Make the song feel like a complete gift.</p>
+                    <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Printable lyric sheet with QR code</li>
+                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Private gift page to share</li>
+                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Album-style cover from a photo you upload (optional)</li>
+                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Full lyrics + download</li>
+                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />A bonus version in another style</li>
+                    </ul>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Your uploaded photo stays as-is. The album-style cover is optional and won't change your loved one's likeness.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              {selectedTier === "standard" && (
+                <Card
+                  onClick={() => toggleAddon("rush")}
+                  className={`p-5 cursor-pointer transition-all duration-200 ${
+                    selectedAddons.rush ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                      selectedAddons.rush ? "bg-primary border-primary" : "border-muted-foreground"
+                    }`}>
+                      {selectedAddons.rush && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <h4 className="font-semibold text-foreground">Rush Delivery</h4>
+                        <span className="font-semibold text-foreground whitespace-nowrap">$10.00</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">Skip the standard queue — priority production.</p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
+
           {/* Order summary */}
           <Card className="p-6 mb-8 bg-secondary/30">
             <h3 className="font-semibold text-foreground mb-4">Order Summary</h3>
@@ -663,11 +725,24 @@ const Checkout = () => {
                   <span>-${pricing.additionalSavings.toFixed(2)}</span>
                 </div>
               )}
-              
+
+              {addonsEnabled && selectedAddons.forever_memory && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Forever Memory Package</span>
+                  <span className="text-foreground">$24.00</span>
+                </div>
+              )}
+              {addonsEnabled && selectedAddons.rush && selectedTier === "standard" && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Rush Delivery</span>
+                  <span className="text-foreground">$10.00</span>
+                </div>
+              )}
+
               <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Total:</span>
-                <span>${pricing.total.toFixed(2)} USD</span>
+                <span>${(pricing.total + addonsTotalCents / 100).toFixed(2)} USD</span>
               </div>
             </div>
           </Card>
@@ -700,12 +775,17 @@ const Checkout = () => {
 
           {/* Payment buttons */}
           <div className="space-y-3">
+            {hasAddonSelected && (
+              <p className="text-xs text-muted-foreground text-center">
+                Add-on payment activates in the next phase — totals shown here are a preview.
+              </p>
+            )}
             {/* Card/Stripe button */}
             <Button 
               onClick={handleCheckout}
               size="lg" 
               className="w-full text-lg py-6 font-semibold gap-2"
-              disabled={isSubmitting || isPayPalLoading}
+              disabled={isSubmitting || isPayPalLoading || hasAddonSelected}
             >
               {isSubmitting ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -726,7 +806,7 @@ const Checkout = () => {
               size="lg"
               variant="outline"
               className="w-full text-lg py-6 font-semibold gap-2 bg-[#FFC439] hover:bg-[#F0B72F] text-[#003087] border-[#FFC439] hover:border-[#F0B72F]"
-              disabled={isSubmitting || isPayPalLoading}
+              disabled={isSubmitting || isPayPalLoading || hasAddonSelected}
             >
               {isPayPalLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
