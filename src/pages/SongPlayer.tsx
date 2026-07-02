@@ -272,6 +272,37 @@ const SongPlayer = () => {
     verifyBonusPurchase();
   }, [searchParams]);
 
+  // Handle Forever Memory Package unlock redirect from Stripe
+  useEffect(() => {
+    const packageSessionId = searchParams.get("package_session_id");
+    if (!packageSessionId) return;
+
+    const verifyPackagePurchase = async () => {
+      setPackageLoading(true);
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-package-purchase`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: packageSessionId }),
+          }
+        );
+        if (response.ok) {
+          await fetchSongData();
+          toast.success("Forever Memory Package unlocked! ✨");
+        }
+      } catch (err) {
+        console.error("Package verification failed:", err);
+      } finally {
+        setPackageLoading(false);
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    verifyPackagePurchase();
+  }, [searchParams]);
+
   // Handle tip success redirect from Stripe
   useEffect(() => {
     const tipSessionId = searchParams.get("tip_session_id");
