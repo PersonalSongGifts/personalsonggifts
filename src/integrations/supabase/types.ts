@@ -453,6 +453,10 @@ export type Database = {
           next_attempt_at: string | null
           notes: string | null
           occasion: string
+          package_price_cents: number | null
+          package_unlock_payment_intent_id: string | null
+          package_unlock_session_id: string | null
+          package_unlocked_at: string | null
           pending_revision: boolean | null
           phone_e164: string | null
           prev_automation_lyrics: string | null
@@ -580,6 +584,10 @@ export type Database = {
           next_attempt_at?: string | null
           notes?: string | null
           occasion: string
+          package_price_cents?: number | null
+          package_unlock_payment_intent_id?: string | null
+          package_unlock_session_id?: string | null
+          package_unlocked_at?: string | null
           pending_revision?: boolean | null
           phone_e164?: string | null
           prev_automation_lyrics?: string | null
@@ -707,6 +715,10 @@ export type Database = {
           next_attempt_at?: string | null
           notes?: string | null
           occasion?: string
+          package_price_cents?: number | null
+          package_unlock_payment_intent_id?: string | null
+          package_unlock_session_id?: string | null
+          package_unlocked_at?: string | null
           pending_revision?: boolean | null
           phone_e164?: string | null
           prev_automation_lyrics?: string | null
@@ -1162,6 +1174,10 @@ export type Database = {
           next_attempt_at: string | null
           notes: string | null
           occasion: string
+          package_price_cents: number | null
+          package_unlock_payment_intent_id: string | null
+          package_unlock_session_id: string | null
+          package_unlocked_at: string | null
           pending_revision: boolean | null
           phone_e164: string | null
           prev_automation_lyrics: string | null
