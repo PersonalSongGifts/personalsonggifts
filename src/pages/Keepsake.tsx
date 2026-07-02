@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { Loader2, Printer } from "lucide-react";
@@ -68,43 +68,56 @@ const Keepsake = () => {
 
   const lyricsNodes = useMemo(() => {
     if (!data?.lyrics) return null;
-    return data.lyrics.split(/\r?\n/).map((line, i) => {
-      const trimmed = line.trim();
-      if (trimmed === "") return <div key={i} style={{ height: "0.75em" }} aria-hidden />;
-      const isTag = /^\[.*\]$/.test(trimmed);
-      if (isTag) {
-        return (
-          <p
-            key={i}
-            className="ks-tag"
-            style={{
-              color: MUTED,
-              fontStyle: "italic",
-              fontSize: "12.5px",
-              margin: "0.9em 0 0.15em 0",
-              breakAfter: "avoid",
-              pageBreakAfter: "avoid",
-            }}
-          >
-            {trimmed}
-          </p>
-        );
-      }
+    // 1) strip bracketed stage-direction lines entirely
+    // 2) collapse runs of blank lines into a single stanza gap
+    const rawLines = data.lyrics.split(/\r?\n/).map((l) => l.trim());
+    const kept: string[] = [];
+    for (const line of rawLines) {
+      if (/^\[.*\]$/.test(line)) continue;
+      if (line === "" && (kept.length === 0 || kept[kept.length - 1] === "")) continue;
+      kept.push(line);
+    }
+    while (kept.length && kept[kept.length - 1] === "") kept.pop();
+
+    return kept.map((line, i) => {
+      if (line === "") return <div key={i} style={{ height: "0.75em" }} aria-hidden />;
       return (
-        <p
-          key={i}
-          style={{
-            color: INK,
-            fontSize: "15px",
-            lineHeight: 1.55,
-            margin: 0,
-          }}
-        >
-          {trimmed}
+        <p key={i} style={{ margin: 0 }}>
+          {line}
         </p>
       );
     });
   }, [data]);
+
+  // Auto-fit: shrink lyrics font-size until content fits its bounded area
+  const lyricsRef = useRef<HTMLDivElement | null>(null);
+  const [fontScale, setFontScale] = useState<number>(15);
+
+  useLayoutEffect(() => {
+    if (!lyricsAvailable) return;
+    let size = 15;
+    setFontScale(size);
+    const el = lyricsRef.current;
+    if (!el) return;
+    // Give layout a tick, then shrink iteratively
+    const fit = () => {
+      const node = lyricsRef.current;
+      if (!node) return;
+      let guard = 0;
+      while (node.scrollHeight > node.clientHeight + 1 && size > 10 && guard < 40) {
+        size = Math.max(10, size - 0.5);
+        node.style.fontSize = `${size}px`;
+        node.style.lineHeight = `${Math.max(1.25, 1.55 - (15 - size) * 0.02)}`;
+        guard++;
+      }
+      setFontScale(size);
+    };
+    // Two passes catch webfont swap / image loads
+    requestAnimationFrame(() => {
+      fit();
+      setTimeout(fit, 200);
+    });
+  }, [lyricsNodes, lyricsAvailable, qrDataUrl]);
 
   if (loading) {
     return (
@@ -172,7 +185,8 @@ const Keepsake = () => {
         .ks-sheet {
           position: relative;
           width: 8.5in;
-          min-height: 11in;
+          height: 11in;
+          overflow: hidden;
           background: ${PAPER};
           padding: 0.4in;
           -webkit-print-color-adjust: exact;
@@ -183,7 +197,8 @@ const Keepsake = () => {
         .ks-frame {
           border: 1px solid ${GOLD};
           padding: 6px;
-          min-height: calc(11in - 0.8in);
+          height: calc(11in - 0.8in);
+          overflow: hidden;
           display: flex;
           flex-direction: column;
         }
@@ -191,6 +206,8 @@ const Keepsake = () => {
           border: 1px solid ${GOLD};
           padding: 0.55in 0.65in 0.5in;
           flex: 1;
+          min-height: 0;
+          overflow: hidden;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -211,10 +228,11 @@ const Keepsake = () => {
           font-family: "Cormorant Garamond", Georgia, serif;
           font-weight: 600;
           color: ${INK};
-          font-size: clamp(40px, 6vw, 60px);
+          font-size: clamp(30px, 4.6vw, 44px);
           line-height: 1.05;
           letter-spacing: -0.01em;
           margin: 26px 0 14px;
+          text-wrap: balance;
         }
 
         .ks-eyebrow {
@@ -246,8 +264,12 @@ const Keepsake = () => {
         .ks-lyrics {
           width: 100%;
           max-width: 6.6in;
+          flex: 1;
+          min-height: 0;
+          overflow: hidden;
           columns: 2;
           column-gap: 2.5rem;
+          column-fill: balance;
           column-rule: 1px solid rgba(176, 137, 79, 0.25);
           text-align: left;
           margin: 0 auto 28px;
@@ -265,11 +287,13 @@ const Keepsake = () => {
         }
 
         .ks-signature {
-          margin-top: auto;
+          flex-shrink: 0;
           display: flex;
           flex-direction: column;
           align-items: center;
           padding-top: 14px;
+          break-inside: avoid;
+          page-break-inside: avoid;
         }
 
         .ks-vinyl {
@@ -345,7 +369,10 @@ const Keepsake = () => {
         }
 
         @media (max-width: 900px) {
-          .ks-sheet { width: 100%; min-height: 0; padding: 20px; }
+          .ks-sheet { width: 100%; height: auto; overflow: visible; padding: 20px; }
+          .ks-frame { height: auto; overflow: visible; }
+          .ks-frame-inner { overflow: visible; }
+          .ks-lyrics { overflow: visible; }
           .ks-frame-inner { padding: 28px 22px; }
           .ks-lyrics { columns: 1; max-width: 100%; }
         }
@@ -358,11 +385,16 @@ const Keepsake = () => {
           .ks-toolbar { display: none !important; }
           .ks-sheet {
             width: 8.5in !important;
-            min-height: 11in !important;
+            height: 11in !important;
+            overflow: hidden !important;
             box-shadow: none !important;
             margin: 0 !important;
             padding: 0.4in !important;
           }
+          .ks-frame { height: calc(11in - 0.8in) !important; overflow: hidden !important; }
+          .ks-frame-inner { overflow: hidden !important; }
+          .ks-lyrics { overflow: hidden !important; }
+          .ks-signature { break-inside: avoid !important; page-break-inside: avoid !important; }
           .ks-vinyl, .ks-vinyl-label, .ks-cover, .ks-frame, .ks-frame-inner,
           .ks-ornament .rule, .ks-vinyl-label::after {
             -webkit-print-color-adjust: exact;
@@ -396,7 +428,16 @@ const Keepsake = () => {
             </div>
 
             {lyricsAvailable ? (
-              <div className="ks-lyrics">{lyricsNodes}</div>
+              <div
+                className="ks-lyrics"
+                ref={lyricsRef}
+                style={{
+                  fontSize: `${fontScale}px`,
+                  lineHeight: Math.max(1.25, 1.55 - (15 - fontScale) * 0.02),
+                }}
+              >
+                {lyricsNodes}
+              </div>
             ) : (
               <p className="ks-lyrics-missing">Lyrics for this song aren't available yet.</p>
             )}
