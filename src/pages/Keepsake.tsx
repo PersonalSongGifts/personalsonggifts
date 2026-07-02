@@ -89,30 +89,56 @@ const Keepsake = () => {
     });
   }, [data]);
 
-  // Auto-fit: shrink lyrics font-size until content fits its bounded area
+  // Auto-fit ladder — prioritize readability:
+  //   1) 1 column @ 16px  → 2) 2 columns @ 16px  → 3) 2 columns, shrink to 12px floor
   const lyricsRef = useRef<HTMLDivElement | null>(null);
-  const [fontScale, setFontScale] = useState<number>(15);
+  const [columns, setColumns] = useState<1 | 2>(1);
+  const [fontScale, setFontScale] = useState<number>(16);
+
+  const lhFor = (size: number) => Math.max(1.35, 1.6 - (16 - size) * 0.02);
 
   useLayoutEffect(() => {
     if (!lyricsAvailable) return;
-    let size = 15;
-    setFontScale(size);
-    const el = lyricsRef.current;
-    if (!el) return;
-    // Give layout a tick, then shrink iteratively
+
+    const applyAndMeasure = (cols: 1 | 2, size: number) => {
+      const node = lyricsRef.current;
+      if (!node) return true;
+      node.style.columnCount = String(cols);
+      node.style.fontSize = `${size}px`;
+      node.style.lineHeight = `${lhFor(size)}`;
+      // force reflow
+      void node.offsetHeight;
+      return node.scrollHeight <= node.clientHeight + 1;
+    };
+
     const fit = () => {
       const node = lyricsRef.current;
       if (!node) return;
+
+      // Step 1: single column @ 16px
+      if (applyAndMeasure(1, 16)) {
+        setColumns(1);
+        setFontScale(16);
+        return;
+      }
+      // Step 2: two columns @ 16px
+      if (applyAndMeasure(2, 16)) {
+        setColumns(2);
+        setFontScale(16);
+        return;
+      }
+      // Step 3: two columns, shrink from 16 → 12
+      let size = 16;
       let guard = 0;
-      while (node.scrollHeight > node.clientHeight + 1 && size > 10 && guard < 40) {
-        size = Math.max(10, size - 0.5);
-        node.style.fontSize = `${size}px`;
-        node.style.lineHeight = `${Math.max(1.25, 1.55 - (15 - size) * 0.02)}`;
+      while (size > 12 && guard < 40) {
+        size = Math.max(12, size - 0.5);
+        if (applyAndMeasure(2, size)) break;
         guard++;
       }
+      setColumns(2);
       setFontScale(size);
     };
-    // Two passes catch webfont swap / image loads
+
     requestAnimationFrame(() => {
       fit();
       setTimeout(fit, 200);
@@ -215,8 +241,8 @@ const Keepsake = () => {
         }
 
         .ks-cover {
-          width: 2.1in;
-          height: 2.1in;
+          width: 1.85in;
+          height: 1.85in;
           object-fit: cover;
           border: 1px solid ${GOLD};
           border-radius: 3px;
@@ -231,16 +257,16 @@ const Keepsake = () => {
           font-size: clamp(30px, 4.6vw, 44px);
           line-height: 1.05;
           letter-spacing: -0.01em;
-          margin: 26px 0 14px;
+          margin: 18px 0 8px;
           text-wrap: balance;
         }
 
         .ks-eyebrow {
           font-family: "EB Garamond", Georgia, serif;
-          color: ${MUTED};
+          color: #6E6555;
           text-transform: uppercase;
           letter-spacing: 0.22em;
-          font-size: 12px;
+          font-size: 12.5px;
         }
 
         .ks-ornament {
@@ -248,7 +274,7 @@ const Keepsake = () => {
           align-items: center;
           justify-content: center;
           gap: 14px;
-          margin: 22px 0 20px;
+          margin: 14px 0 14px;
           color: ${GOLD};
         }
         .ks-ornament .rule {
@@ -267,14 +293,14 @@ const Keepsake = () => {
           flex: 1;
           min-height: 0;
           overflow: hidden;
-          columns: 2;
+          columns: 1;
           column-gap: 2.5rem;
           column-fill: balance;
           column-rule: 1px solid rgba(176, 137, 79, 0.25);
           text-align: left;
           margin: 0 auto 28px;
-          font-size: 15px;
-          line-height: 1.55;
+          font-size: 16px;
+          line-height: 1.6;
           color: ${INK};
         }
         .ks-lyrics p { orphans: 2; widows: 2; }
@@ -354,10 +380,10 @@ const Keepsake = () => {
 
         .ks-scan-caption {
           margin-top: 14px;
-          color: ${MUTED};
+          color: #6E6555;
           text-transform: uppercase;
           letter-spacing: 0.22em;
-          font-size: 11px;
+          font-size: 12.5px;
         }
 
         .ks-footer {
@@ -432,8 +458,9 @@ const Keepsake = () => {
                 className="ks-lyrics"
                 ref={lyricsRef}
                 style={{
+                  columnCount: columns,
                   fontSize: `${fontScale}px`,
-                  lineHeight: Math.max(1.25, 1.55 - (15 - fontScale) * 0.02),
+                  lineHeight: Math.max(1.35, 1.6 - (16 - fontScale) * 0.02),
                 }}
               >
                 {lyricsNodes}
