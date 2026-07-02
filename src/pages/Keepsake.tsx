@@ -72,7 +72,7 @@ const Keepsake = () => {
     //   A) section headers (verse/chorus/bridge/etc) → kept as labeled sections
     //   B) stage directions → removed
     // Then collapse runs of blank lines into a single stanza gap.
-    const SECTION_RE = /^(intro|verse|chorus|pre[\s-]?chorus|post[\s-]?chorus|hook|bridge|refrain|outro|interlude|coda|breakdown|drop)\b/i;
+    const SECTION_RE = /^(?:(?:final|last|first|second|third|repeat|big|main|early|late|end|ending|double|reprise)\s+)*(intro|verse|chorus|pre[-\s]?chorus|post[-\s]?chorus|hook|bridge|refrain|outro|interlude|coda|breakdown|drop|reprise)(?:[\s-]*(?:\d+|[ivx]+|part\s*\d+|[a-d]|\(x?\d+\)))?$/i;
     type Item = { kind: "text"; text: string } | { kind: "section"; text: string } | { kind: "gap" };
     const rawLines = data.lyrics.split(/\r?\n/).map((l) => l.trim());
     const items: Item[] = [];
