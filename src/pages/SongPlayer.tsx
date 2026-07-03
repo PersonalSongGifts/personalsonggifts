@@ -1070,6 +1070,10 @@ const SongPlayer = () => {
                     initialAiUrl={songData.album_cover_url || null}
                     initialPhotoUrl={songData.album_cover_photo_url || null}
                     initialStatus={songData.album_cover_status || null}
+                    bonusAvailable={!!songData.bonus_available}
+                    bonusGenreLabel={songData.bonus_genre_label || "Acoustic"}
+                    initialBonusAiUrl={songData.album_cover_bonus_url || null}
+                    initialBonusStatus={songData.album_cover_bonus_status || null}
                   />
                 </div>
               </CardContent>
