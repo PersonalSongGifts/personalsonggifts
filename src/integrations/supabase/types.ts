@@ -379,6 +379,9 @@ export type Database = {
       }
       orders: {
         Row: {
+          album_cover_bonus_status: string | null
+          album_cover_bonus_task_id: string | null
+          album_cover_bonus_url: string | null
           album_cover_photo_url: string | null
           album_cover_status: string
           album_cover_task_id: string | null
@@ -510,6 +513,9 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          album_cover_bonus_status?: string | null
+          album_cover_bonus_task_id?: string | null
+          album_cover_bonus_url?: string | null
           album_cover_photo_url?: string | null
           album_cover_status?: string
           album_cover_task_id?: string | null
@@ -641,6 +647,9 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          album_cover_bonus_status?: string | null
+          album_cover_bonus_task_id?: string | null
+          album_cover_bonus_url?: string | null
           album_cover_photo_url?: string | null
           album_cover_status?: string
           album_cover_task_id?: string | null
@@ -1100,6 +1109,9 @@ export type Database = {
           status_filter?: string[]
         }
         Returns: {
+          album_cover_bonus_status: string | null
+          album_cover_bonus_task_id: string | null
+          album_cover_bonus_url: string | null
           album_cover_photo_url: string | null
           album_cover_status: string
           album_cover_task_id: string | null
