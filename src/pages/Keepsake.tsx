@@ -445,9 +445,13 @@ const Keepsake = () => {
       <article className="ks-sheet">
         <div className="ks-frame">
           <div className="ks-frame-inner">
-            {data.cover_image_url && (
-              <img className="ks-cover" src={data.cover_image_url} alt="" />
-            )}
+            {(() => {
+              const coverSrc =
+                data.album_cover_url && data.album_cover_status === "ready"
+                  ? data.album_cover_url
+                  : data.cover_image_url;
+              return coverSrc ? <img className="ks-cover" src={coverSrc} alt="" /> : null;
+            })()}
 
             <h1 className="ks-title">{data.song_title || "Untitled"}</h1>
 
