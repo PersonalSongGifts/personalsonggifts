@@ -54,7 +54,9 @@ Deno.serve(async (req) => {
   try {
     const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
     if (!KIE_API_KEY) throw new Error("KIE_API_KEY not configured");
-    const { orderId, photoUrl } = await req.json();
+    const body = await req.json();
+    const { orderId, photoUrl } = body;
+    const variant: "main" | "bonus" = body.variant === "bonus" ? "bonus" : "main";
     if (!orderId || !photoUrl) {
       return new Response(JSON.stringify({ error: "orderId and photoUrl required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -66,7 +68,7 @@ Deno.serve(async (req) => {
     );
     const { data: order, error: orderErr } = await supabase
       .from("orders")
-      .select("id, genre, occasion, song_title, recipient_name")
+      .select("id, genre, occasion, song_title, recipient_name, bonus_song_title, bonus_style_prompt")
       .eq("id", orderId)
       .maybeSingle();
     if (orderErr || !order) {
@@ -74,10 +76,21 @@ Deno.serve(async (req) => {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    let promptGenre: string;
+    let promptTitle: string;
+    if (variant === "bonus") {
+      const bp = (order.bonus_style_prompt || "").toLowerCase();
+      const bonusIsRnb = bp.includes("r&b") || bp.includes("rnb") || (order.bonus_song_title || "").includes("(R&B");
+      promptGenre = bonusIsRnb ? "rnb" : "acoustic";
+      promptTitle = order.bonus_song_title || `${order.song_title || ""} (Acoustic)`;
+    } else {
+      promptGenre = order.genre || "";
+      promptTitle = order.song_title || "";
+    }
     const prompt = buildPrompt({
-      title: order.song_title || "",
+      title: promptTitle,
       recipient: order.recipient_name || "",
-      genre: order.genre || "",
+      genre: promptGenre,
       occasion: order.occasion || "",
     });
 
@@ -103,12 +116,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    await supabase.from("orders").update({
-      album_cover_task_id: taskId,
-      album_cover_status: "generating",
-      album_cover_photo_url: photoUrl,
-      album_cover_url: null,
-    }).eq("id", orderId);
+    if (variant === "bonus") {
+      await supabase.from("orders").update({
+        album_cover_bonus_task_id: taskId,
+        album_cover_bonus_status: "generating",
+        album_cover_bonus_url: null,
+      }).eq("id", orderId);
+    } else {
+      await supabase.from("orders").update({
+        album_cover_task_id: taskId,
+        album_cover_status: "generating",
+        album_cover_photo_url: photoUrl,
+        album_cover_url: null,
+      }).eq("id", orderId);
+    }
 
     return new Response(JSON.stringify({ taskId }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
