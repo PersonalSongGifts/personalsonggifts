@@ -36,7 +36,9 @@ Deno.serve(async (req) => {
   try {
     const KIE_API_KEY = Deno.env.get("KIE_API_KEY");
     if (!KIE_API_KEY) throw new Error("KIE_API_KEY not configured");
-    const { orderId } = await req.json();
+    const body = await req.json();
+    const { orderId } = body;
+    const variant: "main" | "bonus" = body.variant === "bonus" ? "bonus" : "main";
     if (!orderId) {
       return new Response(JSON.stringify({ error: "orderId required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -46,9 +48,12 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const cols = variant === "bonus"
+      ? { taskId: "album_cover_bonus_task_id", status: "album_cover_bonus_status", url: "album_cover_bonus_url" }
+      : { taskId: "album_cover_task_id", status: "album_cover_status", url: "album_cover_url" };
     const { data: order } = await supabase
       .from("orders")
-      .select("id, album_cover_task_id, album_cover_status, album_cover_url")
+      .select(`id, ${cols.taskId}, ${cols.status}, ${cols.url}`)
       .eq("id", orderId)
       .maybeSingle();
     if (!order) {
@@ -56,14 +61,17 @@ Deno.serve(async (req) => {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (order.album_cover_status === "ready" && order.album_cover_url) {
-      return new Response(JSON.stringify({ status: "ready", url: order.album_cover_url }), {
+    const curStatus = (order as Record<string, unknown>)[cols.status] as string | null;
+    const curUrl = (order as Record<string, unknown>)[cols.url] as string | null;
+    const curTaskId = (order as Record<string, unknown>)[cols.taskId] as string | null;
+    if (curStatus === "ready" && curUrl) {
+      return new Response(JSON.stringify({ status: "ready", url: curUrl }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const taskId = order.album_cover_task_id;
+    const taskId = curTaskId;
     if (!taskId) {
-      return new Response(JSON.stringify({ status: order.album_cover_status || "none" }), {
+      return new Response(JSON.stringify({ status: curStatus || "none" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -106,7 +114,9 @@ Deno.serve(async (req) => {
       const ct = dlRes.headers.get("content-type") || "image/png";
       const ext = ct.includes("webp") ? "webp" : ct.includes("jpeg") || ct.includes("jpg") ? "jpg" : "png";
       const shortId = String(order.id).slice(0, 8).toUpperCase();
-      const path = `cover-photos/${shortId}-ai-${Date.now()}.${ext}`;
+      const path = variant === "bonus"
+        ? `cover-photos/${shortId}-ai-bonus-${Date.now()}.${ext}`
+        : `cover-photos/${shortId}-ai-${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("songs").upload(path, bytes, {
         contentType: ct, upsert: true,
       });
@@ -114,8 +124,8 @@ Deno.serve(async (req) => {
       const { data: pub } = supabase.storage.from("songs").getPublicUrl(path);
       const storedUrl = `${pub.publicUrl}?v=${Date.now()}`;
       await supabase.from("orders").update({
-        album_cover_url: storedUrl,
-        album_cover_status: "ready",
+        [cols.url]: storedUrl,
+        [cols.status]: "ready",
       }).eq("id", order.id);
       return new Response(JSON.stringify({ status: "ready", url: storedUrl }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -123,7 +133,7 @@ Deno.serve(async (req) => {
     }
 
     if (isFailed) {
-      await supabase.from("orders").update({ album_cover_status: "failed" }).eq("id", order.id);
+      await supabase.from("orders").update({ [cols.status]: "failed" }).eq("id", order.id);
       return new Response(JSON.stringify({ status: "failed", detail: data }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
