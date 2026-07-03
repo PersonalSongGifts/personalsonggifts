@@ -692,6 +692,9 @@ const SongPlayer = () => {
   };
 
   const getCoverImage = () => {
+    if (songData?.album_cover_url && songData?.album_cover_status === "ready") {
+      return songData.album_cover_url;
+    }
     if (songData?.cover_image_url) return songData.cover_image_url;
     const occasion = songData?.occasion?.toLowerCase() || "";
     return occasionImages[occasion] || "/placeholder.svg";
