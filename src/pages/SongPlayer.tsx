@@ -87,6 +87,8 @@ interface SongData {
   album_cover_url?: string | null;
   album_cover_photo_url?: string | null;
   album_cover_status?: string | null;
+  album_cover_bonus_url?: string | null;
+  album_cover_bonus_status?: string | null;
 }
 
 const SongPlayer = () => {
@@ -1068,6 +1070,10 @@ const SongPlayer = () => {
                     initialAiUrl={songData.album_cover_url || null}
                     initialPhotoUrl={songData.album_cover_photo_url || null}
                     initialStatus={songData.album_cover_status || null}
+                    bonusAvailable={!!songData.bonus_available}
+                    bonusGenreLabel={songData.bonus_genre_label || "Acoustic"}
+                    initialBonusAiUrl={songData.album_cover_bonus_url || null}
+                    initialBonusStatus={songData.album_cover_bonus_status || null}
                   />
                 </div>
               </CardContent>
@@ -1234,9 +1240,11 @@ const SongPlayer = () => {
             ? "Your song was so special that we reimagined it in an R&B style — smooth, soulful, and full of groove. A whole new way to experience your song."
             : "Your song was so special that we created an acoustic version too — intimate, organic, and full of feeling. Like a private performance just for you.";
           const bonusCoverUrl =
-            (songData.album_cover_url && songData.album_cover_status === "ready")
-              ? songData.album_cover_url
-              : (songData.bonus_cover_image_url || getCoverImage());
+            (songData.album_cover_bonus_url && songData.album_cover_bonus_status === "ready")
+              ? songData.album_cover_bonus_url
+              : (songData.album_cover_url && songData.album_cover_status === "ready")
+                ? songData.album_cover_url
+                : (songData.bonus_cover_image_url || getCoverImage());
           
           return (
             <div className="mb-8">
