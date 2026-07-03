@@ -87,6 +87,8 @@ interface SongData {
   album_cover_url?: string | null;
   album_cover_photo_url?: string | null;
   album_cover_status?: string | null;
+  album_cover_bonus_url?: string | null;
+  album_cover_bonus_status?: string | null;
 }
 
 const SongPlayer = () => {
