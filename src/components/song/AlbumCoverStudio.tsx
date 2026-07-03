@@ -9,21 +9,46 @@ interface Props {
   initialAiUrl: string | null;
   initialPhotoUrl: string | null;
   initialStatus?: string | null;
+  bonusAvailable?: boolean;
+  bonusGenreLabel?: string;
+  initialBonusAiUrl?: string | null;
+  initialBonusStatus?: string | null;
 }
 
-export default function AlbumCoverStudio({ orderId, initialAiUrl, initialPhotoUrl, initialStatus }: Props) {
+type CoverStatus = "idle" | "uploading" | "generating" | "ready" | "failed";
+
+export default function AlbumCoverStudio({
+  orderId,
+  initialAiUrl,
+  initialPhotoUrl,
+  initialStatus,
+  bonusAvailable,
+  bonusGenreLabel,
+  initialBonusAiUrl,
+  initialBonusStatus,
+}: Props) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
   const [aiUrl, setAiUrl] = useState<string | null>(initialAiUrl);
-  const [status, setStatus] = useState<"idle" | "uploading" | "generating" | "ready" | "failed">(
+  const [status, setStatus] = useState<CoverStatus>(
     initialAiUrl ? "ready" : (initialStatus === "generating" ? "generating" : "idle")
+  );
+  const [bonusAiUrl, setBonusAiUrl] = useState<string | null>(initialBonusAiUrl || null);
+  const [bonusStatus, setBonusStatus] = useState<CoverStatus>(
+    initialBonusAiUrl ? "ready" : (initialBonusStatus === "generating" ? "generating" : "idle")
   );
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<number | null>(null);
+  const bonusPollRef = useRef<number | null>(null);
+  const genreLabel = bonusGenreLabel || "Acoustic";
 
   useEffect(() => {
     if (initialStatus === "generating" && !initialAiUrl) startPolling();
-    return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
+    if (bonusAvailable && initialBonusStatus === "generating" && !initialBonusAiUrl) startBonusPolling();
+    return () => {
+      if (pollRef.current) window.clearInterval(pollRef.current);
+      if (bonusPollRef.current) window.clearInterval(bonusPollRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -50,6 +75,29 @@ export default function AlbumCoverStudio({ orderId, initialAiUrl, initialPhotoUr
     }, 8000);
   };
 
+  const startBonusPolling = () => {
+    if (bonusPollRef.current) window.clearInterval(bonusPollRef.current);
+    bonusPollRef.current = window.setInterval(async () => {
+      try {
+        const r = await fetch(`${SUPA}/functions/v1/check-album-cover`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, variant: "bonus" }),
+        });
+        const j = await r.json();
+        if (j.status === "ready" && j.url) {
+          setBonusAiUrl(j.url); setBonusStatus("ready");
+          if (bonusPollRef.current) window.clearInterval(bonusPollRef.current);
+        } else if (j.status === "failed") {
+          setBonusStatus("failed");
+          if (bonusPollRef.current) window.clearInterval(bonusPollRef.current);
+        }
+      } catch (e) {
+        console.error("bonus poll error", e);
+      }
+    }, 8000);
+  };
+
   const handleUpload = async (file: File) => {
     setError(null); setStatus("uploading");
     try {
@@ -67,23 +115,84 @@ export default function AlbumCoverStudio({ orderId, initialAiUrl, initialPhotoUr
     }
   };
 
+  const generateVariant = async (variant: "main" | "bonus") => {
+    if (!photoUrl) return;
+    if (variant === "bonus") { setBonusAiUrl(null); setBonusStatus("generating"); }
+    else { setAiUrl(null); setStatus("generating"); }
+    const body: Record<string, unknown> = { orderId, photoUrl };
+    if (variant === "bonus") body.variant = "bonus";
+    const r = await fetch(`${SUPA}/functions/v1/generate-album-cover`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Generate failed");
+    if (variant === "bonus") startBonusPolling(); else startPolling();
+  };
+
   const handleGenerate = async () => {
     if (!photoUrl) return;
-    setError(null); setAiUrl(null); setStatus("generating");
+    setError(null);
     try {
-      const r = await fetch(`${SUPA}/functions/v1/generate-album-cover`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, photoUrl }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "Generate failed");
-      startPolling();
+      const tasks: Promise<void>[] = [generateVariant("main")];
+      if (bonusAvailable) tasks.push(generateVariant("bonus"));
+      await Promise.all(tasks);
     } catch (e) {
-      setStatus("failed");
       setError(e instanceof Error ? e.message : "Generate failed");
     }
   };
+
+  const regenerateOne = async (variant: "main" | "bonus") => {
+    setError(null);
+    try {
+      await generateVariant(variant);
+    } catch (e) {
+      if (variant === "bonus") setBonusStatus("failed"); else setStatus("failed");
+      setError(e instanceof Error ? e.message : "Generate failed");
+    }
+  };
+
+  const anyReady = !!aiUrl || !!bonusAiUrl;
+  const anyGenerating = status === "generating" || (bonusAvailable && bonusStatus === "generating");
+  const primaryLabel = anyGenerating
+    ? "Generating… (2–5 min)"
+    : anyReady
+      ? (bonusAvailable ? "Regenerate Covers" : "Regenerate")
+      : (bonusAvailable ? "Generate Album Covers" : "Generate Album Cover");
+
+  const renderCard = (opts: {
+    title: string;
+    caption: string;
+    url: string | null;
+    st: CoverStatus;
+    variant: "main" | "bonus";
+  }) => (
+    <div className="border rounded-lg p-4">
+      <p className="text-xs font-medium text-muted-foreground mb-3">{opts.title}</p>
+      {opts.url ? (
+        <img
+          src={opts.url}
+          alt={opts.title}
+          className="w-full max-w-md mx-auto aspect-square object-cover rounded"
+        />
+      ) : (
+        <div className="aspect-square max-w-md mx-auto bg-muted rounded flex items-center justify-center text-muted-foreground text-sm text-center px-4">
+          {opts.st === "generating" ? (
+            <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Generating…</span>
+          ) : opts.st === "failed" ? "Generation failed" : "—"}
+        </div>
+      )}
+      <p className="text-sm text-muted-foreground text-center mt-3">{opts.caption}</p>
+      {opts.st === "failed" && (
+        <div className="text-center mt-2">
+          <Button variant="ghost" size="sm" onClick={() => regenerateOne(opts.variant)}>
+            Regenerate this one
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -98,7 +207,7 @@ export default function AlbumCoverStudio({ orderId, initialAiUrl, initialPhotoUr
         <Button
           variant="outline"
           onClick={() => fileRef.current?.click()}
-          disabled={status === "uploading" || status === "generating"}
+          disabled={status === "uploading" || anyGenerating}
           className="gap-2"
         >
           {status === "uploading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
@@ -106,15 +215,57 @@ export default function AlbumCoverStudio({ orderId, initialAiUrl, initialPhotoUr
         </Button>
         <Button
           onClick={handleGenerate}
-          disabled={!photoUrl || status === "generating" || status === "uploading"}
+          disabled={!photoUrl || anyGenerating || status === "uploading"}
           className="gap-2"
         >
-          {status === "generating" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {status === "generating" ? "Generating… (2–5 min)" : aiUrl ? "Regenerate" : "Generate Album Cover"}
+          {anyGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {primaryLabel}
         </Button>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {aiUrl ? (
+      {bonusAvailable ? (
+        (aiUrl || bonusAiUrl || status === "generating" || bonusStatus === "generating" || status === "failed" || bonusStatus === "failed") ? (
+          <div className="space-y-4">
+            {renderCard({
+              title: "Song cover",
+              caption: "On your song page and printable keepsake.",
+              url: aiUrl,
+              st: status,
+              variant: "main",
+            })}
+            {renderCard({
+              title: `${genreLabel} version cover`,
+              caption: `On your ${genreLabel} version.`,
+              url: bonusAiUrl,
+              st: bonusStatus,
+              variant: "bonus",
+            })}
+            {photoUrl && (
+              <div className="flex items-center gap-3 pt-2">
+                <img src={photoUrl} alt="Source" className="w-20 h-20 object-cover rounded border" />
+                <p className="text-xs text-muted-foreground">Made from this photo</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="border rounded-lg p-4">
+            <p className="text-xs font-medium text-muted-foreground mb-3">
+              {photoUrl ? "Your photo" : "Upload a photo to begin"}
+            </p>
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                alt="Original"
+                className="w-full max-w-md mx-auto aspect-square object-cover rounded"
+              />
+            ) : (
+              <div className="aspect-square max-w-md mx-auto bg-muted rounded flex items-center justify-center text-muted-foreground text-sm text-center px-4">
+                No photo yet
+              </div>
+            )}
+          </div>
+        )
+      ) : aiUrl ? (
         <div className="space-y-4">
           <div className="border rounded-lg p-4">
             <p className="text-xs font-medium text-muted-foreground mb-3">Your album cover</p>
