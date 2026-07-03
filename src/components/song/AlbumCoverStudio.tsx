@@ -114,28 +114,48 @@ export default function AlbumCoverStudio({ orderId, initialAiUrl, initialPhotoUr
         </Button>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="border rounded-lg p-3">
-          <p className="text-xs font-medium text-muted-foreground mb-2">Your photo</p>
+      {aiUrl ? (
+        <div className="space-y-4">
+          <div className="border rounded-lg p-4">
+            <p className="text-xs font-medium text-muted-foreground mb-3">Your album cover</p>
+            <img
+              src={aiUrl}
+              alt="Your album cover"
+              className="w-full max-w-md mx-auto aspect-square object-cover rounded"
+            />
+            <p className="text-sm text-muted-foreground text-center mt-3">
+              This is now the cover on your song page and printable keepsake.
+            </p>
+            {photoUrl && (
+              <div className="flex items-center gap-3 mt-4 pt-4 border-t">
+                <img
+                  src={photoUrl}
+                  alt="Source"
+                  className="w-20 h-20 object-cover rounded border"
+                />
+                <p className="text-xs text-muted-foreground">Made from this photo</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="border rounded-lg p-4">
+          <p className="text-xs font-medium text-muted-foreground mb-3">
+            {photoUrl ? "Your photo" : "Upload a photo to begin"}
+          </p>
           {photoUrl ? (
-            <img src={photoUrl} alt="Original" className="w-full aspect-square object-cover rounded" />
+            <img
+              src={photoUrl}
+              alt="Original"
+              className="w-full max-w-md mx-auto aspect-square object-cover rounded"
+            />
           ) : (
-            <div className="aspect-square bg-muted rounded flex items-center justify-center text-muted-foreground text-sm">
-              No photo yet
+            <div className="aspect-square max-w-md mx-auto bg-muted rounded flex items-center justify-center text-muted-foreground text-sm text-center px-4">
+              {status === "generating" ? "Generating…" : "No photo yet"}
             </div>
           )}
         </div>
-        <div className="border rounded-lg p-3">
-          <p className="text-xs font-medium text-muted-foreground mb-2">AI album cover</p>
-          {aiUrl ? (
-            <img src={aiUrl} alt="AI cover" className="w-full aspect-square object-cover rounded" />
-          ) : (
-            <div className="aspect-square bg-muted rounded flex items-center justify-center text-muted-foreground text-sm text-center px-4">
-              {status === "generating" ? "Generating…" : "Not generated yet"}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
