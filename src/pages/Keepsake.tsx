@@ -6,6 +6,8 @@ import { Loader2, Printer } from "lucide-react";
 interface SongData {
   song_title: string | null;
   cover_image_url: string | null;
+  album_cover_url?: string | null;
+  album_cover_status?: string | null;
   occasion: string;
   recipient_name: string;
   has_lyrics: boolean;
