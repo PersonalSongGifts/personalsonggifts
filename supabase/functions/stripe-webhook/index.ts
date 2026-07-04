@@ -388,10 +388,14 @@ Deno.serve(async (req) => {
 
         if (packageUpdateError) {
           console.error("[WEBHOOK] Failed to unlock package:", packageUpdateError);
-        } else {
-          console.log(`[WEBHOOK] Package unlocked for order ${packageOrderId}`);
-          await logActivity(supabase, "order", packageOrderId, "package_unlocked", "system", `Forever Memory Package unlocked via Stripe webhook, $${(amountTotal / 100).toFixed(2)}`);
+          // Return 500 so Stripe retries — the update is idempotent (.is package_unlocked_at null), so a retry is safe.
+          return new Response(
+            JSON.stringify({ error: "Failed to unlock package" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
         }
+        console.log(`[WEBHOOK] Package unlocked for order ${packageOrderId}`);
+        await logActivity(supabase, "order", packageOrderId, "package_unlocked", "system", `Forever Memory Package unlocked via Stripe webhook, $${(amountTotal / 100).toFixed(2)}`);
 
         // Bundle: unlock each individual entitlement idempotently ($0 because included)
         await supabase
