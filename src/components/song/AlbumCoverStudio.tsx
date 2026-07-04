@@ -167,17 +167,24 @@ export default function AlbumCoverStudio({
     url: string | null;
     st: CoverStatus;
     variant: "main" | "bonus";
-  }) => (
+  }) => {
+    const imgWrapClass = bonusAvailable
+      ? "w-full aspect-square object-cover rounded"
+      : "w-full max-w-md mx-auto aspect-square object-cover rounded";
+    const placeholderClass = bonusAvailable
+      ? "aspect-square w-full bg-muted rounded flex items-center justify-center text-muted-foreground text-sm text-center px-4"
+      : "aspect-square max-w-md mx-auto bg-muted rounded flex items-center justify-center text-muted-foreground text-sm text-center px-4";
+    return (
     <div className="border rounded-lg p-4">
       <p className="text-xs font-medium text-muted-foreground mb-3">{opts.title}</p>
       {opts.url ? (
         <img
           src={opts.url}
           alt={opts.title}
-          className="w-full max-w-md mx-auto aspect-square object-cover rounded"
+          className={imgWrapClass}
         />
       ) : (
-        <div className="aspect-square max-w-md mx-auto bg-muted rounded flex items-center justify-center text-muted-foreground text-sm text-center px-4">
+        <div className={placeholderClass}>
           {opts.st === "generating" ? (
             <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Generating…</span>
           ) : opts.st === "failed" ? "Generation failed" : "—"}
@@ -192,7 +199,8 @@ export default function AlbumCoverStudio({
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -226,20 +234,22 @@ export default function AlbumCoverStudio({
       {bonusAvailable ? (
         (aiUrl || bonusAiUrl || status === "generating" || bonusStatus === "generating" || status === "failed" || bonusStatus === "failed") ? (
           <div className="space-y-4">
-            {renderCard({
-              title: "Song cover",
-              caption: "On your song page and printable keepsake.",
-              url: aiUrl,
-              st: status,
-              variant: "main",
-            })}
-            {renderCard({
-              title: `${genreLabel} version cover`,
-              caption: `On your ${genreLabel} version.`,
-              url: bonusAiUrl,
-              st: bonusStatus,
-              variant: "bonus",
-            })}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderCard({
+                title: "Song cover",
+                caption: "On your song page and printable keepsake.",
+                url: aiUrl,
+                st: status,
+                variant: "main",
+              })}
+              {renderCard({
+                title: `${genreLabel} version cover`,
+                caption: `On your ${genreLabel} version.`,
+                url: bonusAiUrl,
+                st: bonusStatus,
+                variant: "bonus",
+              })}
+            </div>
             {photoUrl && (
               <div className="flex items-center gap-3 pt-2">
                 <img src={photoUrl} alt="Source" className="w-20 h-20 object-cover rounded border" />
