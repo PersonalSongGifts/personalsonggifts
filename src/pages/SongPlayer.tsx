@@ -980,14 +980,42 @@ const SongPlayer = () => {
           if (!unlocked) {
             return (
               <Card className="mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5">
-                <CardContent className="pt-6 text-center space-y-3">
+                <CardContent className="pt-6 text-center space-y-4">
+                  <div className="space-y-1">
+                    <img
+                      src={getCoverImage()}
+                      alt=""
+                      className="w-28 h-28 mx-auto object-cover rounded-md"
+                      style={{ border: "2px solid #B0894F" }}
+                    />
+                    <p className="text-xs text-muted-foreground">A framed keepsake of your song</p>
+                  </div>
                   <div className="flex items-center justify-center gap-2">
                     <Gift className="h-5 w-5 text-primary" />
                     <h2 className="text-2xl font-bold">Forever Memory Package</h2>
                   </div>
-                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                    Everything to make it a keepsake — a printable lyric art sheet, a custom album cover made from your photo, plus full lyrics, the high-quality download, and the acoustic version.
-                  </p>
+                  <ul className="text-sm text-left max-w-xs mx-auto space-y-1.5">
+                    <li className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-primary shrink-0" />
+                      <span className="text-muted-foreground">Printable lyric art keepsake</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-primary shrink-0" />
+                      <span className="text-muted-foreground">Custom album cover made from your photo</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-primary shrink-0" />
+                      <span className="text-muted-foreground">Full lyrics</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-primary shrink-0" />
+                      <span className="text-muted-foreground">High-quality download</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-primary shrink-0" />
+                      <span className="text-muted-foreground">Acoustic version</span>
+                    </li>
+                  </ul>
                   <div className="flex items-baseline justify-center gap-2">
                     <span className="text-3xl font-bold text-primary">$24</span>
                     <span className="text-sm text-muted-foreground line-through">$45 value</span>
@@ -1025,7 +1053,7 @@ const SongPlayer = () => {
                       }
                     }}
                   >
-                    {packageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                    {packageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
                     Unlock the Forever Memory Package
                   </Button>
                 </CardContent>
