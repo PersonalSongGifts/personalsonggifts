@@ -226,7 +226,7 @@ export default function AlbumCoverStudio({
         <input
           ref={fileRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/*"
           className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
         />
@@ -237,7 +237,7 @@ export default function AlbumCoverStudio({
           className="gap-2"
         >
           {status === "uploading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-          {photoUrl ? "Choose a different photo" : "Upload a photo (JPEG/PNG/WebP, ≤8MB)"}
+          {photoUrl ? "Choose a different photo" : "Upload a photo"}
         </Button>
         <Button
           onClick={handleGenerate}

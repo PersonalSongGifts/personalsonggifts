@@ -22,13 +22,28 @@ Deno.serve(async (req) => {
       });
     }
     const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      return new Response(JSON.stringify({ error: "Invalid file type. JPEG/PNG/WebP only." }), {
+    const name = (file.name || "").toLowerCase();
+    const isHeic = file.type === "image/heic" || file.type === "image/heif" || name.endsWith(".heic") || name.endsWith(".heif");
+    if (isHeic) {
+      return new Response(JSON.stringify({ error: "That looks like an iPhone HEIC photo. On your phone, take a screenshot of the photo and upload that, or choose a JPG/PNG — those work perfectly." }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (file.size > 8 * 1024 * 1024) {
-      return new Response(JSON.stringify({ error: "File too large. Max 8MB." }), {
+    // Resolve an effective type: trust the MIME if valid, else fall back to the filename extension
+    // (some mobile uploads arrive with an empty or application/octet-stream MIME).
+    let effectiveType = allowed.includes(file.type) ? file.type : "";
+    if (!effectiveType) {
+      if (name.endsWith(".jpg") || name.endsWith(".jpeg")) effectiveType = "image/jpeg";
+      else if (name.endsWith(".png")) effectiveType = "image/png";
+      else if (name.endsWith(".webp")) effectiveType = "image/webp";
+    }
+    if (!effectiveType) {
+      return new Response(JSON.stringify({ error: "Please upload a JPG, PNG, or WebP photo." }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      return new Response(JSON.stringify({ error: "File too large. Max 12MB." }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -36,12 +51,12 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+    const ext = effectiveType === "image/png" ? "png" : effectiveType === "image/webp" ? "webp" : "jpg";
     const shortId = orderId.slice(0, 8).toUpperCase();
     const path = `cover-photos/${shortId}-${Date.now()}.${ext}`;
     const buf = new Uint8Array(await file.arrayBuffer());
     const { error: upErr } = await supabase.storage.from("songs").upload(path, buf, {
-      contentType: file.type,
+      contentType: effectiveType,
       upsert: true,
     });
     if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
