@@ -30,11 +30,23 @@ export default function AlbumCoverStudio({
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
   const [aiUrl, setAiUrl] = useState<string | null>(initialAiUrl);
   const [status, setStatus] = useState<CoverStatus>(
-    initialAiUrl ? "ready" : (initialStatus === "generating" ? "generating" : "idle")
+    initialAiUrl
+      ? "ready"
+      : initialStatus === "generating"
+        ? "generating"
+        : initialStatus === "failed"
+          ? "failed"
+          : "idle"
   );
   const [bonusAiUrl, setBonusAiUrl] = useState<string | null>(initialBonusAiUrl || null);
   const [bonusStatus, setBonusStatus] = useState<CoverStatus>(
-    initialBonusAiUrl ? "ready" : (initialBonusStatus === "generating" ? "generating" : "idle")
+    initialBonusAiUrl
+      ? "ready"
+      : initialBonusStatus === "generating"
+        ? "generating"
+        : initialBonusStatus === "failed"
+          ? "failed"
+          : "idle"
   );
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -135,9 +147,15 @@ export default function AlbumCoverStudio({
     if (!photoUrl) return;
     setError(null);
     try {
-      const tasks: Promise<void>[] = [generateVariant("main")];
-      if (bonusAvailable) tasks.push(generateVariant("bonus"));
-      await Promise.all(tasks);
+      const runVariant = (v: "main" | "bonus") =>
+        generateVariant(v).catch((e) => {
+          if (v === "bonus") setBonusStatus("failed"); else setStatus("failed");
+          setError(e instanceof Error ? e.message : "Generate failed");
+        });
+      await Promise.all([
+        runVariant("main"),
+        ...(bonusAvailable ? [runVariant("bonus")] : []),
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generate failed");
     }
