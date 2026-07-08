@@ -25,6 +25,8 @@ interface Order {
   bonus_song_url?: string | null;
   package_unlocked_at?: string | null;
   package_price_cents?: number | null;
+  rush_addon?: boolean | null;
+  rush_price_cents?: number | null;
   notes?: string | null;
   reaction_video_url?: string | null;
   reaction_submitted_at?: string | null;
@@ -77,7 +79,8 @@ function orderTotalDollars(o: Order): number {
     (o.lyrics_price_cents ?? 0) +
     (o.download_price_cents ?? 0) +
     (o.bonus_price_cents ?? 0) +
-    (o.package_price_cents ?? 0);
+    (o.package_price_cents ?? 0) +
+    (o.rush_price_cents ?? 0);
   return o.price + upsellCents / 100;
 }
 
