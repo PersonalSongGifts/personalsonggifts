@@ -323,6 +323,8 @@ const SongPlayer = () => {
           }
         );
         if (response.ok) {
+          const data = await response.json().catch(() => ({} as any));
+          trackPackagePurchase(packageSessionId, typeof data?.amountCents === "number" ? data.amountCents : null);
           await fetchSongData();
           toast.success("Forever Memory Package unlocked! ✨");
         }
