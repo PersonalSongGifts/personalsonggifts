@@ -119,10 +119,10 @@ const Checkout = () => {
     }
   }, [selectedTier, selectedAddons.rush]);
 
-  // Rush is intentionally excluded from the payload/total — Phase 2.
-  const addonsTotalCents = addonsEnabled && selectedAddons.forever_memory
-    ? ADDON_PRICES_CENTS.forever_memory
-    : 0;
+  const rushSelected = addonsEnabled && selectedAddons.rush && selectedTier === "standard";
+  const addonsTotalCents =
+    (addonsEnabled && selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0) +
+    (rushSelected ? ADDON_PRICES_CENTS.rush : 0);
   const hasAddonSelected = addonsEnabled && addonsTotalCents > 0;
   
   // Auto-detect user timezone
@@ -308,7 +308,10 @@ const Checkout = () => {
             utmCampaign: utmParams.utm_campaign || undefined,
             utmContent: utmParams.utm_content || undefined,
             utmTerm: utmParams.utm_term || undefined,
-            addons: { forever_memory: addonsEnabled && selectedAddons.forever_memory },
+            addons: {
+              forever_memory: addonsEnabled && selectedAddons.forever_memory,
+              rush: rushSelected,
+            },
           }),
         }
       );
