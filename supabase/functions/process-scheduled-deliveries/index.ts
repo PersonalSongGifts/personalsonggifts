@@ -2256,6 +2256,88 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       console.error("[WATCHDOG] Auto-recovery error:", e);
     }
 
+    // ======= RUSH SLA BREACH ALERT (isolated & non-blocking) =======
+    // Rush orders promise delivery within 1 hour. Flag any that are >45 min old
+    // without a delivery so a human can intervene. Fully wrapped so it can never
+    // break generation or delivery.
+    try {
+      const rushCutoffIso = new Date(Date.now() - 45 * 60 * 1000).toISOString();
+      const { data: rushAtRisk } = await supabase
+        .from("orders")
+        .select("id, created_at, customer_email, customer_name, recipient_name")
+        .eq("rush_addon", true)
+        .is("sent_at", null)
+        .is("rush_alert_sent_at", null)
+        .neq("status", "cancelled")
+        .lte("created_at", rushCutoffIso)
+        .limit(5);
+
+      const rushAlertsSent: string[] = [];
+      for (const order of rushAtRisk || []) {
+        const orderId = order.id as string;
+        const shortId = orderId.slice(0, 8).toUpperCase();
+        const minutesElapsed = Math.round(
+          (Date.now() - new Date(order.created_at as string).getTime()) / 60000
+        );
+
+        // Mark first so retries don't spam even if email/log fails
+        await supabase
+          .from("orders")
+          .update({ rush_alert_sent_at: new Date().toISOString() })
+          .eq("id", orderId)
+          .is("rush_alert_sent_at", null);
+
+        await logActivity(
+          supabase,
+          "order",
+          orderId,
+          "rush_sla_risk",
+          "system",
+          `Rush order approaching 1-hour SLA without delivery (${minutesElapsed} min elapsed)`,
+        );
+
+        // Alert email — reuse Brevo transactional API (same mechanism used by
+        // send-order-confirmation). If BREVO_API_KEY is missing or the call
+        // fails, we've already logged + marked the alert.
+        try {
+          const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+          if (brevoApiKey) {
+            await fetch("https://api.brevo.com/v3/smtp/email", {
+              method: "POST",
+              headers: {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "api-key": brevoApiKey,
+              },
+              body: JSON.stringify({
+                sender: { name: "Personal Song Gifts", email: "support@personalsonggifts.com" },
+                to: [{ email: "support@personalsonggifts.com" }],
+                subject: `⚠️ Rush order ${shortId} at SLA risk`,
+                textContent:
+                  `Rush order ${shortId} (${orderId}) is ${minutesElapsed} minutes old and has not been delivered.\n\n` +
+                  `Customer: ${order.customer_name || ""} <${order.customer_email || ""}>\n` +
+                  `Recipient: ${order.recipient_name || ""}\n` +
+                  `1-hour SLA is at risk.`,
+              }),
+            });
+          } else {
+            console.error(`[RUSH-SLA] BREVO_API_KEY missing — could not email alert for ${shortId}`);
+          }
+        } catch (emailErr) {
+          console.error(`[RUSH-SLA] Alert email failed for ${shortId}:`, emailErr);
+        }
+
+        rushAlertsSent.push(orderId);
+      }
+
+      if (rushAlertsSent.length > 0) {
+        console.log(`[RUSH-SLA] Sent ${rushAlertsSent.length} rush SLA risk alerts`);
+      }
+      results.rushSlaAlerts = rushAlertsSent.length;
+    } catch (e) {
+      console.error("[RUSH-SLA] Alert block error (ignored):", e);
+    }
+
     return new Response(JSON.stringify(results), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
