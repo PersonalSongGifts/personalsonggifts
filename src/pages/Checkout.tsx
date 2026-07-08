@@ -1,6 +1,6 @@
 // force rebuild
 import { useLocation, useNavigate, Link } from "react-router-dom";
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useRef } from "react";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -93,6 +93,7 @@ const Checkout = () => {
     return undefined;
   }, [location.state]);
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
+  const [isExpress, setIsExpress] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPayPalLoading, setIsPayPalLoading] = useState(false);
   const paypalButtonRef = useRef<HTMLDivElement>(null);
@@ -112,18 +113,12 @@ const Checkout = () => {
   const toggleAddon = (key: AddonKey) =>
     setSelectedAddons((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // Auto-clear Rush if user switches to priority (priority already includes rush).
-  useEffect(() => {
-    if (selectedTier === "priority" && selectedAddons.rush) {
-      setSelectedAddons((prev) => ({ ...prev, rush: false }));
-    }
-  }, [selectedTier, selectedAddons.rush]);
-
-  const rushSelected = addonsEnabled && selectedAddons.rush && selectedTier === "standard";
+  // Express = Priority tier + 1-hour rush upgrade. Rush is no longer a standalone add-on.
+  const rushSelected = isExpress;
   const addonsTotalCents =
     (addonsEnabled && selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0) +
     (rushSelected ? ADDON_PRICES_CENTS.rush : 0);
-  const hasAddonSelected = addonsEnabled && addonsTotalCents > 0;
+  const hasAddonSelected = addonsTotalCents > 0;
   
   // Auto-detect user timezone
   const userTimezone = useMemo(() => {
@@ -460,12 +455,12 @@ const Checkout = () => {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 mb-3">
+          <div className="grid md:grid-cols-3 gap-6 mb-3">
             {/* Standard tier */}
             <Card 
-              onClick={() => setSelectedTier("standard")}
+              onClick={() => { setSelectedTier("standard"); setIsExpress(false); }}
               className={`p-6 cursor-pointer transition-all duration-200 ${
-                selectedTier === "standard" 
+                selectedTier === "standard" && !isExpress
                   ? "ring-2 ring-primary border-primary" 
                   : "hover:border-primary/50"
               }`}
@@ -479,11 +474,11 @@ const Checkout = () => {
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                  selectedTier === "standard" 
+                  selectedTier === "standard" && !isExpress
                     ? "bg-primary border-primary" 
                     : "border-muted-foreground"
                 }`}>
-                  {selectedTier === "standard" && (
+                  {selectedTier === "standard" && !isExpress && (
                     <Check className="h-4 w-4 text-primary-foreground" />
                   )}
                 </div>
@@ -513,16 +508,13 @@ const Checkout = () => {
 
             {/* Priority tier */}
             <Card 
-              onClick={() => setSelectedTier("priority")}
+              onClick={() => { setSelectedTier("priority"); setIsExpress(false); }}
               className={`p-6 cursor-pointer transition-all duration-200 relative ${
-                selectedTier === "priority" 
+                selectedTier === "priority" && !isExpress
                   ? "ring-2 ring-primary border-primary" 
                   : "hover:border-primary/50"
               }`}
             >
-              <div className="absolute -top-3 right-4 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
-                FASTEST
-              </div>
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-foreground">Priority Song</h3>
@@ -532,11 +524,11 @@ const Checkout = () => {
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                  selectedTier === "priority" 
+                  selectedTier === "priority" && !isExpress
                     ? "bg-primary border-primary" 
                     : "border-muted-foreground"
                 }`}>
-                  {selectedTier === "priority" && (
+                  {selectedTier === "priority" && !isExpress && (
                     <Check className="h-4 w-4 text-primary-foreground" />
                   )}
                 </div>
@@ -560,6 +552,54 @@ const Checkout = () => {
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" />
                   First in queue
+                </li>
+              </ul>
+            </Card>
+
+            {/* Express tier (Priority + 1-hour rush) */}
+            <Card
+              onClick={() => { setSelectedTier("priority"); setIsExpress(true); }}
+              className={`p-6 cursor-pointer transition-all duration-200 relative ${
+                isExpress
+                  ? "ring-2 ring-primary border-primary"
+                  : "hover:border-primary/50"
+              }`}
+            >
+              <div className="absolute -top-3 right-4 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1">
+                <Zap className="h-3 w-3" />
+                FASTEST
+              </div>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-semibold text-foreground">Express Song</h3>
+                  <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                    <Zap className="h-4 w-4" />
+                    Delivered within 1 hour
+                  </p>
+                </div>
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                  isExpress ? "bg-primary border-primary" : "border-muted-foreground"
+                }`}>
+                  {isExpress && <Check className="h-4 w-4 text-primary-foreground" />}
+                </div>
+              </div>
+              <div className="mb-4">
+                <span className="text-lg text-muted-foreground line-through">$169.99 USD</span>
+                <span className="text-4xl font-bold text-foreground ml-2">$89.99</span>
+                <span className="text-sm text-muted-foreground ml-1">USD</span>
+              </div>
+              <ul className="space-y-2 text-muted-foreground">
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-primary" />
+                  Everything in Priority
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-primary" />
+                  Delivered within 1 hour
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-primary" />
+                  Very front of the queue
                 </li>
               </ul>
             </Card>
@@ -658,45 +698,6 @@ const Checkout = () => {
                   </div>
                 </div>
               </Card>
-              {selectedTier === "standard" && (
-                <Card
-                  onClick={() => toggleAddon("rush")}
-                  className={`p-5 cursor-pointer transition-all duration-200 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 ${
-                    selectedAddons.rush
-                      ? "ring-2 ring-primary border-primary bg-primary/10"
-                      : "hover:border-primary/50"
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                      selectedAddons.rush ? "bg-primary border-primary" : "border-muted-foreground"
-                    }`}>
-                      {selectedAddons.rush && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">
-                            <Zap className="h-3 w-3" />
-                            Rush Delivery
-                          </span>
-                          <h4 className="font-semibold text-foreground mt-2">Get your song in 1 hour</h4>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Skip the 48-hour wait — produced and delivered within the hour.
-                          </p>
-                        </div>
-                        <span className="text-2xl font-bold text-primary whitespace-nowrap">$10</span>
-                      </div>
-                      {selectedAddons.rush && (
-                        <p className="flex items-center gap-1.5 text-xs text-primary mt-2">
-                          <Zap className="h-3.5 w-3.5" />
-                          1-hour delivery activated — included in your total below.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              )}
             </div>
           )}
 
@@ -806,7 +807,7 @@ const Checkout = () => {
 
               {rushSelected && (
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Rush Delivery (1 hour)</span>
+                  <span className="text-muted-foreground">1-Hour Express upgrade</span>
                   <span className="text-foreground">$10.00</span>
                 </div>
               )}

@@ -384,9 +384,9 @@ Deno.serve(async (req) => {
     // Rush Delivery add-on (standard tier only). Absent → no-op.
     const rushAddon = input.addons?.rush === true;
     const RUSH_PRICE_CENTS = 1000;
-    if (rushAddon && pricingTier === "priority") {
+    if (rushAddon && pricingTier !== "priority") {
       return new Response(
-        JSON.stringify({ error: "Rush delivery isn't needed on the Priority tier." }),
+        JSON.stringify({ error: "1-hour Express delivery is available with the Express package." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
