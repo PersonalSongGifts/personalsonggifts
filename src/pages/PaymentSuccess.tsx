@@ -449,6 +449,67 @@ const PaymentSuccess = () => {
             </Card>
           )}
 
+          {/* Forever Memory Package upsell */}
+          {(() => {
+            const flagEnabled = import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" || searchParams.get("preview") === "1";
+            if (!flagEnabled || !orderDetails?.orderId) return null;
+            if (pkgAdded) {
+              return (
+                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <Check className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Forever Memory Package added ✓</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Your printable keepsake, custom album covers, full lyrics, download, and acoustic version will all be waiting on {orderDetails.recipientName}'s song page when the song is ready.
+                  </p>
+                </Card>
+              );
+            }
+            return (
+              <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+                <p className="text-xs uppercase tracking-wide text-primary font-semibold mb-2">Complete the gift</p>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <Gift className="h-5 w-5 text-primary" />
+                  <h3 className="text-xl font-bold text-foreground">Forever Memory Package</h3>
+                </div>
+                <ul className="text-sm text-left max-w-xs mx-auto space-y-1.5 mb-4">
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">Printable lyric art keepsake</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">Custom album cover made from your photo</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">Full lyrics</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">High-quality download</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">Acoustic version</span>
+                  </li>
+                </ul>
+                <div className="flex items-baseline justify-center gap-2 mb-1">
+                  <span className="text-3xl font-bold text-primary">$24</span>
+                  <span className="text-sm text-muted-foreground line-through">$45 value</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.
+                </p>
+                <Button size="lg" disabled={pkgLoading} onClick={handleAddPackage} className="gap-2">
+                  {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
+                  Add the Forever Memory Package
+                </Button>
+              </Card>
+            );
+          })()}
+
           {/* Email whitelist notice — only for new orders, not instant lead conversions */}
           {!isLeadConversion && (
             <div className="flex gap-3 p-4 mb-8 rounded-lg text-left" style={{ backgroundColor: "hsl(48 100% 96%)", border: "1px solid hsl(48 60% 80%)" }}>
