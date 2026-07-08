@@ -100,8 +100,8 @@ const Checkout = () => {
   const [promoError, setPromoError] = useState("");
   const [isValidating, setIsValidating] = useState(false);
 
-  // Phase 1 add-ons: gated behind env flag or ?addons=preview query param.
-  const addonsEnabled = import.meta.env.VITE_CHECKOUT_ADDONS_ENABLED === "true"
+  // Forever Memory Package add-on: gated behind live env flag or ?addons=preview query param.
+  const addonsEnabled = import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true"
     || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("addons") === "preview");
   const [selectedAddons, setSelectedAddons] = useState<Record<AddonKey, boolean>>({
     forever_memory: false,
@@ -117,10 +117,10 @@ const Checkout = () => {
     }
   }, [selectedTier, selectedAddons.rush]);
 
-  const addonsTotalCents = addonsEnabled ? (
-    (selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0)
-    + (selectedAddons.rush && selectedTier === "standard" ? ADDON_PRICES_CENTS.rush : 0)
-  ) : 0;
+  // Rush is intentionally excluded from the payload/total — Phase 2.
+  const addonsTotalCents = addonsEnabled && selectedAddons.forever_memory
+    ? ADDON_PRICES_CENTS.forever_memory
+    : 0;
   const hasAddonSelected = addonsEnabled && addonsTotalCents > 0;
   
   // Auto-detect user timezone
