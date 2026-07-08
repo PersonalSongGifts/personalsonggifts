@@ -101,6 +101,28 @@ const PaymentSuccess = () => {
     hasTrackedPurchase.current = true;
   }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
+  const handleAddPackage = async () => {
+    if (!orderDetails?.orderId) return;
+    setPkgLoading(true);
+    (window as any).amplitude?.track?.("Package Upsell Clicked", { placement: "payment_success", order_id: orderDetails.orderId });
+    try {
+      const returnPath = window.location.pathname + window.location.search;
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-package-checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: orderDetails.orderId, returnPath }),
+      });
+      const data = await r.json();
+      if (data.alreadyUnlocked) { setPkgAdded(true); return; }
+      if (data.url) { window.location.href = data.url; return; }
+      console.error("Package checkout failed:", data.error);
+    } catch (e) {
+      console.error("Package checkout error:", e);
+    } finally {
+      setPkgLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!sessionId && !paypalToken) {
       setError("No session ID found. Please contact support if you completed a payment.");
