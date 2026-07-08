@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at")
       .eq("notes", `stripe_session:${sessionId}`)
       .single();
 
@@ -119,6 +119,7 @@ Deno.serve(async (req) => {
           expectedDelivery: existingOrder.expected_delivery,
           price: existingOrder.price_cents != null ? existingOrder.price_cents / 100 : undefined,
           revisionToken: existingOrder.revision_token,
+          package_unlocked: !!existingOrder.package_unlocked_at,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -162,6 +163,25 @@ Deno.serve(async (req) => {
       metadata.lyricsLanguageCode || "en",
     ]);
 
+    // Forever Memory Package add-on (checkout-time). Absent → no-op.
+    const foreverMemory = metadata.forever_memory === "true";
+    const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
+    const addonUnlockFields = foreverMemory ? (() => {
+      const nowIso = new Date().toISOString();
+      const pi = typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id ?? null;
+      return {
+        package_unlocked_at: nowIso,
+        package_price_cents: packageAddonCents,
+        package_unlock_session_id: session.id,
+        package_unlock_payment_intent_id: pi,
+        lyrics_unlocked_at: nowIso, lyrics_price_cents: 0,
+        download_unlocked_at: nowIso, download_price_cents: 0,
+        bonus_unlocked_at: nowIso, bonus_price_cents: 0,
+      };
+    })() : {};
+
     const { data: newOrder, error: insertError } = await supabase
       .from("orders")
       .insert({
@@ -190,6 +210,7 @@ Deno.serve(async (req) => {
         target_send_at: timing.targetSendAt,
         inputs_hash: inputsHash,
         delivery_status: "pending",
+        ...addonUnlockFields,
       })
       .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
       .single();
@@ -201,7 +222,7 @@ Deno.serve(async (req) => {
         console.log(`Race condition detected for session ${sessionId}, fetching existing order`);
         const { data: raceOrder } = await supabase
           .from("orders")
-          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at")
           .eq("notes", `stripe_session:${sessionId}`)
           .single();
 
@@ -217,6 +238,7 @@ Deno.serve(async (req) => {
               expectedDelivery: raceOrder.expected_delivery,
               price: raceOrder.price_cents != null ? raceOrder.price_cents / 100 : undefined,
               revisionToken: raceOrder.revision_token,
+              package_unlocked: !!raceOrder.package_unlocked_at,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -345,6 +367,7 @@ Deno.serve(async (req) => {
         expectedDelivery: newOrder.expected_delivery,
         price: newOrder.price_cents != null ? newOrder.price_cents / 100 : priceCents / 100,
         revisionToken: newOrder.revision_token,
+        package_unlocked: foreverMemory,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
