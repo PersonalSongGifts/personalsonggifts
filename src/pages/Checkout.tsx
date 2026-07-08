@@ -100,8 +100,8 @@ const Checkout = () => {
   const [promoError, setPromoError] = useState("");
   const [isValidating, setIsValidating] = useState(false);
 
-  // Phase 1 add-ons: gated behind env flag or ?addons=preview query param.
-  const addonsEnabled = import.meta.env.VITE_CHECKOUT_ADDONS_ENABLED === "true"
+  // Forever Memory Package add-on: gated behind live env flag or ?addons=preview query param.
+  const addonsEnabled = import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true"
     || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("addons") === "preview");
   const [selectedAddons, setSelectedAddons] = useState<Record<AddonKey, boolean>>({
     forever_memory: false,
@@ -117,10 +117,10 @@ const Checkout = () => {
     }
   }, [selectedTier, selectedAddons.rush]);
 
-  const addonsTotalCents = addonsEnabled ? (
-    (selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0)
-    + (selectedAddons.rush && selectedTier === "standard" ? ADDON_PRICES_CENTS.rush : 0)
-  ) : 0;
+  // Rush is intentionally excluded from the payload/total — Phase 2.
+  const addonsTotalCents = addonsEnabled && selectedAddons.forever_memory
+    ? ADDON_PRICES_CENTS.forever_memory
+    : 0;
   const hasAddonSelected = addonsEnabled && addonsTotalCents > 0;
   
   // Auto-detect user timezone
@@ -306,6 +306,7 @@ const Checkout = () => {
             utmCampaign: utmParams.utm_campaign || undefined,
             utmContent: utmParams.utm_content || undefined,
             utmTerm: utmParams.utm_term || undefined,
+            addons: { forever_memory: addonsEnabled && selectedAddons.forever_memory },
           }),
         }
       );
@@ -589,44 +590,12 @@ const Checkout = () => {
                       <h4 className="font-semibold text-foreground">Forever Memory Package</h4>
                       <span className="font-semibold text-foreground whitespace-nowrap">$24.00</span>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-1">Make the song feel like a complete gift.</p>
-                    <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Printable lyric sheet with QR code</li>
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Private gift page to share</li>
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Album-style cover from a photo you upload (optional)</li>
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Full lyrics + download</li>
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />A bonus version in another style</li>
-                    </ul>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Your uploaded photo stays as-is. The album-style cover is optional and won't change your loved one's likeness.
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Printable lyric keepsake, custom album cover from their photo, full lyrics, HD download + the acoustic version — delivered with the song.
                     </p>
                   </div>
                 </div>
               </Card>
-
-              {selectedTier === "standard" && (
-                <Card
-                  onClick={() => toggleAddon("rush")}
-                  className={`p-5 cursor-pointer transition-all duration-200 ${
-                    selectedAddons.rush ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                      selectedAddons.rush ? "bg-primary border-primary" : "border-muted-foreground"
-                    }`}>
-                      {selectedAddons.rush && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-baseline justify-between gap-3">
-                        <h4 className="font-semibold text-foreground">Rush Delivery</h4>
-                        <span className="font-semibold text-foreground whitespace-nowrap">$10.00</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">Skip the standard queue — priority production.</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
             </div>
           )}
 
@@ -732,12 +701,6 @@ const Checkout = () => {
                   <span className="text-foreground">$24.00</span>
                 </div>
               )}
-              {addonsEnabled && selectedAddons.rush && selectedTier === "standard" && (
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Rush Delivery</span>
-                  <span className="text-foreground">$10.00</span>
-                </div>
-              )}
 
               <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
@@ -775,24 +738,19 @@ const Checkout = () => {
 
           {/* Payment buttons */}
           <div className="space-y-3">
-            {hasAddonSelected && (
-              <p className="text-xs text-muted-foreground text-center">
-                Add-on payment activates in the next phase — totals shown here are a preview.
-              </p>
-            )}
             {/* Card/Stripe button */}
             <Button 
               onClick={handleCheckout}
               size="lg" 
               className="w-full text-lg py-6 font-semibold gap-2"
-              disabled={isSubmitting || isPayPalLoading || hasAddonSelected}
+              disabled={isSubmitting || isPayPalLoading}
             >
               {isSubmitting ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
                 <CreditCard className="h-5 w-5" />
               )}
-              {isSubmitting ? "Processing..." : `Pay with Card — $${pricing.total.toFixed(2)} USD`}
+              {isSubmitting ? "Processing..." : `Pay with Card — $${(pricing.total + addonsTotalCents / 100).toFixed(2)} USD`}
             </Button>
 
             <div className="flex items-center gap-3">
@@ -817,6 +775,11 @@ const Checkout = () => {
               )}
               {isPayPalLoading ? "Connecting to PayPal..." : `Pay with PayPal — $${pricing.total.toFixed(2)} USD`}
             </Button>
+            {hasAddonSelected && (
+              <p className="text-xs text-muted-foreground text-center">
+                Add-ons are available with card checkout.
+              </p>
+            )}
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-4">

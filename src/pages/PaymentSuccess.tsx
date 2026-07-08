@@ -20,6 +20,7 @@ interface OrderDetails {
   songUrl?: string;
   price?: number;
   revisionToken?: string;
+  package_unlocked?: boolean;
 }
 
 const MAX_POLL_ATTEMPTS = 10;
@@ -266,6 +267,7 @@ const PaymentSuccess = () => {
 
         const data = await response.json();
         setOrderDetails(data);
+        if (data.package_unlocked) setPkgAdded(true);
         trackPurchaseEvent(data);
         setLoading(false);
         return true; // Success
