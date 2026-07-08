@@ -21,6 +21,7 @@ interface OrderDetails {
   price?: number;
   revisionToken?: string;
   package_unlocked?: boolean;
+  package_addon_cents?: number;
 }
 
 const MAX_POLL_ATTEMPTS = 10;
