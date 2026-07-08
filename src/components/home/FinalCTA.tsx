@@ -21,7 +21,7 @@ const FinalCTA = () => {
         </Button>
 
         <p className="mt-6 md:mt-8 text-xs md:text-sm text-muted-foreground">
-          ✓ Satisfaction guaranteed · ✓ Delivered within 48 hours · ✓ 100% unique
+          ✓ Free remake if you're not happy · ✓ Delivered within 48 hours · ✓ 100% unique
         </p>
       </div>
     </section>

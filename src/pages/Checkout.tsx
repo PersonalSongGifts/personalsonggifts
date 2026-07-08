@@ -836,7 +836,11 @@ const Checkout = () => {
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <Check className="h-5 w-5 text-primary flex-shrink-0" />
-              <span>Satisfaction guaranteed</span>
+              <span>
+                <Link to="/refund" className="underline decoration-muted-foreground/40 hover:decoration-primary hover:text-primary transition-colors">
+                  Free remake if you're not happy
+                </Link>
+              </span>
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <Mail className="h-5 w-5 text-primary flex-shrink-0" />

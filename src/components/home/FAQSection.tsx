@@ -26,7 +26,7 @@ const faqs = [
   },
   {
     question: "What if I don't like the song?",
-    answer: "We stand behind every song we create. If it doesn't feel right, we'll work with you to make adjustments or find a solution that makes you happy. Your satisfaction matters to us.",
+    answer: "We want you to love your song. If the first version doesn't quite land, just reply to your delivery email within 7 days and we'll craft you a complimentary remake — a different feel, new lyrics, a fresh vocal, whatever it takes. You can also make quick self-service edits right from your song page. Because each song is custom-made from your story, we don't offer refunds once generation begins, but the free remake is there to make sure you end up with something you truly love.",
   },
   {
     question: "How do I share the song with my recipient?",
