@@ -329,6 +329,7 @@ Deno.serve(async (req) => {
           pricingTier: newOrder.pricing_tier,
           expectedDelivery: newOrder.expected_delivery,
           revisionToken: newOrder.revision_token,
+          rushAddon,
         }),
       });
     } catch (emailError) {
@@ -384,6 +385,8 @@ Deno.serve(async (req) => {
         revisionToken: newOrder.revision_token,
         package_unlocked: foreverMemory,
         package_addon_cents: packageAddonCents,
+        rush_addon: rushAddon,
+        rush_addon_cents: rushAddonCents,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
