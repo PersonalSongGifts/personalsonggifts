@@ -167,6 +167,8 @@ Deno.serve(async (req) => {
     // Forever Memory Package add-on (checkout-time). Absent → no-op.
     const foreverMemory = metadata.forever_memory === "true";
     const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
+    const songPriceCents = foreverMemory ? Math.max(0, priceCents - packageAddonCents) : priceCents;
+    const songPrice = Math.floor(songPriceCents / 100);
     const addonUnlockFields = foreverMemory ? (() => {
       const nowIso = new Date().toISOString();
       const pi = typeof session.payment_intent === "string"
@@ -187,8 +189,8 @@ Deno.serve(async (req) => {
       .from("orders")
       .insert({
         pricing_tier: pricingTier,
-        price,               // integer dollars (backward compat)
-        price_cents: priceCents, // canonical cents from Stripe amount_total
+        price: songPrice,               // integer dollars (song-only, excludes add-on)
+        price_cents: songPriceCents,    // canonical cents (song-only, excludes add-on)
         expected_delivery: expectedDelivery,
         customer_name: metadata.customerName || "",
         customer_email: metadata.customerEmail || session.customer_email || "",
