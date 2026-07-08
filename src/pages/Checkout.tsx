@@ -738,24 +738,19 @@ const Checkout = () => {
 
           {/* Payment buttons */}
           <div className="space-y-3">
-            {hasAddonSelected && (
-              <p className="text-xs text-muted-foreground text-center">
-                Add-on payment activates in the next phase — totals shown here are a preview.
-              </p>
-            )}
             {/* Card/Stripe button */}
             <Button 
               onClick={handleCheckout}
               size="lg" 
               className="w-full text-lg py-6 font-semibold gap-2"
-              disabled={isSubmitting || isPayPalLoading || hasAddonSelected}
+              disabled={isSubmitting || isPayPalLoading}
             >
               {isSubmitting ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
                 <CreditCard className="h-5 w-5" />
               )}
-              {isSubmitting ? "Processing..." : `Pay with Card — $${pricing.total.toFixed(2)} USD`}
+              {isSubmitting ? "Processing..." : `Pay with Card — $${(pricing.total + addonsTotalCents / 100).toFixed(2)} USD`}
             </Button>
 
             <div className="flex items-center gap-3">
@@ -780,6 +775,11 @@ const Checkout = () => {
               )}
               {isPayPalLoading ? "Connecting to PayPal..." : `Pay with PayPal — $${pricing.total.toFixed(2)} USD`}
             </Button>
+            {hasAddonSelected && (
+              <p className="text-xs text-muted-foreground text-center">
+                Add-ons are available with card checkout.
+              </p>
+            )}
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
