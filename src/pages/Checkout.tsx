@@ -15,7 +15,9 @@ import {
   ArrowLeft,
   Loader2,
   Tag,
-  X
+  X,
+  Star
+
 } from "lucide-react";
 import { FormData } from "@/pages/CreateSong";
 import ValentineDeliveryNotice from "@/components/checkout/ValentineDeliveryNotice";
@@ -580,8 +582,10 @@ const Checkout = () => {
               </div>
               <Card
                 onClick={() => toggleAddon("forever_memory")}
-                className={`p-5 cursor-pointer transition-all duration-200 ${
-                  selectedAddons.forever_memory ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"
+                className={`p-5 cursor-pointer transition-all duration-200 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 ${
+                  selectedAddons.forever_memory
+                    ? "ring-2 ring-primary border-primary bg-primary/10"
+                    : "hover:border-primary/50"
                 }`}
               >
                 <div className="flex items-start gap-4">
@@ -592,37 +596,43 @@ const Checkout = () => {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h4 className="font-semibold text-foreground">Yes, add the Forever Memory Package</h4>
-                        <span className="inline-block mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded">
+                      <div className="flex-1">
+                        <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-widest text-primary-foreground bg-primary px-2.5 py-1 rounded-full">
                           Most Popular
                         </span>
+                        <h4 className="font-semibold text-foreground mt-2">Yes, add the Forever Memory Package</h4>
                       </div>
                       <div className="text-right flex flex-col items-end gap-1">
                         <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
                           Save $21
                         </span>
                         <span className="text-xs text-muted-foreground line-through">$45 value</span>
-                        <span className="font-semibold text-foreground whitespace-nowrap">$24</span>
+                        <span className="text-2xl font-bold text-primary whitespace-nowrap">$24</span>
                       </div>
                     </div>
                     <ul className="mt-3 space-y-2">
                       <li className="flex items-start gap-2">
-                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 flex-shrink-0 mt-0.5">
+                          <Check className="h-3 w-3 text-emerald-700" />
+                        </span>
                         <div>
                           <span className="font-medium text-foreground">Custom album cover from their photo</span>
                           <p className="text-xs text-muted-foreground">Upload a photo — we style it into a real single cover.</p>
                         </div>
                       </li>
                       <li className="flex items-start gap-2">
-                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 flex-shrink-0 mt-0.5">
+                          <Check className="h-3 w-3 text-emerald-700" />
+                        </span>
                         <div>
                           <span className="font-medium text-foreground">Frameable lyric keepsake with scan-to-play QR</span>
                           <p className="text-xs text-muted-foreground">Hang it up. Anyone can scan it and hear the song instantly.</p>
                         </div>
                       </li>
                       <li className="flex items-start gap-2">
-                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 flex-shrink-0 mt-0.5">
+                          <Check className="h-3 w-3 text-emerald-700" />
+                        </span>
                         <div>
                           <span className="font-medium text-foreground">Full lyrics, HD download + acoustic version</span>
                           <p className="text-xs text-muted-foreground">Everything unlocked — nothing held back later.</p>
@@ -640,6 +650,7 @@ const Checkout = () => {
               </Card>
             </div>
           )}
+
 
           {/* Order summary */}
           <Card className="p-6 mb-8 bg-secondary/30">
@@ -778,8 +789,28 @@ const Checkout = () => {
             </div>
           </div>
 
+          {/* Social proof at decision moment */}
+          <Card className="p-4 mb-6 border">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex gap-0.5">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                ))}
+              </div>
+              <span className="text-[10px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                <Check className="h-3 w-3" />
+                Verified
+              </span>
+            </div>
+            <p className="text-sm italic text-foreground mb-1">
+              "I gave this to my mom for her 70th birthday and she played it on repeat for a week straight."
+            </p>
+            <p className="text-xs text-muted-foreground">— Rachel M.</p>
+          </Card>
+
           {/* Payment buttons */}
           <div className="space-y-3">
+
             {/* Card/Stripe button */}
             <Button 
               onClick={handleCheckout}
