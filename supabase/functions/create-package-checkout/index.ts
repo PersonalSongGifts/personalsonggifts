@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { orderId, promoCode } = await req.json();
+    const { orderId, promoCode, returnPath } = await req.json();
 
     if (!orderId || typeof orderId !== "string") {
       return new Response(
