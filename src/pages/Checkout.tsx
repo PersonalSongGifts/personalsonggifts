@@ -657,6 +657,45 @@ const Checkout = () => {
                   </div>
                 </div>
               </Card>
+              {selectedTier === "standard" && (
+                <Card
+                  onClick={() => toggleAddon("rush")}
+                  className={`p-5 cursor-pointer transition-all duration-200 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 ${
+                    selectedAddons.rush
+                      ? "ring-2 ring-primary border-primary bg-primary/10"
+                      : "hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                      selectedAddons.rush ? "bg-primary border-primary" : "border-muted-foreground"
+                    }`}>
+                      {selectedAddons.rush && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">
+                            <Zap className="h-3 w-3" />
+                            Rush Delivery
+                          </span>
+                          <h4 className="font-semibold text-foreground mt-2">Get your song in 1 hour</h4>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Skip the 48-hour wait — produced and delivered within the hour.
+                          </p>
+                        </div>
+                        <span className="text-2xl font-bold text-primary whitespace-nowrap">$10</span>
+                      </div>
+                      {selectedAddons.rush && (
+                        <p className="flex items-center gap-1.5 text-xs text-primary mt-2">
+                          <Zap className="h-3.5 w-3.5" />
+                          1-hour delivery activated — included in your total below.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              )}
             </div>
           )}
 
