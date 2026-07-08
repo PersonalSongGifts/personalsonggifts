@@ -614,10 +614,11 @@ const Checkout = () => {
                       </div>
                     </div>
                     <img
-                      src="https://kjyhxodusvodkknmgmra.supabase.co/storage/v1/object/public/songs/cover-photos/PKGPROMO-1783489904269.png"
-                      alt="Forever Memory keepsake — framed lyric print with scan-to-play QR and phone playing the song"
+                      src="https://kjyhxodusvodkknmgmra.supabase.co/storage/v1/object/public/songs/cover-photos/PKGHERO2-1783534104567.webp"
+                      alt="Forever Memory keepsake — a framed lyric-art print with scan-to-play QR beside a phone playing the song"
                       loading="lazy"
-                      className="mt-3 w-full max-h-44 object-cover rounded-lg border border-primary/20"
+                      decoding="async"
+                      className="mt-3 w-full aspect-[16/9] object-cover rounded-lg border border-primary/20"
                     />
                     <ul className="mt-3 space-y-2">
                       <li className="flex items-start gap-2">
