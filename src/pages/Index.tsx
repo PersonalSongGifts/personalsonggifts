@@ -1,6 +1,5 @@
 import Layout from "@/components/layout/Layout";
 import HeroSection from "@/components/home/HeroSection";
-import RealReactions from "@/components/home/RealReactions";
 import SamplePlayer from "@/components/home/SamplePlayer";
 import TrustStrip from "@/components/home/TrustStrip";
 import HowItWorks from "@/components/home/HowItWorks";
@@ -19,7 +18,6 @@ const Index = () => {
       {/* pb-20 md:pb-0 ensures sticky mobile CTA bar never covers FinalCTA */}
       <div className="pb-20 md:pb-0">
         <HeroSection />
-        <RealReactions />
         <SamplePlayer />
         <Testimonials />
         <TrustStrip />
