@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -345,6 +346,18 @@ const CreateSong = () => {
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
+
+          {/* Micro-trust strip (shown on every step) */}
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            Songs from $49.99 ·{" "}
+            <Link
+              to="/refund"
+              className="underline decoration-muted-foreground/40 hover:decoration-primary hover:text-primary transition-colors"
+            >
+              Free remake if you're not happy
+            </Link>{" "}
+            · Delivered within 48 hours
+          </p>
         </div>
       </div>
     </Layout>
