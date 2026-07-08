@@ -23,8 +23,8 @@ const TrustStrip = () => {
           {/* Families served */}
           <div className="flex items-center gap-3">
             <Users className="h-5 w-5 md:h-6 md:w-6 text-primary" />
-            <span className="text-foreground font-semibold text-lg md:text-xl">1,000+</span>
-            <span className="text-muted-foreground text-base md:text-lg">Families Served</span>
+            <span className="text-foreground font-semibold text-lg md:text-xl">500,000+</span>
+            <span className="text-muted-foreground text-base md:text-lg">Songs Created</span>
           </div>
         </div>
       </div>
