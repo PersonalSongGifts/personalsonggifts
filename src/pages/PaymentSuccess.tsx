@@ -498,6 +498,16 @@ const PaymentSuccess = () => {
           {(() => {
             const flagEnabled = import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" || searchParams.get("preview") === "1";
             if (!flagEnabled || !orderDetails?.orderId) return null;
+            if (pkgConfirming && !pkgAdded) {
+              return (
+                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Confirming your package purchase…</p>
+                  </div>
+                </Card>
+              );
+            }
             if (pkgAdded) {
               return (
                 <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
@@ -555,6 +565,27 @@ const PaymentSuccess = () => {
                   {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
                   Add the Forever Memory Package
                 </Button>
+                <div className="mt-3">
+                  {!showPkgCode ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowPkgCode(true)}
+                      className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                    >
+                      Have a promo code?
+                    </button>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <Input
+                        value={pkgCode}
+                        onChange={(e) => { setPkgCode(e.target.value); if (pkgError) setPkgError(null); }}
+                        placeholder="Promo code"
+                        className="max-w-[200px] text-center"
+                      />
+                      {pkgError && <p className="text-xs text-red-600">{pkgError}</p>}
+                    </div>
+                  )}
+                </div>
               </Card>
             );
           })()}
