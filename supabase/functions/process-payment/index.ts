@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_unlock_session_id, package_price_cents")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_unlock_session_id, package_price_cents, rush_addon, rush_price_cents")
       .eq("notes", `stripe_session:${sessionId}`)
       .single();
 
@@ -121,6 +121,8 @@ Deno.serve(async (req) => {
           revisionToken: existingOrder.revision_token,
           package_unlocked: !!existingOrder.package_unlocked_at,
           package_addon_cents: existingOrder.package_unlock_session_id === sessionId ? (existingOrder.package_price_cents || 0) : 0,
+          rush_addon: !!existingOrder.rush_addon,
+          rush_addon_cents: existingOrder.rush_addon ? (existingOrder.rush_price_cents || 0) : 0,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -134,7 +136,6 @@ Deno.serve(async (req) => {
     const priceCents: number = (session.amount_total
       ?? (metadata.amount_total_cents ? parseInt(metadata.amount_total_cents, 10) : NaN))
       || (pricingTier === "priority" ? 7999 : 4999);
-    const expectedDelivery = calculateExpectedDelivery(pricingTier);
 
     // Strict notes format assertion -- do not proceed if format is wrong
     const notesValue = `stripe_session:${sessionId}`;
@@ -165,7 +166,14 @@ Deno.serve(async (req) => {
     // Forever Memory Package add-on (checkout-time). Absent → no-op.
     const foreverMemory = metadata.forever_memory === "true";
     const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
-    const songPriceCents = foreverMemory ? Math.max(0, priceCents - packageAddonCents) : priceCents;
+    const rushAddon = metadata.rush === "true";
+    const rushAddonCents = rushAddon ? parseInt(metadata.rush_price_cents || "1000", 10) : 0;
+    const expectedDelivery = rushAddon
+      ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      : calculateExpectedDelivery(pricingTier);
+    const songPriceCents = (foreverMemory || rushAddon)
+      ? Math.max(0, priceCents - packageAddonCents - rushAddonCents)
+      : priceCents;
     const songPrice = Math.floor(songPriceCents / 100);
     const addonUnlockFields = foreverMemory ? (() => {
       const nowIso = new Date().toISOString();
@@ -182,6 +190,7 @@ Deno.serve(async (req) => {
         bonus_unlocked_at: nowIso, bonus_price_cents: 0,
       };
     })() : {};
+    const rushFields = rushAddon ? { rush_addon: true, rush_price_cents: rushAddonCents } : {};
 
     const { data: newOrder, error: insertError } = await supabase
       .from("orders")
