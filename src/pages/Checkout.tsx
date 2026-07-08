@@ -571,8 +571,13 @@ const Checkout = () => {
 
           {/* Phase 1: Optional add-ons (feature-flagged) */}
           {addonsEnabled && (
-            <div className="mb-8 space-y-4">
-              <h3 className="font-semibold text-foreground">Optional add-ons</h3>
+            <div className="mb-8 space-y-3">
+              <div>
+                <h3 className="font-semibold text-foreground">Complete the gift</h3>
+                <p className="text-sm text-muted-foreground">
+                  Most gift-givers add this — turn the song into something they can hold onto.
+                </p>
+              </div>
               <Card
                 onClick={() => toggleAddon("forever_memory")}
                 className={`p-5 cursor-pointer transition-all duration-200 ${
@@ -586,13 +591,41 @@ const Checkout = () => {
                     {selectedAddons.forever_memory && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
                   </div>
                   <div className="flex-1">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <h4 className="font-semibold text-foreground">Forever Memory Package</h4>
-                      <span className="font-semibold text-foreground whitespace-nowrap">$24.00</span>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="font-semibold text-foreground">Yes, add the Forever Memory Package</h4>
+                        <span className="inline-block mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded">
+                          Most Popular
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-semibold text-foreground whitespace-nowrap">$24</span>
+                        <span className="block text-xs text-muted-foreground line-through">$45 value</span>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Printable lyric keepsake, custom album cover from their photo, full lyrics, HD download + the acoustic version — delivered with the song.
+                    <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
+                      <li className="flex items-start gap-2">
+                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <span>Custom album cover made from their photo</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <span>Printable lyric keepsake — ready to frame</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <span>Full lyrics, HD download + acoustic version</span>
+                      </li>
+                    </ul>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Everything arrives together with the song.
                     </p>
+                    {selectedAddons.forever_memory && (
+                      <p className="flex items-center gap-1.5 text-xs text-primary mt-2">
+                        <Check className="h-3.5 w-3.5" />
+                        Added — $24 will be included in your total below.
+                      </p>
+                    )}
                   </div>
                 </div>
               </Card>
