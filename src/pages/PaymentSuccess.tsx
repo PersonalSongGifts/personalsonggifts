@@ -46,16 +46,21 @@ const PaymentSuccess = () => {
   const [pkgAdded, setPkgAdded] = useState(false);
 
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
+    const dedupeKey = `psg_purchase_tracked_${sessionId || paypalToken || data.orderId}`;
+    try {
+      if (sessionStorage.getItem(dedupeKey)) return;
+    } catch { /* sessionStorage unavailable — fall through to ref guard */ }
+
     if (hasTrackedPurchase.current) return;
-    
+
     const purchaseValue = data.price ?? (data.pricingTier === "priority" ? 79 : 49);
-    
+
     trackMetaEvent('Purchase', {
       value: purchaseValue,
       currency: 'USD',
       transaction_id: data.orderId,
     });
-    
+
     trackGAEvent('purchase', {
       transaction_id: data.orderId,
       value: purchaseValue,
@@ -97,9 +102,10 @@ const PaymentSuccess = () => {
         amp.revenue(rev);
       }
     }
-    
+
     hasTrackedPurchase.current = true;
-  }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
+    try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
+  }, [sessionId, paypalToken, trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   const handleAddPackage = async () => {
     if (!orderDetails?.orderId) return;
