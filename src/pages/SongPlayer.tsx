@@ -6,6 +6,7 @@ import { Loader2, Play, Pause, Volume2, VolumeX, Share2, Copy, Gift, Music, Down
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -15,6 +16,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import TipJar from "@/components/song/TipJar";
 import TipDialog from "@/components/song/TipDialog";
+import { useMetaPixel } from "@/hooks/useMetaPixel";
+import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
+import { useTikTokPixel } from "@/hooks/useTikTokPixel";
 
 // Occasion fallback images – ES module imports so Vite bundles them correctly
 import birthdayImg from "@/assets/occasions/birthday.webp";
@@ -102,8 +106,36 @@ const SongPlayer = () => {
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [bonusLoading, setBonusLoading] = useState(false);
   const [packageLoading, setPackageLoading] = useState(false);
+  const [pkgCode, setPkgCode] = useState("");
+  const [showPkgCode, setShowPkgCode] = useState(false);
+  const [pkgError, setPkgError] = useState<string | null>(null);
   const [lyricsCopied, setLyricsCopied] = useState(false);
   const [tipDialogOpen, setTipDialogOpen] = useState(false);
+
+  const { trackEvent: trackMetaEvent } = useMetaPixel();
+  const { trackEvent: trackGAEvent } = useGoogleAnalytics();
+  const { trackEvent: trackTikTokEvent } = useTikTokPixel();
+
+  const trackPackagePurchase = (pkgSession: string, amountCents: number | null) => {
+    if (!amountCents || amountCents <= 0) return;
+    const key = `psg_pkg_purchase_tracked_${pkgSession}`;
+    try { if (sessionStorage.getItem(key)) return; } catch { /* ignore */ }
+    const value = amountCents / 100;
+    trackMetaEvent('Purchase', { value, currency: 'USD', transaction_id: `pkg_${pkgSession}` });
+    trackGAEvent('purchase', {
+      transaction_id: `pkg_${pkgSession}`,
+      value,
+      currency: 'USD',
+      items: [{ item_name: 'Forever Memory Package', price: value, quantity: 1 }],
+    });
+    trackTikTokEvent('CompletePayment', {
+      content_type: 'product',
+      content_id: 'forever-memory-package',
+      value,
+      currency: 'USD',
+    });
+    try { sessionStorage.setItem(key, "1"); } catch { /* ignore */ }
+  };
 
   // Bonus audio player state
   const bonusAudioRef = useRef<HTMLAudioElement>(null);
