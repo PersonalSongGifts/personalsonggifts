@@ -415,9 +415,11 @@ const PaymentSuccess = () => {
     return null;
   }
 
-  const deliveryTime = isLeadConversion 
-    ? "Instant" 
-    : orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
+  const deliveryTime = isLeadConversion
+    ? "Instant"
+    : orderDetails.rush_addon
+      ? "1 hour"
+      : orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
   const expectedDate = orderDetails.expectedDelivery 
     ? new Date(orderDetails.expectedDelivery) 
     : new Date();
@@ -476,7 +478,10 @@ const PaymentSuccess = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Price paid:</span>
                 <span className="text-foreground font-medium">
-                  ${(orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99)).toFixed(2)} USD
+                  ${(
+                    (orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99))
+                    + ((orderDetails.package_addon_cents || 0) + (orderDetails.rush_addon_cents || 0)) / 100
+                  ).toFixed(2)} USD
                 </span>
               </div>
             </div>
