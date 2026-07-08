@@ -306,6 +306,7 @@ const Checkout = () => {
             utmCampaign: utmParams.utm_campaign || undefined,
             utmContent: utmParams.utm_content || undefined,
             utmTerm: utmParams.utm_term || undefined,
+            addons: { forever_memory: addonsEnabled && selectedAddons.forever_memory },
           }),
         }
       );
