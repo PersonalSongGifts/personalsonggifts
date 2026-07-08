@@ -455,12 +455,12 @@ const Checkout = () => {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 mb-3">
+          <div className="grid md:grid-cols-3 gap-6 mb-3">
             {/* Standard tier */}
             <Card 
-              onClick={() => setSelectedTier("standard")}
+              onClick={() => { setSelectedTier("standard"); setIsExpress(false); }}
               className={`p-6 cursor-pointer transition-all duration-200 ${
-                selectedTier === "standard" 
+                selectedTier === "standard" && !isExpress
                   ? "ring-2 ring-primary border-primary" 
                   : "hover:border-primary/50"
               }`}
@@ -474,11 +474,11 @@ const Checkout = () => {
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                  selectedTier === "standard" 
+                  selectedTier === "standard" && !isExpress
                     ? "bg-primary border-primary" 
                     : "border-muted-foreground"
                 }`}>
-                  {selectedTier === "standard" && (
+                  {selectedTier === "standard" && !isExpress && (
                     <Check className="h-4 w-4 text-primary-foreground" />
                   )}
                 </div>
@@ -508,16 +508,13 @@ const Checkout = () => {
 
             {/* Priority tier */}
             <Card 
-              onClick={() => setSelectedTier("priority")}
+              onClick={() => { setSelectedTier("priority"); setIsExpress(false); }}
               className={`p-6 cursor-pointer transition-all duration-200 relative ${
-                selectedTier === "priority" 
+                selectedTier === "priority" && !isExpress
                   ? "ring-2 ring-primary border-primary" 
                   : "hover:border-primary/50"
               }`}
             >
-              <div className="absolute -top-3 right-4 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
-                FASTEST
-              </div>
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-foreground">Priority Song</h3>
@@ -527,11 +524,11 @@ const Checkout = () => {
                   </p>
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                  selectedTier === "priority" 
+                  selectedTier === "priority" && !isExpress
                     ? "bg-primary border-primary" 
                     : "border-muted-foreground"
                 }`}>
-                  {selectedTier === "priority" && (
+                  {selectedTier === "priority" && !isExpress && (
                     <Check className="h-4 w-4 text-primary-foreground" />
                   )}
                 </div>
@@ -555,6 +552,54 @@ const Checkout = () => {
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" />
                   First in queue
+                </li>
+              </ul>
+            </Card>
+
+            {/* Express tier (Priority + 1-hour rush) */}
+            <Card
+              onClick={() => { setSelectedTier("priority"); setIsExpress(true); }}
+              className={`p-6 cursor-pointer transition-all duration-200 relative ${
+                isExpress
+                  ? "ring-2 ring-primary border-primary"
+                  : "hover:border-primary/50"
+              }`}
+            >
+              <div className="absolute -top-3 right-4 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1">
+                <Zap className="h-3 w-3" />
+                FASTEST
+              </div>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-semibold text-foreground">Express Song</h3>
+                  <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                    <Zap className="h-4 w-4" />
+                    Delivered within 1 hour
+                  </p>
+                </div>
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                  isExpress ? "bg-primary border-primary" : "border-muted-foreground"
+                }`}>
+                  {isExpress && <Check className="h-4 w-4 text-primary-foreground" />}
+                </div>
+              </div>
+              <div className="mb-4">
+                <span className="text-lg text-muted-foreground line-through">$169.99 USD</span>
+                <span className="text-4xl font-bold text-foreground ml-2">$89.99</span>
+                <span className="text-sm text-muted-foreground ml-1">USD</span>
+              </div>
+              <ul className="space-y-2 text-muted-foreground">
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-primary" />
+                  Everything in Priority
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-primary" />
+                  Delivered within 1 hour
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-primary" />
+                  Very front of the queue
                 </li>
               </ul>
             </Card>
