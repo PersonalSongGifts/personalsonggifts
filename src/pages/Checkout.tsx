@@ -598,28 +598,37 @@ const Checkout = () => {
                           Most Popular
                         </span>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right flex flex-col items-end gap-1">
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                          Save $21
+                        </span>
+                        <span className="text-xs text-muted-foreground line-through">$45 value</span>
                         <span className="font-semibold text-foreground whitespace-nowrap">$24</span>
-                        <span className="block text-xs text-muted-foreground line-through">$45 value</span>
                       </div>
                     </div>
-                    <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
+                    <ul className="mt-3 space-y-2">
                       <li className="flex items-start gap-2">
                         <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                        <span>Custom album cover made from their photo</span>
+                        <div>
+                          <span className="font-medium text-foreground">Custom album cover from their photo</span>
+                          <p className="text-xs text-muted-foreground">Upload a photo — we style it into a real single cover.</p>
+                        </div>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                        <span>Printable lyric keepsake — ready to frame</span>
+                        <div>
+                          <span className="font-medium text-foreground">Frameable lyric keepsake with scan-to-play QR</span>
+                          <p className="text-xs text-muted-foreground">Hang it up. Anyone can scan it and hear the song instantly.</p>
+                        </div>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                        <span>Full lyrics, HD download + acoustic version</span>
+                        <div>
+                          <span className="font-medium text-foreground">Full lyrics, HD download + acoustic version</span>
+                          <p className="text-xs text-muted-foreground">Everything unlocked — nothing held back later.</p>
+                        </div>
                       </li>
                     </ul>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Everything arrives together with the song.
-                    </p>
                     {selectedAddons.forever_memory && (
                       <p className="flex items-center gap-1.5 text-xs text-primary mt-2">
                         <Check className="h-3.5 w-3.5" />
