@@ -118,9 +118,11 @@ Deno.serve(async (req) => {
         lyrics_unlocked: true,
         download_unlocked: true,
         bonus_unlocked: true,
+        amountCents: session.amount_total ?? null,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (error) {
     console.error("Verify package purchase error:", error);
     const message = error instanceof Error ? error.message : "Internal server error";
