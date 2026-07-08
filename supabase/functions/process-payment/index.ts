@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_unlock_session_id, package_price_cents")
       .eq("notes", `stripe_session:${sessionId}`)
       .single();
 
@@ -120,6 +120,7 @@ Deno.serve(async (req) => {
           price: existingOrder.price_cents != null ? existingOrder.price_cents / 100 : undefined,
           revisionToken: existingOrder.revision_token,
           package_unlocked: !!existingOrder.package_unlocked_at,
+          package_addon_cents: existingOrder.package_unlock_session_id === sessionId ? (existingOrder.package_price_cents || 0) : 0,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -133,8 +134,6 @@ Deno.serve(async (req) => {
     const priceCents: number = (session.amount_total
       ?? (metadata.amount_total_cents ? parseInt(metadata.amount_total_cents, 10) : NaN))
       || (pricingTier === "priority" ? 7999 : 4999);
-    const price = Math.floor(priceCents / 100); // backward-compat integer dollars
-
     const expectedDelivery = calculateExpectedDelivery(pricingTier);
 
     // Strict notes format assertion -- do not proceed if format is wrong
@@ -166,6 +165,8 @@ Deno.serve(async (req) => {
     // Forever Memory Package add-on (checkout-time). Absent → no-op.
     const foreverMemory = metadata.forever_memory === "true";
     const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
+    const songPriceCents = foreverMemory ? Math.max(0, priceCents - packageAddonCents) : priceCents;
+    const songPrice = Math.floor(songPriceCents / 100);
     const addonUnlockFields = foreverMemory ? (() => {
       const nowIso = new Date().toISOString();
       const pi = typeof session.payment_intent === "string"
@@ -186,8 +187,8 @@ Deno.serve(async (req) => {
       .from("orders")
       .insert({
         pricing_tier: pricingTier,
-        price,               // integer dollars (backward compat)
-        price_cents: priceCents, // canonical cents from Stripe amount_total
+        price: songPrice,               // integer dollars (song-only, excludes add-on)
+        price_cents: songPriceCents,    // canonical cents (song-only, excludes add-on)
         expected_delivery: expectedDelivery,
         customer_name: metadata.customerName || "",
         customer_email: metadata.customerEmail || session.customer_email || "",
@@ -222,7 +223,7 @@ Deno.serve(async (req) => {
         console.log(`Race condition detected for session ${sessionId}, fetching existing order`);
         const { data: raceOrder } = await supabase
           .from("orders")
-          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_unlock_session_id, package_price_cents")
           .eq("notes", `stripe_session:${sessionId}`)
           .single();
 
@@ -239,6 +240,7 @@ Deno.serve(async (req) => {
               price: raceOrder.price_cents != null ? raceOrder.price_cents / 100 : undefined,
               revisionToken: raceOrder.revision_token,
               package_unlocked: !!raceOrder.package_unlocked_at,
+              package_addon_cents: raceOrder.package_unlock_session_id === sessionId ? (raceOrder.package_price_cents || 0) : 0,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -368,6 +370,7 @@ Deno.serve(async (req) => {
         price: newOrder.price_cents != null ? newOrder.price_cents / 100 : priceCents / 100,
         revisionToken: newOrder.revision_token,
         package_unlocked: foreverMemory,
+        package_addon_cents: packageAddonCents,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

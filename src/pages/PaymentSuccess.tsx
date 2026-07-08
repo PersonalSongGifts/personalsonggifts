@@ -21,6 +21,7 @@ interface OrderDetails {
   price?: number;
   revisionToken?: string;
   package_unlocked?: boolean;
+  package_addon_cents?: number;
 }
 
 const MAX_POLL_ATTEMPTS = 10;
@@ -267,7 +268,12 @@ const PaymentSuccess = () => {
 
         const data = await response.json();
         setOrderDetails(data);
-        if (data.package_unlocked) setPkgAdded(true);
+        if (data.package_unlocked) {
+          setPkgAdded(true);
+          if (sessionId && (data.package_addon_cents ?? 0) > 0) {
+            trackPackagePurchase(`chk_${sessionId}`, data.package_addon_cents ?? null);
+          }
+        }
         trackPurchaseEvent(data);
         setLoading(false);
         return true; // Success
