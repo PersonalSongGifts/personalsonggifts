@@ -1060,13 +1060,14 @@ const SongPlayer = () => {
                     className="gap-2"
                     onClick={async () => {
                       setPackageLoading(true);
+                      setPkgError(null);
                       try {
                         const response = await fetch(
                           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-package-checkout`,
                           {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ orderId }),
+                            body: JSON.stringify({ orderId, promoCode: pkgCode.trim() || undefined }),
                           }
                         );
                         const data = await response.json();
@@ -1078,10 +1079,10 @@ const SongPlayer = () => {
                         if (data.url) {
                           window.location.href = data.url;
                         } else {
-                          toast.error(data.error || "Failed to start checkout");
+                          setPkgError(data.error || "Failed to start checkout");
                         }
                       } catch {
-                        toast.error("Failed to start package checkout");
+                        setPkgError("Failed to start package checkout");
                       } finally {
                         setPackageLoading(false);
                       }
@@ -1090,6 +1091,27 @@ const SongPlayer = () => {
                     {packageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
                     Unlock the Forever Memory Package
                   </Button>
+                  <div className="mt-1">
+                    {!showPkgCode ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowPkgCode(true)}
+                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                      >
+                        Have a promo code?
+                      </button>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <Input
+                          value={pkgCode}
+                          onChange={(e) => { setPkgCode(e.target.value); if (pkgError) setPkgError(null); }}
+                          placeholder="Promo code"
+                          className="max-w-[200px] text-center"
+                        />
+                        {pkgError && <p className="text-xs text-red-600">{pkgError}</p>}
+                      </div>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             );
