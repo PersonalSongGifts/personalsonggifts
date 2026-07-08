@@ -146,7 +146,16 @@ Deno.serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    
+
+    // Forever Memory Package add-on (checkout-time). Absent → no-op.
+    const foreverMemory = metadata.forever_memory === "true";
+    const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
+    const rushAddon = metadata.rush === "true";
+    const rushAddonCents = rushAddon ? parseInt(metadata.rush_price_cents || "1000", 10) : 0;
+    const expectedDelivery = rushAddon
+      ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      : calculateExpectedDelivery(pricingTier);
+
     // Compute timing for background automation
     const timing = computeOrderTiming(expectedDelivery);
     console.log(`[PROCESS-PAYMENT] Order timing: generate after ${timing.earliestGenerateAt}, send at ${timing.targetSendAt}`);
@@ -163,14 +172,6 @@ Deno.serve(async (req) => {
       metadata.lyricsLanguageCode || "en",
     ]);
 
-    // Forever Memory Package add-on (checkout-time). Absent → no-op.
-    const foreverMemory = metadata.forever_memory === "true";
-    const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
-    const rushAddon = metadata.rush === "true";
-    const rushAddonCents = rushAddon ? parseInt(metadata.rush_price_cents || "1000", 10) : 0;
-    const expectedDelivery = rushAddon
-      ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
-      : calculateExpectedDelivery(pricingTier);
     const songPriceCents = (foreverMemory || rushAddon)
       ? Math.max(0, priceCents - packageAddonCents - rushAddonCents)
       : priceCents;
