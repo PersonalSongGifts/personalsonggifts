@@ -12,6 +12,8 @@ interface Order {
   download_price_cents?: number | null;
   bonus_unlocked_at?: string | null;
   bonus_price_cents?: number | null;
+  package_unlocked_at?: string | null;
+  package_price_cents?: number | null;
 }
 
 interface UpsellRevenueChartProps {
@@ -28,15 +30,18 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
         lyrics: 0,
         downloads: 0,
         bonus: 0,
+        package: 0,
       };
     });
 
     let lyricsCount = 0;
     let downloadsCount = 0;
     let bonusCount = 0;
+    let packageCount = 0;
     let lyricsRev = 0;
     let downloadsRev = 0;
     let bonusRev = 0;
+    let packageRev = 0;
 
     const findDay = (iso: string) => {
       const d = startOfDay(parseISO(iso));
@@ -67,23 +72,33 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
         const day = findDay(o.bonus_unlocked_at);
         if (day) day.bonus += dollars;
       }
+      if (o.package_unlocked_at && (o.package_price_cents ?? 0) > 0) {
+        const dollars = (o.package_price_cents ?? 0) / 100;
+        packageRev += dollars;
+        packageCount += 1;
+        const day = findDay(o.package_unlocked_at);
+        if (day) day.package += dollars;
+      }
     });
 
     return {
-      chartData: last30Days.map(({ name, lyrics, downloads, bonus }) => ({
+      chartData: last30Days.map(({ name, lyrics, downloads, bonus, package: pkg }) => ({
         name,
         lyrics: Math.round(lyrics * 100) / 100,
         downloads: Math.round(downloads * 100) / 100,
         bonus: Math.round(bonus * 100) / 100,
+        package: Math.round(pkg * 100) / 100,
       })),
       totals: {
         lyricsRev,
         downloadsRev,
         bonusRev,
-        total: lyricsRev + downloadsRev + bonusRev,
+        packageRev,
+        total: lyricsRev + downloadsRev + bonusRev + packageRev,
         lyricsCount,
         downloadsCount,
         bonusCount,
+        packageCount,
       },
     };
   }, [orders]);
@@ -96,7 +111,7 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
         </CardTitle>
         <p className="text-2xl font-bold">${totals.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
         <p className="text-xs text-muted-foreground">
-          {totals.lyricsCount} lyrics · {totals.downloadsCount} downloads · {totals.bonusCount} bonus
+          {totals.lyricsCount} lyrics · {totals.downloadsCount} downloads · {totals.bonusCount} bonus · {totals.packageCount} package
         </p>
       </CardHeader>
       <CardContent>
@@ -115,6 +130,10 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
                 <linearGradient id="bonusGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="hsl(42 90% 55%)" stopOpacity={0.5} />
                   <stop offset="95%" stopColor="hsl(42 90% 55%)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="packageGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(160 70% 45%)" stopOpacity={0.5} />
+                  <stop offset="95%" stopColor="hsl(160 70% 45%)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -179,6 +198,15 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
                 stroke="hsl(42 90% 55%)"
                 strokeWidth={2}
                 fill="url(#bonusGradient)"
+              />
+              <Area
+                type="monotone"
+                dataKey="package"
+                name="Package"
+                stackId="1"
+                stroke="hsl(160 70% 45%)"
+                strokeWidth={2}
+                fill="url(#packageGradient)"
               />
             </AreaChart>
           </ResponsiveContainer>
