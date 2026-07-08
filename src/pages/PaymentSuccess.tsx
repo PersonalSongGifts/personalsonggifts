@@ -42,6 +42,8 @@ const PaymentSuccess = () => {
   const [isLeadConversion, setIsLeadConversion] = useState(false);
   const [pollAttempts, setPollAttempts] = useState(0);
   const [showProcessingMessage, setShowProcessingMessage] = useState(false);
+  const [pkgLoading, setPkgLoading] = useState(false);
+  const [pkgAdded, setPkgAdded] = useState(false);
 
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
     if (hasTrackedPurchase.current) return;
