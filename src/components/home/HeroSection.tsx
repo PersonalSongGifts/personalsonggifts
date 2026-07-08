@@ -155,7 +155,7 @@ const HeroSection = () => {
 
         {/* Trust indicator */}
         <p className="mt-4 md:mt-6 text-muted-foreground text-xs md:text-sm animate-fade-in">
-          ★★★★★ Trusted by 1,000+ families for life's most meaningful moments
+          ★★★★★ Trusted by families who've created 500,000+ songs
         </p>
       </div>
     </section>
