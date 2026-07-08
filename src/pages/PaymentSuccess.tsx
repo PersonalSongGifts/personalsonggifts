@@ -267,6 +267,7 @@ const PaymentSuccess = () => {
 
         const data = await response.json();
         setOrderDetails(data);
+        if (data.package_unlocked) setPkgAdded(true);
         trackPurchaseEvent(data);
         setLoading(false);
         return true; // Success
