@@ -3,7 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil } from "lucide-react";
+import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil, Gift } from "lucide-react";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
@@ -27,7 +27,7 @@ const POLL_INTERVAL_MS = 1500;
 const PaymentSuccess = () => {
   // Clean up persisted form data after successful purchase
   useEffect(() => { sessionStorage.removeItem("songFormData"); }, []);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const sessionId = searchParams.get("session_id");
   const paypalToken = searchParams.get("token"); // PayPal returns ?token=<orderID>
   const source = searchParams.get("source"); // "lead" if from lead conversion
@@ -42,6 +42,8 @@ const PaymentSuccess = () => {
   const [isLeadConversion, setIsLeadConversion] = useState(false);
   const [pollAttempts, setPollAttempts] = useState(0);
   const [showProcessingMessage, setShowProcessingMessage] = useState(false);
+  const [pkgLoading, setPkgLoading] = useState(false);
+  const [pkgAdded, setPkgAdded] = useState(false);
 
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
     if (hasTrackedPurchase.current) return;
@@ -98,6 +100,28 @@ const PaymentSuccess = () => {
     
     hasTrackedPurchase.current = true;
   }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
+
+  const handleAddPackage = async () => {
+    if (!orderDetails?.orderId) return;
+    setPkgLoading(true);
+    (window as any).amplitude?.track?.("Package Upsell Clicked", { placement: "payment_success", order_id: orderDetails.orderId });
+    try {
+      const returnPath = window.location.pathname + window.location.search;
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-package-checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: orderDetails.orderId, returnPath }),
+      });
+      const data = await r.json();
+      if (data.alreadyUnlocked) { setPkgAdded(true); return; }
+      if (data.url) { window.location.href = data.url; return; }
+      console.error("Package checkout failed:", data.error);
+    } catch (e) {
+      console.error("Package checkout error:", e);
+    } finally {
+      setPkgLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!sessionId && !paypalToken) {
@@ -247,6 +271,29 @@ const PaymentSuccess = () => {
 
     poll();
   }, [sessionId, paypalToken, source, trackPurchaseEvent]);
+
+  useEffect(() => {
+    const pkgSession = searchParams.get("package_session_id");
+    if (!pkgSession) return;
+    (async () => {
+      try {
+        const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-package-purchase`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: pkgSession }),
+        });
+        if (r.ok) {
+          setPkgAdded(true);
+          (window as any).amplitude?.track?.("Package Upsell Purchased", { placement: "payment_success" });
+        }
+      } catch (e) {
+        console.error("Package verification failed:", e);
+      } finally {
+        setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete("package_session_id"); return p; }, { replace: true });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) {
     return (
@@ -401,6 +448,67 @@ const PaymentSuccess = () => {
               </p>
             </Card>
           )}
+
+          {/* Forever Memory Package upsell */}
+          {(() => {
+            const flagEnabled = import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" || searchParams.get("preview") === "1";
+            if (!flagEnabled || !orderDetails?.orderId) return null;
+            if (pkgAdded) {
+              return (
+                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <Check className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Forever Memory Package added ✓</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Your printable keepsake, custom album covers, full lyrics, download, and acoustic version will all be waiting on {orderDetails.recipientName}'s song page when the song is ready.
+                  </p>
+                </Card>
+              );
+            }
+            return (
+              <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+                <p className="text-xs uppercase tracking-wide text-primary font-semibold mb-2">Complete the gift</p>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <Gift className="h-5 w-5 text-primary" />
+                  <h3 className="text-xl font-bold text-foreground">Forever Memory Package</h3>
+                </div>
+                <ul className="text-sm text-left max-w-xs mx-auto space-y-1.5 mb-4">
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">Printable lyric art keepsake</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">Custom album cover made from your photo</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">Full lyrics</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">High-quality download</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-muted-foreground">Acoustic version</span>
+                  </li>
+                </ul>
+                <div className="flex items-baseline justify-center gap-2 mb-1">
+                  <span className="text-3xl font-bold text-primary">$24</span>
+                  <span className="text-sm text-muted-foreground line-through">$45 value</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.
+                </p>
+                <Button size="lg" disabled={pkgLoading} onClick={handleAddPackage} className="gap-2">
+                  {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
+                  Add the Forever Memory Package
+                </Button>
+              </Card>
+            );
+          })()}
 
           {/* Email whitelist notice — only for new orders, not instant lead conversions */}
           {!isLeadConversion && (
