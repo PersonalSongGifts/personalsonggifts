@@ -467,7 +467,9 @@ const PaymentSuccess = () => {
                     <h3 className="font-semibold text-foreground">Forever Memory Package added ✓</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Your printable keepsake, custom album covers, full lyrics, download, and acoustic version will all be waiting on {orderDetails.recipientName}'s song page when the song is ready.
+                    {isLeadConversion
+                      ? <>Your printable keepsake, custom album covers, full lyrics, download, and acoustic version are all waiting on {orderDetails.recipientName}'s song page right now.</>
+                      : <>Your printable keepsake, custom album covers, full lyrics, download, and acoustic version will all be waiting on {orderDetails.recipientName}'s song page when the song is ready.</>}
                   </p>
                 </Card>
               );
