@@ -65,6 +65,7 @@ const OccasionsGrid = () => {
                   alt={occasion.label}
                   className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                   loading="lazy"
+                  decoding="async"
                 />
                 
                 {/* Gradient Overlay */}
