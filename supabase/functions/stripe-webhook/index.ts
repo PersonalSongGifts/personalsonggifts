@@ -685,9 +685,8 @@ Deno.serve(async (req) => {
 
       // Canonical price: session.amount_total (Stripe's actual total charge, cents).
       // Single line item, no tax/shipping. Fallback: metadata -> legacy tier mapping.
-      const priceCents: number = (session.amount_total
-        ?? (metadata.amount_total_cents ? parseInt(metadata.amount_total_cents, 10) : NaN))
-        || (pricingTier === "priority" ? 7999 : 4999);
+      const rawTotalCents = session.amount_total ?? (metadata.amount_total_cents ? parseInt(metadata.amount_total_cents, 10) : NaN);
+      const priceCents: number = Number.isFinite(rawTotalCents) ? rawTotalCents : (pricingTier === "priority" ? 7999 : 4999);
 
       const expectedDelivery = calculateExpectedDelivery(pricingTier);
 
@@ -997,7 +996,7 @@ Deno.serve(async (req) => {
             email: metadata.customerEmail || session.customer_email || "",
             phone: metadata.phoneE164 || metadata.customerPhone || undefined,
             orderId: newOrder.id,
-            value: priceCents / 100,
+            value: songPriceCents / 100,
             currency: "USD",
             contentId: newOrder.id,
           }),

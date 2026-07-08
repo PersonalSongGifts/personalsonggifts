@@ -96,6 +96,11 @@ const PaymentSuccess = () => {
     if (hasTrackedPurchase.current) return;
 
     const purchaseValue = data.price ?? (data.pricingTier === "priority" ? 79 : 49);
+    if (purchaseValue <= 0) {
+      hasTrackedPurchase.current = true;
+      try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
+      return; // $0 test orders must not pollute ad pixels
+    }
 
     trackMetaEvent('Purchase', {
       value: purchaseValue,
