@@ -688,7 +688,6 @@ Deno.serve(async (req) => {
       const priceCents: number = (session.amount_total
         ?? (metadata.amount_total_cents ? parseInt(metadata.amount_total_cents, 10) : NaN))
         || (pricingTier === "priority" ? 7999 : 4999);
-      const price = Math.floor(priceCents / 100); // backward-compat integer dollars
 
       const expectedDelivery = calculateExpectedDelivery(pricingTier);
 
