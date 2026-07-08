@@ -138,7 +138,8 @@ function useStats(
   const downloadRevAll = activeOrders.reduce((sum, o) => sum + (o.download_price_cents ?? 0), 0) / 100;
   const bonusRevAll = activeOrders.reduce((sum, o) => sum + (o.bonus_price_cents ?? 0), 0) / 100;
   const packageRevAll = activeOrders.reduce((sum, o) => sum + (o.package_price_cents ?? 0), 0) / 100;
-  const totalRevenue = baseRevenue + lyricsRevAll + downloadRevAll + bonusRevAll + packageRevAll;
+  const rushRevAll = activeOrders.reduce((sum, o) => sum + (o.rush_price_cents ?? 0), 0) / 100;
+  const totalRevenue = baseRevenue + lyricsRevAll + downloadRevAll + bonusRevAll + packageRevAll + rushRevAll;
   const stripeTotal = activeOrders.filter((o) => getPaymentSource(o) === "stripe").reduce((sum, o) => sum + orderTotalDollars(o), 0);
   const paypalTotal = activeOrders.filter((o) => getPaymentSource(o) === "paypal").reduce((sum, o) => sum + orderTotalDollars(o), 0);
 
@@ -166,7 +167,10 @@ function useStats(
   const packageRevToday = activeOrders
     .filter((o) => isToday(o.package_unlocked_at))
     .reduce((s, o) => s + (o.package_price_cents ?? 0), 0) / 100;
-  const revenueToday = baseRevToday + lyricsRevToday + downloadRevToday + bonusRevToday + packageRevToday + tipsRevToday;
+  // Rush is always purchased at checkout — bucket by order created_at.
+  const rushRevToday = todayOrders
+    .reduce((s, o) => s + (o.rush_price_cents ?? 0), 0) / 100;
+  const revenueToday = baseRevToday + lyricsRevToday + downloadRevToday + bonusRevToday + packageRevToday + rushRevToday + tipsRevToday;
   // Per-source today: base by order created_at + upsells by unlock timestamp on the parent order
   const sourceTotalToday = (src: "stripe" | "paypal") => {
     const baseToday = todayOrders.filter((o) => getPaymentSource(o) === src).reduce((s, o) => s + o.price, 0);
@@ -180,7 +184,10 @@ function useStats(
         if (isToday(o.package_unlocked_at)) cents += o.package_price_cents ?? 0;
         return s + cents;
       }, 0) / 100;
-    return baseToday + upsellToday;
+    const rushToday = todayOrders
+      .filter((o) => getPaymentSource(o) === src)
+      .reduce((s, o) => s + (o.rush_price_cents ?? 0), 0) / 100;
+    return baseToday + upsellToday + rushToday;
   };
   const stripeTodayRev = sourceTotalToday("stripe");
   const paypalTodayRev = sourceTotalToday("paypal");
@@ -266,11 +273,16 @@ function useStats(
   const packageCompedCount = packageCount - packagePaidCount;
   const packageRev = packageUnlocked.reduce((s, o) => s + (o.package_price_cents ?? 0), 0) / 100;
 
+  // Rush Delivery — checkout-time add-on, no unlock timestamp.
+  const rushOrders = orders.filter((o) => o.rush_addon);
+  const rushCount = rushOrders.length;
+  const rushRev = rushOrders.reduce((s, o) => s + (o.rush_price_cents ?? 0), 0) / 100;
+
   // Lyrics paid/comped breakdown for the Upsell row
   const lyricsCompedCount = freeUnlocks;
   const lyricsPaidCount = paidUnlocks;
 
-  const totalUpsellRevenue = unlockRevenue + downloadRev + bonusRev + packageRev;
+  const totalUpsellRevenue = unlockRevenue + downloadRev + bonusRev + packageRev + rushRev;
   const upsellShare = grandTotalRevenue > 0 ? Math.round((totalUpsellRevenue / grandTotalRevenue) * 100) : 0;
 
   return [
