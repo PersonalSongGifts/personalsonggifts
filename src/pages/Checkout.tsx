@@ -807,7 +807,7 @@ const Checkout = () => {
 
               {rushSelected && (
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Rush Delivery (1 hour)</span>
+                  <span className="text-muted-foreground">1-Hour Express upgrade</span>
                   <span className="text-foreground">$10.00</span>
                 </div>
               )}
