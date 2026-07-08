@@ -691,32 +691,6 @@ Deno.serve(async (req) => {
 
       const expectedDelivery = calculateExpectedDelivery(pricingTier);
 
-      // Strict notes format assertion -- do not proceed if format is wrong
-      const notesValue = `stripe_session:${session.id}`;
-      if (!/^stripe_session:cs_[a-zA-Z0-9_]+$/.test(notesValue)) {
-        console.error(`[WEBHOOK] Unexpected notes format: ${notesValue}`);
-        return new Response(
-          JSON.stringify({ error: "Internal error: unexpected session ID format" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      // Compute timing for background automation
-      const timing = computeOrderTiming(expectedDelivery);
-      console.log(`[WEBHOOK] Order timing: generate after ${timing.earliestGenerateAt}, send at ${timing.targetSendAt}`);
-      
-      // Compute inputs hash for change detection (includes all creative fields + language)
-      const inputsHash = await computeInputsHash([
-        metadata.recipientName || "",
-        metadata.recipientNamePronunciation || "",
-        metadata.specialQualities || "",
-        metadata.favoriteMemory || "",
-        metadata.genre || "",
-        metadata.occasion || "",
-        metadata.singerPreference || "",
-        metadata.lyricsLanguageCode || "en",
-      ]);
-
       // Forever Memory Package add-on (checkout-time). Absent → no-op.
       const foreverMemory = metadata.forever_memory === "true";
       const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
@@ -745,6 +719,32 @@ Deno.serve(async (req) => {
       const effectiveExpectedDelivery = rushAddon
         ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
         : expectedDelivery;
+
+      // Strict notes format assertion -- do not proceed if format is wrong
+      const notesValue = `stripe_session:${session.id}`;
+      if (!/^stripe_session:cs_[a-zA-Z0-9_]+$/.test(notesValue)) {
+        console.error(`[WEBHOOK] Unexpected notes format: ${notesValue}`);
+        return new Response(
+          JSON.stringify({ error: "Internal error: unexpected session ID format" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      // Compute timing for background automation
+      const timing = computeOrderTiming(effectiveExpectedDelivery);
+      console.log(`[WEBHOOK] Order timing: generate after ${timing.earliestGenerateAt}, send at ${timing.targetSendAt}`);
+      
+      // Compute inputs hash for change detection (includes all creative fields + language)
+      const inputsHash = await computeInputsHash([
+        metadata.recipientName || "",
+        metadata.recipientNamePronunciation || "",
+        metadata.specialQualities || "",
+        metadata.favoriteMemory || "",
+        metadata.genre || "",
+        metadata.occasion || "",
+        metadata.singerPreference || "",
+        metadata.lyricsLanguageCode || "en",
+      ]);
 
       const { data: newOrder, error: insertError } = await supabase
         .from("orders")
