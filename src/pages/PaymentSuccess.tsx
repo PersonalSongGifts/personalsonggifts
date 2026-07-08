@@ -20,6 +20,7 @@ interface OrderDetails {
   songUrl?: string;
   price?: number;
   revisionToken?: string;
+  package_unlocked?: boolean;
 }
 
 const MAX_POLL_ATTEMPTS = 10;
