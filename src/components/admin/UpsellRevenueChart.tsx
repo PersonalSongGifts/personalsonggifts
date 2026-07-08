@@ -6,6 +6,7 @@ import { format, subDays, startOfDay, parseISO } from "date-fns";
 interface Order {
   id: string;
   status: string;
+  created_at?: string | null;
   lyrics_unlocked_at?: string | null;
   lyrics_price_cents?: number | null;
   download_unlocked_at?: string | null;
@@ -14,6 +15,8 @@ interface Order {
   bonus_price_cents?: number | null;
   package_unlocked_at?: string | null;
   package_price_cents?: number | null;
+  rush_addon?: boolean | null;
+  rush_price_cents?: number | null;
 }
 
 interface UpsellRevenueChartProps {
@@ -31,6 +34,7 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
         downloads: 0,
         bonus: 0,
         package: 0,
+        rush: 0,
       };
     });
 
@@ -38,10 +42,12 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
     let downloadsCount = 0;
     let bonusCount = 0;
     let packageCount = 0;
+    let rushCount = 0;
     let lyricsRev = 0;
     let downloadsRev = 0;
     let bonusRev = 0;
     let packageRev = 0;
+    let rushRev = 0;
 
     const findDay = (iso: string) => {
       const d = startOfDay(parseISO(iso));
@@ -79,26 +85,37 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
         const day = findDay(o.package_unlocked_at);
         if (day) day.package += dollars;
       }
+      // Rush has no unlock timestamp — bucket by created_at (always bought at checkout).
+      if (o.rush_addon && (o.rush_price_cents ?? 0) > 0 && o.created_at) {
+        const dollars = (o.rush_price_cents ?? 0) / 100;
+        rushRev += dollars;
+        rushCount += 1;
+        const day = findDay(o.created_at);
+        if (day) day.rush += dollars;
+      }
     });
 
     return {
-      chartData: last30Days.map(({ name, lyrics, downloads, bonus, package: pkg }) => ({
+      chartData: last30Days.map(({ name, lyrics, downloads, bonus, package: pkg, rush }) => ({
         name,
         lyrics: Math.round(lyrics * 100) / 100,
         downloads: Math.round(downloads * 100) / 100,
         bonus: Math.round(bonus * 100) / 100,
         package: Math.round(pkg * 100) / 100,
+        rush: Math.round(rush * 100) / 100,
       })),
       totals: {
         lyricsRev,
         downloadsRev,
         bonusRev,
         packageRev,
-        total: lyricsRev + downloadsRev + bonusRev + packageRev,
+        rushRev,
+        total: lyricsRev + downloadsRev + bonusRev + packageRev + rushRev,
         lyricsCount,
         downloadsCount,
         bonusCount,
         packageCount,
+        rushCount,
       },
     };
   }, [orders]);
@@ -111,7 +128,7 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
         </CardTitle>
         <p className="text-2xl font-bold">${totals.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
         <p className="text-xs text-muted-foreground">
-          {totals.lyricsCount} lyrics · {totals.downloadsCount} downloads · {totals.bonusCount} bonus · {totals.packageCount} package
+          {totals.lyricsCount} lyrics · {totals.downloadsCount} downloads · {totals.bonusCount} bonus · {totals.packageCount} package · {totals.rushCount} rush
         </p>
       </CardHeader>
       <CardContent>
@@ -134,6 +151,10 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
                 <linearGradient id="packageGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="hsl(160 70% 45%)" stopOpacity={0.5} />
                   <stop offset="95%" stopColor="hsl(160 70% 45%)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="rushGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(25 90% 55%)" stopOpacity={0.5} />
+                  <stop offset="95%" stopColor="hsl(25 90% 55%)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -207,6 +228,15 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
                 stroke="hsl(160 70% 45%)"
                 strokeWidth={2}
                 fill="url(#packageGradient)"
+              />
+              <Area
+                type="monotone"
+                dataKey="rush"
+                name="Rush"
+                stackId="1"
+                stroke="hsl(25 90% 55%)"
+                strokeWidth={2}
+                fill="url(#rushGradient)"
               />
             </AreaChart>
           </ResponsiveContainer>
