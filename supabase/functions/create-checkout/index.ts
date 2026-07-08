@@ -33,7 +33,7 @@ interface CheckoutInput {
   utmCampaign?: string;
   utmContent?: string;
   utmTerm?: string;
-  addons?: { forever_memory?: boolean };
+  addons?: { forever_memory?: boolean; rush?: boolean };
 }
 
 // Hardcoded test codes (100% off overrides — skip payment entirely)
@@ -381,12 +381,27 @@ Deno.serve(async (req) => {
       metadata.package_price_cents = String(packageCents);
     }
 
+    // Rush Delivery add-on (standard tier only). Absent → no-op.
+    const rushAddon = input.addons?.rush === true;
+    const RUSH_PRICE_CENTS = 1000;
+    if (rushAddon && pricingTier === "priority") {
+      return new Response(
+        JSON.stringify({ error: "Rush delivery isn't needed on the Priority tier." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const rushCents = rushAddon ? (FREE_TEST_CODES[upperAdditional] ? 0 : RUSH_PRICE_CENTS) : 0;
+    if (rushAddon) {
+      metadata.rush = "true";
+      metadata.rush_price_cents = String(rushCents);
+    }
+
     const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
 
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer_email: formData.yourEmail,
-      ...(metadata.promoSlug || foreverMemory ? {} : { allow_promotion_codes: true }),
+      ...(metadata.promoSlug || foreverMemory || rushAddon ? {} : { allow_promotion_codes: true }),
       line_items: [
         {
           price_data: {
@@ -404,6 +419,17 @@ Deno.serve(async (req) => {
               description: "Printable lyric keepsake, custom album cover from your photo, full lyrics, HD download, and the acoustic version.",
             },
             unit_amount: packageCents,
+          },
+          quantity: 1,
+        }] : []),
+        ...(rushAddon ? [{
+          price_data: {
+            currency: "usd" as const,
+            product_data: {
+              name: "Rush Delivery (1 hour)",
+              description: "Your song is produced and delivered within 1 hour.",
+            },
+            unit_amount: rushCents,
           },
           quantity: 1,
         }] : []),
