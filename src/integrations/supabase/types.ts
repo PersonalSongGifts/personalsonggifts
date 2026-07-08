@@ -481,6 +481,9 @@ export type Database = {
           revision_requested_at: string | null
           revision_status: string | null
           revision_token: string | null
+          rush_addon: boolean
+          rush_alert_sent_at: string | null
+          rush_price_cents: number | null
           scheduled_delivery_at: string | null
           sender_context: string | null
           sent_at: string | null
@@ -615,6 +618,9 @@ export type Database = {
           revision_requested_at?: string | null
           revision_status?: string | null
           revision_token?: string | null
+          rush_addon?: boolean
+          rush_alert_sent_at?: string | null
+          rush_price_cents?: number | null
           scheduled_delivery_at?: string | null
           sender_context?: string | null
           sent_at?: string | null
@@ -749,6 +755,9 @@ export type Database = {
           revision_requested_at?: string | null
           revision_status?: string | null
           revision_token?: string | null
+          rush_addon?: boolean
+          rush_alert_sent_at?: string | null
+          rush_price_cents?: number | null
           scheduled_delivery_at?: string | null
           sender_context?: string | null
           sent_at?: string | null
@@ -1211,6 +1220,9 @@ export type Database = {
           revision_requested_at: string | null
           revision_status: string | null
           revision_token: string | null
+          rush_addon: boolean
+          rush_alert_sent_at: string | null
+          rush_price_cents: number | null
           scheduled_delivery_at: string | null
           sender_context: string | null
           sent_at: string | null
