@@ -117,7 +117,7 @@ const TermsOfService = () => {
 
             <h3 className="text-lg font-medium mt-4 mb-2">Eligibility</h3>
             <ul className="list-disc pl-6 text-muted-foreground space-y-1">
-              <li>You must request your remake within twenty-four (24) hours of receiving your song delivery email</li>
+              <li>You must request your remake within seven (7) days of receiving your song delivery email</li>
               <li>You must provide specific feedback about what you would like changed (lyrics, musical style, voice, tempo, name pronunciation, etc.)</li>
             </ul>
 
