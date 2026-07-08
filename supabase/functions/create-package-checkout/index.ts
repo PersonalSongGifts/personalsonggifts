@@ -115,6 +115,17 @@ Deno.serve(async (req) => {
       metadata.amount_total_cents = "0";
     }
 
+    // Optional safe relative return path (e.g. "/payment-success?session_id=cs_x").
+    // Must be a same-origin relative path — reject anything absolute or protocol-like.
+    const safeReturnPath =
+      typeof returnPath === "string" &&
+      returnPath.startsWith("/") &&
+      !returnPath.startsWith("//") &&
+      !returnPath.includes("://") &&
+      returnPath.length <= 400
+        ? returnPath
+        : null;
+
     const session = await stripe.checkout.sessions.create({
       line_items: [{
         price_data: {
@@ -128,8 +139,10 @@ Deno.serve(async (req) => {
         quantity: 1,
       }],
       mode: "payment",
-      success_url: `${origin}/song/${orderId}?package_session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/song/${orderId}`,
+      success_url: safeReturnPath
+        ? `${origin}${safeReturnPath}${safeReturnPath.includes("?") ? "&" : "?"}package_session_id={CHECKOUT_SESSION_ID}`
+        : `${origin}/song/${orderId}?package_session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: safeReturnPath ? `${origin}${safeReturnPath}` : `${origin}/song/${orderId}`,
       metadata,
       payment_intent_data: unitAmount > 0 ? { metadata } : undefined,
     });
