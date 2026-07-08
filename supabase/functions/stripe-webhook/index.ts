@@ -718,6 +718,23 @@ Deno.serve(async (req) => {
         metadata.lyricsLanguageCode || "en",
       ]);
 
+      // Forever Memory Package add-on (checkout-time). Absent → no-op.
+      const foreverMemory = metadata.forever_memory === "true";
+      const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
+      const addonUnlockFields = foreverMemory ? (() => {
+        const nowIso = new Date().toISOString();
+        const pi = typeof session.payment_intent === "string" ? session.payment_intent : null;
+        return {
+          package_unlocked_at: nowIso,
+          package_price_cents: packageAddonCents,
+          package_unlock_session_id: session.id,
+          package_unlock_payment_intent_id: pi,
+          lyrics_unlocked_at: nowIso, lyrics_price_cents: 0,
+          download_unlocked_at: nowIso, download_price_cents: 0,
+          bonus_unlocked_at: nowIso, bonus_price_cents: 0,
+        };
+      })() : {};
+
       const { data: newOrder, error: insertError } = await supabase
         .from("orders")
         .insert({
@@ -756,6 +773,7 @@ Deno.serve(async (req) => {
           utm_campaign: metadata.utmCampaign || null,
           utm_content: metadata.utmContent || null,
           utm_term: metadata.utmTerm || null,
+          ...addonUnlockFields,
         })
         .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, revision_token")
         .single();
@@ -789,7 +807,7 @@ Deno.serve(async (req) => {
 
       console.log(`Order created via webhook: ${newOrder.id}`);
 
-      await logActivity(supabase, "order", newOrder.id, "order_created", "system", `New order via Stripe, ${newOrder.pricing_tier}, $${priceCents / 100}`);
+      await logActivity(supabase, "order", newOrder.id, "order_created", "system", `New order via Stripe, ${newOrder.pricing_tier}, $${priceCents / 100}${foreverMemory ? " + Forever Memory Package" : ""}`);
 
       // Mark only the matching lead as converted (non-blocking)
       try {
