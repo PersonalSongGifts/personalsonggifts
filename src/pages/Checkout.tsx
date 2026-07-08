@@ -93,6 +93,7 @@ const Checkout = () => {
     return undefined;
   }, [location.state]);
   const [selectedTier, setSelectedTier] = useState<PricingTier>("standard");
+  const [isExpress, setIsExpress] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPayPalLoading, setIsPayPalLoading] = useState(false);
   const paypalButtonRef = useRef<HTMLDivElement>(null);
@@ -112,14 +113,8 @@ const Checkout = () => {
   const toggleAddon = (key: AddonKey) =>
     setSelectedAddons((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // Auto-clear Rush if user switches to priority (priority already includes rush).
-  useEffect(() => {
-    if (selectedTier === "priority" && selectedAddons.rush) {
-      setSelectedAddons((prev) => ({ ...prev, rush: false }));
-    }
-  }, [selectedTier, selectedAddons.rush]);
-
-  const rushSelected = addonsEnabled && selectedAddons.rush && selectedTier === "standard";
+  // Express = Priority tier + 1-hour rush upgrade. Rush is no longer a standalone add-on.
+  const rushSelected = isExpress;
   const addonsTotalCents =
     (addonsEnabled && selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0) +
     (rushSelected ? ADDON_PRICES_CENTS.rush : 0);
