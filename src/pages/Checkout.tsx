@@ -590,44 +590,12 @@ const Checkout = () => {
                       <h4 className="font-semibold text-foreground">Forever Memory Package</h4>
                       <span className="font-semibold text-foreground whitespace-nowrap">$24.00</span>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-1">Make the song feel like a complete gift.</p>
-                    <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Printable lyric sheet with QR code</li>
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Private gift page to share</li>
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Album-style cover from a photo you upload (optional)</li>
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />Full lyrics + download</li>
-                      <li className="flex items-start gap-2"><Check className="h-4 w-4 text-primary mt-0.5" />A bonus version in another style</li>
-                    </ul>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Your uploaded photo stays as-is. The album-style cover is optional and won't change your loved one's likeness.
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Printable lyric keepsake, custom album cover from their photo, full lyrics, HD download + the acoustic version — delivered with the song.
                     </p>
                   </div>
                 </div>
               </Card>
-
-              {selectedTier === "standard" && (
-                <Card
-                  onClick={() => toggleAddon("rush")}
-                  className={`p-5 cursor-pointer transition-all duration-200 ${
-                    selectedAddons.rush ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                      selectedAddons.rush ? "bg-primary border-primary" : "border-muted-foreground"
-                    }`}>
-                      {selectedAddons.rush && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-baseline justify-between gap-3">
-                        <h4 className="font-semibold text-foreground">Rush Delivery</h4>
-                        <span className="font-semibold text-foreground whitespace-nowrap">$10.00</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">Skip the standard queue — priority production.</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
             </div>
           )}
 
@@ -731,12 +699,6 @@ const Checkout = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Forever Memory Package</span>
                   <span className="text-foreground">$24.00</span>
-                </div>
-              )}
-              {addonsEnabled && selectedAddons.rush && selectedTier === "standard" && (
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Rush Delivery</span>
-                  <span className="text-foreground">$10.00</span>
                 </div>
               )}
 
