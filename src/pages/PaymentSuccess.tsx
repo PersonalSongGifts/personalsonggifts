@@ -3,6 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil, Gift } from "lucide-react";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
@@ -44,6 +45,31 @@ const PaymentSuccess = () => {
   const [showProcessingMessage, setShowProcessingMessage] = useState(false);
   const [pkgLoading, setPkgLoading] = useState(false);
   const [pkgAdded, setPkgAdded] = useState(false);
+  const [pkgCode, setPkgCode] = useState("");
+  const [showPkgCode, setShowPkgCode] = useState(false);
+  const [pkgError, setPkgError] = useState<string | null>(null);
+  const [pkgConfirming, setPkgConfirming] = useState(false);
+
+  const trackPackagePurchase = useCallback((pkgSession: string, amountCents: number | null) => {
+    if (!amountCents || amountCents <= 0) return;
+    const key = `psg_pkg_purchase_tracked_${pkgSession}`;
+    try { if (sessionStorage.getItem(key)) return; } catch { /* ignore */ }
+    const value = amountCents / 100;
+    trackMetaEvent('Purchase', { value, currency: 'USD', transaction_id: `pkg_${pkgSession}` });
+    trackGAEvent('purchase', {
+      transaction_id: `pkg_${pkgSession}`,
+      value,
+      currency: 'USD',
+      items: [{ item_name: 'Forever Memory Package', price: value, quantity: 1 }],
+    });
+    trackTikTokEvent('CompletePayment', {
+      content_type: 'product',
+      content_id: 'forever-memory-package',
+      value,
+      currency: 'USD',
+    });
+    try { sessionStorage.setItem(key, "1"); } catch { /* ignore */ }
+  }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
     const dedupeKey = `psg_purchase_tracked_${sessionId || paypalToken || data.orderId}`;
@@ -110,20 +136,22 @@ const PaymentSuccess = () => {
   const handleAddPackage = async () => {
     if (!orderDetails?.orderId) return;
     setPkgLoading(true);
-    (window as any).amplitude?.track?.("Package Upsell Clicked", { placement: "payment_success", order_id: orderDetails.orderId });
+    setPkgError(null);
     try {
       const returnPath = window.location.pathname + window.location.search;
       const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-package-checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: orderDetails.orderId, returnPath }),
+        body: JSON.stringify({ orderId: orderDetails.orderId, returnPath, promoCode: pkgCode.trim() || undefined }),
       });
       const data = await r.json();
       if (data.alreadyUnlocked) { setPkgAdded(true); return; }
       if (data.url) { window.location.href = data.url; return; }
+      setPkgError(data.error || "Something went wrong. Please try again.");
       console.error("Package checkout failed:", data.error);
     } catch (e) {
       console.error("Package checkout error:", e);
+      setPkgError("Network error. Please try again.");
     } finally {
       setPkgLoading(false);
     }
@@ -281,22 +309,33 @@ const PaymentSuccess = () => {
   useEffect(() => {
     const pkgSession = searchParams.get("package_session_id");
     if (!pkgSession) return;
+    setPkgConfirming(true);
     (async () => {
-      try {
-        const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-package-purchase`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: pkgSession }),
-        });
-        if (r.ok) {
-          setPkgAdded(true);
-          (window as any).amplitude?.track?.("Package Upsell Purchased", { placement: "payment_success" });
+      const maxAttempts = 3;
+      const delayMs = 2500;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-package-purchase`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: pkgSession }),
+          });
+          if (r.ok) {
+            const data = await r.json().catch(() => ({} as any));
+            setPkgAdded(true);
+            trackPackagePurchase(pkgSession, typeof data?.amountCents === "number" ? data.amountCents : null);
+            break;
+          }
+          throw new Error(`HTTP ${r.status}`);
+        } catch (e) {
+          console.error(`Package verification attempt ${attempt} failed:`, e);
+          if (attempt < maxAttempts) {
+            await new Promise(res => setTimeout(res, delayMs));
+          }
         }
-      } catch (e) {
-        console.error("Package verification failed:", e);
-      } finally {
-        setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete("package_session_id"); return p; }, { replace: true });
       }
+      setPkgConfirming(false);
+      setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete("package_session_id"); return p; }, { replace: true });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -459,6 +498,16 @@ const PaymentSuccess = () => {
           {(() => {
             const flagEnabled = import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" || searchParams.get("preview") === "1";
             if (!flagEnabled || !orderDetails?.orderId) return null;
+            if (pkgConfirming && !pkgAdded) {
+              return (
+                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Confirming your package purchase…</p>
+                  </div>
+                </Card>
+              );
+            }
             if (pkgAdded) {
               return (
                 <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
@@ -516,6 +565,27 @@ const PaymentSuccess = () => {
                   {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
                   Add the Forever Memory Package
                 </Button>
+                <div className="mt-3">
+                  {!showPkgCode ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowPkgCode(true)}
+                      className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                    >
+                      Have a promo code?
+                    </button>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <Input
+                        value={pkgCode}
+                        onChange={(e) => { setPkgCode(e.target.value); if (pkgError) setPkgError(null); }}
+                        placeholder="Promo code"
+                        className="max-w-[200px] text-center"
+                      />
+                      {pkgError && <p className="text-xs text-red-600">{pkgError}</p>}
+                    </div>
+                  )}
+                </div>
               </Card>
             );
           })()}
