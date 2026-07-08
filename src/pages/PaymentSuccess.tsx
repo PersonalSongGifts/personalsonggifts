@@ -27,7 +27,7 @@ const POLL_INTERVAL_MS = 1500;
 const PaymentSuccess = () => {
   // Clean up persisted form data after successful purchase
   useEffect(() => { sessionStorage.removeItem("songFormData"); }, []);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const sessionId = searchParams.get("session_id");
   const paypalToken = searchParams.get("token"); // PayPal returns ?token=<orderID>
   const source = searchParams.get("source"); // "lead" if from lead conversion
