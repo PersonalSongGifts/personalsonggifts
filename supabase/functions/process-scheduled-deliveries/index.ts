@@ -132,6 +132,7 @@ Deno.serve(async (req) => {
               automation_status: "completed",
               generated_at: new Date().toISOString(),
               automation_audio_url_source: "failsafe_recovery",
+              delivery_status: "scheduled",
             })
             .eq("id", order.id);
         }
@@ -573,7 +574,7 @@ Deno.serve(async (req) => {
               .is("dismissed_at", null)
               .neq("status", "cancelled")
               .or("next_attempt_at.is.null,next_attempt_at.lte." + now)
-              .order("pricing_tier", { ascending: false }) // 'priority' before 'standard'
+              .order("pricing_tier", { ascending: true }) // 'priority' before 'standard'
               .order("earliest_generate_at", { ascending: true })
               .limit(orderSlots);
 
@@ -2262,15 +2263,16 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     // break generation or delivery.
     try {
       const rushCutoffIso = new Date(Date.now() - 45 * 60 * 1000).toISOString();
-      const { data: rushAtRisk } = await supabase
+      const { data: rushAtRisk, error: rushQueryErr } = await supabase
         .from("orders")
         .select("id, created_at, customer_email, customer_name, recipient_name")
         .eq("rush_addon", true)
         .is("sent_at", null)
         .is("rush_alert_sent_at", null)
-        .neq("status", "cancelled")
+        .not("status", "in", "(cancelled,delivered)")
         .lte("created_at", rushCutoffIso)
         .limit(5);
+      if (rushQueryErr) console.error("[RUSH-SLA] query error:", rushQueryErr);
 
       const rushAlertsSent: string[] = [];
       for (const order of rushAtRisk || []) {
