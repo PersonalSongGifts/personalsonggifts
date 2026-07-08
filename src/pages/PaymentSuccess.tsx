@@ -272,6 +272,29 @@ const PaymentSuccess = () => {
     poll();
   }, [sessionId, paypalToken, source, trackPurchaseEvent]);
 
+  useEffect(() => {
+    const pkgSession = searchParams.get("package_session_id");
+    if (!pkgSession) return;
+    (async () => {
+      try {
+        const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-package-purchase`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: pkgSession }),
+        });
+        if (r.ok) {
+          setPkgAdded(true);
+          (window as any).amplitude?.track?.("Package Upsell Purchased", { placement: "payment_success" });
+        }
+      } catch (e) {
+        console.error("Package verification failed:", e);
+      } finally {
+        setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete("package_session_id"); return p; }, { replace: true });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (loading) {
     return (
       <Layout showPromoBanner={false}>
