@@ -118,7 +118,7 @@ const Checkout = () => {
   const addonsTotalCents =
     (addonsEnabled && selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0) +
     (rushSelected ? ADDON_PRICES_CENTS.rush : 0);
-  const hasAddonSelected = addonsEnabled && addonsTotalCents > 0;
+  const hasAddonSelected = addonsTotalCents > 0;
   
   // Auto-detect user timezone
   const userTimezone = useMemo(() => {
