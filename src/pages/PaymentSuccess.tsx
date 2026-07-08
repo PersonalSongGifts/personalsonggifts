@@ -521,6 +521,12 @@ const PaymentSuccess = () => {
                   minute: "2-digit"
                 })}
               </p>
+              {orderDetails.rush_addon && (
+                <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-primary">
+                  <Zap className="h-3.5 w-3.5" />
+                  1-hour delivery active
+                </p>
+              )}
             </Card>
           )}
 
@@ -655,6 +661,11 @@ const PaymentSuccess = () => {
               <p className="text-sm text-muted-foreground mb-4">
                 Update your song details before we start creating it.
               </p>
+              {orderDetails.rush_addon && (
+                <p className="text-xs text-primary mb-4">
+                  Heads up: your song starts production in ~5 minutes — make any edits right away. Edits reschedule delivery.
+                </p>
+              )}
               <Button asChild variant="outline" size="sm">
                 <Link to={`/song/revision/${orderDetails.revisionToken}`}>
                   <Pencil className="h-4 w-4 mr-2" />
