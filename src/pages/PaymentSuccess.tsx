@@ -46,16 +46,21 @@ const PaymentSuccess = () => {
   const [pkgAdded, setPkgAdded] = useState(false);
 
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
+    const dedupeKey = `psg_purchase_tracked_${sessionId || paypalToken || data.orderId}`;
+    try {
+      if (sessionStorage.getItem(dedupeKey)) return;
+    } catch { /* sessionStorage unavailable — fall through to ref guard */ }
+
     if (hasTrackedPurchase.current) return;
-    
+
     const purchaseValue = data.price ?? (data.pricingTier === "priority" ? 79 : 49);
-    
+
     trackMetaEvent('Purchase', {
       value: purchaseValue,
       currency: 'USD',
       transaction_id: data.orderId,
     });
-    
+
     trackGAEvent('purchase', {
       transaction_id: data.orderId,
       value: purchaseValue,
@@ -97,9 +102,10 @@ const PaymentSuccess = () => {
         amp.revenue(rev);
       }
     }
-    
+
     hasTrackedPurchase.current = true;
-  }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
+    try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
+  }, [sessionId, paypalToken, trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   const handleAddPackage = async () => {
     if (!orderDetails?.orderId) return;
@@ -461,7 +467,9 @@ const PaymentSuccess = () => {
                     <h3 className="font-semibold text-foreground">Forever Memory Package added ✓</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Your printable keepsake, custom album covers, full lyrics, download, and acoustic version will all be waiting on {orderDetails.recipientName}'s song page when the song is ready.
+                    {isLeadConversion
+                      ? <>Your printable keepsake, custom album covers, full lyrics, download, and acoustic version are all waiting on {orderDetails.recipientName}'s song page right now.</>
+                      : <>Your printable keepsake, custom album covers, full lyrics, download, and acoustic version will all be waiting on {orderDetails.recipientName}'s song page when the song is ready.</>}
                   </p>
                 </Card>
               );
@@ -500,7 +508,9 @@ const PaymentSuccess = () => {
                   <span className="text-sm text-muted-foreground line-through">$45 value</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.
+                  {isLeadConversion
+                    ? <>Everything unlocks on {orderDetails.recipientName}'s song page — available right now.</>
+                    : <>Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.</>}
                 </p>
                 <Button size="lg" disabled={pkgLoading} onClick={handleAddPackage} className="gap-2">
                   {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
