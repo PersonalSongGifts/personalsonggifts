@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_unlock_session_id, package_price_cents")
       .eq("notes", `stripe_session:${sessionId}`)
       .single();
 
@@ -120,6 +120,7 @@ Deno.serve(async (req) => {
           price: existingOrder.price_cents != null ? existingOrder.price_cents / 100 : undefined,
           revisionToken: existingOrder.revision_token,
           package_unlocked: !!existingOrder.package_unlocked_at,
+          package_addon_cents: existingOrder.package_unlock_session_id === sessionId ? (existingOrder.package_price_cents || 0) : 0,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
