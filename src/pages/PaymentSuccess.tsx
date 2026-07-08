@@ -4,7 +4,7 @@ import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil, Gift } from "lucide-react";
+import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil, Gift, Zap } from "lucide-react";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
@@ -22,6 +22,8 @@ interface OrderDetails {
   revisionToken?: string;
   package_unlocked?: boolean;
   package_addon_cents?: number;
+  rush_addon?: boolean;
+  rush_addon_cents?: number;
 }
 
 const MAX_POLL_ATTEMPTS = 10;
@@ -52,26 +54,38 @@ const PaymentSuccess = () => {
   const [pkgError, setPkgError] = useState<string | null>(null);
   const [pkgConfirming, setPkgConfirming] = useState(false);
 
-  const trackPackagePurchase = useCallback((pkgSession: string, amountCents: number | null) => {
+  const trackAddonPurchase = useCallback((
+    kind: "pkg" | "rush",
+    pkgSession: string,
+    amountCents: number | null,
+  ) => {
     if (!amountCents || amountCents <= 0) return;
-    const key = `psg_pkg_purchase_tracked_${pkgSession}`;
+    const dedupePrefix = kind === "pkg" ? "psg_pkg_purchase_tracked_" : "psg_rush_purchase_tracked_";
+    const txnPrefix = kind === "pkg" ? "pkg_" : "rush_";
+    const itemName = kind === "pkg" ? "Forever Memory Package" : "Rush Delivery";
+    const contentId = kind === "pkg" ? "forever-memory-package" : "rush-delivery";
+    const key = `${dedupePrefix}${pkgSession}`;
     try { if (sessionStorage.getItem(key)) return; } catch { /* ignore */ }
     const value = amountCents / 100;
-    trackMetaEvent('Purchase', { value, currency: 'USD', transaction_id: `pkg_${pkgSession}` });
+    trackMetaEvent('Purchase', { value, currency: 'USD', transaction_id: `${txnPrefix}${pkgSession}` });
     trackGAEvent('purchase', {
-      transaction_id: `pkg_${pkgSession}`,
+      transaction_id: `${txnPrefix}${pkgSession}`,
       value,
       currency: 'USD',
-      items: [{ item_name: 'Forever Memory Package', price: value, quantity: 1 }],
+      items: [{ item_name: itemName, price: value, quantity: 1 }],
     });
     trackTikTokEvent('CompletePayment', {
       content_type: 'product',
-      content_id: 'forever-memory-package',
+      content_id: contentId,
       value,
       currency: 'USD',
     });
     try { sessionStorage.setItem(key, "1"); } catch { /* ignore */ }
   }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
+  const trackPackagePurchase = useCallback(
+    (pkgSession: string, amountCents: number | null) => trackAddonPurchase("pkg", pkgSession, amountCents),
+    [trackAddonPurchase],
+  );
 
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
     const dedupeKey = `psg_purchase_tracked_${sessionId || paypalToken || data.orderId}`;
@@ -274,6 +288,9 @@ const PaymentSuccess = () => {
             trackPackagePurchase(`chk_${sessionId}`, data.package_addon_cents ?? null);
           }
         }
+        if (sessionId && data.rush_addon && (data.rush_addon_cents ?? 0) > 0) {
+          trackAddonPurchase("rush", `chk_${sessionId}`, data.rush_addon_cents ?? null);
+        }
         trackPurchaseEvent(data);
         setLoading(false);
         return true; // Success
@@ -398,9 +415,11 @@ const PaymentSuccess = () => {
     return null;
   }
 
-  const deliveryTime = isLeadConversion 
-    ? "Instant" 
-    : orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
+  const deliveryTime = isLeadConversion
+    ? "Instant"
+    : orderDetails.rush_addon
+      ? "1 hour"
+      : orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
   const expectedDate = orderDetails.expectedDelivery 
     ? new Date(orderDetails.expectedDelivery) 
     : new Date();
@@ -459,7 +478,10 @@ const PaymentSuccess = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Price paid:</span>
                 <span className="text-foreground font-medium">
-                  ${(orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99)).toFixed(2)} USD
+                  ${(
+                    (orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99))
+                    + ((orderDetails.package_addon_cents || 0) + (orderDetails.rush_addon_cents || 0)) / 100
+                  ).toFixed(2)} USD
                 </span>
               </div>
             </div>
@@ -499,6 +521,12 @@ const PaymentSuccess = () => {
                   minute: "2-digit"
                 })}
               </p>
+              {orderDetails.rush_addon && (
+                <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-primary">
+                  <Zap className="h-3.5 w-3.5" />
+                  1-hour delivery active
+                </p>
+              )}
             </Card>
           )}
 
@@ -633,6 +661,11 @@ const PaymentSuccess = () => {
               <p className="text-sm text-muted-foreground mb-4">
                 Update your song details before we start creating it.
               </p>
+              {orderDetails.rush_addon && (
+                <p className="text-xs text-primary mb-4">
+                  Heads up: your song starts production in ~5 minutes — make any edits right away. Edits reschedule delivery.
+                </p>
+              )}
               <Button asChild variant="outline" size="sm">
                 <Link to={`/song/revision/${orderDetails.revisionToken}`}>
                   <Pencil className="h-4 w-4 mr-2" />
