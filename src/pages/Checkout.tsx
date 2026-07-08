@@ -803,6 +803,13 @@ const Checkout = () => {
                 </div>
               )}
 
+              {rushSelected && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Rush Delivery (1 hour)</span>
+                  <span className="text-foreground">$10.00</span>
+                </div>
+              )}
+
               <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Total:</span>
