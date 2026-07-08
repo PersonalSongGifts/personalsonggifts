@@ -33,6 +33,7 @@ interface CheckoutInput {
   utmCampaign?: string;
   utmContent?: string;
   utmTerm?: string;
+  addons?: { forever_memory?: boolean };
 }
 
 // Hardcoded test codes (100% off overrides — skip payment entirely)
@@ -370,6 +371,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Forever Memory Package add-on (checkout-time). Absent → no-op.
+    const foreverMemory = input.addons?.forever_memory === true;
+    const PACKAGE_ADDON_PRICE_CENTS = 2400;
+    // Free test codes zero the WHOLE cart (song + add-on) so end-to-end testing costs $0
+    const packageCents = foreverMemory ? (FREE_TEST_CODES[upperAdditional] ? 0 : PACKAGE_ADDON_PRICE_CENTS) : 0;
+    if (foreverMemory) {
+      metadata.forever_memory = "true";
+      metadata.package_price_cents = String(packageCents);
+    }
+
     const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
 
     // Create Stripe Checkout Session
@@ -385,6 +396,17 @@ Deno.serve(async (req) => {
           },
           quantity: 1,
         },
+        ...(foreverMemory ? [{
+          price_data: {
+            currency: "usd" as const,
+            product_data: {
+              name: "Forever Memory Package",
+              description: "Printable lyric keepsake, custom album cover from your photo, full lyrics, HD download, and the acoustic version.",
+            },
+            unit_amount: packageCents,
+          },
+          quantity: 1,
+        }] : []),
       ],
       mode: "payment",
       success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
