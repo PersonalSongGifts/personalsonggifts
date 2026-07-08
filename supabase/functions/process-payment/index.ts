@@ -372,6 +372,7 @@ Deno.serve(async (req) => {
         price: newOrder.price_cents != null ? newOrder.price_cents / 100 : priceCents / 100,
         revisionToken: newOrder.revision_token,
         package_unlocked: foreverMemory,
+        package_addon_cents: packageAddonCents,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
