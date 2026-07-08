@@ -102,6 +102,14 @@ Deno.serve(async (req) => {
 
     // Resolve unit amount, honoring hardcoded 100%-off test codes
     const upperCode = typeof promoCode === "string" ? promoCode.trim().toUpperCase() : "";
+
+    if (upperCode && !FREE_TEST_CODES[upperCode]) {
+      return new Response(
+        JSON.stringify({ error: "That code isn't valid for the Forever Memory Package." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     let unitAmount = PACKAGE_PRICE_CENTS;
     const metadata: Record<string, string> = {
       type: "package_unlock",
@@ -114,6 +122,7 @@ Deno.serve(async (req) => {
       metadata.promoCode = upperCode;
       metadata.amount_total_cents = "0";
     }
+
 
     // Optional safe relative return path (e.g. "/payment-success?session_id=cs_x").
     // Must be a same-origin relative path — reject anything absolute or protocol-like.
