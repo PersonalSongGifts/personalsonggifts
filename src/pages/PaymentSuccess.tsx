@@ -508,7 +508,9 @@ const PaymentSuccess = () => {
                   <span className="text-sm text-muted-foreground line-through">$45 value</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.
+                  {isLeadConversion
+                    ? <>Everything unlocks on {orderDetails.recipientName}'s song page — available right now.</>
+                    : <>Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.</>}
                 </p>
                 <Button size="lg" disabled={pkgLoading} onClick={handleAddPackage} className="gap-2">
                   {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
