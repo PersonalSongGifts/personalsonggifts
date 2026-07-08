@@ -720,7 +720,11 @@ Deno.serve(async (req) => {
       // Forever Memory Package add-on (checkout-time). Absent → no-op.
       const foreverMemory = metadata.forever_memory === "true";
       const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
-      const songPriceCents = foreverMemory ? Math.max(0, priceCents - packageAddonCents) : priceCents;
+      const rushAddon = metadata.rush === "true";
+      const rushAddonCents = rushAddon ? parseInt(metadata.rush_price_cents || "1000", 10) : 0;
+      const songPriceCents = (foreverMemory || rushAddon)
+        ? Math.max(0, priceCents - packageAddonCents - rushAddonCents)
+        : priceCents;
       const songPrice = Math.floor(songPriceCents / 100);
       const addonUnlockFields = foreverMemory ? (() => {
         const nowIso = new Date().toISOString();
@@ -735,6 +739,12 @@ Deno.serve(async (req) => {
           bonus_unlocked_at: nowIso, bonus_price_cents: 0,
         };
       })() : {};
+      const rushFields = rushAddon ? { rush_addon: true, rush_price_cents: rushAddonCents } : {};
+
+      // Rush add-on overrides the expected delivery to 1 hour from now.
+      const effectiveExpectedDelivery = rushAddon
+        ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+        : expectedDelivery;
 
       const { data: newOrder, error: insertError } = await supabase
         .from("orders")
@@ -742,7 +752,7 @@ Deno.serve(async (req) => {
         pricing_tier: pricingTier,
           price: songPrice,               // integer dollars (song-only, excludes add-on)
           price_cents: songPriceCents,    // canonical cents (song-only, excludes add-on)
-          expected_delivery: expectedDelivery,
+          expected_delivery: effectiveExpectedDelivery,
           customer_name: metadata.customerName || "",
           customer_email: metadata.customerEmail || session.customer_email || "",
           customer_phone: metadata.customerPhone || null,
@@ -775,6 +785,7 @@ Deno.serve(async (req) => {
           utm_content: metadata.utmContent || null,
           utm_term: metadata.utmTerm || null,
           ...addonUnlockFields,
+          ...rushFields,
         })
         .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, revision_token")
         .single();
@@ -808,7 +819,7 @@ Deno.serve(async (req) => {
 
       console.log(`Order created via webhook: ${newOrder.id}`);
 
-      await logActivity(supabase, "order", newOrder.id, "order_created", "system", `New order via Stripe, ${newOrder.pricing_tier}, $${priceCents / 100}${foreverMemory ? " + Forever Memory Package" : ""}`);
+      await logActivity(supabase, "order", newOrder.id, "order_created", "system", `New order via Stripe, ${newOrder.pricing_tier}, $${priceCents / 100}${foreverMemory ? " + Forever Memory Package" : ""}${rushAddon ? " + Rush (1h)" : ""}`);
 
       // Mark only the matching lead as converted (non-blocking)
       try {
@@ -965,6 +976,7 @@ Deno.serve(async (req) => {
             pricingTier: newOrder.pricing_tier,
             expectedDelivery: newOrder.expected_delivery,
             revisionToken: newOrder.revision_token,
+            rushAddon,
           }),
         });
         console.log(`Confirmation email sent for order ${newOrder.id}`);

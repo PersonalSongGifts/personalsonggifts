@@ -13,6 +13,7 @@ interface OrderConfirmationRequest {
   pricingTier: string;
   expectedDelivery: string;
   revisionToken?: string;
+  rushAddon?: boolean;
 }
 
 Deno.serve(async (req) => {
@@ -39,6 +40,7 @@ Deno.serve(async (req) => {
       pricingTier,
       expectedDelivery,
       revisionToken,
+      rushAddon,
     }: OrderConfirmationRequest = await req.json();
 
     if (!customerEmail || !orderId) {
@@ -48,7 +50,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const tierLabel = pricingTier === "priority" ? "Priority (24-hour)" : "Standard (48-hour)";
+    const tierLabel = rushAddon
+      ? "Rush (1 hour)"
+      : (pricingTier === "priority" ? "Priority (24-hour)" : "Standard (48-hour)");
     const deliveryDate = new Date(expectedDelivery).toLocaleDateString("en-US", {
       weekday: "long",
       month: "long",
@@ -56,6 +60,9 @@ Deno.serve(async (req) => {
       year: "numeric",
       timeZone: "America/New_York",
     });
+    const deliveryLine = rushAddon
+      ? `${tierLabel} — within 1 hour`
+      : `${tierLabel} — by ${deliveryDate}`;
 
     const messageId = `<${orderId}.${Date.now()}@personalsonggifts.com>`;
 
@@ -97,7 +104,7 @@ Deno.serve(async (req) => {
       </tr>
       <tr>
         <td style="color: #555555; padding: 10px 0; font-size: 14px;"><strong>Delivery</strong></td>
-        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${tierLabel} — by ${deliveryDate}</td>
+        <td style="color: #333333; padding: 10px 0; font-size: 14px;">${deliveryLine}</td>
       </tr>
     </table>
 
@@ -137,7 +144,7 @@ Order ID: ${orderId.slice(0, 8).toUpperCase()}
 Song for: ${recipientName}
 Occasion: ${occasion}
 Genre: ${genre}
-Delivery: ${tierLabel} — by ${deliveryDate}
+Delivery: ${deliveryLine}
 
 We'll email you as soon as your song is ready. If you have any questions, just reply to this email.
 ${revisionToken ? `\nNeed to make changes? Update your order: https://personalsonggifts.lovable.app/song/revision/${revisionToken}\n` : ''}
