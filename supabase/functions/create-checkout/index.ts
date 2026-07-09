@@ -270,11 +270,14 @@ Deno.serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        // Increment usage count
+        // Increment usage count (upsert so missing rows are created — plain UPDATE silently no-ops)
         await supabase
           .from("admin_settings")
-          .update({ value: String(currentUses + 1), updated_at: new Date().toISOString() })
-          .eq("key", limit.settingsKey);
+          .upsert({
+            key: limit.settingsKey,
+            value: String(currentUses + 1),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "key" });
       }
 
       unitAmount = 0;
@@ -335,6 +338,7 @@ Deno.serve(async (req) => {
           .from("promotions")
           .select("*")
           .eq("is_active", true)
+          .eq("targeted", false)
           .lte("starts_at", new Date().toISOString())
           .gte("ends_at", new Date().toISOString())
           .maybeSingle();
