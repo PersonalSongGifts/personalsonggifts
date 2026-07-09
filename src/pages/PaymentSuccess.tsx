@@ -623,7 +623,7 @@ const PaymentSuccess = () => {
     ? "Instant"
     : orderDetails.rush_addon
       ? "1 hour"
-      : orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
+      : "24 hours";
   const expectedDate = orderDetails.expectedDelivery
     ? new Date(orderDetails.expectedDelivery)
     : null;
@@ -636,13 +636,14 @@ const PaymentSuccess = () => {
 
   // Delivery-speed label: derived from pricing_tier + rush_addon.
   // Lead conversions unlock the finished song immediately — must not read "Standard (48 hours)".
+  // New orders: Standard (24h) or Express (1h). Legacy priority-tier orders keep their label.
   const deliverySpeedLabel = isLeadConversion
     ? "Instant"
     : orderDetails.rush_addon
       ? "Express (1 hour)"
       : orderDetails.pricingTier === "priority"
         ? "Priority (24 hours)"
-        : "Standard (48 hours)";
+        : "Standard (24 hours)";
 
   // Actual amount paid (fix #2): song price + captured add-ons. If unknown, show em dash.
   const totalPaidCents =
