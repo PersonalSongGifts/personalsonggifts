@@ -490,6 +490,38 @@ Deno.serve(async (req) => {
           );
         }
 
+        // === Stale-checkout guard ===
+        // Song already shipped before rush completed — refund and skip upgrade.
+        if (existing.sent_at) {
+          const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+          let refundOk = false;
+          if (amountTotal > 0 && paymentIntentId) {
+            try {
+              await stripe.refunds.create({
+                payment_intent: paymentIntentId,
+                reason: "requested_by_customer",
+              });
+              refundOk = true;
+            } catch (e) {
+              console.error("[WEBHOOK] Rush auto-refund failed:", e);
+            }
+          } else {
+            refundOk = true;
+          }
+          await logActivity(
+            supabase,
+            "order",
+            rushOrderId,
+            "rush_upgrade_auto_refunded",
+            "system",
+            `Rush upgrade $${(amountTotal / 100).toFixed(2)} paid AFTER delivery — auto-refund ${refundOk ? "succeeded" : "failed"}`,
+          );
+          return new Response(
+            JSON.stringify({ received: true, type: "rush_upgrade", orderId: rushOrderId, refunded: true, reason: "already_delivered" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         const createdMs = existing.created_at ? new Date(existing.created_at).getTime() : nowMs;
         const rushJitterMs = Math.floor(Math.random() * 15 * 60 * 1000);
         const targetSendMs = Math.max(createdMs + 30 * 60 * 1000 + rushJitterMs, nowMs + 5 * 60 * 1000);

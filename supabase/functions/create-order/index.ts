@@ -98,6 +98,18 @@ function calculateExpectedDelivery(tier: "standard" | "priority"): string {
   return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
+// Mirrors computeOrderTiming used by stripe-webhook / paypal capture:
+// Standard delivery window randomized in [12h, 15h] so orders don't dogpile.
+// (create-order has no rush addon path, so no rush branch is needed.)
+function computeStandardTiming(): { earliestGenerateAt: string; targetSendAt: string } {
+  const nowMs = Date.now();
+  const jitterMs = Math.floor(Math.random() * 3 * 60 * 60 * 1000); // 0–3h
+  return {
+    earliestGenerateAt: new Date(nowMs + 5 * 60 * 1000).toISOString(),
+    targetSendAt: new Date(nowMs + 12 * 60 * 60 * 1000 + jitterMs).toISOString(),
+  };
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -131,6 +143,7 @@ Deno.serve(async (req) => {
 
     const price = input.pricingTier === "priority" ? 79 : 49;
     const expectedDelivery = calculateExpectedDelivery(input.pricingTier);
+    const timing = computeStandardTiming();
 
     // Read max_revisions_per_order from admin_settings
     let maxRevisions = 1;
@@ -152,6 +165,9 @@ Deno.serve(async (req) => {
         pricing_tier: input.pricingTier,
         price,
         expected_delivery: expectedDelivery,
+        earliest_generate_at: timing.earliestGenerateAt,
+        target_send_at: timing.targetSendAt,
+        delivery_status: "scheduled",
         customer_name: input.customerName.trim(),
         customer_email: input.customerEmail.trim().toLowerCase(),
         customer_phone: input.customerPhone?.trim() || null,
