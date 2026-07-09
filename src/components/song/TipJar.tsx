@@ -63,10 +63,10 @@ export default function TipJar({ orderId, customerName }: TipJarProps) {
         <CardContent className="p-6 text-center space-y-3">
           <div className="flex items-center justify-center gap-2">
             <Heart className="h-5 w-5 text-primary fill-primary/20" />
-            <h3 className="text-xl font-semibold text-primary">Loved your song?</h3>
+            <h3 className="text-xl font-semibold text-primary">Loved it? Tip the studio team</h3>
           </div>
           <p className="text-foreground/80 max-w-md mx-auto">
-            Leave a tip for the small team who crafted it and help us keep making songs like this.
+            A small thank-you goes a long way — it keeps our songwriters writing.
           </p>
           <div className="flex justify-center gap-2 flex-wrap pt-2">
             <Button variant="outline" onClick={() => setOpen(true)} className="min-w-[72px]">$5</Button>
