@@ -933,7 +933,7 @@ Deno.serve(async (req) => {
             // If the song is ready, send the delivery email immediately.
             if (shouldDispatchDelivery(matchingLead)) {
               try {
-                await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
+                const deliveryResp2 = await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -949,9 +949,26 @@ Deno.serve(async (req) => {
                     revisionToken: newOrder.revision_token,
                   }),
                 });
-                console.log(`[WEBHOOK] Delivery email sent for standard-path lead-converted order ${newOrder.id}`);
+                if (deliveryResp2.ok) {
+                  await supabase
+                    .from("orders")
+                    .update({ sent_at: new Date().toISOString(), delivery_status: "sent" })
+                    .eq("id", newOrder.id);
+                  console.log(`[WEBHOOK] Delivery email sent for standard-path lead-converted order ${newOrder.id}`);
+                } else {
+                  const body = await deliveryResp2.text().catch(() => "");
+                  console.error(`[WEBHOOK] send-song-delivery failed for lead-converted order ${newOrder.id}: ${deliveryResp2.status} ${body}`);
+                  await supabase
+                    .from("orders")
+                    .update({ delivery_status: "failed", target_send_at: new Date().toISOString() })
+                    .eq("id", newOrder.id);
+                }
               } catch (e) {
                 console.error("[WEBHOOK] Failed to send delivery for lead-converted order:", e);
+                await supabase
+                  .from("orders")
+                  .update({ delivery_status: "failed", target_send_at: new Date().toISOString() })
+                  .eq("id", newOrder.id);
               }
             }
             // Lead had lyrics but no song — order is now at lyrics_ready.
