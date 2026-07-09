@@ -66,10 +66,35 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    // Resolve short 8-char IDs (delivery emails link to /song/{shortId}) → full uuid.
+    let resolvedOrderId: string = orderId;
+    if (typeof orderId === "string" && orderId.length === 8) {
+      const { data: shortMatches, error: shortErr } = await supabase
+        .rpc("find_orders_by_short_id", {
+          short_id: orderId,
+          status_filter: null,
+          require_song_url: false,
+          max_results: 2,
+        });
+      if (shortErr) {
+        console.error("[album-cover] short id resolve error", shortErr);
+      }
+      if (!shortMatches || shortMatches.length === 0) {
+        return new Response(JSON.stringify({ error: "Order not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (shortMatches.length > 1) {
+        return new Response(JSON.stringify({ error: "Ambiguous ID" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      resolvedOrderId = shortMatches[0].id as string;
+    }
     const { data: order, error: orderErr } = await supabase
       .from("orders")
       .select("id, genre, occasion, song_title, recipient_name, bonus_song_title, bonus_style_prompt")
-      .eq("id", orderId)
+      .eq("id", resolvedOrderId)
       .maybeSingle();
     if (orderErr || !order) {
       return new Response(JSON.stringify({ error: "Order not found" }), {
@@ -121,14 +146,14 @@ Deno.serve(async (req) => {
         album_cover_bonus_task_id: taskId,
         album_cover_bonus_status: "generating",
         album_cover_bonus_url: null,
-      }).eq("id", orderId);
+      }).eq("id", resolvedOrderId);
     } else {
       await supabase.from("orders").update({
         album_cover_task_id: taskId,
         album_cover_status: "generating",
         album_cover_photo_url: photoUrl,
         album_cover_url: null,
-      }).eq("id", orderId);
+      }).eq("id", resolvedOrderId);
     }
 
     return new Response(JSON.stringify({ taskId }), {
