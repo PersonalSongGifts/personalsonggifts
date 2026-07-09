@@ -26,8 +26,9 @@ interface OrderDetails {
   rush_addon_cents?: number;
 }
 
-const MAX_POLL_ATTEMPTS = 10;
-const POLL_INTERVAL_MS = 1500;
+// Bounded retries: ~6 attempts * 5s = ~30s total before we terminate to an error state.
+const MAX_POLL_ATTEMPTS = 6;
+const POLL_INTERVAL_MS = 5000;
 
 const PaymentSuccess = () => {
   // Clean up persisted form data after successful purchase
@@ -43,6 +44,7 @@ const PaymentSuccess = () => {
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [definitiveNotFound, setDefinitiveNotFound] = useState(false);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isLeadConversion, setIsLeadConversion] = useState(false);
   const [pollAttempts, setPollAttempts] = useState(0);
@@ -203,6 +205,12 @@ const PaymentSuccess = () => {
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            if (response.status === 404 && errorData?.code === "ORDER_NOT_FOUND") {
+              setDefinitiveNotFound(true);
+              setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
+              setLoading(false);
+              return;
+            }
             throw new Error(errorData.error || "Failed to process PayPal payment");
           }
 
@@ -291,6 +299,12 @@ const PaymentSuccess = () => {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          if (response.status === 404 && errorData?.code === "SESSION_NOT_FOUND") {
+            setDefinitiveNotFound(true);
+            setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
+            setLoading(false);
+            return true; // Stop polling — definitive not found
+          }
           throw new Error(errorData.error || "Failed to process payment");
         }
 
