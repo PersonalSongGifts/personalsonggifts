@@ -45,9 +45,9 @@ const PaymentSuccess = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [definitiveNotFound, setDefinitiveNotFound] = useState(false);
+  const [paypalDeclined, setPaypalDeclined] = useState(false);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isLeadConversion, setIsLeadConversion] = useState(false);
-  const [pollAttempts, setPollAttempts] = useState(0);
   const [showProcessingMessage, setShowProcessingMessage] = useState(false);
   const [pkgLoading, setPkgLoading] = useState(false);
   const [pkgAdded, setPkgAdded] = useState(false);
@@ -55,6 +55,7 @@ const PaymentSuccess = () => {
   const [showPkgCode, setShowPkgCode] = useState(false);
   const [pkgError, setPkgError] = useState<string | null>(null);
   const [pkgConfirming, setPkgConfirming] = useState(false);
+  const [pkgVerifyFailed, setPkgVerifyFailed] = useState(false);
 
   const trackAddonPurchase = useCallback((
     kind: "pkg" | "rush",
@@ -211,6 +212,12 @@ const PaymentSuccess = () => {
               setLoading(false);
               return;
             }
+            if (response.status === 402 && errorData?.code === "PAYMENT_DECLINED") {
+              setPaypalDeclined(true);
+              setError("Your payment method was declined by PayPal — you have not been charged.");
+              setLoading(false);
+              return;
+            }
             throw new Error(errorData.error || "Failed to process PayPal payment");
           }
 
@@ -235,12 +242,6 @@ const PaymentSuccess = () => {
       };
 
       capturePayPal();
-      return;
-    }
-
-    if (!sessionId) {
-      setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
-      setLoading(false);
       return;
     }
 
@@ -348,7 +349,6 @@ const PaymentSuccess = () => {
     let currentAttempt = 0;
     const poll = async () => {
       currentAttempt++;
-      setPollAttempts(currentAttempt);
       const success = await pollForOrder(currentAttempt);
       
       if (!success) {
@@ -366,6 +366,7 @@ const PaymentSuccess = () => {
     (async () => {
       const maxAttempts = 3;
       const delayMs = 2500;
+      let succeeded = false;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-package-purchase`, {
@@ -377,6 +378,7 @@ const PaymentSuccess = () => {
             const data = await r.json().catch(() => ({} as any));
             setPkgAdded(true);
             trackPackagePurchase(pkgSession, typeof data?.amountCents === "number" ? data.amountCents : null);
+            succeeded = true;
             break;
           }
           throw new Error(`HTTP ${r.status}`);
@@ -387,6 +389,7 @@ const PaymentSuccess = () => {
           }
         }
       }
+      if (!succeeded) setPkgVerifyFailed(true);
       setPkgConfirming(false);
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete("package_session_id"); return p; }, { replace: true });
     })();
