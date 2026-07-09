@@ -18,6 +18,7 @@ const ACTIVE_STATUSES = ["queued", "pending", "lyrics_generating", "audio_genera
 const MAX_AUTO_RETRIES = 3; // Max retry attempts before permanent failure
 const RETRY_BACKOFF_MINUTES = 10; // Wait at least 10 min before retrying
 const MAX_RETRIES_PER_RUN = 5; // Max failed items to reset per cron run
+const RUSH_BONUS_HOLD_MAX_MIN = 45; // Rush orders wait up to 45 min for in-flight bonus before shipping without it
 
 
 Deno.serve(async (req) => {
@@ -795,6 +796,22 @@ Deno.serve(async (req) => {
 
       for (const order of ordersToDeliver || []) {
         try {
+          // === RUSH BONUS HOLD ===
+          // For rush orders, briefly hold delivery so an in-flight bonus can ship with the main email.
+          // Hard cap so the 1-hour promise never breaks; failed bonuses never hold.
+          if (
+            order.rush_addon === true &&
+            !order.bonus_song_url &&
+            ["queued", "audio_generating"].includes(order.bonus_automation_status)
+          ) {
+            const ageMs = Date.now() - new Date(order.created_at).getTime();
+            const ageMin = Math.floor(ageMs / 60000);
+            if (ageMin < RUSH_BONUS_HOLD_MAX_MIN) {
+              console.log(`[RUSH-HOLD] order ${order.id} waiting for bonus, age ${ageMin}m`);
+              continue;
+            }
+          }
+
           // Input hash validation - check if inputs changed after generation
           const currentHash = await computeInputsHash([
             order.recipient_name || "",
