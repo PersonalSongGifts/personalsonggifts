@@ -9,6 +9,7 @@ interface CheckoutInput {
   pricingTier: "standard" | "priority";
   promoSlug?: string;
   additionalPromoCode?: string;
+  addons?: { forever_memory?: boolean; rush?: boolean };
   formData: {
     recipientType: string;
     recipientName: string;
