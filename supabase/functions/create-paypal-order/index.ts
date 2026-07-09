@@ -355,7 +355,13 @@ Deno.serve(async (req) => {
       metadata.rush = "true";
       metadata.rush_price_cents = String(rushCents);
     }
-    const totalCents = unitAmountCents + packageCents + rushCents;
+    let totalCents = unitAmountCents + packageCents + rushCents;
+    // Stripe floor parity: any non-zero charge must be at least $0.50 so both
+    // rails behave identically (ADMINTEST99 = 29¢ → 50¢). $0 free carts stay $0.
+    if (totalCents > 0 && totalCents < 50) {
+      unitAmountCents += 50 - totalCents;
+      totalCents = 50;
+    }
     const totalDollars = (totalCents / 100).toFixed(2);
     metadata.amount_total_cents = String(totalCents);
     void unitAmountDollars;

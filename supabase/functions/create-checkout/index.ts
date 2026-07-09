@@ -405,8 +405,16 @@ Deno.serve(async (req) => {
 
     // Stripe rejects checkout sessions that include payment_intent_data when
     // the total is $0 (no PaymentIntent is created). Match create-package-checkout.
-    const totalCents =
+    let totalCents =
       unitAmount + (foreverMemory ? packageCents : 0) + (rushAddon ? rushCents : 0);
+
+    // Stripe floor: any non-zero charge must be at least $0.50. Bump the base
+    // song line so the session-total math still adds up. $0 free-code carts stay $0.
+    if (totalCents > 0 && totalCents < 50) {
+      unitAmount += 50 - totalCents;
+      metadata.amount_total_cents = "50";
+      totalCents = 50;
+    }
 
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
