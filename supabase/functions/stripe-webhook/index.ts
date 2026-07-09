@@ -168,8 +168,11 @@ Deno.serve(async (req) => {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      // Only process if payment was successful
-      if (session.payment_status !== "paid") {
+      // Only process if payment was successful.
+      // $0 free-code sessions come back as payment_status "no_payment_required" with status "complete".
+      const isFree = (session.amount_total ?? 0) === 0;
+      const isPaid = session.payment_status === "paid" || (isFree && session.status === "complete");
+      if (!isPaid) {
         console.log(`Skipping session ${session.id} - payment_status: ${session.payment_status}`);
         return new Response(
           JSON.stringify({ received: true, skipped: "payment not completed" }),
