@@ -205,6 +205,13 @@ Deno.serve(async (req) => {
           JSON.stringify({ error: "Order not found", code: "ORDER_NOT_FOUND" }),
           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      } else if (err.includes("INSTRUMENT_DECLINED")) {
+        // Definitive: PayPal declined the buyer's payment method. Buyer has NOT
+        // been charged and per PayPal docs may safely restart checkout.
+        return new Response(
+          JSON.stringify({ error: "Payment method declined", code: "PAYMENT_DECLINED" }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       } else {
         return new Response(
           JSON.stringify({ error: "Failed to capture PayPal payment" }),
