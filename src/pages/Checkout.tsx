@@ -19,6 +19,7 @@ import {
   Pause,
   X,
   Sparkles,
+  Pencil,
 } from "lucide-react";
 import { FormData } from "@/pages/CreateSong";
 import ValentineDeliveryNotice from "@/components/checkout/ValentineDeliveryNotice";
@@ -37,6 +38,7 @@ import { useActivePromo } from "@/hooks/useActivePromo";
 const BASE_SONG_CENTS = 2900;              // live charge for a Standard custom song
 const ADDON_PRICES_CENTS = { forever_memory: 2400, rush: 1000 } as const;
 const PACKAGE_ANCHOR_CENTS = 3700;         // struck-through anchor for Forever Memory bump
+const FORMER_LIST_ANCHOR_CENTS = 4999;     // PSG's own former live price (real anchor)
 type AddonKey = keyof typeof ADDON_PRICES_CENTS;
 
 interface AdditionalPromo {
