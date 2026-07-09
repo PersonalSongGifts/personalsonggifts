@@ -180,7 +180,7 @@ const PaymentSuccess = () => {
 
   useEffect(() => {
     if (!sessionId && !paypalToken) {
-      setError("No session ID found. Please contact support if you completed a payment.");
+      setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
       setLoading(false);
       return;
     }
@@ -231,7 +231,7 @@ const PaymentSuccess = () => {
     }
 
     if (!sessionId) {
-      setError("No session ID found. Please contact support if you completed a payment.");
+      setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
       setLoading(false);
       return;
     }
@@ -401,20 +401,73 @@ const PaymentSuccess = () => {
   }
 
   if (error) {
+    // If we have a payment identifier in the URL, the customer's card WAS charged.
+    // Never suggest they retry checkout — that would risk a double purchase.
+    const paymentAttempted = !!(sessionId || paypalToken);
+    const supportRef = sessionId || paypalToken || "";
+    const supportSubject = encodeURIComponent(
+      `Order finalization help${supportRef ? ` — ref ${supportRef.slice(0, 20)}` : ""}`
+    );
+    const supportBody = encodeURIComponent(
+      `Hi — my payment went through but the confirmation page is still loading.\n\n` +
+      `Reference: ${supportRef}\n\nPlease help me finalize my order. Thanks!`
+    );
+    const mailto = `mailto:support@personalsonggifts.com?subject=${supportSubject}&body=${supportBody}`;
+
+    if (paymentAttempted) {
+      return (
+        <Layout showPromoBanner={false}>
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <div className="text-center max-w-md">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check className="h-8 w-8 text-primary" />
+              </div>
+              <h2 className="text-xl font-semibold mb-2">
+                Your payment went through — we're finalizing your order
+              </h2>
+              <p className="text-muted-foreground mb-4">
+                Your card or PayPal was charged successfully. If this page doesn't
+                update in a minute, your order is still safe — email us with this
+                page open and we'll sort it instantly.
+              </p>
+              <p className="text-sm font-semibold text-destructive mb-6">
+                Please do not pay again.
+              </p>
+              {supportRef && (
+                <p className="text-xs text-muted-foreground mb-4">
+                  Reference for support:{" "}
+                  <span className="font-mono">{supportRef.slice(0, 24)}{supportRef.length > 24 ? "…" : ""}</span>
+                </p>
+              )}
+              <div className="space-y-3">
+                <Button onClick={() => window.location.reload()}>Refresh this page</Button>
+                <p className="text-sm text-muted-foreground">
+                  Still stuck? Email{" "}
+                  <a href={mailto} className="text-primary underline">
+                    support@personalsonggifts.com
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
     return (
       <Layout showPromoBanner={false}>
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center max-w-md">
             <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
+            <h2 className="text-xl font-semibold mb-2">We couldn't find your order</h2>
             <p className="text-muted-foreground mb-6">{error}</p>
             <div className="space-y-3">
               <Button asChild>
-                <Link to="/checkout">Try Again</Link>
+                <Link to="/create">Start a new song</Link>
               </Button>
               <p className="text-sm text-muted-foreground">
                 If you've been charged, please contact{" "}
-                <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
+                <a href={mailto} className="text-primary underline">
                   support@personalsonggifts.com
                 </a>
               </p>
@@ -434,9 +487,30 @@ const PaymentSuccess = () => {
     : orderDetails.rush_addon
       ? "1 hour"
       : orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
-  const expectedDate = orderDetails.expectedDelivery 
-    ? new Date(orderDetails.expectedDelivery) 
-    : new Date();
+  const expectedDate = orderDetails.expectedDelivery
+    ? new Date(orderDetails.expectedDelivery)
+    : null;
+
+  // Guard against past/near-now timestamps (rush windows that already elapsed, clock skew, etc.)
+  const NEAR_NOW_MS = 5 * 60 * 1000; // 5 minutes
+  const showConcreteDate =
+    !!expectedDate && expectedDate.getTime() > Date.now() + NEAR_NOW_MS;
+  const softDeliveryLabel = orderDetails.rush_addon ? "Within the hour" : "Shortly";
+
+  // Delivery-speed label (fix #4): derived from pricing_tier + rush_addon.
+  const deliverySpeedLabel = orderDetails.rush_addon
+    ? "Express (1 hour)"
+    : orderDetails.pricingTier === "priority"
+      ? "Priority (24 hours)"
+      : "Standard (48 hours)";
+
+  // Actual amount paid (fix #2): song price + captured add-ons. If unknown, show em dash.
+  const totalPaidCents =
+    typeof orderDetails.price === "number"
+      ? Math.round(orderDetails.price * 100)
+        + (orderDetails.package_addon_cents || 0)
+        + (orderDetails.rush_addon_cents || 0)
+      : null;
 
   return (
     <Layout showPromoBanner={false}>
@@ -486,16 +560,15 @@ const PaymentSuccess = () => {
                 <span className="text-foreground capitalize">{orderDetails.genre.replace("-", " ")}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Package:</span>
-                <span className="text-foreground capitalize">{orderDetails.pricingTier}</span>
+                <span className="text-muted-foreground">Delivery speed:</span>
+                <span className="text-foreground">{deliverySpeedLabel}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Price paid:</span>
                 <span className="text-foreground font-medium">
-                  ${(
-                    (orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99))
-                    + ((orderDetails.package_addon_cents || 0) + (orderDetails.rush_addon_cents || 0)) / 100
-                  ).toFixed(2)} USD
+                  {totalPaidCents !== null
+                    ? `$${(totalPaidCents / 100).toFixed(2)} USD`
+                    : "—"}
                 </span>
               </div>
             </div>
@@ -527,13 +600,15 @@ const PaymentSuccess = () => {
                 Within {deliveryTime}
               </p>
               <p className="text-sm text-muted-foreground">
-                By {expectedDate.toLocaleDateString("en-US", { 
-                  weekday: "long",
-                  month: "long", 
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit"
-                })}
+                {showConcreteDate
+                  ? `By ${expectedDate!.toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}`
+                  : softDeliveryLabel}
               </p>
               {orderDetails.rush_addon && (
                 <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-primary">
