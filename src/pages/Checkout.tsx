@@ -175,6 +175,13 @@ const Checkout = () => {
       total: totalCents / 100,
     };
   }, [selectedTier, additionalPromo, activeFlashPromo]);
+
+  // 100%-off codes zero the WHOLE cart server-side (song + add-ons). Mirror that
+  // in the UI so displayed totals match what will actually be charged.
+  const isFullyFreeCode = additionalPromo?.percent_off === 100;
+  const effectiveAddonsCents = isFullyFreeCode ? 0 : addonsTotalCents;
+  const grandTotal = pricing.total + effectiveAddonsCents / 100;
+  const isZeroTotal = grandTotal <= 0;
   
   const handleApplyPromo = async () => {
     const code = promoCode.trim();
