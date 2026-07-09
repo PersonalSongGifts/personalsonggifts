@@ -401,20 +401,73 @@ const PaymentSuccess = () => {
   }
 
   if (error) {
+    // If we have a payment identifier in the URL, the customer's card WAS charged.
+    // Never suggest they retry checkout — that would risk a double purchase.
+    const paymentAttempted = !!(sessionId || paypalToken);
+    const supportRef = sessionId || paypalToken || "";
+    const supportSubject = encodeURIComponent(
+      `Order finalization help${supportRef ? ` — ref ${supportRef.slice(0, 20)}` : ""}`
+    );
+    const supportBody = encodeURIComponent(
+      `Hi — my payment went through but the confirmation page is still loading.\n\n` +
+      `Reference: ${supportRef}\n\nPlease help me finalize my order. Thanks!`
+    );
+    const mailto = `mailto:support@personalsonggifts.com?subject=${supportSubject}&body=${supportBody}`;
+
+    if (paymentAttempted) {
+      return (
+        <Layout showPromoBanner={false}>
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <div className="text-center max-w-md">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check className="h-8 w-8 text-primary" />
+              </div>
+              <h2 className="text-xl font-semibold mb-2">
+                Your payment went through — we're finalizing your order
+              </h2>
+              <p className="text-muted-foreground mb-4">
+                Your card or PayPal was charged successfully. If this page doesn't
+                update in a minute, your order is still safe — email us with this
+                page open and we'll sort it instantly.
+              </p>
+              <p className="text-sm font-semibold text-destructive mb-6">
+                Please do not pay again.
+              </p>
+              {supportRef && (
+                <p className="text-xs text-muted-foreground mb-4">
+                  Reference for support:{" "}
+                  <span className="font-mono">{supportRef.slice(0, 24)}{supportRef.length > 24 ? "…" : ""}</span>
+                </p>
+              )}
+              <div className="space-y-3">
+                <Button onClick={() => window.location.reload()}>Refresh this page</Button>
+                <p className="text-sm text-muted-foreground">
+                  Still stuck? Email{" "}
+                  <a href={mailto} className="text-primary underline">
+                    support@personalsonggifts.com
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
     return (
       <Layout showPromoBanner={false}>
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center max-w-md">
             <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
+            <h2 className="text-xl font-semibold mb-2">We couldn't find your order</h2>
             <p className="text-muted-foreground mb-6">{error}</p>
             <div className="space-y-3">
               <Button asChild>
-                <Link to="/checkout">Try Again</Link>
+                <Link to="/create">Start a new song</Link>
               </Button>
               <p className="text-sm text-muted-foreground">
                 If you've been charged, please contact{" "}
-                <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
+                <a href={mailto} className="text-primary underline">
                   support@personalsonggifts.com
                 </a>
               </p>
