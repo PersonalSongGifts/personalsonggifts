@@ -760,24 +760,33 @@ const PaymentSuccess = () => {
             </Card>
           )}
 
-          {/* Forever Memory Package upsell */}
-          {(() => {
-            const flagEnabled = import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" || searchParams.get("preview") === "1";
-            if (!orderDetails?.orderId) return null;
-            // Owned confirmation must ALWAYS render (regardless of flag) — paid customers must see what they bought.
+          {/* Sequential post-purchase offers — bundle FIRST, then rush */}
+          {orderDetails?.orderId && (() => {
+            const declineButton = (onClick: () => void, testId: string) => (
+              <button
+                type="button"
+                onClick={onClick}
+                data-testid={testId}
+                className="mt-4 text-sm text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                No thanks — maybe later
+              </button>
+            );
+
+            // ---------------- Card 1: Forever Memory Package ----------------
+            let card1: JSX.Element | null = null;
             if (pkgConfirming && !pkgAdded) {
-              return (
-                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+              card1 = (
+                <Card className="p-6 mb-6 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="h-5 w-5 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">Confirming your package purchase…</p>
                   </div>
                 </Card>
               );
-            }
-            if (pkgAdded) {
-              return (
-                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+            } else if (pkgAdded) {
+              card1 = (
+                <Card className="p-6 mb-6 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
                   <div className="flex items-center justify-center gap-2 mb-1">
                     <Check className="h-5 w-5 text-primary" />
                     <h3 className="font-semibold text-foreground">Forever Memory Package added ✓</h3>
@@ -789,18 +798,15 @@ const PaymentSuccess = () => {
                   </p>
                 </Card>
               );
-            }
-            // Verify failed after retries — we can NOT know for sure whether they paid.
-            // Never show the sell card in this state (would push a second $24 charge).
-            if (pkgVerifyFailed) {
-              return (
-                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+            } else if (pkgVerifyFailed) {
+              card1 = (
+                <Card className="p-6 mb-6 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
                   <div className="flex items-center justify-center gap-2 mb-2">
                     <Loader2 className="h-5 w-5 text-primary" />
                     <h3 className="font-semibold text-foreground">We're confirming your package purchase</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    If you just completed the $24 checkout, you're all set and don't need
+                    If you just completed the checkout, you're all set and don't need
                     to buy again. This can take a minute — refresh shortly, or email{" "}
                     <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
                       support@personalsonggifts.com
@@ -809,74 +815,155 @@ const PaymentSuccess = () => {
                   </p>
                 </Card>
               );
-            }
-            // Sell card only when flag enabled and package not yet owned.
-            if (!flagEnabled) return null;
-            return (
-              <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
-                <p className="text-xs uppercase tracking-wide text-primary font-semibold mb-2">Complete the gift</p>
-                <div className="flex items-center justify-center gap-2 mb-3">
-                  <Gift className="h-5 w-5 text-primary" />
-                  <h3 className="text-xl font-bold text-foreground">Forever Memory Package</h3>
-                </div>
-                <ul className="text-sm text-left max-w-xs mx-auto space-y-1.5 mb-4">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span className="text-muted-foreground">Printable lyric art keepsake</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span className="text-muted-foreground">Custom album cover made from your photo</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span className="text-muted-foreground">Full lyrics</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span className="text-muted-foreground">High-quality download</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span className="text-muted-foreground">Acoustic version</span>
-                  </li>
-                </ul>
-                <div className="flex items-baseline justify-center gap-2 mb-1">
-                  <span className="text-3xl font-bold text-primary">$24</span>
-                  <span className="text-sm text-muted-foreground line-through">$45 value</span>
-                </div>
-                <p className="text-xs text-muted-foreground mb-4">
-                  {isLeadConversion
-                    ? <>Everything unlocks on {orderDetails.recipientName}'s song page — available right now.</>
-                    : <>Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.</>}
-                </p>
-                <Button size="lg" disabled={pkgLoading} onClick={handleAddPackage} className="gap-2">
-                  {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
-                  Add the Forever Memory Package
-                </Button>
-                <div className="mt-3">
-                  {!showPkgCode ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowPkgCode(true)}
-                      className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-                    >
-                      Have a promo code?
-                    </button>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1">
-                      <Input
-                        value={pkgCode}
-                        onChange={(e) => { setPkgCode(e.target.value); if (pkgError) setPkgError(null); }}
-                        placeholder="Promo code"
-                        className="max-w-[200px] text-center"
-                      />
-                      {pkgError && <p className="text-xs text-red-600">{pkgError}</p>}
+            } else if (!pkgDeclined) {
+              card1 = (
+                <Card className="p-0 mb-6 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-900 text-xs font-semibold">
+                    <Clock className="h-3.5 w-3.5" />
+                    Limited-time offer — today only
+                  </div>
+                  <div className="p-6 text-center">
+                    <div className="flex items-center justify-center gap-2 mb-3">
+                      <Gift className="h-5 w-5 text-primary" />
+                      <h3 className="text-xl font-bold text-foreground">Forever Memory Package</h3>
                     </div>
-                  )}
-                </div>
-              </Card>
-            );
+                    <ul className="text-sm text-left max-w-sm mx-auto space-y-2 mb-4">
+                      <li className="flex items-start gap-2">
+                        <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                        <span className="text-muted-foreground">A frameable lyric keepsake with a QR code — scan to play the song anytime</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                        <span className="text-muted-foreground">Your photo turned into custom cover art for the song</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                        <span className="text-muted-foreground">A bonus version of the song in a second style</span>
+                      </li>
+                    </ul>
+                    <div className="flex items-baseline justify-center gap-2 mb-1">
+                      <span className="text-sm text-muted-foreground line-through">$22.00</span>
+                      <span className="text-3xl font-bold text-primary">$12.00</span>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Save $10</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      {isLeadConversion
+                        ? <>Everything unlocks on {orderDetails.recipientName}'s song page — available right now.</>
+                        : <>Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.</>}
+                    </p>
+                    <Button size="lg" disabled={pkgLoading} onClick={handleAddPackage} className="gap-2 w-full sm:w-auto">
+                      {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
+                      Complete the Gift
+                    </Button>
+                    <div className="mt-3">
+                      {!showPkgCode ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowPkgCode(true)}
+                          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                        >
+                          Have a promo code?
+                        </button>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1">
+                          <Input
+                            value={pkgCode}
+                            onChange={(e) => { setPkgCode(e.target.value); if (pkgError) setPkgError(null); }}
+                            placeholder="Promo code"
+                            className="max-w-[200px] text-center"
+                          />
+                          {pkgError && <p className="text-xs text-red-600">{pkgError}</p>}
+                        </div>
+                      )}
+                    </div>
+                    {declineButton(() => setPkgDeclined(true), "decline-package")}
+                  </div>
+                </Card>
+              );
+            }
+
+            // Card 2 gate: only after Card 1 is fully resolved (added, verified-fail, declined, or confirming-done).
+            const pkgResolved = pkgAdded || pkgDeclined || pkgVerifyFailed;
+            const rushEligible = !isLeadConversion && !orderDetails.rush_addon;
+
+            let card2: JSX.Element | null = null;
+            if (pkgResolved && rushEligible) {
+              if (rushConfirming && !rushAdded) {
+                card2 = (
+                  <Card className="p-6 mb-6 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Locking in 1-hour delivery…</p>
+                    </div>
+                  </Card>
+                );
+              } else if (rushAdded) {
+                card2 = (
+                  <Card className="p-6 mb-6 text-center border-primary/40 bg-primary/5">
+                    <div className="flex items-center justify-center gap-2 mb-1">
+                      <Check className="h-5 w-5 text-primary" />
+                      <h3 className="font-semibold text-foreground">1-hour delivery locked in ✓</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Your song will arrive within the hour.</p>
+                  </Card>
+                );
+              } else if (rushVerifyFailed) {
+                card2 = (
+                  <Card className="p-6 mb-6 text-center">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Loader2 className="h-5 w-5 text-primary" />
+                      <h3 className="font-semibold text-foreground">We're confirming your rush upgrade</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      If you just completed the checkout, you're all set and don't need
+                      to buy again. This can take a minute — refresh shortly, or email{" "}
+                      <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
+                        support@personalsonggifts.com
+                      </a>{" "}
+                      if it doesn't update.
+                    </p>
+                  </Card>
+                );
+              } else if (!rushDeclined) {
+                card2 = (
+                  <Card className="p-6 mb-6 text-center bg-neutral-900 text-neutral-100 border-neutral-800">
+                    <div className="flex items-center justify-center gap-2 mb-3">
+                      <Zap className="h-5 w-5 text-amber-400" />
+                      <h3 className="text-xl font-bold">Guarantee 1-Hour Delivery</h3>
+                    </div>
+                    <p className="text-sm text-neutral-300 mb-4">
+                      Orders are filling up fast — lock in delivery within the hour.
+                    </p>
+                    <div className="flex items-baseline justify-center gap-2 mb-4">
+                      <span className="text-sm text-neutral-400 line-through">$10.00</span>
+                      <span className="text-3xl font-bold">$6.99</span>
+                    </div>
+                    <Button
+                      size="lg"
+                      disabled={rushLoading}
+                      onClick={handleAddRush}
+                      className="gap-2 w-full sm:w-auto bg-amber-400 hover:bg-amber-300 text-neutral-900"
+                    >
+                      {rushLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                      Lock in 1-Hour Delivery
+                    </Button>
+                    {rushError && <p className="text-xs text-red-300 mt-2">{rushError}</p>}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setRushDeclined(true)}
+                        data-testid="decline-rush"
+                        className="mt-4 text-sm text-neutral-400 hover:text-neutral-200 underline underline-offset-2"
+                      >
+                        No thanks — maybe later
+                      </button>
+                    </div>
+                  </Card>
+                );
+              }
+            }
+
+            return (<>{card1}{card2}</>);
           })()}
 
           {/* Email whitelist notice — only for new orders, not instant lead conversions */}
