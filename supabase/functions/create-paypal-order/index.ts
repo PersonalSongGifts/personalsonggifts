@@ -335,12 +335,7 @@ Deno.serve(async (req) => {
     // Add-ons: Forever Memory Package ($24) and 1-Hour Express rush ($10)
     const foreverMemory = input.addons?.forever_memory === true;
     const rushAddon = input.addons?.rush === true;
-    if (rushAddon && pricingTier !== "priority") {
-      return new Response(
-        JSON.stringify({ error: "1-hour Express delivery is available with the Express package." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Rush is allowed on any tier (standard or priority).
     const PACKAGE_ADDON_PRICE_CENTS = 2400;
     const RUSH_PRICE_CENTS = 1000;
     const packageCents = foreverMemory ? (FREE_TEST_CODES[upperAdditional] ? 0 : PACKAGE_ADDON_PRICE_CENTS) : 0;
