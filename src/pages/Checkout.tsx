@@ -120,6 +120,13 @@ const Checkout = () => {
     (addonsEnabled && selectedAddons.forever_memory ? ADDON_PRICES_CENTS.forever_memory : 0) +
     (rushSelected ? ADDON_PRICES_CENTS.rush : 0);
 
+  // 100%-off codes zero the WHOLE cart server-side (song + add-ons). Mirror that
+  // in the UI so displayed totals match what will actually be charged.
+  const isFullyFreeCode = additionalPromo?.percent_off === 100;
+  const effectiveAddonsCents = isFullyFreeCode ? 0 : addonsTotalCents;
+  const grandTotal = pricing.total + effectiveAddonsCents / 100;
+  const isZeroTotal = grandTotal <= 0;
+
   // Auto-detect user timezone
   const userTimezone = useMemo(() => {
     try {
@@ -254,7 +261,7 @@ const Checkout = () => {
     
     setIsSubmitting(true);
     
-    const checkoutValue = pricing.total;
+    const checkoutValue = grandTotal;
     trackMetaEvent('InitiateCheckout', {
       value: checkoutValue,
       currency: 'USD',
@@ -345,7 +352,7 @@ const Checkout = () => {
     
     setIsPayPalLoading(true);
     
-    const checkoutValue = pricing.total;
+    const checkoutValue = grandTotal;
     trackMetaEvent('InitiateCheckout', { value: checkoutValue, currency: 'USD' });
     trackGAEvent('begin_checkout', {
       currency: 'USD',
