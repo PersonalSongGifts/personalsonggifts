@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { Music, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useActivePromo } from "@/hooks/useActivePromo";
 
@@ -47,7 +47,36 @@ const PromoBanner = () => {
     return () => clearInterval(interval);
   }, [endIso]);
 
-  if (!isVisible || loading || !promo.active || !promo.showBanner) return null;
+  if (!isVisible) return null;
+
+  // Default evergreen banner when no admin-configured promo is active.
+  // Keeps the flash-promo path fully functional above this fallback.
+  if (loading) return null;
+  if (!promo.active || !promo.showBanner) {
+    return (
+      <div className="relative py-2.5 px-4 bg-primary text-primary-foreground">
+        <div className="container mx-auto flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 text-sm md:text-base text-center">
+          <span className="inline-flex items-center gap-2 font-medium">
+            <Music className="h-4 w-4" aria-hidden="true" />
+            Custom songs from $29 — delivered in 24 hours
+          </span>
+          <Link
+            to="/create"
+            className="underline underline-offset-2 hover:no-underline font-semibold ml-0 sm:ml-1"
+          >
+            Create Your Song →
+          </Link>
+        </div>
+        <button
+          onClick={() => setIsVisible(false)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-primary-foreground/10 rounded-full transition-colors"
+          aria-label="Dismiss banner"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
 
   const bannerText = `${promo.bannerEmoji || "🔥"} ${promo.bannerText || "Limited Time Sale!"}`;
   const endLabel = endIso

@@ -24,8 +24,15 @@ const RefundPolicy = () => {
               <li>One complimentary remake per order if you're not happy with your song.</li>
               <li>Email <a href="mailto:support@personalsonggifts.com" className="text-primary hover:underline">support@personalsonggifts.com</a> within 7 days of delivery with your order number and what you'd like changed.</li>
               <li>You can also make quick self-service edits directly from your song page.</li>
-              <li>Remakes are typically delivered within 48 hours (24 hours for priority orders).</li>
+              <li>Remakes are typically delivered within 24 hours.</li>
             </ul>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold mb-3">Delivery timing</h2>
+            <p className="text-muted-foreground leading-relaxed">
+              Standard delivery arrives within about 24 hours. Express (1-hour) delivery is available at checkout as a paid upgrade. Delivery windows are estimates, not guarantees — production times can vary with volume and creative iteration. If an Express order does not arrive meaningfully faster than a standard order would have, the Express fee is refundable on request. Email <a href="mailto:support@personalsonggifts.com" className="text-primary hover:underline">support@personalsonggifts.com</a> and we'll make it right.
+            </p>
           </section>
 
           <section>
