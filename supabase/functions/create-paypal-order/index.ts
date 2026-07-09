@@ -294,6 +294,7 @@ Deno.serve(async (req) => {
           .from("promotions")
           .select("*")
           .eq("is_active", true)
+          .eq("targeted", false)
           .lte("starts_at", new Date().toISOString())
           .gte("ends_at", new Date().toISOString())
           .maybeSingle();
@@ -359,6 +360,7 @@ Deno.serve(async (req) => {
 
     // Get PayPal access token
     const accessToken = await getPayPalAccessToken();
+    const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
 
     // Create PayPal order
     const paypalResponse = await fetch("https://api-m.paypal.com/v2/checkout/orders", {
@@ -381,8 +383,8 @@ Deno.serve(async (req) => {
         application_context: {
           brand_name: "Personal Song Gifts",
           user_action: "PAY_NOW",
-          return_url: "https://personalsonggifts.lovable.app/payment-success",
-          cancel_url: "https://personalsonggifts.lovable.app/checkout",
+          return_url: `${origin}/payment-success`,
+          cancel_url: `${origin}/checkout`,
         },
       }),
     });

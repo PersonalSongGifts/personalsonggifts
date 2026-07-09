@@ -292,6 +292,36 @@ Deno.serve(async (req) => {
     } : {};
     const rushFields = rushAddon ? { rush_addon: true, rush_price_cents: rushAddonCents } : {};
 
+    // Narrow the duplicate-insert race window: re-check for an existing order
+    // one more time immediately before insert (idempotency safety net).
+    {
+      const { data: preInsertExisting } = await supabase
+        .from("orders")
+        .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_price_cents, package_unlock_session_id, rush_addon, rush_price_cents")
+        .eq("notes", `paypal_order:${orderID}`)
+        .maybeSingle();
+      if (preInsertExisting) {
+        return new Response(
+          JSON.stringify({
+            orderId: preInsertExisting.id,
+            recipientName: preInsertExisting.recipient_name,
+            occasion: preInsertExisting.occasion,
+            genre: preInsertExisting.genre,
+            pricingTier: preInsertExisting.pricing_tier,
+            customerEmail: preInsertExisting.customer_email,
+            expectedDelivery: preInsertExisting.expected_delivery,
+            price: preInsertExisting.price_cents != null ? preInsertExisting.price_cents / 100 : undefined,
+            revisionToken: preInsertExisting.revision_token,
+            package_unlocked: !!preInsertExisting.package_unlocked_at,
+            package_addon_cents: preInsertExisting.package_unlock_session_id === `paypal_${orderID}` ? (preInsertExisting.package_price_cents || 0) : 0,
+            rush_addon: !!preInsertExisting.rush_addon,
+            rush_addon_cents: preInsertExisting.rush_addon ? (preInsertExisting.rush_price_cents || 0) : 0,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const { data: newOrder, error: insertError } = await supabase
       .from("orders")
       .insert({
