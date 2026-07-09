@@ -343,7 +343,7 @@ Deno.serve(async (req) => {
     const foreverMemory = input.addons?.forever_memory === true;
     const rushAddon = input.addons?.rush === true;
     // Rush is allowed on any tier (standard or priority).
-    const PACKAGE_ADDON_PRICE_CENTS = 1300;
+    const PACKAGE_ADDON_PRICE_CENTS = 2400;
     const RUSH_PRICE_CENTS = 1000;
     const packageCents = foreverMemory ? (FREE_TEST_CODES[upperAdditional] ? 0 : PACKAGE_ADDON_PRICE_CENTS) : 0;
     const rushCents = rushAddon ? (FREE_TEST_CODES[upperAdditional] ? 0 : RUSH_PRICE_CENTS) : 0;

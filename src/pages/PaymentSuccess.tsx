@@ -897,9 +897,9 @@ const PaymentSuccess = () => {
                       </li>
                     </ul>
                     <div className="flex items-baseline justify-center gap-2 mb-1">
-                      <span className="text-sm text-muted-foreground line-through">$22.00</span>
-                      <span className="text-3xl font-bold text-primary">$12.00</span>
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Save $10</span>
+                      <span className="text-sm text-muted-foreground line-through">$37.00</span>
+                      <span className="text-3xl font-bold text-primary">$24.00</span>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Save $13</span>
                     </div>
                     <p className="text-xs text-muted-foreground mb-4">
                       {isLeadConversion

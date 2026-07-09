@@ -35,8 +35,8 @@ import { useActivePromo } from "@/hooks/useActivePromo";
 // these values are kept in lock-step with create-checkout / create-paypal-order.
 // -----------------------------------------------------------------------------
 const BASE_SONG_CENTS = 2900;              // live charge for a Standard custom song
-const ADDON_PRICES_CENTS = { forever_memory: 1300, rush: 1000 } as const;
-const PACKAGE_ANCHOR_CENTS = 2200;         // struck-through anchor for Forever Memory bump
+const ADDON_PRICES_CENTS = { forever_memory: 2400, rush: 1000 } as const;
+const PACKAGE_ANCHOR_CENTS = 3700;         // struck-through anchor for Forever Memory bump
 type AddonKey = keyof typeof ADDON_PRICES_CENTS;
 
 interface AdditionalPromo {
@@ -591,7 +591,7 @@ const Checkout = () => {
                         Most Popular
                       </span>
                       <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                        Save $9
+                        Save $13
                       </span>
                     </div>
                     <div className="text-right whitespace-nowrap">
