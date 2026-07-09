@@ -56,6 +56,13 @@ const PaymentSuccess = () => {
   const [pkgError, setPkgError] = useState<string | null>(null);
   const [pkgConfirming, setPkgConfirming] = useState(false);
   const [pkgVerifyFailed, setPkgVerifyFailed] = useState(false);
+  const [pkgDeclined, setPkgDeclined] = useState(false);
+  const [rushLoading, setRushLoading] = useState(false);
+  const [rushAdded, setRushAdded] = useState(false);
+  const [rushError, setRushError] = useState<string | null>(null);
+  const [rushConfirming, setRushConfirming] = useState(false);
+  const [rushVerifyFailed, setRushVerifyFailed] = useState(false);
+  const [rushDeclined, setRushDeclined] = useState(false);
 
   const trackAddonPurchase = useCallback((
     kind: "pkg" | "rush",
@@ -178,6 +185,34 @@ const PaymentSuccess = () => {
       setPkgError("Network error. Please try again.");
     } finally {
       setPkgLoading(false);
+    }
+  };
+
+  const handleAddRush = async () => {
+    if (!orderDetails?.orderId) return;
+    setRushLoading(true);
+    setRushError(null);
+    try {
+      const returnPath = window.location.pathname + window.location.search;
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-rush-upgrade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: orderDetails.orderId, returnPath }),
+      });
+      const data = await r.json();
+      if (data.alreadyRush) {
+        setRushAdded(true);
+        setOrderDetails(prev => prev ? { ...prev, rush_addon: true } : prev);
+        return;
+      }
+      if (data.url) { window.location.href = data.url; return; }
+      setRushError(data.error || "Something went wrong. Please try again.");
+      console.error("Rush upgrade failed:", data.error);
+    } catch (e) {
+      console.error("Rush upgrade error:", e);
+      setRushError("Network error. Please try again.");
+    } finally {
+      setRushLoading(false);
     }
   };
 
@@ -392,6 +427,50 @@ const PaymentSuccess = () => {
       if (!succeeded) setPkgVerifyFailed(true);
       setPkgConfirming(false);
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete("package_session_id"); return p; }, { replace: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Verify rush upgrade return — mirrors package verify.
+  useEffect(() => {
+    const rushSession = searchParams.get("rush_session_id");
+    if (!rushSession) return;
+    setRushConfirming(true);
+    (async () => {
+      const maxAttempts = 3;
+      const delayMs = 2500;
+      let succeeded = false;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-rush-upgrade`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: rushSession }),
+          });
+          if (r.ok) {
+            const data = await r.json().catch(() => ({} as any));
+            setRushAdded(true);
+            const amt = typeof data?.amountCents === "number" ? data.amountCents : null;
+            setOrderDetails(prev => prev ? {
+              ...prev,
+              rush_addon: true,
+              rush_addon_cents: (prev.rush_addon_cents || 0) + (amt || 0),
+            } : prev);
+            trackAddonPurchase("rush", rushSession, amt);
+            succeeded = true;
+            break;
+          }
+          throw new Error(`HTTP ${r.status}`);
+        } catch (e) {
+          console.error(`Rush verification attempt ${attempt} failed:`, e);
+          if (attempt < maxAttempts) {
+            await new Promise(res => setTimeout(res, delayMs));
+          }
+        }
+      }
+      if (!succeeded) setRushVerifyFailed(true);
+      setRushConfirming(false);
+      setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete("rush_session_id"); return p; }, { replace: true });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
