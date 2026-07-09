@@ -923,6 +923,8 @@ Deno.serve(async (req) => {
               isRevision: (order.revision_count || 0) > 0,
               bonusAvailable: !!order.bonus_song_url,
               bonusSongTitle: order.bonus_song_title,
+              bonusPending: !order.bonus_song_url && ["queued", "audio_generating"].includes(order.bonus_automation_status),
+              bonusPendingStyleLabel: (order.bonus_style_prompt && String(order.bonus_style_prompt).includes("R&B")) ? "R&B" : "acoustic",
               }),
             }
           );
@@ -1045,6 +1047,8 @@ Deno.serve(async (req) => {
               isRevision: (order.revision_count || 0) > 0,
               bonusAvailable: !!order.bonus_song_url,
               bonusSongTitle: order.bonus_song_title,
+              bonusPending: !order.bonus_song_url && ["queued", "audio_generating"].includes(order.bonus_automation_status),
+              bonusPendingStyleLabel: (order.bonus_style_prompt && String(order.bonus_style_prompt).includes("R&B")) ? "R&B" : "acoustic",
             }),
           });
 
@@ -1143,6 +1147,8 @@ Deno.serve(async (req) => {
               isRevision: (order.revision_count || 0) > 0,
               bonusAvailable: !!order.bonus_song_url,
               bonusSongTitle: order.bonus_song_title,
+              bonusPending: !order.bonus_song_url && ["queued", "audio_generating"].includes(order.bonus_automation_status),
+              bonusPendingStyleLabel: (order.bonus_style_prompt && String(order.bonus_style_prompt).includes("R&B")) ? "R&B" : "acoustic",
             }),
           });
 
