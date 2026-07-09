@@ -19,6 +19,7 @@ const MAX_AUTO_RETRIES = 3; // Max retry attempts before permanent failure
 const RETRY_BACKOFF_MINUTES = 10; // Wait at least 10 min before retrying
 const MAX_RETRIES_PER_RUN = 5; // Max failed items to reset per cron run
 const RUSH_BONUS_HOLD_MAX_MIN = 45; // Rush orders wait up to 45 min for in-flight bonus before shipping without it
+const MIN_DELIVERY_AGE_MIN = 30;    // Belt-and-suspenders floor: no initial delivery email before 30 min post-order (exempts lead conversions)
 
 
 Deno.serve(async (req) => {
@@ -796,6 +797,18 @@ Deno.serve(async (req) => {
 
       for (const order of ordersToDeliver || []) {
         try {
+          // === 30-MIN DELIVERY FLOOR ===
+          // No initial delivery email may ever go out sooner than 30 min post-order,
+          // regardless of target_send_at (guards against clock skew / admin edits / future
+          // code setting an early target). Lead conversions are exempt (instant-by-design).
+          if (order.source !== "lead_conversion") {
+            const ageMinAll = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
+            if (ageMinAll < MIN_DELIVERY_AGE_MIN) {
+              console.log(`[MIN-AGE-HOLD] order ${order.id} age ${ageMinAll}m, holding until 30m`);
+              continue;
+            }
+          }
+
           // === RUSH BONUS HOLD ===
           // For rush orders, briefly hold delivery so an in-flight bonus can ship with the main email.
           // Hard cap so the 1-hour promise never breaks; failed bonuses never hold.
@@ -876,7 +889,14 @@ Deno.serve(async (req) => {
           }
 
           // Claim row for delivery (prevents duplicate processing)
-          // Use delivered_at as timestamp marker for stuck detection
+          // Use delivered_at as timestamp marker for stuck detection.
+          // NOTE: The prior batch-3 tightening added a `.or(delivery_status.is.null,scheduled,failed)`
+          // guard here to prevent double-claiming a row already in "delivering". PostgREST rejects
+          // that filter on UPDATE with 42703 ("column orders.delivery_status does not exist"),
+          // which took the entire delivery pipeline down. Reverting to the months-proven form
+          // (`.eq(id).is(sent_at,null)`). Double-claim protection now relies on the 15-min
+          // stuck-delivering reset above + the optimistic sent_at lock; a rare duplicate email
+          // is survivable, a dead pipeline is not.
           const { data: claimed, error: claimError } = await supabase
             .from("orders")
             .update({
@@ -885,7 +905,6 @@ Deno.serve(async (req) => {
             })
             .eq("id", order.id)
             .is("sent_at", null) // Optimistic lock
-            .or("delivery_status.is.null,delivery_status.eq.scheduled,delivery_status.eq.failed") // Prevent double-claim of an in-flight ("delivering") row
             .select("id");
 
           if (claimError) throw claimError;
