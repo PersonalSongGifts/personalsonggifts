@@ -489,6 +489,14 @@ Deno.serve(async (req) => {
         return new Response("Audio generation failed", { status: 200, headers: corsHeaders });
 
       case "SENSITIVE_WORD_ERROR": {
+        // Bonus callbacks must not touch primary song state.
+        if (isBonusCallback) {
+          await supabase.from(tableName).update({
+            bonus_automation_status: "failed",
+            bonus_automation_last_error: `[CALLBACK] Bonus content filtered by Suno: ${task?.errorMessage || "Sensitive content detected"}`,
+          }).eq("id", entityId);
+          return new Response("Bonus content filtered", { status: 200, headers: corsHeaders });
+        }
         const newStrikes = ((entity.content_filter_strikes as number) || 0) + 1;
         const MAX_CONTENT_FILTER_STRIKES = 5;
         const hitCap = newStrikes >= MAX_CONTENT_FILTER_STRIKES;
@@ -503,7 +511,7 @@ Deno.serve(async (req) => {
           automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
           // Wipe the rejected lyrics so the next retry regenerates with the softening prompt
           ...(!hitCap ? { automation_lyrics: null, automation_task_id: null } : {}),
-          ...((!isBonusCallback && entity.bonus_automation_status === "audio_generating") ? {
+          ...((entity.bonus_automation_status === "audio_generating") ? {
             bonus_automation_status: "failed",
             bonus_automation_last_error: "Primary song generation failed",
           } : {}),
@@ -537,18 +545,28 @@ Deno.serve(async (req) => {
 
       case "CALLBACK_EXCEPTION":
         console.error(`[CALLBACK] Task ${taskId} callback error:`, task?.errorMessage);
-        await supabase
-          .from(tableName)
-          .update({
-            automation_status: "failed",
-            automation_last_error: `[CALLBACK] Callback exception: ${task?.errorMessage || "Unknown error"}`,
-            automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
-            ...((!isBonusCallback && entity.bonus_automation_status === "audio_generating") ? {
+        if (isBonusCallback) {
+          await supabase
+            .from(tableName)
+            .update({
               bonus_automation_status: "failed",
-              bonus_automation_last_error: "Primary song generation failed",
-            } : {}),
-          })
-          .eq("id", entityId);
+              bonus_automation_last_error: `[CALLBACK] Bonus callback exception: ${task?.errorMessage || "Unknown error"}`,
+            })
+            .eq("id", entityId);
+        } else {
+          await supabase
+            .from(tableName)
+            .update({
+              automation_status: "failed",
+              automation_last_error: `[CALLBACK] Callback exception: ${task?.errorMessage || "Unknown error"}`,
+              automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+              ...((entity.bonus_automation_status === "audio_generating") ? {
+                bonus_automation_status: "failed",
+                bonus_automation_last_error: "Primary song generation failed",
+              } : {}),
+            })
+            .eq("id", entityId);
+        }
         return new Response("Callback exception", { status: 200, headers: corsHeaders });
 
       case "SUCCESS":
