@@ -453,7 +453,7 @@ const Checkout = () => {
               ) : (
                 <>
                   <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
-                  {`${seasonalPromo.emoji} ${seasonalPromo.code} auto-applied at checkout`}
+                  {`${seasonalPromo.emoji} ${seasonalPromo.code} applied — reflected in prices below`}
                 </>
               )}
             </div>
