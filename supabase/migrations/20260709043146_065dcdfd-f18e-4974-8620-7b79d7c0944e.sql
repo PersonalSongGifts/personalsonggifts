@@ -1,0 +1,1 @@
+DELETE FROM public.orders WHERE id IN ('debf8880-b83c-4bd6-b977-906bb5b26e58','b61bd4a8-d702-4557-a188-0e7531098582') AND notes IN ('synthetic_claimtest','synthetic_minagetest');
