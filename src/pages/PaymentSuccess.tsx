@@ -180,7 +180,7 @@ const PaymentSuccess = () => {
 
   useEffect(() => {
     if (!sessionId && !paypalToken) {
-      setError("No session ID found. Please contact support if you completed a payment.");
+      setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
       setLoading(false);
       return;
     }
@@ -231,7 +231,7 @@ const PaymentSuccess = () => {
     }
 
     if (!sessionId) {
-      setError("No session ID found. Please contact support if you completed a payment.");
+      setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
       setLoading(false);
       return;
     }
