@@ -756,7 +756,7 @@ Deno.serve(async (req) => {
           price_cents: songPriceCents,    // canonical cents (song-only, excludes add-on)
           expected_delivery: effectiveExpectedDelivery,
           customer_name: metadata.customerName || "",
-          customer_email: metadata.customerEmail || session.customer_email || "",
+          customer_email: metadata.customerEmail || session.customer_email || session.customer_details?.email || "",
           customer_phone: metadata.customerPhone || null,
           recipient_type: metadata.recipientType || "",
           recipient_name: metadata.recipientName || "",
