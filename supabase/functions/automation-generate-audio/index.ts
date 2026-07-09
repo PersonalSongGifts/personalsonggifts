@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       throw new Error("KIE_API_KEY not configured");
     }
 
-    const { leadId, orderId } = await req.json();
+    const { leadId, orderId, bonusOnly = false } = await req.json();
     
     // Determine entity type
     const entityType = orderId ? "order" : "lead";
@@ -273,14 +273,18 @@ Deno.serve(async (req) => {
     }
 
     // Update entity with style selection and reset timer for accurate STUCK detection
-    await supabase
-      .from(tableName)
-      .update({ 
-        automation_status: "audio_generating",
-        automation_style_id: selectedStyle.id,
-        automation_started_at: new Date().toISOString(), // Reset timer for audio phase
-      })
-      .eq("id", entityId);
+    // (Skipped in bonusOnly mode — the primary song is already delivered and we
+    // must not overwrite its automation_status.)
+    if (!bonusOnly) {
+      await supabase
+        .from(tableName)
+        .update({ 
+          automation_status: "audio_generating",
+          automation_style_id: selectedStyle.id,
+          automation_started_at: new Date().toISOString(), // Reset timer for audio phase
+        })
+        .eq("id", entityId);
+    }
 
     // Increment style usage count
     if (selectedStyle.id) {
@@ -297,6 +301,10 @@ Deno.serve(async (req) => {
     // Use customMode for better quality: separate style, title, and lyrics
     const songTitle = entity.song_title || `Song for ${entity.recipient_name}`;
 
+    let taskId: string | null = null;
+    if (bonusOnly) {
+      console.log(`[AUDIO] bonusOnly=true — skipping primary Suno call, firing bonus block only`);
+    } else {
     console.log(`[AUDIO] Calling Suno API via Kie.ai`);
     console.log(`[AUDIO] Style: ${styleString.substring(0, 80)}...`);
     console.log(`[AUDIO] Title: ${songTitle}`);
@@ -362,7 +370,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const taskId = sunoData.data.taskId;
+    taskId = sunoData.data.taskId;
     console.log(`[AUDIO] ✅ Suno task created: ${taskId}`);
 
     // Store task ID for callback matching
@@ -373,6 +381,7 @@ Deno.serve(async (req) => {
 
     console.log(`[AUDIO] TaskId saved to ${entityType} ${entityId}`);
     console.log(`[AUDIO] Waiting for callback from Suno (1-3 minutes)`);
+    }
 
     // ========== BONUS ACOUSTIC TRACK (parallel generation) ==========
     let bonusResult: { taskId?: string; error?: string } = {};
@@ -386,12 +395,14 @@ Deno.serve(async (req) => {
         .maybeSingle();
       
       const bonusEnabled = (bonusEnabledSetting as { value: string } | null)?.value !== "false";
-      
-      // Skip for free/test orders
-      const priceCents = entityType === "order" ? (rawEntity.price_cents as number | null) : null;
-      const isFreeOrder = entityType === "order" && (!priceCents || priceCents <= 0);
-      
-      if (bonusEnabled && !isFreeOrder) {
+
+      // Previously gated on price_cents > 0 to skip "free/test" orders. That
+      // silently stripped the bonus track from every legitimate 100%-off
+      // redemption (influencer codes, HYPERDRIVETEST, etc.) once the 7/8
+      // pricing fix started recording price_cents=0 accurately. Bonus should
+      // run for every order that gets a primary song; disable via
+      // admin_settings.bonus_song_enabled if we ever need a kill switch.
+      if (bonusEnabled) {
         // Smart genre detection: if primary is acoustic, use R&B style instead
         const primaryGenre = (entity.genre || "").toLowerCase().trim();
         const isAcousticPrimary = primaryGenre === "acoustic";
@@ -477,7 +488,7 @@ Deno.serve(async (req) => {
           bonusResult = { error: `HTTP ${bonusResponse.status}` };
         }
       } else {
-        console.log(`[AUDIO] Bonus generation skipped (enabled=${bonusEnabled}, isFree=${isFreeOrder})`);
+        console.log(`[AUDIO] Bonus generation skipped (bonus_song_enabled=false)`);
       }
     } catch (bonusErr) {
       console.warn(`[AUDIO] Bonus generation error (non-fatal):`, bonusErr);
