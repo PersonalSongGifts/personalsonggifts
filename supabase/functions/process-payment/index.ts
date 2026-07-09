@@ -94,8 +94,11 @@ Deno.serve(async (req) => {
       throw retrieveErr;
     }
 
-    // Verify payment was successful
-    if (session.payment_status !== "paid") {
+    // Verify payment was successful.
+    // $0 free-code sessions come back as payment_status "no_payment_required" with status "complete".
+    const isFree = (session.amount_total ?? 0) === 0;
+    const isPaid = session.payment_status === "paid" || (isFree && session.status === "complete");
+    if (!isPaid) {
       return new Response(
         JSON.stringify({ error: "Payment not completed" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
