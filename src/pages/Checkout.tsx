@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Loader2,
   Tag,
+  Lock,
   X,
   Star
 
@@ -50,9 +51,9 @@ function getActivePromo() {
   const now = new Date();
   
   if (now < switchDate) {
-    return { code: "VALENTINES50", emoji: "💘" };
+    return { code: "VALENTINES50" };
   }
-  return { code: "WELCOME50", emoji: "🎵" };
+  return { code: "WELCOME50" };
 }
 
 // All pricing math in integer cents with Math.floor to avoid float drift.
@@ -447,12 +448,14 @@ const Checkout = () => {
               {activeFlashPromo.active ? (
                 <>
                   <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">SALE</span>
-                  {`${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name} — prices slashed!`}
+                  <Tag className="h-3.5 w-3.5" />
+                  {`${activeFlashPromo.name} — prices slashed!`}
                 </>
               ) : (
                 <>
                   <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
-                  {`${seasonalPromo.emoji} ${seasonalPromo.code} applied — reflected in prices below`}
+                  <Tag className="h-3.5 w-3.5" />
+                  {`${seasonalPromo.code} applied — reflected in prices below`}
                 </>
               )}
             </div>
@@ -802,14 +805,20 @@ const Checkout = () => {
               
               {/* Seasonal discount line */}
               <div className="flex justify-between items-center text-primary">
-                <span>{activeFlashPromo.active ? `${activeFlashPromo.bannerEmoji || "🔥"} ${activeFlashPromo.name}` : `${seasonalPromo.emoji} ${seasonalPromo.code}`} Discount:</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5" />
+                  {activeFlashPromo.active ? `${activeFlashPromo.name}` : `${seasonalPromo.code}`} Discount:
+                </span>
                 <span>-${pricing.seasonalSavings.toFixed(2)}</span>
               </div>
               
               {/* Additional promo discount line */}
               {additionalPromo && pricing.additionalSavings > 0 && (
                 <div className="flex justify-between items-center text-primary">
-                  <span>🎟️ {additionalPromo.name} Discount:</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Tag className="h-3.5 w-3.5" />
+                    {additionalPromo.name} Discount:
+                  </span>
                   <span>-${pricing.additionalSavings.toFixed(2)}</span>
                 </div>
               )}
@@ -927,8 +936,9 @@ const Checkout = () => {
             </Button>
           </div>
 
-          <p className="text-center text-sm text-muted-foreground mt-4">
-            🔒 Secure checkout via Stripe or PayPal
+          <p className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground mt-4">
+            <Lock className="h-3.5 w-3.5" />
+            Secure checkout via Stripe or PayPal
           </p>
         </div>
       </div>
