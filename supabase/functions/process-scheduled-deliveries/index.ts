@@ -18,6 +18,7 @@ const ACTIVE_STATUSES = ["queued", "pending", "lyrics_generating", "audio_genera
 const MAX_AUTO_RETRIES = 3; // Max retry attempts before permanent failure
 const RETRY_BACKOFF_MINUTES = 10; // Wait at least 10 min before retrying
 const MAX_RETRIES_PER_RUN = 5; // Max failed items to reset per cron run
+const RUSH_BONUS_HOLD_MAX_MIN = 45; // Rush orders wait up to 45 min for in-flight bonus before shipping without it
 
 
 Deno.serve(async (req) => {
