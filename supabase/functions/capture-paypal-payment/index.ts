@@ -29,14 +29,35 @@ function calculateExpectedDelivery(tier: string): string {
   return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
-function computeOrderTiming(expectedDelivery: string) {
+// Compute timing fields for background automation.
+// New send-window rules (founder spec):
+//   • RUSH  → created_at + 30min + random(0–15min)   (uniform 30–45m)
+//   • STANDARD → created_at + 12h + random(0–3h)     (uniform 12–15h)
+//   • PRIORITY (legacy) → expected − 12h (past-clamp preserved)
+function computeOrderTiming(
+  expectedDelivery: string,
+  opts: { pricingTier?: string; isRush?: boolean; createdAtMs?: number } = {}
+): { earliestGenerateAt: string; targetSendAt: string } {
   const now = Date.now();
-  const expectedMs = new Date(expectedDelivery).getTime();
+  const createdAtMs = opts.createdAtMs ?? now;
+  const isRush = !!opts.isRush;
+  const tier = opts.pricingTier || "standard";
   const earliestGenerateAt = new Date(now + STABILIZATION_MINUTES * 60 * 1000).toISOString();
-  let targetSendMs = expectedMs - HOURS_BEFORE_EXPECTED_TO_SEND * 60 * 60 * 1000;
-  if (targetSendMs <= now) {
-    targetSendMs = now + 30 * 60 * 1000;
+
+  let targetSendMs: number;
+  if (isRush) {
+    const jitterMs = Math.floor(Math.random() * 15 * 60 * 1000);
+    targetSendMs = createdAtMs + 30 * 60 * 1000 + jitterMs;
+    if (targetSendMs < now + 5 * 60 * 1000) targetSendMs = now + 5 * 60 * 1000;
+  } else if (tier === "priority") {
+    const expectedMs = new Date(expectedDelivery).getTime();
+    targetSendMs = expectedMs - HOURS_BEFORE_EXPECTED_TO_SEND * 60 * 60 * 1000;
+    if (targetSendMs <= now) targetSendMs = now + 30 * 60 * 1000;
+  } else {
+    const jitterMs = Math.floor(Math.random() * 3 * 60 * 60 * 1000);
+    targetSendMs = createdAtMs + 12 * 60 * 60 * 1000 + jitterMs;
   }
+
   return {
     earliestGenerateAt,
     targetSendAt: new Date(targetSendMs).toISOString(),
@@ -271,7 +292,10 @@ Deno.serve(async (req) => {
     const expectedDelivery = rushAddon
       ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
       : calculateExpectedDelivery(pricingTier);
-    const timing = computeOrderTiming(expectedDelivery);
+    const timing = computeOrderTiming(expectedDelivery, {
+      pricingTier,
+      isRush: rushAddon,
+    });
 
     const inputsHash = await computeInputsHash([
       metadata.recipientName || "",
