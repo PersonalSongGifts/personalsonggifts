@@ -487,9 +487,30 @@ const PaymentSuccess = () => {
     : orderDetails.rush_addon
       ? "1 hour"
       : orderDetails.pricingTier === "priority" ? "24 hours" : "48 hours";
-  const expectedDate = orderDetails.expectedDelivery 
-    ? new Date(orderDetails.expectedDelivery) 
-    : new Date();
+  const expectedDate = orderDetails.expectedDelivery
+    ? new Date(orderDetails.expectedDelivery)
+    : null;
+
+  // Guard against past/near-now timestamps (rush windows that already elapsed, clock skew, etc.)
+  const NEAR_NOW_MS = 5 * 60 * 1000; // 5 minutes
+  const showConcreteDate =
+    !!expectedDate && expectedDate.getTime() > Date.now() + NEAR_NOW_MS;
+  const softDeliveryLabel = orderDetails.rush_addon ? "Within the hour" : "Shortly";
+
+  // Delivery-speed label (fix #4): derived from pricing_tier + rush_addon.
+  const deliverySpeedLabel = orderDetails.rush_addon
+    ? "Express (1 hour)"
+    : orderDetails.pricingTier === "priority"
+      ? "Priority (24 hours)"
+      : "Standard (48 hours)";
+
+  // Actual amount paid (fix #2): song price + captured add-ons. If unknown, show em dash.
+  const totalPaidCents =
+    typeof orderDetails.price === "number"
+      ? Math.round(orderDetails.price * 100)
+        + (orderDetails.package_addon_cents || 0)
+        + (orderDetails.rush_addon_cents || 0)
+      : null;
 
   return (
     <Layout showPromoBanner={false}>
