@@ -2432,6 +2432,98 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       console.error("[NEEDS-REVIEW] Alert block error (ignored):", e);
     }
 
+    // ======= BONUS-FAILED AGING ALERT (isolated & non-blocking) =======
+    // Bonus tracks that permanently fail (bonus_automation_status='failed') on
+    // already-delivered orders are stranded: no retry logic exists and the
+    // customer was never told a bonus was coming. Alert support once every 24h
+    // so CS can re-trigger from admin. Fully isolated — errors here must never
+    // affect the delivery loop.
+    try {
+      const ninetyDaysAgoIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const twoHoursAgoIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const { data: bonusFailedOrders, error: bfErr } = await supabase
+        .from("orders")
+        .select("id, created_at, updated_at, customer_email, recipient_name, bonus_style_prompt")
+        .eq("bonus_automation_status", "failed")
+        .not("sent_at", "is", null)
+        .is("bonus_notified_at", null)
+        .gt("created_at", ninetyDaysAgoIso)
+        .lt("updated_at", twoHoursAgoIso)
+        .order("created_at", { ascending: true })
+        .limit(50);
+      if (bfErr) console.error("[BONUS-FAILED] query error:", bfErr);
+
+      if (bonusFailedOrders && bonusFailedOrders.length > 0) {
+        // Throttle: once per 24h max
+        const { data: lastAlertRow } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", "bonus_failed_last_alert")
+          .maybeSingle();
+        const lastAlertMs = lastAlertRow?.value ? Date.parse(lastAlertRow.value as string) : 0;
+        const dueForAlert = !lastAlertMs || (Date.now() - lastAlertMs) > 24 * 60 * 60 * 1000;
+
+        if (dueForAlert) {
+          const nowIso = new Date().toISOString();
+          const lines = bonusFailedOrders.map((o: any) => {
+            const shortId = (o.id as string).slice(0, 8).toUpperCase();
+            const ageHours = Math.round(
+              (Date.now() - new Date(o.created_at as string).getTime()) / 3_600_000
+            );
+            const style = (o.bonus_style_prompt && String(o.bonus_style_prompt).includes("R&B")) ? "R&B" : "acoustic";
+            return `- ${shortId} (${o.id}) — ${ageHours}h old — ${o.customer_email || "no email"} → ${o.recipient_name || ""} — bonus style: ${style}`;
+          }).join("\n");
+
+          try {
+            const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+            if (brevoApiKey) {
+              await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+                  "api-key": brevoApiKey,
+                },
+                body: JSON.stringify({
+                  sender: { name: "Personal Song Gifts", email: "support@personalsonggifts.com" },
+                  to: [{ email: "support@personalsonggifts.com" }],
+                  subject: `⚠️ ${bonusFailedOrders.length} customer(s) waiting on failed bonus tracks`,
+                  textContent:
+                    `These customers' bonus tracks failed permanently — re-trigger from admin.\n\n` +
+                    `Primary song already delivered; customer was NOT told a bonus was coming (delivery email had no P.S.). No auto-retry exists for bonus_automation_status='failed'.\n\n` +
+                    `${lines}\n\n` +
+                    `Action: open each order in admin and re-trigger bonus generation. Once bonus_song_url is written, the late-arrival follow-up email fires automatically.`,
+                }),
+              });
+            } else {
+              console.error(`[BONUS-FAILED] BREVO_API_KEY missing — could not email alert (${bonusFailedOrders.length} orders)`);
+            }
+          } catch (emailErr) {
+            console.error("[BONUS-FAILED] Alert email failed:", emailErr);
+          }
+
+          for (const o of bonusFailedOrders) {
+            await logActivity(
+              supabase,
+              "order",
+              o.id as string,
+              "bonus_failed_aging_alert",
+              "system",
+              `Included in aging bonus-failed alert batch (${bonusFailedOrders.length} total)`,
+            );
+          }
+
+          await supabase
+            .from("admin_settings")
+            .upsert({ key: "bonus_failed_last_alert", value: nowIso }, { onConflict: "key" });
+
+          (results as any).bonusFailedAlerted = bonusFailedOrders.length;
+        }
+      }
+    } catch (e) {
+      console.error("[BONUS-FAILED] Alert block error (ignored):", e);
+    }
+
     return new Response(JSON.stringify(results), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
