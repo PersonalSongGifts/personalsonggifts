@@ -479,7 +479,7 @@ Deno.serve(async (req) => {
           bonusResult = { error: `HTTP ${bonusResponse.status}` };
         }
       } else {
-        console.log(`[AUDIO] Bonus generation skipped (enabled=${bonusEnabled}, isFree=${isFreeOrder})`);
+        console.log(`[AUDIO] Bonus generation skipped (bonus_song_enabled=false)`);
       }
     } catch (bonusErr) {
       console.warn(`[AUDIO] Bonus generation error (non-fatal):`, bonusErr);
