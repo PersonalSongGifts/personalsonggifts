@@ -48,16 +48,42 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    // Resolve short 8-char IDs (delivery emails link to /song/{shortId}) → full uuid.
+    let resolvedOrderId: string = orderId;
+    if (typeof orderId === "string" && orderId.length === 8) {
+      const { data: shortMatches, error: shortErr } = await supabase
+        .rpc("find_orders_by_short_id", {
+          short_id: orderId,
+          status_filter: null,
+          require_song_url: false,
+          max_results: 2,
+        });
+      if (shortErr) {
+        console.error("[check-album-cover] short id resolve error", shortErr);
+      }
+      if (!shortMatches || shortMatches.length === 0) {
+        return new Response(JSON.stringify({ error: "Order not found", status: "failed" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (shortMatches.length === 1) {
+        resolvedOrderId = shortMatches[0].id as string;
+      } else {
+        return new Response(JSON.stringify({ error: "Ambiguous ID", status: "failed" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
     const cols = variant === "bonus"
       ? { taskId: "album_cover_bonus_task_id", status: "album_cover_bonus_status", url: "album_cover_bonus_url" }
       : { taskId: "album_cover_task_id", status: "album_cover_status", url: "album_cover_url" };
     const { data: order } = await supabase
       .from("orders")
       .select(`id, ${cols.taskId}, ${cols.status}, ${cols.url}`)
-      .eq("id", orderId)
+      .eq("id", resolvedOrderId)
       .maybeSingle();
     if (!order) {
-      return new Response(JSON.stringify({ error: "Order not found" }), {
+      return new Response(JSON.stringify({ error: "Order not found", status: "failed" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
