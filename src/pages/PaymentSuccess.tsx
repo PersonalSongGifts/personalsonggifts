@@ -555,12 +555,15 @@ const PaymentSuccess = () => {
     !!expectedDate && expectedDate.getTime() > Date.now() + NEAR_NOW_MS;
   const softDeliveryLabel = orderDetails.rush_addon ? "Within the hour" : "Shortly";
 
-  // Delivery-speed label (fix #4): derived from pricing_tier + rush_addon.
-  const deliverySpeedLabel = orderDetails.rush_addon
-    ? "Express (1 hour)"
-    : orderDetails.pricingTier === "priority"
-      ? "Priority (24 hours)"
-      : "Standard (48 hours)";
+  // Delivery-speed label: derived from pricing_tier + rush_addon.
+  // Lead conversions unlock the finished song immediately — must not read "Standard (48 hours)".
+  const deliverySpeedLabel = isLeadConversion
+    ? "Instant"
+    : orderDetails.rush_addon
+      ? "Express (1 hour)"
+      : orderDetails.pricingTier === "priority"
+        ? "Priority (24 hours)"
+        : "Standard (48 hours)";
 
   // Actual amount paid (fix #2): song price + captured add-ons. If unknown, show em dash.
   const totalPaidCents =
