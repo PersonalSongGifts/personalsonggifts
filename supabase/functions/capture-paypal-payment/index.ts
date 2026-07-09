@@ -26,7 +26,7 @@ function calculateExpectedDelivery(tier: string): string {
   if (tier === "priority") {
     return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
-  return new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
+  return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
 function computeOrderTiming(expectedDelivery: string) {
