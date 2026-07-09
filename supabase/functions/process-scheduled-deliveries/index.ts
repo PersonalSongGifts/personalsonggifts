@@ -797,6 +797,18 @@ Deno.serve(async (req) => {
 
       for (const order of ordersToDeliver || []) {
         try {
+          // === 30-MIN DELIVERY FLOOR ===
+          // No initial delivery email may ever go out sooner than 30 min post-order,
+          // regardless of target_send_at (guards against clock skew / admin edits / future
+          // code setting an early target). Lead conversions are exempt (instant-by-design).
+          if (order.source !== "lead_conversion") {
+            const ageMinAll = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
+            if (ageMinAll < MIN_DELIVERY_AGE_MIN) {
+              console.log(`[MIN-AGE-HOLD] order ${order.id} age ${ageMinAll}m, holding until 30m`);
+              continue;
+            }
+          }
+
           // === RUSH BONUS HOLD ===
           // For rush orders, briefly hold delivery so an in-flight bonus can ship with the main email.
           // Hard cap so the 1-hour promise never breaks; failed bonuses never hold.
