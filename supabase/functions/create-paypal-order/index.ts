@@ -60,13 +60,16 @@ const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = 
   "INFLCR-RISE-5Q": { maxUses: 1, settingsKey: "inflcr_rise_5q_usage_count" },
 };
 
-// Base prices in cents
+// Base prices in cents (LEGACY — priority still uses this + seasonal halving)
 const BASE_PRICES: Record<string, number> = {
   standard: 9999,
   priority: 15999,
 };
 
 const SEASONAL_DISCOUNT_PERCENT = 50;
+
+// FS-actual flat standard-tier price (WELCOME50-era halving retired for standard)
+const BASE_SONG_PRICE_CENTS = 2900; // $29.00
 
 async function getPayPalAccessToken(): Promise<string> {
   const clientId = Deno.env.get("PAYPAL_CLIENT_ID")!;
@@ -142,8 +145,10 @@ function calculateFinalPriceCents(
   tier: string,
   stripeCoupon?: { percent_off?: number; amount_off?: number } | null
 ): number {
-  const basePrice = BASE_PRICES[tier] || BASE_PRICES.standard;
-  const afterSeasonal = Math.floor(basePrice * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
+  const afterSeasonal =
+    tier === "standard"
+      ? BASE_SONG_PRICE_CENTS
+      : Math.floor((BASE_PRICES[tier] || BASE_PRICES.standard) * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
 
   if (stripeCoupon) {
     if (stripeCoupon.percent_off) {
@@ -245,8 +250,10 @@ Deno.serve(async (req) => {
       metadata.amount_total_cents = "0";
     } else if (DISCOUNT_TEST_CODES[upperAdditional]) {
       const discountPercent = DISCOUNT_TEST_CODES[upperAdditional];
-      const basePrice = BASE_PRICES[pricingTier] || BASE_PRICES.standard;
-      const afterSeasonal = Math.floor(basePrice * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
+      const afterSeasonal =
+        pricingTier === "standard"
+          ? BASE_SONG_PRICE_CENTS
+          : Math.floor((BASE_PRICES[pricingTier] || BASE_PRICES.standard) * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
       unitAmountCents = Math.max(1, Math.floor(afterSeasonal * (100 - discountPercent) / 100));
       metadata.additionalPromoCode = upperAdditional;
       metadata.amount_total_cents = String(unitAmountCents);
@@ -336,7 +343,7 @@ Deno.serve(async (req) => {
     const foreverMemory = input.addons?.forever_memory === true;
     const rushAddon = input.addons?.rush === true;
     // Rush is allowed on any tier (standard or priority).
-    const PACKAGE_ADDON_PRICE_CENTS = 2400;
+    const PACKAGE_ADDON_PRICE_CENTS = 1300;
     const RUSH_PRICE_CENTS = 1000;
     const packageCents = foreverMemory ? (FREE_TEST_CODES[upperAdditional] ? 0 : PACKAGE_ADDON_PRICE_CENTS) : 0;
     const rushCents = rushAddon ? (FREE_TEST_CODES[upperAdditional] ? 0 : RUSH_PRICE_CENTS) : 0;
