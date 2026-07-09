@@ -42,6 +42,9 @@ export interface OrderAssetPatch {
   prev_cover_image_url: string | null;
   status?: string;
   delivered_at?: string;
+  // Stamp so the delivery cron's 30-min MIN_DELIVERY_AGE floor can exempt
+  // fingerprint-matched lead conversions (instant-by-design, like lead_session).
+  source?: string;
   bonus_song_url?: string | null;
   bonus_preview_url?: string | null;
   bonus_song_title?: string | null;
@@ -78,6 +81,7 @@ export function buildLeadAssetPatch(
     prev_song_url: lead.prev_song_url ?? lead.full_song_url ?? null,
     prev_automation_lyrics: lead.prev_automation_lyrics ?? lead.automation_lyrics ?? null,
     prev_cover_image_url: lead.prev_cover_image_url ?? lead.cover_image_url ?? null,
+    source: "lead_conversion",
   };
 
   if (hasFullSong) {
