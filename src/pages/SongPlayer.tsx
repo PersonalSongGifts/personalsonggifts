@@ -1501,6 +1501,9 @@ const SongPlayer = () => {
           );
         })()}
 
+        {/* Tip jar — beneath the ladder */}
+        {orderId && <TipJar orderId={orderId} />}
+
         {/* Reaction CTA */}
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="pt-6 text-center">
