@@ -75,9 +75,24 @@ Deno.serve(async (req) => {
     });
 
     // Retrieve the checkout session
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["payment_intent"],
-    });
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ["payment_intent"],
+      });
+    } catch (retrieveErr: unknown) {
+      const errObj = retrieveErr as { code?: string; message?: string };
+      const isMissing =
+        errObj?.code === "resource_missing" ||
+        /No such checkout\.session/i.test(errObj?.message || "");
+      if (isMissing) {
+        return new Response(
+          JSON.stringify({ error: "Session not found", code: "SESSION_NOT_FOUND" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      throw retrieveErr;
+    }
 
     // Verify payment was successful
     if (session.payment_status !== "paid") {

@@ -128,8 +128,8 @@ Deno.serve(async (req) => {
 
     if (!metadataRecord) {
       return new Response(
-        JSON.stringify({ error: "PayPal order metadata not found" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Order not found", code: "ORDER_NOT_FOUND" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -199,6 +199,12 @@ Deno.serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
+      } else if (err.includes("RESOURCE_NOT_FOUND") || err.includes("INVALID_RESOURCE_ID")) {
+        // Definitive: PayPal has no such order (garbage/expired token).
+        return new Response(
+          JSON.stringify({ error: "Order not found", code: "ORDER_NOT_FOUND" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       } else {
         return new Response(
           JSON.stringify({ error: "Failed to capture PayPal payment" }),

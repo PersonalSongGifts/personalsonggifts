@@ -26,8 +26,9 @@ interface OrderDetails {
   rush_addon_cents?: number;
 }
 
-const MAX_POLL_ATTEMPTS = 10;
-const POLL_INTERVAL_MS = 1500;
+// Bounded retries: ~6 attempts * 5s = ~30s total before we terminate to an error state.
+const MAX_POLL_ATTEMPTS = 6;
+const POLL_INTERVAL_MS = 5000;
 
 const PaymentSuccess = () => {
   // Clean up persisted form data after successful purchase
@@ -43,6 +44,7 @@ const PaymentSuccess = () => {
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [definitiveNotFound, setDefinitiveNotFound] = useState(false);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isLeadConversion, setIsLeadConversion] = useState(false);
   const [pollAttempts, setPollAttempts] = useState(0);
@@ -203,6 +205,12 @@ const PaymentSuccess = () => {
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            if (response.status === 404 && errorData?.code === "ORDER_NOT_FOUND") {
+              setDefinitiveNotFound(true);
+              setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
+              setLoading(false);
+              return;
+            }
             throw new Error(errorData.error || "Failed to process PayPal payment");
           }
 
@@ -291,6 +299,12 @@ const PaymentSuccess = () => {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          if (response.status === 404 && errorData?.code === "SESSION_NOT_FOUND") {
+            setDefinitiveNotFound(true);
+            setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
+            setLoading(false);
+            return true; // Stop polling — definitive not found
+          }
           throw new Error(errorData.error || "Failed to process payment");
         }
 
@@ -401,9 +415,11 @@ const PaymentSuccess = () => {
   }
 
   if (error) {
-    // If we have a payment identifier in the URL, the customer's card WAS charged.
-    // Never suggest they retry checkout — that would risk a double purchase.
-    const paymentAttempted = !!(sessionId || paypalToken);
+    // If a payment identifier is present AND we don't have a definitive "not found"
+    // from the backend, the customer's card MAY have been charged. Never suggest they
+    // retry checkout in that case — that would risk a double purchase.
+    // definitiveNotFound = backend confirmed Stripe/PayPal has no such session/order.
+    const paymentAttempted = !!(sessionId || paypalToken) && !definitiveNotFound;
     const supportRef = sessionId || paypalToken || "";
     const supportSubject = encodeURIComponent(
       `Order finalization help${supportRef ? ` — ref ${supportRef.slice(0, 20)}` : ""}`
@@ -423,15 +439,15 @@ const PaymentSuccess = () => {
                 <Check className="h-8 w-8 text-primary" />
               </div>
               <h2 className="text-xl font-semibold mb-2">
-                Your payment went through — we're finalizing your order
+                We're confirming your payment
               </h2>
               <p className="text-muted-foreground mb-4">
-                Your card or PayPal was charged successfully. If this page doesn't
-                update in a minute, your order is still safe — email us with this
-                page open and we'll sort it instantly.
+                If your payment completed, your order is safe — you don't need to
+                pay again. This page can take a minute to catch up. If it doesn't
+                update, email us with this page open and we'll sort it instantly.
               </p>
               <p className="text-sm font-semibold text-destructive mb-6">
-                Please do not pay again.
+                Please don't pay again if you already did.
               </p>
               {supportRef && (
                 <p className="text-xs text-muted-foreground mb-4">
