@@ -710,6 +710,26 @@ const PaymentSuccess = () => {
                 </Card>
               );
             }
+            // Verify failed after retries — we can NOT know for sure whether they paid.
+            // Never show the sell card in this state (would push a second $24 charge).
+            if (pkgVerifyFailed) {
+              return (
+                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Loader2 className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">We're confirming your package purchase</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    If you just completed the $24 checkout, you're all set and don't need
+                    to buy again. This can take a minute — refresh shortly, or email{" "}
+                    <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
+                      support@personalsonggifts.com
+                    </a>{" "}
+                    if it doesn't update.
+                  </p>
+                </Card>
+              );
+            }
             // Sell card only when flag enabled and package not yet owned.
             if (!flagEnabled) return null;
             return (
