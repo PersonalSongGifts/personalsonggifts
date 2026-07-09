@@ -386,12 +386,14 @@ Deno.serve(async (req) => {
         .maybeSingle();
       
       const bonusEnabled = (bonusEnabledSetting as { value: string } | null)?.value !== "false";
-      
-      // Skip for free/test orders
-      const priceCents = entityType === "order" ? (rawEntity.price_cents as number | null) : null;
-      const isFreeOrder = entityType === "order" && (!priceCents || priceCents <= 0);
-      
-      if (bonusEnabled && !isFreeOrder) {
+
+      // Previously gated on price_cents > 0 to skip "free/test" orders. That
+      // silently stripped the bonus track from every legitimate 100%-off
+      // redemption (influencer codes, HYPERDRIVETEST, etc.) once the 7/8
+      // pricing fix started recording price_cents=0 accurately. Bonus should
+      // run for every order that gets a primary song; disable via
+      // admin_settings.bonus_song_enabled if we ever need a kill switch.
+      if (bonusEnabled) {
         // Smart genre detection: if primary is acoustic, use R&B style instead
         const primaryGenre = (entity.genre || "").toLowerCase().trim();
         const isAcousticPrimary = primaryGenre === "acoustic";
