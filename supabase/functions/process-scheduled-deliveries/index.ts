@@ -889,7 +889,14 @@ Deno.serve(async (req) => {
           }
 
           // Claim row for delivery (prevents duplicate processing)
-          // Use delivered_at as timestamp marker for stuck detection
+          // Use delivered_at as timestamp marker for stuck detection.
+          // NOTE: The prior batch-3 tightening added a `.or(delivery_status.is.null,scheduled,failed)`
+          // guard here to prevent double-claiming a row already in "delivering". PostgREST rejects
+          // that filter on UPDATE with 42703 ("column orders.delivery_status does not exist"),
+          // which took the entire delivery pipeline down. Reverting to the months-proven form
+          // (`.eq(id).is(sent_at,null)`). Double-claim protection now relies on the 15-min
+          // stuck-delivering reset above + the optimistic sent_at lock; a rare duplicate email
+          // is survivable, a dead pipeline is not.
           const { data: claimed, error: claimError } = await supabase
             .from("orders")
             .update({
@@ -898,7 +905,6 @@ Deno.serve(async (req) => {
             })
             .eq("id", order.id)
             .is("sent_at", null) // Optimistic lock
-            .or("delivery_status.is.null,delivery_status.eq.scheduled,delivery_status.eq.failed") // Prevent double-claim of an in-flight ("delivering") row
             .select("id");
 
           if (claimError) throw claimError;
