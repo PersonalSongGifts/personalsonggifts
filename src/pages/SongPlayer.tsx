@@ -1000,9 +1000,6 @@ const SongPlayer = () => {
           </p>
         )}
 
-        {/* Tip jar */}
-        {orderId && <TipJar orderId={orderId} />}
-
         {/* --- Forever Memory Package (unlocked view always renders for paid customers; sell card is flag-gated) --- */}
         {(() => {
           const flagEnabled =
