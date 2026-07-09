@@ -10,7 +10,7 @@ import { Link } from "react-router-dom";
 const faqs = [
   {
     question: "How long does it take to receive my song?",
-    answer: "Standard orders are typically delivered within 48 hours. Priority orders are delivered within 24 hours. We'll send your completed song directly to your email.",
+    answer: "Standard delivery is included and arrives within 24 hours. Need it faster? Express delivery at checkout gets your song in about 1 hour. We'll send your completed song directly to your email.",
   },
   {
     question: "What kind of songs do you create?",
