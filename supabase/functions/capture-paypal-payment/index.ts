@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     // Idempotency: check if order already exists for this PayPal order
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_price_cents, package_unlock_session_id, rush_addon, rush_price_cents")
       .eq("notes", `paypal_order:${orderID}`)
       .maybeSingle();
 
@@ -110,6 +110,10 @@ Deno.serve(async (req) => {
           expectedDelivery: existingOrder.expected_delivery,
           price: existingOrder.price_cents != null ? existingOrder.price_cents / 100 : undefined,
           revisionToken: existingOrder.revision_token,
+          package_unlocked: !!existingOrder.package_unlocked_at,
+          package_addon_cents: existingOrder.package_unlock_session_id === `paypal_${orderID}` ? (existingOrder.package_price_cents || 0) : 0,
+          rush_addon: !!existingOrder.rush_addon,
+          rush_addon_cents: existingOrder.rush_addon ? (existingOrder.rush_price_cents || 0) : 0,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -164,7 +168,16 @@ Deno.serve(async (req) => {
     const priceCents = capturedAmount
       ? Math.round(parseFloat(capturedAmount.value) * 100)
       : parseInt(metadata.amount_total_cents || "4999", 10);
-    const price = Math.floor(priceCents / 100);
+
+    // Resolve add-ons BEFORE computing timing so rush affects expected_delivery
+    const foreverMemory = metadata.forever_memory === "true";
+    const packageAddonCents = foreverMemory ? parseInt(metadata.package_price_cents || "2400", 10) : 0;
+    const rushAddon = metadata.rush === "true";
+    const rushAddonCents = rushAddon ? parseInt(metadata.rush_price_cents || "1000", 10) : 0;
+    const songPriceCents = (foreverMemory || rushAddon)
+      ? Math.max(0, priceCents - packageAddonCents - rushAddonCents)
+      : priceCents;
+    const songPrice = Math.floor(songPriceCents / 100);
 
     // Increment limited code usage if applicable
     const promoCode = metadata.promoCode;
@@ -187,7 +200,9 @@ Deno.serve(async (req) => {
 
     // Create order
     const pricingTier = metadata.pricingTier || "standard";
-    const expectedDelivery = calculateExpectedDelivery(pricingTier);
+    const expectedDelivery = rushAddon
+      ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      : calculateExpectedDelivery(pricingTier);
     const timing = computeOrderTiming(expectedDelivery);
 
     const inputsHash = await computeInputsHash([
@@ -201,12 +216,27 @@ Deno.serve(async (req) => {
       metadata.lyricsLanguageCode || "en",
     ]);
 
+    const nowIso = new Date().toISOString();
+    const addonUnlockFields = foreverMemory ? {
+      package_unlocked_at: nowIso,
+      package_price_cents: packageAddonCents,
+      package_unlock_session_id: `paypal_${orderID}`,
+      package_unlock_payment_intent_id: null,
+      lyrics_unlocked_at: nowIso,
+      lyrics_price_cents: 0,
+      download_unlocked_at: nowIso,
+      download_price_cents: 0,
+      bonus_unlocked_at: nowIso,
+      bonus_price_cents: 0,
+    } : {};
+    const rushFields = rushAddon ? { rush_addon: true, rush_price_cents: rushAddonCents } : {};
+
     const { data: newOrder, error: insertError } = await supabase
       .from("orders")
       .insert({
         pricing_tier: pricingTier,
-        price,
-        price_cents: priceCents,
+        price: songPrice,
+        price_cents: songPriceCents,
         expected_delivery: expectedDelivery,
         customer_name: metadata.customerName || "",
         customer_email: metadata.customerEmail || "",
@@ -237,6 +267,8 @@ Deno.serve(async (req) => {
         phone_e164: metadata.phoneE164 || null,
         sms_opt_in: metadata.smsOptIn === "true",
         timezone: metadata.timezone || null,
+        ...addonUnlockFields,
+        ...rushFields,
       })
       .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
       .single();
@@ -246,7 +278,7 @@ Deno.serve(async (req) => {
       if (insertError.code === "23505" || insertError.message?.includes("duplicate")) {
         const { data: raceOrder } = await supabase
           .from("orders")
-          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_price_cents, package_unlock_session_id, rush_addon, rush_price_cents")
           .eq("notes", `paypal_order:${orderID}`)
           .maybeSingle();
         if (raceOrder) {
@@ -261,6 +293,10 @@ Deno.serve(async (req) => {
               expectedDelivery: raceOrder.expected_delivery,
               price: raceOrder.price_cents != null ? raceOrder.price_cents / 100 : undefined,
               revisionToken: raceOrder.revision_token,
+              package_unlocked: !!raceOrder.package_unlocked_at,
+              package_addon_cents: raceOrder.package_unlock_session_id === `paypal_${orderID}` ? (raceOrder.package_price_cents || 0) : 0,
+              rush_addon: !!raceOrder.rush_addon,
+              rush_addon_cents: raceOrder.rush_addon ? (raceOrder.rush_price_cents || 0) : 0,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -273,7 +309,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    await logActivity(supabase, "order", newOrder.id, "order_created", "system", `New order via PayPal, ${pricingTier}, $${priceCents / 100}`);
+    await logActivity(supabase, "order", newOrder.id, "order_created", "system", `New order via PayPal, ${pricingTier}, $${priceCents / 100}${foreverMemory ? " + Forever Memory Package" : ""}${rushAddon ? " + Rush (1h)" : ""}`);
 
     // Mark only the matching lead as converted (non-blocking)
     try {
@@ -333,6 +369,7 @@ Deno.serve(async (req) => {
           pricingTier: newOrder.pricing_tier,
           expectedDelivery: newOrder.expected_delivery,
           revisionToken: newOrder.revision_token,
+          rushAddon,
         }),
       });
     } catch (e) {
@@ -389,6 +426,10 @@ Deno.serve(async (req) => {
         expectedDelivery: newOrder.expected_delivery,
         price: newOrder.price_cents != null ? newOrder.price_cents / 100 : priceCents / 100,
         revisionToken: newOrder.revision_token,
+        package_unlocked: foreverMemory,
+        package_addon_cents: packageAddonCents,
+        rush_addon: rushAddon,
+        rush_addon_cents: rushAddonCents,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
