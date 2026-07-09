@@ -929,7 +929,7 @@ const Checkout = () => {
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
-            🔒 Secure checkout powered by Stripe
+            🔒 Secure checkout via Stripe or PayPal
           </p>
         </div>
       </div>
