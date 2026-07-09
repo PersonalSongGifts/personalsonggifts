@@ -635,7 +635,7 @@ const PaymentSuccess = () => {
   const softDeliveryLabel = orderDetails.rush_addon ? "Within the hour" : "Shortly";
 
   // Delivery-speed label: derived from pricing_tier + rush_addon.
-  // Lead conversions unlock the finished song immediately — must not read "Standard (48 hours)".
+  // Lead conversions unlock the finished song immediately — must not read "Standard (24 hours)".
   // New orders: Standard (24h) or Express (1h). Legacy priority-tier orders keep their label.
   const deliverySpeedLabel = isLeadConversion
     ? "Instant"
