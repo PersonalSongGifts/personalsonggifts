@@ -63,8 +63,9 @@ Deno.serve(async (req) => {
     const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
     const amount = session.amount_total ?? 0;
 
-    // Idempotent: mark package unlocked only if not already
-    const { error: pkgErr } = await supabase
+    // Idempotent: mark package unlocked only if not already. Use .select() so we can
+    // detect whether THIS call actually claimed the row (used to gate the activity log).
+    const { data: pkgClaimed, error: pkgErr } = await supabase
       .from("orders")
       .update({
         package_unlocked_at: now,
@@ -73,7 +74,8 @@ Deno.serve(async (req) => {
         package_price_cents: amount,
       })
       .eq("id", orderId)
-      .is("package_unlocked_at", null);
+      .is("package_unlocked_at", null)
+      .select("id");
 
     if (pkgErr) {
       console.error("Failed to unlock package:", pkgErr);
@@ -102,14 +104,17 @@ Deno.serve(async (req) => {
       .eq("id", orderId)
       .is("bonus_unlocked_at", null);
 
-    await logActivity(
-      supabase,
-      "order",
-      orderId,
-      "package_unlocked",
-      "system",
-      `Forever Memory Package unlocked via Stripe, $${(amount / 100).toFixed(2)}`
-    );
+    // Only log when this call actually flipped the row — prevents refresh double-logs.
+    if (pkgClaimed && pkgClaimed.length > 0) {
+      await logActivity(
+        supabase,
+        "order",
+        orderId,
+        "package_unlocked",
+        "system",
+        `Forever Memory Package unlocked via Stripe, $${(amount / 100).toFixed(2)}`
+      );
+    }
 
     return new Response(
       JSON.stringify({

@@ -512,9 +512,9 @@ const Checkout = () => {
             <div className="flex items-start gap-3">
               <Shield className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <div className="font-semibold text-foreground text-sm">Unlimited revisions until it's perfect</div>
+                <div className="font-semibold text-foreground text-sm">Free revision included — we'll work with you until it's right</div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  We keep working until you love it — free redo included.{" "}
+                  One free remake if it's not quite right the first time.{" "}
                   <Link to="/refund" className="underline decoration-muted-foreground/40 hover:text-primary hover:decoration-primary">
                     Our Remake Policy
                   </Link>

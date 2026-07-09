@@ -135,6 +135,10 @@ Deno.serve(async (req) => {
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
 
     const session = await stripe.checkout.sessions.create({
+      // Stale-tab guard: rush upgrade must expire before a Standard order could plausibly ship.
+      // Stripe minimum is 30 minutes; MIN_DELIVERY_AGE_MIN=30 on the cron means a base-tier
+      // order cannot deliver sooner than +30m, so 30m here is safe and closes the window.
+      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
       line_items: [{
         price_data: {
           currency: "usd",

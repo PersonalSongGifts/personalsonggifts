@@ -79,6 +79,47 @@ Deno.serve(async (req) => {
       );
     }
 
+    // === Stale-checkout guard ===
+    // If the song already shipped before the rush completed, do NOT upgrade.
+    // Auto-refund the charge and tell the client so it can render a calm notice.
+    if (existing.sent_at) {
+      const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+      let refundOk = false;
+      let refundErr: string | null = null;
+      if (amount > 0 && paymentIntentId) {
+        try {
+          await stripe.refunds.create({
+            payment_intent: paymentIntentId,
+            reason: "requested_by_customer",
+          });
+          refundOk = true;
+        } catch (e) {
+          refundErr = e instanceof Error ? e.message : String(e);
+          console.error("[VERIFY-RUSH] refund failed:", refundErr);
+        }
+      } else {
+        // $0 test carts have no charge to refund — treat as already-neutralized.
+        refundOk = true;
+      }
+      await logActivity(
+        supabase,
+        "order",
+        orderId,
+        "rush_upgrade_auto_refunded",
+        "system",
+        `Rush upgrade paid $${(amount / 100).toFixed(2)} AFTER delivery — auto-refund ${refundOk ? "succeeded" : `failed (${refundErr})`}`,
+      );
+      return new Response(
+        JSON.stringify({
+          refunded: true,
+          reason: "already_delivered",
+          amountCents: amount,
+          refundOk,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const nowMs = Date.now();
     const createdMs = existing.created_at ? new Date(existing.created_at).getTime() : nowMs;
     const rushJitterMs = Math.floor(Math.random() * 15 * 60 * 1000);

@@ -291,6 +291,10 @@ Deno.serve(async (req) => {
         if (!updateData.automation_status) {
           updateData.automation_status = "completed";
         }
+        // Manual-upload rescue path previously left delivery_status='pending', which the
+        // cron ignores. Schedule delivery ~5m out so the pipeline picks it up.
+        updateData.delivery_status = "scheduled";
+        updateData.target_send_at = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       }
 
       const { error: updateError } = await supabase

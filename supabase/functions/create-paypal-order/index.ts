@@ -362,6 +362,16 @@ Deno.serve(async (req) => {
       unitAmountCents += 50 - totalCents;
       totalCents = 50;
     }
+
+    // PayPal cannot create a $0 order. Free carts must go through the Stripe
+    // hosted rail (which supports payment_status="no_payment_required").
+    if (totalCents === 0) {
+      return new Response(
+        JSON.stringify({ error: "Free orders are processed via card checkout — no card required." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const totalDollars = (totalCents / 100).toFixed(2);
     metadata.amount_total_cents = String(totalCents);
     void unitAmountDollars;

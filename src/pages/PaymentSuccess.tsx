@@ -41,6 +41,13 @@ const PaymentSuccess = () => {
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const { trackEvent: trackTikTokEvent } = useTikTokPixel();
   const hasTrackedPurchase = useRef(false);
+  // Blocker #1: the main payment lookup must run exactly once per mount.
+  // Without this, changes to memoized callbacks re-fire the effect indefinitely.
+  const didRunMainEffectRef = useRef(false);
+  // Guard rush pixel double-firing when a return-trip verify has also fired it.
+  const rushSessionOnMount = useRef<string | null>(
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("rush_session_id") : null,
+  );
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +70,29 @@ const PaymentSuccess = () => {
   const [rushConfirming, setRushConfirming] = useState(false);
   const [rushVerifyFailed, setRushVerifyFailed] = useState(false);
   const [rushDeclined, setRushDeclined] = useState(false);
+  const [rushRefunded, setRushRefunded] = useState(false);
+  const [rushRefundOk, setRushRefundOk] = useState<boolean | null>(null);
+  // Add-on amounts captured via post-purchase verify (so Price paid reflects them).
+  const [pkgVerifiedAmountCents, setPkgVerifiedAmountCents] = useState<number>(0);
+  const [rushVerifiedAmountCents, setRushVerifiedAmountCents] = useState<number>(0);
+
+  // Persist package decline per-order so a return trip from Stripe doesn't re-pitch.
+  useEffect(() => {
+    if (!orderDetails?.orderId) return;
+    try {
+      if (sessionStorage.getItem(`psg_pkg_declined_${orderDetails.orderId}`)) {
+        setPkgDeclined(true);
+      }
+    } catch { /* ignore */ }
+  }, [orderDetails?.orderId]);
+  const persistPkgDecline = () => {
+    setPkgDeclined(true);
+    try {
+      if (orderDetails?.orderId) {
+        sessionStorage.setItem(`psg_pkg_declined_${orderDetails.orderId}`, "1");
+      }
+    } catch { /* ignore */ }
+  };
 
   const trackAddonPurchase = useCallback((
     kind: "pkg" | "rush",
@@ -265,7 +295,10 @@ const PaymentSuccess = () => {
             }
           }
           if (paypalToken && data.rush_addon && (data.rush_addon_cents ?? 0) > 0) {
-            trackAddonPurchase("rush", `chk_pp_${paypalToken}`, data.rush_addon_cents ?? null);
+            // Skip if return-trip rush verify will fire this instead (avoid double-count).
+            if (!rushSessionOnMount.current) {
+              trackAddonPurchase("rush", `chk_pp_${paypalToken}`, data.rush_addon_cents ?? null);
+            }
           }
           trackPurchaseEvent(data);
         } catch (err) {
@@ -353,7 +386,9 @@ const PaymentSuccess = () => {
           }
         }
         if (sessionId && data.rush_addon && (data.rush_addon_cents ?? 0) > 0) {
-          trackAddonPurchase("rush", `chk_${sessionId}`, data.rush_addon_cents ?? null);
+          if (!rushSessionOnMount.current) {
+            trackAddonPurchase("rush", `chk_${sessionId}`, data.rush_addon_cents ?? null);
+          }
         }
         trackPurchaseEvent(data);
         setLoading(false);
@@ -391,8 +426,13 @@ const PaymentSuccess = () => {
       }
     };
 
+    if (didRunMainEffectRef.current) return;
+    didRunMainEffectRef.current = true;
     poll();
-  }, [sessionId, paypalToken, source, trackPurchaseEvent]);
+    // Intentionally omit callback deps so the effect runs exactly once per mount;
+    // the useRef guard above is the belt-and-suspenders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, paypalToken, source]);
 
   useEffect(() => {
     const pkgSession = searchParams.get("package_session_id");
@@ -412,7 +452,9 @@ const PaymentSuccess = () => {
           if (r.ok) {
             const data = await r.json().catch(() => ({} as any));
             setPkgAdded(true);
-            trackPackagePurchase(pkgSession, typeof data?.amountCents === "number" ? data.amountCents : null);
+            const amtCents = typeof data?.amountCents === "number" ? data.amountCents : null;
+            if (amtCents && amtCents > 0) setPkgVerifiedAmountCents(amtCents);
+            trackPackagePurchase(pkgSession, amtCents);
             succeeded = true;
             break;
           }
@@ -449,14 +491,25 @@ const PaymentSuccess = () => {
           });
           if (r.ok) {
             const data = await r.json().catch(() => ({} as any));
-            setRushAdded(true);
             const amt = typeof data?.amountCents === "number" ? data.amountCents : null;
-            setOrderDetails(prev => prev ? {
-              ...prev,
-              rush_addon: true,
-              rush_addon_cents: (prev.rush_addon_cents || 0) + (amt || 0),
-            } : prev);
-            trackAddonPurchase("rush", rushSession, amt);
+            if (data?.refunded) {
+              // Song shipped before rush completed — server refunded automatically.
+              // Do NOT flip rush_addon and do NOT fire the purchase pixel.
+              setRushRefunded(true);
+              setRushRefundOk(data?.refundOk !== false);
+            } else {
+              setRushAdded(true);
+              if (amt && amt > 0) setRushVerifiedAmountCents(amt);
+              setOrderDetails(prev => prev ? {
+                ...prev,
+                rush_addon: true,
+                rush_addon_cents: (prev.rush_addon_cents || 0) + (amt || 0),
+                // Recompute expected delivery to now+1h so the concrete "By {date}"
+                // line stops contradicting the "Within 1 hour" headline.
+                expectedDelivery: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+              } : prev);
+              trackAddonPurchase("rush", rushSession, amt);
+            }
             succeeded = true;
             break;
           }
@@ -651,6 +704,8 @@ const PaymentSuccess = () => {
       ? Math.round(orderDetails.price * 100)
         + (orderDetails.package_addon_cents || 0)
         + (orderDetails.rush_addon_cents || 0)
+        + pkgVerifiedAmountCents
+        + rushVerifiedAmountCents
       : null;
 
   return (
@@ -876,18 +931,34 @@ const PaymentSuccess = () => {
                         </div>
                       )}
                     </div>
-                    {declineButton(() => setPkgDeclined(true), "decline-package")}
+                    {declineButton(persistPkgDecline, "decline-package")}
                   </div>
                 </Card>
               );
             }
 
-            // Card 2 gate: only after Card 1 is fully resolved (added, verified-fail, declined, or confirming-done).
+            // Card 2 gate. Confirmation/refund/verify states must render regardless of
+            // whether rush is now on the order (return-trip: rush_addon flipped true).
             const pkgResolved = pkgAdded || pkgDeclined || pkgVerifyFailed;
-            const rushEligible = !isLeadConversion && !orderDetails.rush_addon;
+            const rushAlreadyDone = orderDetails.rush_addon === true;
+            const rushHasFeedbackState = rushConfirming || rushAdded || rushVerifyFailed || rushRefunded;
+            const rushOfferEligible = !isLeadConversion && !rushAlreadyDone && !rushHasFeedbackState;
 
             let card2: JSX.Element | null = null;
-            if (pkgResolved && rushEligible) {
+            if (rushRefunded) {
+              card2 = (
+                <Card className="p-6 mb-6 text-center border-primary/20 bg-primary/5">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Check className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Your song already arrived before the rush could apply</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    We've refunded the $6.99 automatically{rushRefundOk === false ? " (if the refund doesn't appear within 5–10 business days, email support and we'll take care of it)" : ""}.
+                    No action needed on your end.
+                  </p>
+                </Card>
+              );
+            } else if (pkgResolved && (rushOfferEligible || rushHasFeedbackState)) {
               if (rushConfirming && !rushAdded) {
                 card2 = (
                   <Card className="p-6 mb-6 text-center">
@@ -924,7 +995,7 @@ const PaymentSuccess = () => {
                     </p>
                   </Card>
                 );
-              } else if (!rushDeclined) {
+              } else if (rushOfferEligible && !rushDeclined) {
                 card2 = (
                   <Card className="p-6 mb-6 text-center bg-neutral-900 text-neutral-100 border-neutral-800">
                     <div className="flex items-center justify-center gap-2 mb-3">
