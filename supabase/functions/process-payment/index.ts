@@ -238,6 +238,16 @@ Deno.serve(async (req) => {
         target_send_at: timing.targetSendAt,
         inputs_hash: inputsHash,
         delivery_status: "pending",
+        // Phone / SMS fields (mirrored from stripe-webhook)
+        phone_e164: metadata.phoneE164 || null,
+        sms_opt_in: metadata.smsOptIn === "true",
+        timezone: metadata.timezone || null,
+        // UTM attribution (mirrored from stripe-webhook)
+        utm_source: metadata.utmSource || null,
+        utm_medium: metadata.utmMedium || null,
+        utm_campaign: metadata.utmCampaign || null,
+        utm_content: metadata.utmContent || null,
+        utm_term: metadata.utmTerm || null,
         ...addonUnlockFields,
           ...rushFields,
       })
