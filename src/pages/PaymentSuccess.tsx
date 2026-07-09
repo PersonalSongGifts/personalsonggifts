@@ -415,9 +415,11 @@ const PaymentSuccess = () => {
   }
 
   if (error) {
-    // If we have a payment identifier in the URL, the customer's card WAS charged.
-    // Never suggest they retry checkout — that would risk a double purchase.
-    const paymentAttempted = !!(sessionId || paypalToken);
+    // If a payment identifier is present AND we don't have a definitive "not found"
+    // from the backend, the customer's card MAY have been charged. Never suggest they
+    // retry checkout in that case — that would risk a double purchase.
+    // definitiveNotFound = backend confirmed Stripe/PayPal has no such session/order.
+    const paymentAttempted = !!(sessionId || paypalToken) && !definitiveNotFound;
     const supportRef = sessionId || paypalToken || "";
     const supportSubject = encodeURIComponent(
       `Order finalization help${supportRef ? ` — ref ${supportRef.slice(0, 20)}` : ""}`
@@ -437,15 +439,15 @@ const PaymentSuccess = () => {
                 <Check className="h-8 w-8 text-primary" />
               </div>
               <h2 className="text-xl font-semibold mb-2">
-                Your payment went through — we're finalizing your order
+                We're confirming your payment
               </h2>
               <p className="text-muted-foreground mb-4">
-                Your card or PayPal was charged successfully. If this page doesn't
-                update in a minute, your order is still safe — email us with this
-                page open and we'll sort it instantly.
+                If your payment completed, your order is safe — you don't need to
+                pay again. This page can take a minute to catch up. If it doesn't
+                update, email us with this page open and we'll sort it instantly.
               </p>
               <p className="text-sm font-semibold text-destructive mb-6">
-                Please do not pay again.
+                Please don't pay again if you already did.
               </p>
               {supportRef && (
                 <p className="text-xs text-muted-foreground mb-4">
