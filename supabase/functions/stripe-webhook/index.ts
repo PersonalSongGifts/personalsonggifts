@@ -24,8 +24,8 @@ function calculateExpectedDelivery(tier: string): string {
     // 24 hours from now
     return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
-  // 48 hours from now for standard
-  return new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
+  // 24 hours from now for standard (was 48; UI still promises 48 → under-promise)
+  return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
 // Compute timing fields for background automation
@@ -425,6 +425,106 @@ Deno.serve(async (req) => {
         );
       }
       // --- End Package Unlock handler ---
+
+      // --- Rush Upgrade handler (early return before order creation) ---
+      if (sessionMetadata.type === "rush_upgrade" || sessionMetadata.entitlement === "rush_upgrade") {
+        const rushOrderId = sessionMetadata.orderId;
+        console.log(`[WEBHOOK] Rush upgrade for order ${rushOrderId}`);
+
+        if (!rushOrderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rushOrderId)) {
+          console.error("[WEBHOOK] Invalid orderId in rush_upgrade metadata");
+          return new Response(
+            JSON.stringify({ received: true, error: "Invalid orderId in metadata" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        const nowMs = Date.now();
+        const nowIso = new Date(nowMs).toISOString();
+        const amountTotal = session.amount_total ?? 0;
+
+        // Load order to compute target_send_at using created_at + 30min age floor
+        const { data: existing, error: loadErr } = await supabase
+          .from("orders")
+          .select("id, created_at, rush_addon, sent_at, delivery_status")
+          .eq("id", rushOrderId)
+          .maybeSingle();
+
+        if (loadErr) {
+          console.error("[WEBHOOK] Failed to load order for rush upgrade:", loadErr);
+          return new Response(
+            JSON.stringify({ error: "Failed to load order" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (!existing) {
+          console.warn(`[WEBHOOK] Rush upgrade: order ${rushOrderId} not found`);
+          return new Response(
+            JSON.stringify({ received: true, error: "Order not found" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (existing.rush_addon) {
+          console.log(`[WEBHOOK] Rush already applied to ${rushOrderId} — skipping`);
+          return new Response(
+            JSON.stringify({ received: true, type: "rush_upgrade", orderId: rushOrderId, alreadyRush: true }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const createdMs = existing.created_at ? new Date(existing.created_at).getTime() : nowMs;
+        const targetSendMs = Math.max(createdMs + 30 * 60 * 1000, nowMs + 5 * 60 * 1000);
+        const targetSendIso = new Date(targetSendMs).toISOString();
+        const expectedDeliveryIso = new Date(nowMs + 60 * 60 * 1000).toISOString();
+
+        const update: Record<string, unknown> = {
+          rush_addon: true,
+          rush_price_cents: amountTotal,
+          expected_delivery: expectedDeliveryIso,
+        };
+        // Only touch scheduling if the song hasn't been sent yet.
+        if (!existing.sent_at) {
+          update.target_send_at = targetSendIso;
+          if (!existing.delivery_status || existing.delivery_status === "pending") {
+            update.delivery_status = "scheduled";
+          }
+        }
+
+        const { error: rushErr } = await supabase
+          .from("orders")
+          .update(update)
+          .eq("id", rushOrderId)
+          .eq("rush_addon", false);
+
+        if (rushErr) {
+          console.error("[WEBHOOK] Failed to apply rush upgrade:", rushErr);
+          return new Response(
+            JSON.stringify({ error: "Failed to apply rush upgrade" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        await logActivity(
+          supabase,
+          "order",
+          rushOrderId,
+          "rush_upgrade_purchased",
+          "system",
+          `1-Hour Rush upgrade via Stripe webhook, $${(amountTotal / 100).toFixed(2)}`
+        );
+
+        return new Response(
+          JSON.stringify({ received: true, type: "rush_upgrade", orderId: rushOrderId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // --- End Rush Upgrade handler ---
 
       // Initialize Supabase
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

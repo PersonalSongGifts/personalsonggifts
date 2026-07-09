@@ -134,3 +134,9 @@ verify_jwt = false
 
 [functions.verify-package-purchase]
 verify_jwt = false
+
+[functions.create-rush-upgrade]
+verify_jwt = false
+
+[functions.verify-rush-upgrade]
+verify_jwt = false

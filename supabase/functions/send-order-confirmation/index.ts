@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
 
     const tierLabel = rushAddon
       ? "Rush (1 hour)"
-      : (pricingTier === "priority" ? "Priority (24-hour)" : "Standard (48-hour)");
+      : (pricingTier === "priority" ? "Priority (24-hour)" : "Standard (24-hour)");
     const deliveryDate = new Date(expectedDelivery).toLocaleDateString("en-US", {
       weekday: "long",
       month: "long",

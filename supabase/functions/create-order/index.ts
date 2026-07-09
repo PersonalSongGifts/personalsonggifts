@@ -94,8 +94,8 @@ function calculateExpectedDelivery(tier: "standard" | "priority"): string {
     // 24 hours from now
     return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
-  // 48 hours from now for standard
-  return new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
+  // 24 hours from now for standard (was 48; UI still promises 48 → under-promise)
+  return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
 Deno.serve(async (req) => {
