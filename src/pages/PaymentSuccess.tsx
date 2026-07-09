@@ -560,16 +560,15 @@ const PaymentSuccess = () => {
                 <span className="text-foreground capitalize">{orderDetails.genre.replace("-", " ")}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Package:</span>
-                <span className="text-foreground capitalize">{orderDetails.pricingTier}</span>
+                <span className="text-muted-foreground">Delivery speed:</span>
+                <span className="text-foreground">{deliverySpeedLabel}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Price paid:</span>
                 <span className="text-foreground font-medium">
-                  ${(
-                    (orderDetails.price ?? (orderDetails.pricingTier === "priority" ? 79.99 : 49.99))
-                    + ((orderDetails.package_addon_cents || 0) + (orderDetails.rush_addon_cents || 0)) / 100
-                  ).toFixed(2)} USD
+                  {totalPaidCents !== null
+                    ? `$${(totalPaidCents / 100).toFixed(2)} USD`
+                    : "—"}
                 </span>
               </div>
             </div>
