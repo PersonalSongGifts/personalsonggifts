@@ -90,6 +90,7 @@ Deno.serve(async (req) => {
     const messageId = `<${orderId}.delivery.${Date.now()}@personalsonggifts.com>`;
 
     const songPageUrl = `https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}`;
+    const reactionUrl = `https://personalsonggifts.lovable.app/submit-reaction`;
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -124,6 +125,16 @@ Deno.serve(async (req) => {
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
       From the song page you can listen, download, and share with friends and family. We hope it brings joy!
     </p>
+
+    <div style="border: 1px solid #eeeeee; border-radius: 6px; padding: 16px 18px; margin: 24px 0;">
+      <p style="color: #1E3A5F; font-size: 15px; font-weight: bold; margin: 0 0 6px 0;">Share the moment — earn a $100 gift card</p>
+      <p style="color: #333333; font-size: 14px; line-height: 1.55; margin: 0 0 10px 0;">
+        Record ${recipientName}'s reaction to their song. If we feature your video, you'll receive a <strong>$100 Amazon or Visa gift card</strong> as a thank you.
+      </p>
+      <p style="margin: 0;">
+        <a href="${reactionUrl}" style="color: #1E3A5F; font-weight: bold;">Submit your reaction video →</a>
+      </p>
+    </div>
 
     <p style="color: #555555; font-size: 14px; margin: 0 0 4px 0;"><strong>Order ID:</strong> ${orderId.slice(0, 8).toUpperCase()}</p>
 
@@ -174,6 +185,11 @@ ${revisionToken ? `\nWant changes? Request a revision: https://personalsonggifts
 ${showBonusPS ? `P.S. We also made ${bonusGenreLabel === "R&B" ? "an R&B" : "an acoustic"} version of your song — visit your song page to check it out.\n` : ''}
 ${showBonusPending ? `P.S. Your bonus ${pendingStyle} version is still in the studio — we'll email you the moment it's ready.\n` : ''}
 We hope it brings joy!
+
+---
+Share the moment — earn a $100 gift card
+Record ${recipientName}'s reaction. If we feature your video, you'll receive a $100 Amazon or Visa gift card as a thank you.
+Submit your reaction: ${reactionUrl}
 
 Warm regards,
 The Personal Song Gifts Team

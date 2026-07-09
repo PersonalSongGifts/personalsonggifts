@@ -21,7 +21,11 @@ const FinalCTA = () => {
         </Button>
 
         <p className="mt-6 md:mt-8 text-xs md:text-sm text-muted-foreground">
-          ✓ Free remake if you're not happy · ✓ Delivered within 24 hours · ✓ 100% unique
+          ✓{" "}
+          <Link to="/refund" className="underline decoration-muted-foreground/40 hover:text-primary hover:decoration-primary">
+            Love it or your money back — 14-day guarantee
+          </Link>{" "}
+          · ✓ Delivered within 24 hours · ✓ 100% unique
         </p>
       </div>
     </section>

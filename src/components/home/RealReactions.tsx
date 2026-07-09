@@ -1,3 +1,12 @@
+// FTC COMPLIANCE GUARDRAIL:
+// Any reaction video shown here (or anywhere else in ads/marketing) is a
+// featured customer video collected via /submit-reaction, where the customer
+// is offered a $100 Amazon/Visa gift card if we feature it. That incentive
+// creates a material connection under FTC 16 CFR Part 255 — every featured
+// video used in advertising MUST carry a clear disclosure (e.g. "Featured
+// reaction — customer received a $100 gift card"). Do not remove this comment
+// without also removing all incentivized reaction videos from marketing
+// surfaces.
 import { useRef, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 

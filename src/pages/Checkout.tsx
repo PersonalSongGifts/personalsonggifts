@@ -35,7 +35,6 @@ import { useActivePromo } from "@/hooks/useActivePromo";
 // these values are kept in lock-step with create-checkout / create-paypal-order.
 // -----------------------------------------------------------------------------
 const BASE_SONG_CENTS = 2900;              // live charge for a Standard custom song
-const BASE_ANCHOR_CENTS = 5800;            // struck-through anchor ($58.00) — display only
 const ADDON_PRICES_CENTS = { forever_memory: 1300, rush: 1000 } as const;
 const PACKAGE_ANCHOR_CENTS = 2200;         // struck-through anchor for Forever Memory bump
 type AddonKey = keyof typeof ADDON_PRICES_CENTS;
@@ -157,9 +156,15 @@ const Checkout = () => {
   const grandTotal = grandTotalCents / 100;
   const isZeroTotal = grandTotalCents <= 0;
 
-  // "You save" — vs the frontend $58 anchor. When package selected, add the
-  // $9 package savings ($22 anchor - $13 charge) on top.
-  const anchorSavingsCents = Math.max(0, BASE_ANCHOR_CENTS - baseSongCents);
+  // Only show a struck-through base anchor + "You save" when a GENUINE flash
+  // promo is discounting the base song below its flat $29 price. Ryan has
+  // never sold at $58, so a permanent "$58 → $29" anchor would be a
+  // fictitious former-price claim (FTC 16 CFR 233). Default state: flat $29.
+  const hasFlashBaseDiscount = activeFlashPromo.active && baseSongCents < BASE_SONG_CENTS;
+  const flashAnchorCents = hasFlashBaseDiscount ? BASE_SONG_CENTS : 0;
+  const anchorSavingsCents = hasFlashBaseDiscount
+    ? Math.max(0, BASE_SONG_CENTS - baseSongCents)
+    : 0;
   const packageSavingsCents = packageSelected
     ? Math.max(0, PACKAGE_ANCHOR_CENTS - ADDON_PRICES_CENTS.forever_memory)
     : 0;
@@ -380,10 +385,7 @@ const Checkout = () => {
             <div className="flex items-start justify-between gap-3 mb-3">
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="text-xs font-bold uppercase tracking-wider bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
-                    50% OFF
-                  </span>
-                  {activeFlashPromo.active && (
+                  {hasFlashBaseDiscount && (
                     <span className="text-[10px] font-semibold uppercase tracking-wider bg-accent/20 text-accent-foreground px-2 py-0.5 rounded-full">
                       {activeFlashPromo.name}
                     </span>
@@ -394,10 +396,18 @@ const Checkout = () => {
                 </h3>
               </div>
               <div className="text-right whitespace-nowrap">
-                <div className="text-xs text-muted-foreground line-through">{fmt(BASE_ANCHOR_CENTS)}</div>
+                {hasFlashBaseDiscount && (
+                  <div className="text-xs text-muted-foreground line-through">{fmt(flashAnchorCents)}</div>
+                )}
                 <div className="text-2xl md:text-3xl font-bold text-foreground">{fmt(baseSongCents)}</div>
               </div>
             </div>
+
+            {!hasFlashBaseDiscount && (
+              <p className="text-xs text-muted-foreground mb-3">
+                $29 flat — no subscription · delivered in 24 hours · free revision included
+              </p>
+            )}
 
             <ul className="space-y-2 mb-4 text-sm">
               <li className="flex items-start gap-2">
@@ -512,11 +522,11 @@ const Checkout = () => {
             <div className="flex items-start gap-3">
               <Shield className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <div className="font-semibold text-foreground text-sm">Free revision included — we'll work with you until it's right</div>
+                <div className="font-semibold text-foreground text-sm">Love it or your money back — 14-day guarantee</div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  One free remake if it's not quite right the first time.{" "}
+                  Unlimited free revisions, plus a full refund on request within 14 days if you're not happy.{" "}
                   <Link to="/refund" className="underline decoration-muted-foreground/40 hover:text-primary hover:decoration-primary">
-                    Our Remake Policy
+                    Our Love-It Guarantee
                   </Link>
                 </p>
               </div>

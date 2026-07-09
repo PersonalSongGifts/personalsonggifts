@@ -175,7 +175,7 @@ const SubmitReaction = () => {
             Submit Your Reaction
           </h1>
           <p className="text-muted-foreground">
-            Share your reaction video and receive a $50 gift card!
+            Share your reaction video and receive a $100 Amazon or Visa gift card!
           </p>
         </div>
 
