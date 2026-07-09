@@ -1002,14 +1002,17 @@ const SongPlayer = () => {
         {/* Tip jar */}
         {orderId && <TipJar orderId={orderId} />}
 
-        {/* --- Forever Memory Package (flag-gated: VITE_MEMORY_PACKAGE_ENABLED=true or ?preview=1) --- */}
+        {/* --- Forever Memory Package (unlocked view always renders for paid customers; sell card is flag-gated) --- */}
         {(() => {
           const flagEnabled =
             import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" ||
             searchParams.get("preview") === "1";
-          if (!flagEnabled || !orderId) return null;
+          if (!orderId) return null;
 
           const unlocked = !!songData.package_unlocked;
+
+          // Paid customers must always see what they own.
+          if (!unlocked && !flagEnabled) return null;
 
           if (!unlocked) {
             return (

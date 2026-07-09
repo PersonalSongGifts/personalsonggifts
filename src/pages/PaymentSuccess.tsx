@@ -547,7 +547,8 @@ const PaymentSuccess = () => {
           {/* Forever Memory Package upsell */}
           {(() => {
             const flagEnabled = import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" || searchParams.get("preview") === "1";
-            if (!flagEnabled || !orderDetails?.orderId) return null;
+            if (!orderDetails?.orderId) return null;
+            // Owned confirmation must ALWAYS render (regardless of flag) — paid customers must see what they bought.
             if (pkgConfirming && !pkgAdded) {
               return (
                 <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
@@ -573,6 +574,8 @@ const PaymentSuccess = () => {
                 </Card>
               );
             }
+            // Sell card only when flag enabled and package not yet owned.
+            if (!flagEnabled) return null;
             return (
               <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
                 <p className="text-xs uppercase tracking-wide text-primary font-semibold mb-2">Complete the gift</p>

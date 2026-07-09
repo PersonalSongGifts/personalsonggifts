@@ -145,29 +145,84 @@ Deno.serve(async (req) => {
       },
     });
 
+    let recoveredPriceCents: number | null = null;
+
     if (!captureResponse.ok) {
       const err = await captureResponse.text();
       console.error("PayPal capture error:", err);
-      return new Response(
-        JSON.stringify({ error: "Failed to capture PayPal payment" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      // Recovery: if PayPal says the order was already captured, don't 400.
+      if (err.includes("ORDER_ALREADY_CAPTURED")) {
+        const { data: alreadyCapturedOrder } = await supabase
+          .from("orders")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token, package_unlocked_at, package_price_cents, package_unlock_session_id, rush_addon, rush_price_cents")
+          .eq("notes", `paypal_order:${orderID}`)
+          .maybeSingle();
+        if (alreadyCapturedOrder) {
+          return new Response(
+            JSON.stringify({
+              orderId: alreadyCapturedOrder.id,
+              recipientName: alreadyCapturedOrder.recipient_name,
+              occasion: alreadyCapturedOrder.occasion,
+              genre: alreadyCapturedOrder.genre,
+              pricingTier: alreadyCapturedOrder.pricing_tier,
+              customerEmail: alreadyCapturedOrder.customer_email,
+              expectedDelivery: alreadyCapturedOrder.expected_delivery,
+              price: alreadyCapturedOrder.price_cents != null ? alreadyCapturedOrder.price_cents / 100 : undefined,
+              revisionToken: alreadyCapturedOrder.revision_token,
+              package_unlocked: !!alreadyCapturedOrder.package_unlocked_at,
+              package_addon_cents: alreadyCapturedOrder.package_unlock_session_id === `paypal_${orderID}` ? (alreadyCapturedOrder.package_price_cents || 0) : 0,
+              rush_addon: !!alreadyCapturedOrder.rush_addon,
+              rush_addon_cents: alreadyCapturedOrder.rush_addon ? (alreadyCapturedOrder.rush_price_cents || 0) : 0,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        // Charged but no local order — fetch PayPal order details and continue to create it.
+        try {
+          const detailsResp = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderID}`, {
+            headers: { "Authorization": `Bearer ${accessToken}` },
+          });
+          if (detailsResp.ok) {
+            const detailsData = await detailsResp.json();
+            console.warn("ORDER_ALREADY_CAPTURED with no local order; recovering", orderID);
+            const capturedAmountRec = detailsData.purchase_units?.[0]?.payments?.captures?.[0]?.amount;
+            recoveredPriceCents = capturedAmountRec
+              ? Math.round(parseFloat(capturedAmountRec.value) * 100)
+              : parseInt(metadata.amount_total_cents || "4999", 10);
+          }
+        } catch (recErr) {
+          console.error("Recovery fetch failed:", recErr);
+        }
+        if (recoveredPriceCents === null) {
+          return new Response(
+            JSON.stringify({ error: "Failed to capture PayPal payment" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } else {
+        return new Response(
+          JSON.stringify({ error: "Failed to capture PayPal payment" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
-    const captureData = await captureResponse.json();
-
-    if (captureData.status !== "COMPLETED") {
-      return new Response(
-        JSON.stringify({ error: "PayPal payment not completed" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    let priceCents: number;
+    if (recoveredPriceCents !== null) {
+      priceCents = recoveredPriceCents;
+    } else {
+      const captureData = await captureResponse.json();
+      if (captureData.status !== "COMPLETED") {
+        return new Response(
+          JSON.stringify({ error: "PayPal payment not completed" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const capturedAmount = captureData.purchase_units?.[0]?.payments?.captures?.[0]?.amount;
+      priceCents = capturedAmount
+        ? Math.round(parseFloat(capturedAmount.value) * 100)
+        : parseInt(metadata.amount_total_cents || "4999", 10);
     }
-
-    // Get actual amount captured
-    const capturedAmount = captureData.purchase_units?.[0]?.payments?.captures?.[0]?.amount;
-    const priceCents = capturedAmount
-      ? Math.round(parseFloat(capturedAmount.value) * 100)
-      : parseInt(metadata.amount_total_cents || "4999", 10);
 
     // Resolve add-ons BEFORE computing timing so rush affects expected_delivery
     const foreverMemory = metadata.forever_memory === "true";
