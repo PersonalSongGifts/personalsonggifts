@@ -850,7 +850,10 @@ Deno.serve(async (req) => {
       }
       
       // Compute timing for background automation
-      const timing = computeOrderTiming(effectiveExpectedDelivery);
+      const timing = computeOrderTiming(effectiveExpectedDelivery, {
+        pricingTier,
+        isRush: rushAddon,
+      });
       console.log(`[WEBHOOK] Order timing: generate after ${timing.earliestGenerateAt}, send at ${timing.targetSendAt}`);
       
       // Compute inputs hash for change detection (includes all creative fields + language)
