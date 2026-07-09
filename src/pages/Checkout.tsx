@@ -453,7 +453,7 @@ const Checkout = () => {
               ) : (
                 <>
                   <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded text-xs">50% OFF</span>
-                  {`${seasonalPromo.emoji} ${seasonalPromo.code} auto-applied at checkout`}
+                  {`${seasonalPromo.emoji} ${seasonalPromo.code} applied — reflected in prices below`}
                 </>
               )}
             </div>
@@ -555,7 +555,7 @@ const Checkout = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" />
-                  First in queue
+                  Ahead of standard orders
                 </li>
               </ul>
             </Card>
@@ -588,9 +588,23 @@ const Checkout = () => {
                 </div>
               </div>
               <div className="mb-4">
-                <span className="text-lg text-muted-foreground line-through">$169.99 USD</span>
-                <span className="text-4xl font-bold text-foreground ml-2">$89.99</span>
-                <span className="text-sm text-muted-foreground ml-1">USD</span>
+                {(() => {
+                  // Express is derived from the LIVE Priority pricing so it can never
+                  // drift from the Pay button (which uses `pricing.total + $10` rush).
+                  // Anchor = Priority anchor ($159.99 base) + $20. Live = Priority live + $10.
+                  const priorityLiveCents = activeFlashPromo.active
+                    ? (activeFlashPromo.priorityPriceCents || 0)
+                    : calculateSeasonalPriceCents("priority");
+                  const expressLive = (priorityLiveCents + ADDON_PRICES_CENTS.rush) / 100;
+                  const expressAnchor = (BASE_PRICES_CENTS.priority + 2000) / 100;
+                  return (
+                    <>
+                      <span className="text-lg text-muted-foreground line-through">${expressAnchor.toFixed(2)} USD</span>
+                      <span className="text-4xl font-bold text-foreground ml-2">${expressLive.toFixed(2)}</span>
+                      <span className="text-sm text-muted-foreground ml-1">USD</span>
+                    </>
+                  );
+                })()}
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -727,19 +741,18 @@ const Checkout = () => {
                 <span className="text-foreground">{formData.yourEmail}</span>
               </div>
               <div className="border-t border-border my-4" />
-              
-              {/* Promo item */}
+
+              {/* Selected tier line — names what the subtotal is for */}
               <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Unlimited plays</span>
-                  <span className="bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5 rounded">FREE</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground line-through">$15</span>
-                  <span className="text-primary font-semibold">$0</span>
-                </div>
+                <span className="text-foreground font-medium">
+                  {isExpress
+                    ? "Express Song (1-hour delivery)"
+                    : selectedTier === "priority"
+                      ? "Priority Song"
+                      : "Standard Song"}
+                </span>
               </div>
-              
+
               {/* Promo Code Input */}
               <div className="border-t border-border my-4" />
               <div className="space-y-2">
@@ -916,7 +929,7 @@ const Checkout = () => {
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-4">
-            🔒 Secure checkout powered by Stripe
+            🔒 Secure checkout via Stripe or PayPal
           </p>
         </div>
       </div>
