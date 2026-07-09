@@ -418,6 +418,38 @@ const PaymentSuccess = () => {
   }
 
   if (error) {
+    // Distinct: PayPal declined the card. NOT charged — safe to send back to /checkout.
+    if (paypalDeclined) {
+      return (
+        <Layout showPromoBanner={false}>
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <div className="text-center max-w-md">
+              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <h2 className="text-xl font-semibold mb-2">Your payment didn't go through</h2>
+              <p className="text-muted-foreground mb-6">
+                Your payment method was declined by PayPal — you have <strong>not</strong> been
+                charged. You can head back to checkout and try a different payment method.
+              </p>
+              <div className="space-y-3">
+                <Button asChild>
+                  <Link to="/checkout">Back to checkout</Link>
+                </Button>
+                <p className="text-sm text-muted-foreground">
+                  Need help? Email{" "}
+                  <a
+                    href="mailto:support@personalsonggifts.com?subject=PayPal%20payment%20declined"
+                    className="text-primary underline"
+                  >
+                    support@personalsonggifts.com
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
     // If a payment identifier is present AND we don't have a definitive "not found"
     // from the backend, the customer's card MAY have been charged. Never suggest they
     // retry checkout in that case — that would risk a double purchase.
@@ -427,10 +459,17 @@ const PaymentSuccess = () => {
     const supportSubject = encodeURIComponent(
       `Order finalization help${supportRef ? ` — ref ${supportRef.slice(0, 20)}` : ""}`
     );
-    const supportBody = encodeURIComponent(
-      `Hi — my payment went through but the confirmation page is still loading.\n\n` +
-      `Reference: ${supportRef}\n\nPlease help me finalize my order. Thanks!`
-    );
+    // Branch-appropriate body: don't claim a payment happened in the not-found branch.
+    const supportBody = paymentAttempted
+      ? encodeURIComponent(
+          `Hi — my payment went through but the confirmation page is still loading.\n\n` +
+          `Reference: ${supportRef}\n\nPlease help me finalize my order. Thanks!`
+        )
+      : encodeURIComponent(
+          `Hi — I need help finding my order.` +
+          (supportRef ? `\n\nReference: ${supportRef}` : ``) +
+          `\n\nThanks!`
+        );
     const mailto = `mailto:support@personalsonggifts.com?subject=${supportSubject}&body=${supportBody}`;
 
     if (paymentAttempted) {
