@@ -530,7 +530,11 @@ export default function SongPreview() {
           >
             <CardContent className="p-6 text-center space-y-4">
               <div>
-                <p className="text-sm text-muted-foreground line-through">$99.99 USD</p>
+                {flashShowPrice && (
+                  <p className="text-sm text-muted-foreground line-through">
+                    {formatUsd(effectiveDefaultCents)} USD
+                  </p>
+                )}
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
                   {flashShowPrice
                     ? `$${(flashPriceCents! / 100).toFixed(2)}`

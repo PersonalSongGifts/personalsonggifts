@@ -1509,11 +1509,11 @@ const SongPlayer = () => {
           <CardContent className="pt-6 text-center">
             <Gift className="w-12 h-12 text-primary mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">
-              Share the Moment & Earn $50!
+              Share the Moment & Earn $100!
             </h2>
             <p className="text-muted-foreground mb-4">
-              Record the moment your loved one hears their song for the first time. 
-              If selected, you'll receive a $50 Amazon gift card.
+              Record the moment your loved one hears their song for the first time.
+              If we feature your video, you'll receive a <strong>$100 Amazon or Visa gift card</strong> as a thank you.
             </p>
             <Link to="/submit-reaction">
               <Button size="lg" className="gap-2">

@@ -110,42 +110,29 @@ const TermsOfService = () => {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">7. Satisfaction Guarantee</h2>
+            <h2 className="text-xl font-semibold mb-3">7. Love-It Guarantee</h2>
             <p className="text-muted-foreground leading-relaxed">
-              We want you to love your personalized song. If you are not satisfied with your delivered song, we offer ONE (1) complimentary remake under the following terms:
+              We want you to genuinely love your personalized song. Our Love-It Guarantee has two parts:
             </p>
-
-            <h3 className="text-lg font-medium mt-4 mb-2">Eligibility</h3>
-            <ul className="list-disc pl-6 text-muted-foreground space-y-1">
-              <li>You must request your remake within seven (7) days of receiving your song delivery email</li>
-              <li>You must provide specific feedback about what you would like changed (lyrics, musical style, voice, tempo, name pronunciation, etc.)</li>
+            <ul className="list-disc pl-6 text-muted-foreground space-y-1 mt-2">
+              <li><strong>Unlimited free revisions</strong> until you're happy with your song, at no additional cost.</li>
+              <li><strong>Full refund on request within fourteen (14) days of delivery</strong> if you are still not satisfied. Refunds are returned to the original payment method.</li>
             </ul>
 
-            <h3 className="text-lg font-medium mt-4 mb-2">Scope of Remake</h3>
+            <h3 className="text-lg font-medium mt-4 mb-2">How to use it</h3>
             <ul className="list-disc pl-6 text-muted-foreground space-y-1">
-              <li>The remake must address issues with your original song request</li>
-              <li>We will work with you to fix problems such as incorrect details, style mismatches, pronunciation issues, or other aspects that do not match what you requested</li>
-              <li>The remake is NOT for creating an entirely different song (different recipient, different occasion, different story)</li>
-              <li>One remake per order — additional remakes are not available</li>
+              <li>For a revision or refund, email <a href="mailto:support@personalsonggifts.com" className="text-primary hover:underline">support@personalsonggifts.com</a> with your order number.</li>
+              <li>Revisions are typically delivered within 24 hours and can be requested unlimited times.</li>
+              <li>Refund requests must be submitted within 14 days of the delivery email. Approved refunds are processed within 5–10 business days to the original payment method.</li>
+              <li>After the 14-day window the sale is final, but we will still happily continue to revise your song for free.</li>
             </ul>
 
-            <h3 className="text-lg font-medium mt-4 mb-2">What This Guarantee Is NOT</h3>
+            <h3 className="text-lg font-medium mt-4 mb-2">Limits</h3>
             <ul className="list-disc pl-6 text-muted-foreground space-y-1">
-              <li>This is NOT a money-back guarantee</li>
-              <li>This is NOT a refund policy</li>
-              <li>After your remake is delivered, no further remakes or refunds are available for that order</li>
+              <li>Revisions are for improving your original song request; they are not for producing an entirely different song (different recipient, different occasion, different story).</li>
+              <li>Voluntary tips are non-refundable.</li>
+              <li>We reserve the right to decline refund requests in cases of evident abuse or fraud, such as repeat refund-and-reorder patterns or purchases made in bad faith.</li>
             </ul>
-
-            <h3 className="text-lg font-medium mt-4 mb-2">How to Request a Remake</h3>
-            <ul className="list-disc pl-6 text-muted-foreground space-y-1">
-              <li>Email us at <a href="mailto:support@personalsonggifts.com" className="text-primary hover:underline">support@personalsonggifts.com</a> to request a Change Request Form</li>
-              <li>Describe specifically what you would like changed</li>
-              <li>Your remake will be generated and delivered via email</li>
-            </ul>
-
-            <p className="text-muted-foreground leading-relaxed mt-4">
-              By purchasing a song, you acknowledge that you are purchasing a generated creative work. Subjective satisfaction with creative output cannot be guaranteed. The free remake described above is your sole and exclusive remedy for dissatisfaction with the creative output of your order. No refunds will be issued for subjective dissatisfaction with the song's style, sound, or creative interpretation.
-            </p>
           </section>
 
           <section>
@@ -168,17 +155,12 @@ const TermsOfService = () => {
           <section>
             <h2 className="text-xl font-semibold mb-3">9. Refund Policy</h2>
             <p className="text-muted-foreground leading-relaxed">
-              Due to the personalized, digital nature of our products:
+              The Love-It Guarantee (Section 7) is our primary refund policy: a full refund on request within fourteen (14) days of delivery if you are not satisfied with your song.
             </p>
-            <ul className="list-disc pl-6 text-muted-foreground space-y-1 mt-2">
-              <li>All sales are final once song generation begins</li>
-              <li>We do not offer refunds for completed songs that have been delivered</li>
-              <li>The Satisfaction Guarantee (Section 7) provides a free remake option as the remedy for dissatisfaction, not a refund</li>
-            </ul>
 
-            <h3 className="text-lg font-medium mt-4 mb-2">Limited Exceptions</h3>
+            <h3 className="text-lg font-medium mt-4 mb-2">Refunds Outside the 14-Day Window</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Refunds may be considered only in the following limited circumstances:
+              After 14 days, refunds are limited to:
             </p>
             <ul className="list-disc pl-6 text-muted-foreground space-y-1 mt-2">
               <li><strong>Technical failure:</strong> If we are unable to generate or deliver your song due to a technical issue on our end that we cannot resolve</li>
