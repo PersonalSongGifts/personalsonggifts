@@ -6,9 +6,10 @@ interface DetailsStepProps {
   formData: FormData;
   updateFormData: (updates: Partial<FormData>) => void;
   errors: FormErrors;
+  onEnterAdvance?: () => void;
 }
 
-const DetailsStep = ({ formData, updateFormData, errors }: DetailsStepProps) => {
+const DetailsStep = ({ formData, updateFormData, errors, onEnterAdvance }: DetailsStepProps) => {
   return (
     <div className="space-y-6">
       {/* Recipient Name */}
@@ -20,6 +21,12 @@ const DetailsStep = ({ formData, updateFormData, errors }: DetailsStepProps) => 
           id="recipientName"
           value={formData.recipientName}
           onChange={(e) => updateFormData({ recipientName: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onEnterAdvance?.();
+            }
+          }}
           placeholder="Enter their first name"
           className={`text-lg py-6 ${errors.recipientName ? "border-destructive" : ""}`}
         />

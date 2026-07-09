@@ -15,7 +15,8 @@ import { useUtmCapture, getStoredUtmParams } from "@/hooks/useUtmCapture";
 import RecipientStep from "@/components/create/RecipientStep";
 import DetailsStep from "@/components/create/DetailsStep";
 import OccasionStep from "@/components/create/OccasionStep";
-import MusicStyleStep from "@/components/create/MusicStyleStep";
+import GenreStep from "@/components/create/GenreStep";
+import SingerVoiceStep from "@/components/create/SingerVoiceStep";
 import StoryStep from "@/components/create/StoryStep";
 import FinalTouchesStep from "@/components/create/FinalTouchesStep";
 import YourDetailsStep from "@/components/create/YourDetailsStep";
@@ -61,16 +62,19 @@ const initialFormData: FormData = {
   smsOptIn: false,
 };
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
-const stepTitles = [
-  "Who Is This Song For?",
-  "Tell Us Who This Song Will Be For",
-  "What's the Occasion?",
-  "Choose a Genre",
-  "Share Your Story",
-  "A Message From Your Heart",
-  "Your Details",
+type StepMeta = { title: string; subtitle: string; autoAdvance: boolean };
+
+const STEP_META: StepMeta[] = [
+  { title: "Who is this song for?", subtitle: "Tap the person you're writing this for.", autoAdvance: true },
+  { title: "What's their name?", subtitle: "First name is perfect — we'll sing it in the song.", autoAdvance: false },
+  { title: "What's the occasion?", subtitle: "Pick the moment this song will celebrate.", autoAdvance: true },
+  { title: "Choose a music style", subtitle: "Any vibe works — pick what they'd love most.", autoAdvance: true },
+  { title: "Pick a singer voice", subtitle: "Choose the vocalist that fits the mood.", autoAdvance: true },
+  { title: "Tell us their story", subtitle: "Your words guide the song — write from the heart.", autoAdvance: false },
+  { title: "A message from your heart", subtitle: "Anything else we should try to weave in?", autoAdvance: false },
+  { title: "Where should we send it?", subtitle: "Your song will be delivered here within 24 hours.", autoAdvance: false },
 ];
 
 const CreateSong = () => {
@@ -135,6 +139,8 @@ const CreateSong = () => {
   }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   const progress = (currentStep / TOTAL_STEPS) * 100;
+  const currentMeta = STEP_META[currentStep - 1];
+  const isAutoAdvanceStep = currentMeta?.autoAdvance ?? false;
 
   const updateFormData = (updates: Partial<FormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));
@@ -284,16 +290,18 @@ const CreateSong = () => {
       case 1:
         return <RecipientStep formData={formData} updateFormData={updateFormData} errors={errors} onAutoAdvance={autoAdvance} />;
       case 2:
-        return <DetailsStep formData={formData} updateFormData={updateFormData} errors={errors} />;
+        return <DetailsStep formData={formData} updateFormData={updateFormData} errors={errors} onEnterAdvance={nextStep} />;
       case 3:
         return <OccasionStep formData={formData} updateFormData={updateFormData} errors={errors} onAutoAdvance={autoAdvance} />;
       case 4:
-        return <MusicStyleStep formData={formData} updateFormData={updateFormData} errors={errors} onAutoAdvance={autoAdvance} />;
+        return <GenreStep formData={formData} updateFormData={updateFormData} errors={errors} onAutoAdvance={autoAdvance} />;
       case 5:
-        return <StoryStep formData={formData} updateFormData={updateFormData} errors={errors} />;
+        return <SingerVoiceStep formData={formData} updateFormData={updateFormData} errors={errors} onAutoAdvance={autoAdvance} />;
       case 6:
-        return <FinalTouchesStep formData={formData} updateFormData={updateFormData} errors={errors} />;
+        return <StoryStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       case 7:
+        return <FinalTouchesStep formData={formData} updateFormData={updateFormData} errors={errors} />;
+      case 8:
         return <YourDetailsStep formData={formData} updateFormData={updateFormData} errors={errors} />;
       default:
         return null;
@@ -315,10 +323,10 @@ const CreateSong = () => {
 
           {/* Step title */}
           <h1 className="text-3xl md:text-4xl font-display text-foreground text-center mb-2">
-            {stepTitles[currentStep - 1]}
+            {currentMeta?.title}
           </h1>
           <p className="text-center text-muted-foreground mb-10">
-            Take your time — there's no wrong answer.
+            {currentMeta?.subtitle}
           </p>
 
           {/* Step content */}
@@ -338,25 +346,31 @@ const CreateSong = () => {
               Back
             </Button>
 
-            <Button
-              onClick={nextStep}
-              className="gap-2 px-8"
-            >
-              {currentStep === TOTAL_STEPS ? "Continue to Checkout" : "Continue"}
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+            {isAutoAdvanceStep ? (
+              <span className="text-sm text-muted-foreground self-center">
+                Tap a choice to continue
+              </span>
+            ) : (
+              <Button
+                onClick={nextStep}
+                className="gap-2 px-8"
+              >
+                {currentStep === TOTAL_STEPS ? "Create My Song" : "Continue"}
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           {/* Micro-trust strip (shown on every step) */}
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Songs from $49.99 ·{" "}
+            Songs from $29 ·{" "}
             <Link
               to="/refund"
               className="underline decoration-muted-foreground/40 hover:decoration-primary hover:text-primary transition-colors"
             >
               Free remake if you're not happy
             </Link>{" "}
-            · Delivered within 48 hours
+            · Delivered within 24 hours
           </p>
         </div>
       </div>
