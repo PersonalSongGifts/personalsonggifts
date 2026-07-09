@@ -833,21 +833,25 @@ const Checkout = () => {
               {addonsEnabled && selectedAddons.forever_memory && (
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Forever Memory Package</span>
-                  <span className="text-foreground">$24.00</span>
+                  <span className="text-foreground">
+                    {isFullyFreeCode ? <span className="text-primary font-medium">FREE</span> : "$24.00"}
+                  </span>
                 </div>
               )}
 
               {rushSelected && (
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">1-Hour Express upgrade</span>
-                  <span className="text-foreground">$10.00</span>
+                  <span className="text-foreground">
+                    {isFullyFreeCode ? <span className="text-primary font-medium">FREE</span> : "$10.00"}
+                  </span>
                 </div>
               )}
 
               <div className="border-t border-border my-4" />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Total:</span>
-                <span>${(pricing.total + addonsTotalCents / 100).toFixed(2)} USD</span>
+                <span>${grandTotal.toFixed(2)} USD</span>
               </div>
             </div>
           </Card>
