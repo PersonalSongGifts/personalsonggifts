@@ -555,7 +555,7 @@ const Checkout = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" />
-                  First in queue
+                  Ahead of standard orders
                 </li>
               </ul>
             </Card>
