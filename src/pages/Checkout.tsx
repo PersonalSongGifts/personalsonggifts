@@ -719,7 +719,9 @@ const Checkout = () => {
                     {selectedAddons.forever_memory && (
                       <p className="flex items-center gap-1.5 text-xs text-primary mt-2">
                         <Check className="h-3.5 w-3.5" />
-                        Added — $24 will be included in your total below.
+                        {isFullyFreeCode
+                          ? "Added — included FREE with your promo code."
+                          : "Added — $24 will be included in your total below."}
                       </p>
                     )}
                   </div>
