@@ -63,14 +63,17 @@ const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = 
   "INFLCR-RISE-5Q": { maxUses: 1, settingsKey: "inflcr_rise_5q_usage_count" },
 };
 
-// Base prices in cents
+// Base prices in cents (LEGACY — priority still uses this + seasonal halving)
 const BASE_PRICES: Record<string, number> = {
-  standard: 9999,  // $99.99
+  standard: 9999,  // $99.99 (legacy anchor; no longer charged on standard)
   priority: 15999, // $159.99
 };
 
-// Seasonal discount percentage
+// Seasonal discount percentage (LEGACY — only applied to priority tier now)
 const SEASONAL_DISCOUNT_PERCENT = 50;
+
+// FS-actual flat standard-tier price (WELCOME50-era halving retired for standard)
+const BASE_SONG_PRICE_CENTS = 2900; // $29.00
 
 async function lookupStripeCoupon(stripe: Stripe, code: string): Promise<Stripe.Coupon | null> {
   const upperCode = code.trim().toUpperCase();
@@ -131,11 +134,12 @@ function calculateFinalPrice(
   additionalPromoCode?: string,
   stripeCoupon?: Stripe.Coupon | null
 ): number {
-  const basePrice = BASE_PRICES[tier] || BASE_PRICES.standard;
-
-  // Step 1: Apply seasonal discount using integer arithmetic to avoid float drift.
-  // Example: 9999 * (100 - 50) / 100 = 9999 * 50 / 100 = 499950 / 100 = 4999.5 → floor → 4999 ($49.99)
-  const afterSeasonal = Math.floor(basePrice * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
+  // Standard tier is now flat BASE_SONG_PRICE_CENTS (WELCOME50 halving retired).
+  // Priority (legacy live UI) still uses seasonal-halved anchor until it's retired from UI.
+  const afterSeasonal =
+    tier === "standard"
+      ? BASE_SONG_PRICE_CENTS
+      : Math.floor((BASE_PRICES[tier] || BASE_PRICES.standard) * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
 
   // Step 2: If additional promo, apply on top using same integer pattern
   if (stripeCoupon) {
@@ -286,8 +290,10 @@ Deno.serve(async (req) => {
     } else if (DISCOUNT_TEST_CODES[upperAdditional]) {
       // Hardcoded discount codes (e.g. ADMINTEST99 = 99% off) — goes through real payment
       const discountPercent = DISCOUNT_TEST_CODES[upperAdditional];
-      const basePrice = BASE_PRICES[pricingTier] || BASE_PRICES.standard;
-      const afterSeasonal = Math.floor(basePrice * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
+      const afterSeasonal =
+        pricingTier === "standard"
+          ? BASE_SONG_PRICE_CENTS
+          : Math.floor((BASE_PRICES[pricingTier] || BASE_PRICES.standard) * (100 - SEASONAL_DISCOUNT_PERCENT) / 100);
       unitAmount = Math.max(1, Math.floor(afterSeasonal * (100 - discountPercent) / 100));
       metadata.additionalPromoCode = upperAdditional;
       metadata.amount_total_cents = String(unitAmount);
@@ -377,7 +383,7 @@ Deno.serve(async (req) => {
 
     // Forever Memory Package add-on (checkout-time). Absent → no-op.
     const foreverMemory = input.addons?.forever_memory === true;
-    const PACKAGE_ADDON_PRICE_CENTS = 2400;
+    const PACKAGE_ADDON_PRICE_CENTS = 1300;
     // Free test codes zero the WHOLE cart (song + add-on) so end-to-end testing costs $0
     const packageCents = foreverMemory ? (FREE_TEST_CODES[upperAdditional] ? 0 : PACKAGE_ADDON_PRICE_CENTS) : 0;
     if (foreverMemory) {

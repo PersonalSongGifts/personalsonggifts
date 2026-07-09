@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const RUSH_UPGRADE_PRICE_CENTS = 1000;
+const RUSH_UPGRADE_PRICE_CENTS = 699;
 
 const FREE_TEST_CODES: Record<string, boolean> = {
   "HYPERDRIVETEST": true,

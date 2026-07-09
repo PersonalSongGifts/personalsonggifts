@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const PACKAGE_PRICE_CENTS = 2400; // $24
+const PACKAGE_PRICE_CENTS = 1200; // $12 (post-purchase / song-page package)
 
 // Hardcoded 100%-off test codes (mirror create-checkout FREE_TEST_CODES)
 const FREE_TEST_CODES: Record<string, boolean> = {
