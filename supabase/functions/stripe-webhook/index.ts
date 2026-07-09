@@ -479,7 +479,8 @@ Deno.serve(async (req) => {
         }
 
         const createdMs = existing.created_at ? new Date(existing.created_at).getTime() : nowMs;
-        const targetSendMs = Math.max(createdMs + 30 * 60 * 1000, nowMs + 5 * 60 * 1000);
+        const rushJitterMs = Math.floor(Math.random() * 15 * 60 * 1000);
+        const targetSendMs = Math.max(createdMs + 30 * 60 * 1000 + rushJitterMs, nowMs + 5 * 60 * 1000);
         const targetSendIso = new Date(targetSendMs).toISOString();
         const expectedDeliveryIso = new Date(nowMs + 60 * 60 * 1000).toISOString();
 
