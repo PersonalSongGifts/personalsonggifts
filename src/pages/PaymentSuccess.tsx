@@ -600,13 +600,15 @@ const PaymentSuccess = () => {
                 Within {deliveryTime}
               </p>
               <p className="text-sm text-muted-foreground">
-                By {expectedDate.toLocaleDateString("en-US", { 
-                  weekday: "long",
-                  month: "long", 
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit"
-                })}
+                {showConcreteDate
+                  ? `By ${expectedDate!.toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}`
+                  : softDeliveryLabel}
               </p>
               {orderDetails.rush_addon && (
                 <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-primary">
