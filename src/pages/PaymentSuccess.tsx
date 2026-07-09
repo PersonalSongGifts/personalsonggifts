@@ -45,9 +45,9 @@ const PaymentSuccess = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [definitiveNotFound, setDefinitiveNotFound] = useState(false);
+  const [paypalDeclined, setPaypalDeclined] = useState(false);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isLeadConversion, setIsLeadConversion] = useState(false);
-  const [pollAttempts, setPollAttempts] = useState(0);
   const [showProcessingMessage, setShowProcessingMessage] = useState(false);
   const [pkgLoading, setPkgLoading] = useState(false);
   const [pkgAdded, setPkgAdded] = useState(false);
@@ -55,6 +55,7 @@ const PaymentSuccess = () => {
   const [showPkgCode, setShowPkgCode] = useState(false);
   const [pkgError, setPkgError] = useState<string | null>(null);
   const [pkgConfirming, setPkgConfirming] = useState(false);
+  const [pkgVerifyFailed, setPkgVerifyFailed] = useState(false);
 
   const trackAddonPurchase = useCallback((
     kind: "pkg" | "rush",
@@ -211,6 +212,12 @@ const PaymentSuccess = () => {
               setLoading(false);
               return;
             }
+            if (response.status === 402 && errorData?.code === "PAYMENT_DECLINED") {
+              setPaypalDeclined(true);
+              setError("Your payment method was declined by PayPal — you have not been charged.");
+              setLoading(false);
+              return;
+            }
             throw new Error(errorData.error || "Failed to process PayPal payment");
           }
 
@@ -235,12 +242,6 @@ const PaymentSuccess = () => {
       };
 
       capturePayPal();
-      return;
-    }
-
-    if (!sessionId) {
-      setError("We couldn't find your order details. If you completed a payment, please contact support and we'll help right away.");
-      setLoading(false);
       return;
     }
 
@@ -348,7 +349,6 @@ const PaymentSuccess = () => {
     let currentAttempt = 0;
     const poll = async () => {
       currentAttempt++;
-      setPollAttempts(currentAttempt);
       const success = await pollForOrder(currentAttempt);
       
       if (!success) {
@@ -366,6 +366,7 @@ const PaymentSuccess = () => {
     (async () => {
       const maxAttempts = 3;
       const delayMs = 2500;
+      let succeeded = false;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-package-purchase`, {
@@ -377,6 +378,7 @@ const PaymentSuccess = () => {
             const data = await r.json().catch(() => ({} as any));
             setPkgAdded(true);
             trackPackagePurchase(pkgSession, typeof data?.amountCents === "number" ? data.amountCents : null);
+            succeeded = true;
             break;
           }
           throw new Error(`HTTP ${r.status}`);
@@ -387,6 +389,7 @@ const PaymentSuccess = () => {
           }
         }
       }
+      if (!succeeded) setPkgVerifyFailed(true);
       setPkgConfirming(false);
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete("package_session_id"); return p; }, { replace: true });
     })();
@@ -415,6 +418,38 @@ const PaymentSuccess = () => {
   }
 
   if (error) {
+    // Distinct: PayPal declined the card. NOT charged — safe to send back to /checkout.
+    if (paypalDeclined) {
+      return (
+        <Layout showPromoBanner={false}>
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <div className="text-center max-w-md">
+              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <h2 className="text-xl font-semibold mb-2">Your payment didn't go through</h2>
+              <p className="text-muted-foreground mb-6">
+                Your payment method was declined by PayPal — you have <strong>not</strong> been
+                charged. You can head back to checkout and try a different payment method.
+              </p>
+              <div className="space-y-3">
+                <Button asChild>
+                  <Link to="/checkout">Back to checkout</Link>
+                </Button>
+                <p className="text-sm text-muted-foreground">
+                  Need help? Email{" "}
+                  <a
+                    href="mailto:support@personalsonggifts.com?subject=PayPal%20payment%20declined"
+                    className="text-primary underline"
+                  >
+                    support@personalsonggifts.com
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
     // If a payment identifier is present AND we don't have a definitive "not found"
     // from the backend, the customer's card MAY have been charged. Never suggest they
     // retry checkout in that case — that would risk a double purchase.
@@ -424,10 +459,17 @@ const PaymentSuccess = () => {
     const supportSubject = encodeURIComponent(
       `Order finalization help${supportRef ? ` — ref ${supportRef.slice(0, 20)}` : ""}`
     );
-    const supportBody = encodeURIComponent(
-      `Hi — my payment went through but the confirmation page is still loading.\n\n` +
-      `Reference: ${supportRef}\n\nPlease help me finalize my order. Thanks!`
-    );
+    // Branch-appropriate body: don't claim a payment happened in the not-found branch.
+    const supportBody = paymentAttempted
+      ? encodeURIComponent(
+          `Hi — my payment went through but the confirmation page is still loading.\n\n` +
+          `Reference: ${supportRef}\n\nPlease help me finalize my order. Thanks!`
+        )
+      : encodeURIComponent(
+          `Hi — I need help finding my order.` +
+          (supportRef ? `\n\nReference: ${supportRef}` : ``) +
+          `\n\nThanks!`
+        );
     const mailto = `mailto:support@personalsonggifts.com?subject=${supportSubject}&body=${supportBody}`;
 
     if (paymentAttempted) {
@@ -513,12 +555,15 @@ const PaymentSuccess = () => {
     !!expectedDate && expectedDate.getTime() > Date.now() + NEAR_NOW_MS;
   const softDeliveryLabel = orderDetails.rush_addon ? "Within the hour" : "Shortly";
 
-  // Delivery-speed label (fix #4): derived from pricing_tier + rush_addon.
-  const deliverySpeedLabel = orderDetails.rush_addon
-    ? "Express (1 hour)"
-    : orderDetails.pricingTier === "priority"
-      ? "Priority (24 hours)"
-      : "Standard (48 hours)";
+  // Delivery-speed label: derived from pricing_tier + rush_addon.
+  // Lead conversions unlock the finished song immediately — must not read "Standard (48 hours)".
+  const deliverySpeedLabel = isLeadConversion
+    ? "Instant"
+    : orderDetails.rush_addon
+      ? "Express (1 hour)"
+      : orderDetails.pricingTier === "priority"
+        ? "Priority (24 hours)"
+        : "Standard (48 hours)";
 
   // Actual amount paid (fix #2): song price + captured add-ons. If unknown, show em dash.
   const totalPaidCents =
@@ -661,6 +706,26 @@ const PaymentSuccess = () => {
                     {isLeadConversion
                       ? <>Your printable keepsake, custom album covers, full lyrics, download, and acoustic version are all waiting on {orderDetails.recipientName}'s song page right now.</>
                       : <>Your printable keepsake, custom album covers, full lyrics, download, and acoustic version will all be waiting on {orderDetails.recipientName}'s song page when the song is ready.</>}
+                  </p>
+                </Card>
+              );
+            }
+            // Verify failed after retries — we can NOT know for sure whether they paid.
+            // Never show the sell card in this state (would push a second $24 charge).
+            if (pkgVerifyFailed) {
+              return (
+                <Card className="p-6 mb-8 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Loader2 className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">We're confirming your package purchase</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    If you just completed the $24 checkout, you're all set and don't need
+                    to buy again. This can take a minute — refresh shortly, or email{" "}
+                    <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
+                      support@personalsonggifts.com
+                    </a>{" "}
+                    if it doesn't update.
                   </p>
                 </Card>
               );
