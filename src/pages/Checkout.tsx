@@ -382,144 +382,49 @@ const Checkout = () => {
             </p>
           </div>
 
-          {/* 2. Order Summary (hero card) */}
+          {/* 2. Your Custom Song Order — recap (no price) */}
           <Card className="p-5 md:p-6 mb-6 border-primary/20 shadow-sm">
             <div className="flex items-start justify-between gap-3 mb-3">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  {hasFlashBaseDiscount && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wider bg-accent/20 text-accent-foreground px-2 py-0.5 rounded-full">
-                      {activeFlashPromo.name}
-                    </span>
-                  )}
-                </div>
+              <div className="flex-1 min-w-0">
+                {hasFlashBaseDiscount && (
+                  <span className="inline-block mb-1 text-[10px] font-semibold uppercase tracking-wider bg-accent/20 text-accent-foreground px-2 py-0.5 rounded-full">
+                    {activeFlashPromo.name}
+                  </span>
+                )}
                 <h3 className="font-semibold text-foreground text-base md:text-lg">
-                  Custom Song for {recipientName}
+                  Your Custom Song Order
                 </h3>
               </div>
-              <div className="text-right whitespace-nowrap">
-                {hasFlashBaseDiscount && (
-                  <div className="text-xs text-muted-foreground line-through">{fmt(flashAnchorCents)}</div>
-                )}
-                <div className="text-2xl md:text-3xl font-bold text-foreground">{fmt(baseSongCents)}</div>
-              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/create")}
+                aria-label="Edit song details"
+                className="text-muted-foreground hover:text-primary p-1 -m-1 rounded"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
             </div>
-
-            {!hasFlashBaseDiscount && (
-              <p className="text-xs text-muted-foreground mb-3">
-                $29 flat — no subscription · delivered in 24 hours · free revision included
-              </p>
-            )}
-
-            <ul className="space-y-2 mb-4 text-sm">
-              <li className="flex items-start gap-2">
-                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <span className="text-foreground">One-time payment — no subscription</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <span className="text-foreground" data-testid="delivery-bullet">
-                  {rushSelected ? (
-                    <>Delivered within 1 hour <Zap className="inline h-3.5 w-3.5 text-primary" /></>
-                  ) : (
-                    <>Delivered within 24 hours</>
-                  )}
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <span className="text-foreground">Unlimited plays — share with anyone</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <span className="text-foreground">Free revision if it's not perfect</span>
-              </li>
-            </ul>
-
-            <p className="text-xs text-muted-foreground mb-4 italic">
-              That's about $0.29 per listen after just 100 plays — most customers play it hundreds of times.
-            </p>
-
-            <div className="border-t border-border pt-3 space-y-1.5 text-sm">
-              {totalSavingsCents > 0 && (
-                <div className="flex justify-between text-primary font-medium">
-                  <span>You save</span>
-                  <span data-testid="you-save">{fmt(totalSavingsCents)}</span>
-                </div>
-              )}
-              {packageSelected && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Forever Memory Package</span>
-                  <span>{isFullyFreeCode ? <span className="text-primary font-medium">FREE</span> : fmt(packageChargeCents)}</span>
-                </div>
-              )}
-              {rushSelected && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Express delivery</span>
-                  <span>{isFullyFreeCode ? <span className="text-primary font-medium">FREE</span> : fmt(rushChargeCents)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-lg font-bold pt-2 border-t border-border">
-                <span>Total</span>
-                <span data-testid="summary-total">{fmt(grandTotalCents)}</span>
+            <dl className="space-y-1.5 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Song for</dt>
+                <dd className="text-foreground font-medium text-right truncate">{recipientName}</dd>
               </div>
-            </div>
+              {formData.occasion && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Occasion</dt>
+                  <dd className="text-foreground font-medium text-right truncate">{formData.occasion}</dd>
+                </div>
+              )}
+              {formData.genre && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Style</dt>
+                  <dd className="text-foreground font-medium text-right truncate">{formData.genre}</dd>
+                </div>
+              )}
+            </dl>
           </Card>
 
-          {/* 3. Delivery Speed selector */}
-          <div className="mb-6" ref={deliveryRadioRef}>
-            <h3 className="font-semibold text-foreground mb-3">Delivery speed</h3>
-            <div role="radiogroup" aria-label="Delivery speed" className="space-y-2">
-              <Card
-                role="radio"
-                aria-checked={!rushSelected}
-                tabIndex={0}
-                onClick={() => setDeliverySpeed("standard")}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setDeliverySpeed("standard"); }}
-                className={`p-4 cursor-pointer transition-all ${!rushSelected ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"}`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${!rushSelected ? "bg-primary border-primary" : "border-muted-foreground"}`}>
-                    {!rushSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-semibold text-foreground">Standard delivery</div>
-                    <div className="text-xs text-muted-foreground">Ready within 24 hours</div>
-                  </div>
-                  <div className="text-sm font-semibold text-primary">FREE</div>
-                </div>
-              </Card>
-              <Card
-                role="radio"
-                aria-checked={rushSelected}
-                tabIndex={0}
-                onClick={() => setDeliverySpeed("express")}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setDeliverySpeed("express"); }}
-                className={`p-4 cursor-pointer transition-all ${rushSelected ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"}`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${rushSelected ? "bg-primary border-primary" : "border-muted-foreground"}`}>
-                    {rushSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-semibold text-foreground flex items-center gap-1.5">
-                      Express delivery
-                      <Zap className="h-3.5 w-3.5 text-primary" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary px-1.5 py-0.5 rounded">guaranteed</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">Ready within 1 hour</div>
-                  </div>
-                  <div className="text-sm font-semibold text-foreground">+{fmt(ADDON_PRICES_CENTS.rush)}</div>
-                </div>
-              </Card>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <ValentineDeliveryNotice />
-          </div>
-
-          {/* 4. Guarantee block */}
+          {/* 3. Guarantee block */}
           <Card className="p-4 mb-6 bg-secondary/40 border-primary/20">
             <div className="flex items-start gap-3">
               <Shield className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
@@ -535,47 +440,7 @@ const Checkout = () => {
             </div>
           </Card>
 
-          {/* 5. Social proof strip */}
-          <Card className="p-4 mb-6">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="flex gap-0.5">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                ))}
-              </div>
-              <span className="text-xs font-semibold text-foreground">500,000+ songs delivered</span>
-            </div>
-            <p className="text-sm italic text-foreground mb-0.5">
-              "I gave this to my mom for her 70th birthday and she played it on repeat for a week straight."
-            </p>
-            <p className="text-xs text-muted-foreground">— Rachel M.</p>
-          </Card>
-
-          {/* 6. Audio preview */}
-          <div className="mb-6">
-            <h3 className="font-semibold text-foreground mb-1">Hear what your song could sound like</h3>
-            <p className="text-xs text-muted-foreground mb-3">Real songs made for real people — yours will be unique.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {SAMPLE_TRACKS.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => togglePlay(t)}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors text-left"
-                >
-                  <span className="flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-                    {playingId === t.id ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-foreground truncate">{t.title}</span>
-                    <span className="block text-xs text-muted-foreground truncate">{t.occasion}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 7. Upgrade Your Gift — Forever Memory Package */}
+          {/* 4. Upgrade Your Gift — Forever Memory Package */}
           <div className="mb-6">
             <p className="text-[11px] font-bold uppercase tracking-widest text-primary mb-2">Upgrade Your Gift</p>
             <Card
@@ -633,34 +498,100 @@ const Checkout = () => {
             </Card>
           </div>
 
-          {/* 8. Included-free value rows */}
-          <div className="mb-6 rounded-lg border border-border p-4">
-            <ul className="space-y-2 text-sm">
-              <li className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2 text-foreground">
-                  <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                  {recipientName}'s name sung in the song
-                </span>
-                <span className="text-xs font-semibold text-primary">Included</span>
-              </li>
-              <li className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2 text-foreground">
-                  <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                  Written from your story
-                </span>
-                <span className="text-xs font-semibold text-primary">Included</span>
-              </li>
-              <li className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2 text-foreground">
-                  <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                  Studio-quality production
-                </span>
-                <span className="text-xs font-semibold text-primary">Included</span>
-              </li>
-            </ul>
+          {/* 5. Delivery Speed selector */}
+          <div className="mb-6" ref={deliveryRadioRef}>
+            <h3 className="font-semibold text-foreground mb-3">Delivery speed</h3>
+            <div role="radiogroup" aria-label="Delivery speed" className="space-y-2">
+              <Card
+                role="radio"
+                aria-checked={!rushSelected}
+                tabIndex={0}
+                onClick={() => setDeliverySpeed("standard")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setDeliverySpeed("standard"); }}
+                className={`p-4 cursor-pointer transition-all ${!rushSelected ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${!rushSelected ? "bg-primary border-primary" : "border-muted-foreground"}`}>
+                    {!rushSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-foreground">Standard delivery</div>
+                    <div className="text-xs text-muted-foreground">Ready within 24 hours</div>
+                  </div>
+                  <div className="text-sm font-semibold text-primary">FREE</div>
+                </div>
+              </Card>
+              <Card
+                role="radio"
+                aria-checked={rushSelected}
+                tabIndex={0}
+                onClick={() => setDeliverySpeed("express")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setDeliverySpeed("express"); }}
+                className={`p-4 cursor-pointer transition-all ${rushSelected ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${rushSelected ? "bg-primary border-primary" : "border-muted-foreground"}`}>
+                    {rushSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-foreground flex items-center gap-1.5">
+                      Express delivery
+                      <Zap className="h-3.5 w-3.5 text-primary" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary px-1.5 py-0.5 rounded">guaranteed</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">Ready within 1 hour</div>
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">+{fmt(ADDON_PRICES_CENTS.rush)}</div>
+                </div>
+              </Card>
+            </div>
           </div>
 
-          {/* Promo code (collapsible) */}
+          <div className="mb-6">
+            <ValentineDeliveryNotice />
+          </div>
+
+          {/* 6. Social proof strip */}
+          <Card className="p-4 mb-6">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex gap-0.5">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                ))}
+              </div>
+              <span className="text-xs font-semibold text-foreground">500,000+ songs delivered</span>
+            </div>
+            <p className="text-sm italic text-foreground mb-0.5">
+              "I gave this to my mom for her 70th birthday and she played it on repeat for a week straight."
+            </p>
+            <p className="text-xs text-muted-foreground">— Rachel M.</p>
+          </Card>
+
+          {/* 7. Audio preview */}
+          <div className="mb-6">
+            <h3 className="font-semibold text-foreground mb-1">Hear what your song could sound like</h3>
+            <p className="text-xs text-muted-foreground mb-3">Real songs made for real people — yours will be unique.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {SAMPLE_TRACKS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => togglePlay(t)}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors text-left"
+                >
+                  <span className="flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                    {playingId === t.id ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-foreground truncate">{t.title}</span>
+                    <span className="block text-xs text-muted-foreground truncate">{t.occasion}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 8a. Promo code (collapsible) */}
           <div className="mb-6">
             {additionalPromo ? (
               <div className="flex items-center justify-between bg-primary/10 rounded-md px-3 py-2">
@@ -705,7 +636,7 @@ const Checkout = () => {
             )}
           </div>
 
-          {/* Email confirmation callout */}
+          {/* 8b. Email confirmation callout */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6 flex items-start gap-3">
             <Mail className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
             <div className="min-w-0">
@@ -715,7 +646,86 @@ const Checkout = () => {
             </div>
           </div>
 
-          {/* 9. CTA block */}
+          {/* 9. Order Summary (bottom, with real $49.99 anchor) */}
+          <Card className="p-5 md:p-6 mb-6 border-primary/20 shadow-sm">
+            <h3 className="font-semibold text-foreground text-base md:text-lg mb-3">Order Summary</h3>
+
+            <ul className="space-y-2 mb-3 text-sm">
+              <li className="flex items-start gap-2">
+                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                <span className="text-foreground">One-time payment — no subscription</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                <span className="text-foreground" data-testid="delivery-bullet">
+                  {rushSelected ? (
+                    <>Delivered within 1 hour <Zap className="inline h-3.5 w-3.5 text-primary" /></>
+                  ) : (
+                    <>Delivered within 24 hours</>
+                  )}
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                <span className="text-foreground">Unlimited plays — share with anyone</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                <span className="text-foreground">Free revision if it's not perfect</span>
+              </li>
+            </ul>
+
+            <p className="text-xs text-muted-foreground mb-4 italic">
+              That's about $0.29 per listen after just 100 plays — most customers play it hundreds of times.
+            </p>
+
+            <div className="border-t border-border pt-3 space-y-1.5 text-sm">
+              {/* Song line item with real $49.99 anchor when no flash promo */}
+              <div className="flex justify-between items-start gap-3">
+                <span className="text-foreground">Your Song for {recipientName}</span>
+                <span className="text-right whitespace-nowrap">
+                  {!hasFlashBaseDiscount && songTotalCents < FORMER_LIST_ANCHOR_CENTS && (
+                    <span className="text-xs text-muted-foreground line-through mr-2">{fmt(FORMER_LIST_ANCHOR_CENTS)}</span>
+                  )}
+                  {hasFlashBaseDiscount && (
+                    <span className="text-xs text-muted-foreground line-through mr-2">{fmt(flashAnchorCents)}</span>
+                  )}
+                  <span className="text-foreground font-medium">{fmt(songTotalCents)}</span>
+                </span>
+              </div>
+              {!hasFlashBaseDiscount && songTotalCents < FORMER_LIST_ANCHOR_CENTS && (
+                <div className="flex justify-end">
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                    Save {fmt(FORMER_LIST_ANCHOR_CENTS - songTotalCents)}
+                  </span>
+                </div>
+              )}
+              {packageSelected && (
+                <div className="flex justify-between text-foreground">
+                  <span>Forever Memory Package</span>
+                  <span>{isFullyFreeCode ? <span className="text-primary font-medium">FREE</span> : fmt(packageChargeCents)}</span>
+                </div>
+              )}
+              {rushSelected && (
+                <div className="flex justify-between text-foreground">
+                  <span>Express delivery</span>
+                  <span>{isFullyFreeCode ? <span className="text-primary font-medium">FREE</span> : fmt(rushChargeCents)}</span>
+                </div>
+              )}
+              {totalSavingsCents > 0 && (
+                <div className="flex justify-between text-primary font-medium">
+                  <span>You save</span>
+                  <span data-testid="you-save">{fmt(totalSavingsCents)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-lg font-bold pt-2 border-t border-border">
+                <span>Total</span>
+                <span data-testid="summary-total">{fmt(grandTotalCents)}</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* 10. CTA block */}
           <div className="space-y-3">
             <Button
               onClick={handleCheckout}
