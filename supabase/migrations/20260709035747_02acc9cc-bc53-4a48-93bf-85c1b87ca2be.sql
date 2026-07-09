@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_paypal_order_unique ON public.orders (notes) WHERE (notes LIKE 'paypal_order:%');
