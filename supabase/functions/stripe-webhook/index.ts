@@ -624,7 +624,7 @@ Deno.serve(async (req) => {
         // Send delivery email if song exists
         if (lead.full_song_url) {
           try {
-            await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
+            const deliveryResp = await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -640,9 +640,26 @@ Deno.serve(async (req) => {
                 revisionToken: leadOrder.revision_token,
               }),
             });
-            console.log(`[WEBHOOK] Delivery email sent for lead order ${leadOrder.id}`);
+            if (deliveryResp.ok) {
+              await supabase
+                .from("orders")
+                .update({ sent_at: new Date().toISOString(), delivery_status: "sent" })
+                .eq("id", leadOrder.id);
+              console.log(`[WEBHOOK] Delivery email sent for lead order ${leadOrder.id}`);
+            } else {
+              const body = await deliveryResp.text().catch(() => "");
+              console.error(`[WEBHOOK] send-song-delivery failed for lead order ${leadOrder.id}: ${deliveryResp.status} ${body}`);
+              await supabase
+                .from("orders")
+                .update({ delivery_status: "failed", target_send_at: new Date().toISOString() })
+                .eq("id", leadOrder.id);
+            }
           } catch (e) {
             console.error("[WEBHOOK] Failed to send delivery email:", e);
+            await supabase
+              .from("orders")
+              .update({ delivery_status: "failed", target_send_at: new Date().toISOString() })
+              .eq("id", leadOrder.id);
           }
         }
 
