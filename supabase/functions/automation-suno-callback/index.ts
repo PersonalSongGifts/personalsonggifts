@@ -943,6 +943,129 @@ Deno.serve(async (req) => {
           console.log(`[CALLBACK] Primary done + bonus done → scheduling delivery for order ${entityId}`);
           await supabase.from("orders").update({ delivery_status: "scheduled" }).eq("id", entityId);
         }
+
+        // ======= LATE-ARRIVAL BONUS FOLLOW-UP EMAIL =======
+        // If the delivery email already went out WITHOUT the bonus (rush orders
+        // where bonus took >15min), send a short follow-up so the customer
+        // learns their bonus track exists. Atomic claim first for idempotency:
+        // Suno callbacks can retry, and this also naturally excludes normal
+        // orders (bonus completing BEFORE delivery keeps sent_at IS NULL here).
+        try {
+          const { data: claimed } = await supabase
+            .from("orders")
+            .update({ bonus_notified_at: new Date().toISOString() })
+            .eq("id", entityId)
+            .is("bonus_notified_at", null)
+            .not("sent_at", "is", null)
+            .select("id, customer_email, customer_email_override, customer_name, recipient_name, bonus_song_title")
+            .maybeSingle();
+
+          if (claimed) {
+            const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+            const toEmail = claimed.customer_email_override || claimed.customer_email;
+            if (brevoApiKey && toEmail) {
+              const shortId = entityId.slice(0, 8);
+              const songPageUrl = `https://personalsonggifts.lovable.app/song/${shortId}`;
+              const bonusTitle = (claimed.bonus_song_title as string) || title;
+              const styleLabel = bonusTitle.includes("R&B") ? "R&B" : "acoustic";
+              const bonusArticle = styleLabel === "R&B" ? "an R&B" : "an acoustic";
+              const recipient = claimed.recipient_name || "your loved one";
+              const customerName = claimed.customer_name || "there";
+              const messageId = `<${entityId}.bonus.${Date.now()}@personalsonggifts.com>`;
+              const subject = `A bonus version of ${recipient}'s song just dropped 🎁`;
+
+              const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+    <p style="color:#1E3A5F;font-size:22px;font-weight:bold;margin:0 0 30px 0;">Your bonus track just arrived 🎁</p>
+    <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${customerName},</p>
+    <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
+      Good news — ${bonusArticle} version of ${recipient}'s song is now ready and waiting on the same song page as the original.
+    </p>
+    <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 8px 0;"><strong>Listen here:</strong></p>
+    <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
+      <a href="${songPageUrl}" style="color:#1E3A5F;">${songPageUrl}</a>
+    </p>
+    <p style="text-align:left;margin:0 0 32px 0;">
+      <a href="${songPageUrl}" style="background-color:#1E3A5F;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-size:16px;">Play the bonus version</a>
+    </p>
+    <p style="color:#555555;font-size:14px;margin:0 0 4px 0;"><strong>Order ID:</strong> ${shortId.toUpperCase()}</p>
+    <p style="color:#333333;font-size:16px;line-height:1.6;margin:30px 0 40px 0;">
+      Warm regards,<br>The Personal Song Gifts Team
+    </p>
+    <hr style="border:none;border-top:1px solid #eeeeee;margin:0 0 20px 0;">
+    <p style="color:#999999;font-size:12px;margin:0 0 6px 0;">Personal Song Gifts &bull; 2108 N ST STE N, SACRAMENTO, CA 95816</p>
+    <p style="color:#999999;font-size:12px;margin:0;">
+      <a href="https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(toEmail)}" style="color:#999999;">Unsubscribe</a>
+    </p>
+  </div>
+</body>
+</html>`;
+
+              const text = `Your bonus track just arrived 🎁
+
+Hi ${customerName},
+
+Good news — ${bonusArticle} version of ${recipient}'s song is now ready and waiting on the same song page as the original.
+
+Listen here: ${songPageUrl}
+
+Order ID: ${shortId.toUpperCase()}
+
+Warm regards,
+The Personal Song Gifts Team
+
+---
+Personal Song Gifts, 2108 N ST STE N, SACRAMENTO, CA 95816
+Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(toEmail)}
+`;
+
+              const brevoResp = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+                  "api-key": brevoApiKey,
+                },
+                body: JSON.stringify({
+                  sender: { name: "Personal Song Gifts", email: "support@personalsonggifts.com" },
+                  replyTo: { email: "support@personalsonggifts.com", name: "Personal Song Gifts" },
+                  to: [{ email: toEmail, name: claimed.customer_name || toEmail }],
+                  subject,
+                  htmlContent: html,
+                  textContent: text,
+                  headers: {
+                    "Message-ID": messageId,
+                    "X-Entity-Ref-ID": entityId,
+                    "Precedence": "transactional",
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(toEmail)}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                  },
+                }),
+              });
+
+              if (!brevoResp.ok) {
+                const errBody = await brevoResp.text();
+                throw new Error(`Brevo ${brevoResp.status}: ${errBody.substring(0, 300)}`);
+              }
+
+              await logActivity(supabase, "order", entityId, "bonus_followup_sent", "system", `Late-arrival bonus follow-up email sent to ${toEmail}`);
+              console.log(`[CALLBACK] ✅ Bonus follow-up email sent for order ${entityId} to ${toEmail}`);
+            } else {
+              console.warn(`[CALLBACK] Bonus follow-up skipped for ${entityId}: missing BREVO_API_KEY or recipient email`);
+            }
+          } else {
+            console.log(`[CALLBACK] Bonus follow-up not needed for ${entityId} (sent_at null or already notified)`);
+          }
+        } catch (followupErr) {
+          console.error(`[CALLBACK] Bonus follow-up email failed for ${entityId}:`, followupErr);
+          try {
+            await logActivity(supabase, "order", entityId, "bonus_followup_failed", "system", `Bonus follow-up email failed: ${followupErr instanceof Error ? followupErr.message : String(followupErr)}`);
+          } catch (_logErr) { /* swallow */ }
+        }
       }
 
       return new Response(
