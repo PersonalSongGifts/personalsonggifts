@@ -588,9 +588,23 @@ const Checkout = () => {
                 </div>
               </div>
               <div className="mb-4">
-                <span className="text-lg text-muted-foreground line-through">$169.99 USD</span>
-                <span className="text-4xl font-bold text-foreground ml-2">$89.99</span>
-                <span className="text-sm text-muted-foreground ml-1">USD</span>
+                {(() => {
+                  // Express is derived from the LIVE Priority pricing so it can never
+                  // drift from the Pay button (which uses `pricing.total + $10` rush).
+                  // Anchor = Priority anchor ($159.99 base) + $20. Live = Priority live + $10.
+                  const priorityLiveCents = activeFlashPromo.active
+                    ? (activeFlashPromo.priorityPriceCents || 0)
+                    : calculateSeasonalPriceCents("priority");
+                  const expressLive = (priorityLiveCents + ADDON_PRICES_CENTS.rush) / 100;
+                  const expressAnchor = (BASE_PRICES_CENTS.priority + 2000) / 100;
+                  return (
+                    <>
+                      <span className="text-lg text-muted-foreground line-through">${expressAnchor.toFixed(2)} USD</span>
+                      <span className="text-4xl font-bold text-foreground ml-2">${expressLive.toFixed(2)}</span>
+                      <span className="text-sm text-muted-foreground ml-1">USD</span>
+                    </>
+                  );
+                })()}
               </div>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center gap-2">
