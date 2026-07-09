@@ -145,11 +145,12 @@ Deno.serve(async (req) => {
       },
     });
 
+    let recoveredPriceCents: number | null = null;
+
     if (!captureResponse.ok) {
       const err = await captureResponse.text();
       console.error("PayPal capture error:", err);
-      // Recovery path: if PayPal says the order was already captured, don't 400.
-      // Look up the existing order (may have been created by a prior successful capture).
+      // Recovery: if PayPal says the order was already captured, don't 400.
       if (err.includes("ORDER_ALREADY_CAPTURED")) {
         const { data: alreadyCapturedOrder } = await supabase
           .from("orders")
@@ -176,50 +177,39 @@ Deno.serve(async (req) => {
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        // Charged but no order yet — fetch PayPal order details and continue to create the order.
+        // Charged but no local order — fetch PayPal order details and continue to create it.
         try {
           const detailsResp = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderID}`, {
             headers: { "Authorization": `Bearer ${accessToken}` },
           });
           if (detailsResp.ok) {
             const detailsData = await detailsResp.json();
-            console.warn("ORDER_ALREADY_CAPTURED with no local order; recovering via order details", orderID);
-            // Reuse capture flow using details payload (same shape: purchase_units[].payments.captures[])
+            console.warn("ORDER_ALREADY_CAPTURED with no local order; recovering", orderID);
             const capturedAmountRec = detailsData.purchase_units?.[0]?.payments?.captures?.[0]?.amount;
-            const priceCentsRec = capturedAmountRec
+            recoveredPriceCents = capturedAmountRec
               ? Math.round(parseFloat(capturedAmountRec.value) * 100)
               : parseInt(metadata.amount_total_cents || "4999", 10);
-            // Shadow captureData so downstream code sees a completed capture.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (globalThis as any).__recoveredCapture = { priceCents: priceCentsRec };
           }
         } catch (recErr) {
           console.error("Recovery fetch failed:", recErr);
         }
-        // If recovery fetch succeeded we fall through; otherwise re-emit error.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!(globalThis as any).__recoveredCapture) {
+        if (recoveredPriceCents === null) {
           return new Response(
             JSON.stringify({ error: "Failed to capture PayPal payment" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
       } else {
-      return new Response(
-        JSON.stringify({ error: "Failed to capture PayPal payment" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+        return new Response(
+          JSON.stringify({ error: "Failed to capture PayPal payment" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const recovered = (globalThis as any).__recoveredCapture;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).__recoveredCapture = undefined;
-
     let priceCents: number;
-    if (recovered) {
-      priceCents = recovered.priceCents;
+    if (recoveredPriceCents !== null) {
+      priceCents = recoveredPriceCents;
     } else {
       const captureData = await captureResponse.json();
       if (captureData.status !== "COMPLETED") {
