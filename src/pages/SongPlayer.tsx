@@ -1040,9 +1040,9 @@ const SongPlayer = () => {
                     </li>
                   </ul>
                   <div className="flex items-baseline justify-center gap-2">
-                    <span className="text-sm text-muted-foreground line-through">$22.00</span>
-                    <span className="text-3xl font-bold text-primary">$12.00</span>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Save $10</span>
+                    <span className="text-sm text-muted-foreground line-through">$37.00</span>
+                    <span className="text-3xl font-bold text-primary">$24.00</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Save $13</span>
                   </div>
                   <Button
                     size="lg"
@@ -1079,10 +1079,10 @@ const SongPlayer = () => {
                     }}
                   >
                     {packageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
-                    Unlock Everything — $12.00
+                    Unlock Everything — $24.00
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    Bought separately, these run $44.97 — get them all for $12.00.
+                    Bought separately, these run $44.97 — get them all for $24.00.
                   </p>
                   <div className="mt-1">
                     {!showPkgCode ? (
