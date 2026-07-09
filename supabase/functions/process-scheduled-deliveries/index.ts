@@ -868,6 +868,7 @@ Deno.serve(async (req) => {
             })
             .eq("id", order.id)
             .is("sent_at", null) // Optimistic lock
+            .or("delivery_status.is.null,delivery_status.eq.scheduled,delivery_status.eq.failed") // Prevent double-claim of an in-flight ("delivering") row
             .select("id");
 
           if (claimError) throw claimError;
