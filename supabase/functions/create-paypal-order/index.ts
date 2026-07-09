@@ -9,6 +9,7 @@ interface CheckoutInput {
   pricingTier: "standard" | "priority";
   promoSlug?: string;
   additionalPromoCode?: string;
+  addons?: { forever_memory?: boolean; rush?: boolean };
   formData: {
     recipientType: string;
     recipientName: string;
@@ -330,6 +331,32 @@ Deno.serve(async (req) => {
     const unitAmountDollars = (unitAmountCents / 100).toFixed(2);
     const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
 
+    // Add-ons: Forever Memory Package ($24) and 1-Hour Express rush ($10)
+    const foreverMemory = input.addons?.forever_memory === true;
+    const rushAddon = input.addons?.rush === true;
+    if (rushAddon && pricingTier !== "priority") {
+      return new Response(
+        JSON.stringify({ error: "1-hour Express delivery is available with the Express package." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const PACKAGE_ADDON_PRICE_CENTS = 2400;
+    const RUSH_PRICE_CENTS = 1000;
+    const packageCents = foreverMemory ? (FREE_TEST_CODES[upperAdditional] ? 0 : PACKAGE_ADDON_PRICE_CENTS) : 0;
+    const rushCents = rushAddon ? (FREE_TEST_CODES[upperAdditional] ? 0 : RUSH_PRICE_CENTS) : 0;
+    if (foreverMemory) {
+      metadata.forever_memory = "true";
+      metadata.package_price_cents = String(packageCents);
+    }
+    if (rushAddon) {
+      metadata.rush = "true";
+      metadata.rush_price_cents = String(rushCents);
+    }
+    const totalCents = unitAmountCents + packageCents + rushCents;
+    const totalDollars = (totalCents / 100).toFixed(2);
+    metadata.amount_total_cents = String(totalCents);
+    void unitAmountDollars;
+
     // Get PayPal access token
     const accessToken = await getPayPalAccessToken();
 
@@ -346,9 +373,9 @@ Deno.serve(async (req) => {
           {
             amount: {
               currency_code: "USD",
-              value: unitAmountDollars,
+              value: totalDollars,
             },
-            description: `${productName} for ${formData.recipientName}`,
+            description: `${productName}${rushAddon ? " (1-Hour Express)" : ""} for ${formData.recipientName}${foreverMemory ? " + Forever Memory Package" : ""}`,
           },
         ],
         application_context: {
