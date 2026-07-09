@@ -741,19 +741,18 @@ const Checkout = () => {
                 <span className="text-foreground">{formData.yourEmail}</span>
               </div>
               <div className="border-t border-border my-4" />
-              
-              {/* Promo item */}
+
+              {/* Selected tier line — names what the subtotal is for */}
               <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Unlimited plays</span>
-                  <span className="bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5 rounded">FREE</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground line-through">$15</span>
-                  <span className="text-primary font-semibold">$0</span>
-                </div>
+                <span className="text-foreground font-medium">
+                  {isExpress
+                    ? "Express Song (1-hour delivery)"
+                    : selectedTier === "priority"
+                      ? "Priority Song"
+                      : "Standard Song"}
+                </span>
               </div>
-              
+
               {/* Promo Code Input */}
               <div className="border-t border-border my-4" />
               <div className="space-y-2">
