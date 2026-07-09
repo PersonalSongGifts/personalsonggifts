@@ -230,7 +230,7 @@ const TermsOfService = () => {
           <section>
             <h2 className="text-xl font-semibold mb-3">11. Rush Delivery</h2>
             <p className="text-muted-foreground leading-relaxed">
-              Rush delivery is an optional add-on that prioritizes your order in our processing queue. While we make every effort to deliver rush orders within the stated timeframe, delivery times are estimates and not guaranteed. Rush delivery fees are non-refundable once your order enters processing, regardless of actual delivery time.
+              Rush (Express) delivery is an optional add-on that prioritizes your order in our processing queue. Standard delivery arrives within about 24 hours; Express delivery targets about 1 hour. Delivery windows are estimates, not guarantees. If an Express order does not arrive meaningfully faster than a standard order would have, the Express fee is refundable on request — contact support@personalsonggifts.com.
             </p>
           </section>
 
