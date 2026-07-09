@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const orderId = url.searchParams.get("orderId");
+    const fresh = url.searchParams.get("fresh") === "1";
 
     if (!orderId) {
       return new Response(
@@ -71,17 +72,19 @@ Deno.serve(async (req) => {
     }
 
     const cacheKey = orderId.toLowerCase();
-    const fresh = getFresh(cacheKey);
-    if (fresh) {
-      return new Response(fresh.body, {
-        status: fresh.status,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store",
-          "X-Cache": "HIT",
-        },
-      });
+    if (!fresh) {
+      const cached = getFresh(cacheKey);
+      if (cached) {
+        return new Response(cached.body, {
+          status: cached.status,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+            "X-Cache": "HIT",
+          },
+        });
+      }
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

@@ -868,6 +868,7 @@ Deno.serve(async (req) => {
             })
             .eq("id", order.id)
             .is("sent_at", null) // Optimistic lock
+            .or("delivery_status.is.null,delivery_status.eq.scheduled,delivery_status.eq.failed") // Prevent double-claim of an in-flight ("delivering") row
             .select("id");
 
           if (claimError) throw claimError;
@@ -2338,6 +2339,91 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       results.rushSlaAlerts = rushAlertsSent.length;
     } catch (e) {
       console.error("[RUSH-SLA] Alert block error (ignored):", e);
+    }
+
+    // ======= NEEDS_REVIEW AGING ALERT (isolated & non-blocking) =======
+    // Orders parked in delivery_status='needs_review' never get retried by the
+    // pickup loop (it excludes that status). Alert support once every 24h so
+    // aging orders can't sit forever unnoticed. Fully isolated.
+    try {
+      const ninetyDaysAgoIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: needsReviewOrders, error: nrErr } = await supabase
+        .from("orders")
+        .select("id, created_at, customer_email, recipient_name, delivery_last_error")
+        .eq("delivery_status", "needs_review")
+        .is("sent_at", null)
+        .gt("created_at", ninetyDaysAgoIso)
+        .order("created_at", { ascending: true })
+        .limit(50);
+      if (nrErr) console.error("[NEEDS-REVIEW] query error:", nrErr);
+
+      if (needsReviewOrders && needsReviewOrders.length > 0) {
+        // Throttle: once per 24h max
+        const { data: lastAlertRow } = await supabase
+          .from("admin_settings")
+          .select("value")
+          .eq("key", "needs_review_last_alert")
+          .maybeSingle();
+        const lastAlertMs = lastAlertRow?.value ? Date.parse(lastAlertRow.value as string) : 0;
+        const dueForAlert = !lastAlertMs || (Date.now() - lastAlertMs) > 24 * 60 * 60 * 1000;
+
+        if (dueForAlert) {
+          const nowIso = new Date().toISOString();
+          const lines = needsReviewOrders.map((o: any) => {
+            const shortId = (o.id as string).slice(0, 8).toUpperCase();
+            const ageHours = Math.round(
+              (Date.now() - new Date(o.created_at as string).getTime()) / 3_600_000
+            );
+            return `- ${shortId} (${o.id}) — ${ageHours}h old — ${o.customer_email || "no email"} → ${o.recipient_name || ""}${o.delivery_last_error ? ` — err: ${o.delivery_last_error}` : ""}`;
+          }).join("\n");
+
+          try {
+            const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+            if (brevoApiKey) {
+              await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+                  "api-key": brevoApiKey,
+                },
+                body: JSON.stringify({
+                  sender: { name: "Personal Song Gifts", email: "support@personalsonggifts.com" },
+                  to: [{ email: "support@personalsonggifts.com" }],
+                  subject: `⚠️ ${needsReviewOrders.length} order(s) parked in needs_review`,
+                  textContent:
+                    `The following paid orders are sitting in delivery_status='needs_review' and are NOT being auto-retried by the delivery loop.\n\n` +
+                    `${lines}\n\n` +
+                    `Resolve each in the admin panel (fix email/asset, then reset delivery_status).`,
+                }),
+              });
+            } else {
+              console.error(`[NEEDS-REVIEW] BREVO_API_KEY missing — could not email alert (${needsReviewOrders.length} orders)`);
+            }
+          } catch (emailErr) {
+            console.error("[NEEDS-REVIEW] Alert email failed:", emailErr);
+          }
+
+          for (const o of needsReviewOrders) {
+            await logActivity(
+              supabase,
+              "order",
+              o.id as string,
+              "needs_review_aging_alert",
+              "system",
+              `Included in aging needs_review alert batch (${needsReviewOrders.length} total)`,
+            );
+          }
+
+          await supabase
+            .from("admin_settings")
+            .upsert({ key: "needs_review_last_alert", value: nowIso }, { onConflict: "key" });
+
+          (results as any).needsReviewAlerted = needsReviewOrders.length;
+        }
+      }
+    } catch (e) {
+      console.error("[NEEDS-REVIEW] Alert block error (ignored):", e);
     }
 
     return new Response(JSON.stringify(results), {

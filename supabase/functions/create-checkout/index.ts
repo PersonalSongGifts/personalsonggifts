@@ -402,6 +402,11 @@ Deno.serve(async (req) => {
 
     const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
 
+    // Stripe rejects checkout sessions that include payment_intent_data when
+    // the total is $0 (no PaymentIntent is created). Match create-package-checkout.
+    const totalCents =
+      unitAmount + (foreverMemory ? packageCents : 0) + (rushAddon ? rushCents : 0);
+
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer_email: formData.yourEmail,
@@ -442,9 +447,7 @@ Deno.serve(async (req) => {
       success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/checkout`,
       metadata,
-      payment_intent_data: {
-        metadata,
-      },
+      payment_intent_data: totalCents > 0 ? { metadata } : undefined,
     });
 
     return new Response(

@@ -154,9 +154,10 @@ const SongPlayer = () => {
   const [audioError, setAudioError] = useState<string | null>(null);
   const hasTrackedPlay = useRef(false);
 
-  const fetchSongData = async () => {
+  const fetchSongData = async (opts?: { fresh?: boolean }) => {
     if (!orderId) return;
-    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}&t=${Date.now()}`;
+    const freshParam = opts?.fresh ? `&fresh=1` : "";
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}&t=${Date.now()}${freshParam}`;
     const maxAttempts = 3;
     let lastError: unknown = null;
 
@@ -230,7 +231,7 @@ const SongPlayer = () => {
           }
         );
         if (response.ok) {
-          await fetchSongData();
+          await fetchSongData({ fresh: true });
           toast.success("Lyrics unlocked!");
         }
       } catch (err) {
@@ -261,7 +262,7 @@ const SongPlayer = () => {
           }
         );
         if (response.ok) {
-          await fetchSongData();
+          await fetchSongData({ fresh: true });
           toast.success("Download unlocked! You can now download your song.");
         }
       } catch (err) {
@@ -292,7 +293,7 @@ const SongPlayer = () => {
           }
         );
         if (response.ok) {
-          await fetchSongData();
+          await fetchSongData({ fresh: true });
           toast.success("Bonus track unlocked! 🎶");
         }
       } catch (err) {
@@ -325,7 +326,7 @@ const SongPlayer = () => {
         if (response.ok) {
           const data = await response.json().catch(() => ({} as any));
           trackPackagePurchase(packageSessionId, typeof data?.amountCents === "number" ? data.amountCents : null);
-          await fetchSongData();
+          await fetchSongData({ fresh: true });
           toast.success("Forever Memory Package unlocked! ✨");
         }
       } catch (err) {
