@@ -167,11 +167,19 @@ const Checkout = () => {
   const anchorSavingsCents = hasFlashBaseDiscount
     ? Math.max(0, BASE_SONG_CENTS - baseSongCents)
     : 0;
+  // Former-list ($49.99 → live song price) savings — only counted when the
+  // struck-through anchor is actually rendered on the song line item below,
+  // so the "You save" total always matches what the customer visibly sees.
+  const formerListSavingsCents =
+    !hasFlashBaseDiscount && songTotalCents < FORMER_LIST_ANCHOR_CENTS
+      ? FORMER_LIST_ANCHOR_CENTS - songTotalCents
+      : 0;
   const packageSavingsCents = packageSelected
     ? Math.max(0, PACKAGE_ANCHOR_CENTS - ADDON_PRICES_CENTS.forever_memory)
     : 0;
   const promoSavingsCents = additionalSavingsCents;
-  const totalSavingsCents = anchorSavingsCents + packageSavingsCents + promoSavingsCents;
+  const totalSavingsCents =
+    anchorSavingsCents + formerListSavingsCents + packageSavingsCents + promoSavingsCents;
 
   const recipientName = formData?.recipientName?.trim() || "your loved one";
 
