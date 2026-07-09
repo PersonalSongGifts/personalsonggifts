@@ -208,6 +208,15 @@ const PaymentSuccess = () => {
 
           const data = await response.json();
           setOrderDetails(data);
+          if (data.package_unlocked) {
+            setPkgAdded(true);
+            if (paypalToken && (data.package_addon_cents ?? 0) > 0) {
+              trackAddonPurchase("pkg", `chk_pp_${paypalToken}`, data.package_addon_cents ?? null);
+            }
+          }
+          if (paypalToken && data.rush_addon && (data.rush_addon_cents ?? 0) > 0) {
+            trackAddonPurchase("rush", `chk_pp_${paypalToken}`, data.rush_addon_cents ?? null);
+          }
           trackPurchaseEvent(data);
         } catch (err) {
           console.error("PayPal payment processing error:", err);
