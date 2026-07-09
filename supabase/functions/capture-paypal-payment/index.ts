@@ -128,8 +128,8 @@ Deno.serve(async (req) => {
 
     if (!metadataRecord) {
       return new Response(
-        JSON.stringify({ error: "PayPal order metadata not found" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Order not found", code: "ORDER_NOT_FOUND" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
