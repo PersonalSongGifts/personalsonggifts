@@ -1852,11 +1852,18 @@ const { data, error } = await listOrders("all", 0, 250);
                               {formatAdminDate(order.scheduled_delivery_at)}
                             </p>
                           )}
-                          {/* Show auto-send time for automated deliveries */}
-                          {order.automation_status === "completed" && order.target_send_at && !order.sent_at && (
+                          {/* Show auto-send time only for orders that haven't shipped yet */}
+                          {order.automation_status === "completed" && order.target_send_at && !isOrderSent(order) && (
                             <p className="text-sm text-blue-600 font-medium">
                               <strong>📬 Auto-Send:</strong>{" "}
                               {formatAdminDate(order.target_send_at)} ({formatTimeUntilSend(order.target_send_at)})
+                            </p>
+                          )}
+                          {/* Once shipped, show a neutral delivered confirmation */}
+                          {isOrderSent(order) && order.sent_at && (
+                            <p className="text-sm text-green-700 font-medium">
+                              <strong>✅ Delivered:</strong>{" "}
+                              {formatAdminDate(order.sent_at)}
                             </p>
                           )}
                         </div>
