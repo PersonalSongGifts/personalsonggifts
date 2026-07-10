@@ -1278,6 +1278,16 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
+  // An order is "sent" when we have any positive delivery evidence.
+  // Suppresses overdue/auto-send warnings for orders that actually shipped
+  // (guards against stale cached data too).
+  const isOrderSent = (order: Order): boolean => {
+    return !!order.sent_at
+      || order.status === "delivered"
+      || order.delivery_status === "sent"
+      || order.delivery_status === "delivering";
+  };
+
   const orderNeedsAttention = (order: Order): boolean => {
     const now = new Date();
     // Failed automation
@@ -1285,10 +1295,10 @@ const { data, error } = await listOrders("all", 0, 250);
     // Delivery issues
     if (["failed", "needs_review"].includes(order.delivery_status || "")) return true;
     // Overdue: completed but not sent and target_send_at passed
-    if (order.automation_status === "completed" && 
-        order.target_send_at && 
-        new Date(order.target_send_at) <= now && 
-        !order.sent_at &&
+    if (order.automation_status === "completed" &&
+        order.target_send_at &&
+        new Date(order.target_send_at) <= now &&
+        !isOrderSent(order) &&
         !order.dismissed_at) return true;
     return false;
   };
@@ -1304,6 +1314,22 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   // Only refetch on auth change - statusFilter is handled client-side
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  // Auto-refresh orders every 30s so stale sent/status/delivery_status don't
+  // trigger false "overdue" warnings. Also refetch on window focus.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = setInterval(() => {
+      fetchOrders();
+    }, 30000);
+    const onFocus = () => fetchOrders();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {
@@ -1517,7 +1543,7 @@ const { data, error } = await listOrders("all", 0, 250);
                     ⚠️ Needs Attention ({orders.filter(orderNeedsAttention).length})
                   </SelectItem>
                   <SelectItem value="auto_scheduled" className="text-blue-600 font-medium">
-                    📬 Auto-Scheduled ({orders.filter(o => o.automation_status === "completed" && o.target_send_at && !o.sent_at && !o.dismissed_at).length})
+                    📬 Auto-Scheduled ({orders.filter(o => o.automation_status === "completed" && o.target_send_at && !isOrderSent(o) && !o.dismissed_at).length})
                   </SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="in_progress">In Progress</SelectItem>
@@ -1625,7 +1651,7 @@ const { data, error } = await listOrders("all", 0, 250);
                 if (statusFilter === "auto_scheduled") {
                   return order.automation_status === "completed" 
                     && order.target_send_at 
-                    && !order.sent_at
+                    && !isOrderSent(order)
                     && !order.dismissed_at;
                 }
                 
@@ -1826,11 +1852,18 @@ const { data, error } = await listOrders("all", 0, 250);
                               {formatAdminDate(order.scheduled_delivery_at)}
                             </p>
                           )}
-                          {/* Show auto-send time for automated deliveries */}
-                          {order.automation_status === "completed" && order.target_send_at && !order.sent_at && (
+                          {/* Show auto-send time only for orders that haven't shipped yet */}
+                          {order.automation_status === "completed" && order.target_send_at && !isOrderSent(order) && (
                             <p className="text-sm text-blue-600 font-medium">
                               <strong>📬 Auto-Send:</strong>{" "}
                               {formatAdminDate(order.target_send_at)} ({formatTimeUntilSend(order.target_send_at)})
+                            </p>
+                          )}
+                          {/* Once shipped, show a neutral delivered confirmation */}
+                          {isOrderSent(order) && order.sent_at && (
+                            <p className="text-sm text-green-700 font-medium">
+                              <strong>✅ Delivered:</strong>{" "}
+                              {formatAdminDate(order.sent_at)}
                             </p>
                           )}
                         </div>
