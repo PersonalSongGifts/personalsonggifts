@@ -1285,10 +1285,10 @@ const { data, error } = await listOrders("all", 0, 250);
     // Delivery issues
     if (["failed", "needs_review"].includes(order.delivery_status || "")) return true;
     // Overdue: completed but not sent and target_send_at passed
-    if (order.automation_status === "completed" && 
-        order.target_send_at && 
-        new Date(order.target_send_at) <= now && 
-        !order.sent_at &&
+    if (order.automation_status === "completed" &&
+        order.target_send_at &&
+        new Date(order.target_send_at) <= now &&
+        !isOrderSent(order) &&
         !order.dismissed_at) return true;
     return false;
   };
@@ -1304,6 +1304,22 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   // Only refetch on auth change - statusFilter is handled client-side
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  // Auto-refresh orders every 30s so stale sent/status/delivery_status don't
+  // trigger false "overdue" warnings. Also refetch on window focus.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = setInterval(() => {
+      fetchOrders();
+    }, 30000);
+    const onFocus = () => fetchOrders();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {
