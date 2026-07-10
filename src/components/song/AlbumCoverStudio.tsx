@@ -52,6 +52,10 @@ export default function AlbumCoverStudio({
   const fileRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<number | null>(null);
   const bonusPollRef = useRef<number | null>(null);
+  const pollStartRef = useRef<number>(0);
+  const pollRetryRef = useRef<number>(0);
+  const bonusPollStartRef = useRef<number>(0);
+  const bonusPollRetryRef = useRef<number>(0);
   const genreLabel = bonusGenreLabel || "Acoustic";
 
   useEffect(() => {
@@ -66,6 +70,7 @@ export default function AlbumCoverStudio({
 
   const startPolling = () => {
     if (pollRef.current) window.clearInterval(pollRef.current);
+    pollStartRef.current = Date.now();
     pollRef.current = window.setInterval(async () => {
       try {
         const r = await fetch(`${SUPA}/functions/v1/check-album-cover`, {
@@ -80,15 +85,33 @@ export default function AlbumCoverStudio({
         } else if (j.status === "failed") {
           setStatus("failed"); setError("Generation failed. Try again.");
           if (pollRef.current) window.clearInterval(pollRef.current);
+        } else {
+          const elapsed = Date.now() - pollStartRef.current;
+          if (elapsed > 210000) {
+            if (pollRef.current) window.clearInterval(pollRef.current);
+            if (pollRetryRef.current < 1) {
+              pollRetryRef.current += 1;
+              console.warn("[AlbumCoverStudio] main stalled, auto-retrying", { elapsed });
+              generateVariant("main").catch((e) => {
+                setStatus("failed");
+                setError(e instanceof Error ? e.message : "Generate failed");
+              });
+            } else {
+              console.warn("[AlbumCoverStudio] main stalled after retry, giving up", { elapsed });
+              setStatus("failed");
+              setError("This is taking longer than usual — tap 'Regenerate this one' to try again, or check back in a minute.");
+            }
+          }
         }
       } catch (e) {
         console.error("poll error", e);
       }
-    }, 8000);
+    }, 3000);
   };
 
   const startBonusPolling = () => {
     if (bonusPollRef.current) window.clearInterval(bonusPollRef.current);
+    bonusPollStartRef.current = Date.now();
     bonusPollRef.current = window.setInterval(async () => {
       try {
         const r = await fetch(`${SUPA}/functions/v1/check-album-cover`, {
@@ -103,11 +126,27 @@ export default function AlbumCoverStudio({
         } else if (j.status === "failed") {
           setBonusStatus("failed");
           if (bonusPollRef.current) window.clearInterval(bonusPollRef.current);
+        } else {
+          const elapsed = Date.now() - bonusPollStartRef.current;
+          if (elapsed > 210000) {
+            if (bonusPollRef.current) window.clearInterval(bonusPollRef.current);
+            if (bonusPollRetryRef.current < 1) {
+              bonusPollRetryRef.current += 1;
+              console.warn("[AlbumCoverStudio] bonus stalled, auto-retrying", { elapsed });
+              generateVariant("bonus").catch(() => {
+                setBonusStatus("failed");
+              });
+            } else {
+              console.warn("[AlbumCoverStudio] bonus stalled after retry, giving up", { elapsed });
+              setBonusStatus("failed");
+              setError("This is taking longer than usual — tap 'Regenerate this one' to try again, or check back in a minute.");
+            }
+          }
         }
       } catch (e) {
         console.error("bonus poll error", e);
       }
-    }, 8000);
+    }, 3000);
   };
 
   const handleUpload = async (file: File) => {
@@ -146,6 +185,8 @@ export default function AlbumCoverStudio({
   const handleGenerate = async () => {
     if (!photoUrl) return;
     setError(null);
+    pollRetryRef.current = 0;
+    bonusPollRetryRef.current = 0;
     try {
       const runVariant = (v: "main" | "bonus") =>
         generateVariant(v).catch((e) => {
@@ -163,6 +204,8 @@ export default function AlbumCoverStudio({
 
   const regenerateOne = async (variant: "main" | "bonus") => {
     setError(null);
+    if (variant === "bonus") bonusPollRetryRef.current = 0;
+    else pollRetryRef.current = 0;
     try {
       await generateVariant(variant);
     } catch (e) {
@@ -174,7 +217,7 @@ export default function AlbumCoverStudio({
   const anyReady = !!aiUrl || !!bonusAiUrl;
   const anyGenerating = status === "generating" || (bonusAvailable && bonusStatus === "generating");
   const primaryLabel = anyGenerating
-    ? "Generating… (2–5 min)"
+    ? "Designing your cover… (about a minute or two)"
     : anyReady
       ? (bonusAvailable ? "Regenerate Covers" : "Regenerate")
       : (bonusAvailable ? "Generate Album Covers" : "Generate Album Cover");
