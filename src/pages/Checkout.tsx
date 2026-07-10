@@ -720,7 +720,7 @@ const Checkout = () => {
                   <span>{isFullyFreeCode ? <span className="text-primary font-medium">FREE</span> : fmt(rushChargeCents)}</span>
                 </div>
               )}
-              {totalSavingsCents > 0 && (
+              {totalSavingsCents > 0 && !isFullyFreeCode && (
                 <div className="flex justify-between text-primary font-medium">
                   <span>You save</span>
                   <span data-testid="you-save">{fmt(totalSavingsCents)}</span>
