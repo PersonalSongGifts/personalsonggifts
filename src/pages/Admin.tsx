@@ -1278,6 +1278,16 @@ const { data, error } = await listOrders("all", 0, 250);
     }
   };
 
+  // An order is "sent" when we have any positive delivery evidence.
+  // Suppresses overdue/auto-send warnings for orders that actually shipped
+  // (guards against stale cached data too).
+  const isOrderSent = (order: Order): boolean => {
+    return !!order.sent_at
+      || order.status === "delivered"
+      || order.delivery_status === "sent"
+      || order.delivery_status === "delivering";
+  };
+
   const orderNeedsAttention = (order: Order): boolean => {
     const now = new Date();
     // Failed automation
