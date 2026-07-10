@@ -1543,7 +1543,7 @@ const { data, error } = await listOrders("all", 0, 250);
                     ⚠️ Needs Attention ({orders.filter(orderNeedsAttention).length})
                   </SelectItem>
                   <SelectItem value="auto_scheduled" className="text-blue-600 font-medium">
-                    📬 Auto-Scheduled ({orders.filter(o => o.automation_status === "completed" && o.target_send_at && !o.sent_at && !o.dismissed_at).length})
+                    📬 Auto-Scheduled ({orders.filter(o => o.automation_status === "completed" && o.target_send_at && !isOrderSent(o) && !o.dismissed_at).length})
                   </SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="in_progress">In Progress</SelectItem>
@@ -1651,7 +1651,7 @@ const { data, error } = await listOrders("all", 0, 250);
                 if (statusFilter === "auto_scheduled") {
                   return order.automation_status === "completed" 
                     && order.target_send_at 
-                    && !order.sent_at
+                    && !isOrderSent(order)
                     && !order.dismissed_at;
                 }
                 
