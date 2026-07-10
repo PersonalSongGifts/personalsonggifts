@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const infoRes = await fetch(`https://api.kie.ai/api/v1/gpt4o-image/record-info?taskId=${encodeURIComponent(taskId)}`, {
+    const infoRes = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
       headers: { "Authorization": `Bearer ${KIE_API_KEY}` },
     });
     const infoJson = await infoRes.json().catch(() => ({}));
@@ -118,10 +118,15 @@ Deno.serve(async (req) => {
       data?.status ?? data?.state ?? data?.successFlag ?? ""
     ).toLowerCase();
     const isSuccess = statusStr === "success" || statusStr === "succeeded" || statusStr === "completed" || statusStr === "1";
-    const isFailed = statusStr === "failed" || statusStr === "error" || statusStr === "2" || statusStr === "3";
+    const isFailed = statusStr === "fail" || statusStr === "failed" || statusStr === "error" || statusStr === "2" || statusStr === "3";
 
     if (isSuccess) {
-      const imgUrl = extractImageUrl(data);
+      let imgUrl: string | null = null;
+      try {
+        const parsed = JSON.parse(String((data as Record<string, unknown>).resultJson ?? "{}"));
+        imgUrl = (parsed?.resultUrls?.[0] as string) ?? null;
+      } catch { /* ignore */ }
+      if (!imgUrl) imgUrl = extractImageUrl(data);
       if (!imgUrl) {
         console.error("[check-album-cover] success but no image url", data);
         return new Response(JSON.stringify({ status: "generating" }), {
