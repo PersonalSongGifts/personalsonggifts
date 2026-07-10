@@ -119,13 +119,16 @@ Deno.serve(async (req) => {
       occasion: order.occasion || "",
     });
 
-    const kieRes = await fetch("https://api.kie.ai/api/v1/gpt4o-image/generate", {
+    const kieRes = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${KIE_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ prompt, filesUrl: [photoUrl], size: "1:1" }),
+      body: JSON.stringify({
+        model: "gpt-image-2-image-to-image",
+        input: { prompt, aspect_ratio: "1:1", resolution: "2K", input_urls: [photoUrl] },
+      }),
     });
     const kieJson = await kieRes.json().catch(() => ({}));
     if (!kieRes.ok) {
