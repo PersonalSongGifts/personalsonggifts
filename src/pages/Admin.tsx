@@ -415,7 +415,7 @@ export default function Admin() {
   const [totalLeadCount, setTotalLeadCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const listOrders = async (status: string, page = 0, pageSize = 250) => {
+  const listOrders = async (status: string, page = 0, pageSize = 100) => {
     return supabase.functions.invoke("admin-orders", {
       method: "POST",
       body: {
