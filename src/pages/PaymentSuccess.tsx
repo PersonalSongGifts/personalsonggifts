@@ -301,16 +301,9 @@ const PaymentSuccess = () => {
           setOrderDetails(data);
           if (data.package_unlocked) {
             setPkgAdded(true);
-            if (paypalToken && (data.package_addon_cents ?? 0) > 0) {
-              trackAddonPurchase("pkg", `chk_pp_${paypalToken}`, data.package_addon_cents ?? null);
-            }
           }
-          if (paypalToken && data.rush_addon && (data.rush_addon_cents ?? 0) > 0) {
-            // Skip if return-trip rush verify will fire this instead (avoid double-count).
-            if (!rushSessionOnMount.current) {
-              trackAddonPurchase("rush", `chk_pp_${paypalToken}`, data.rush_addon_cents ?? null);
-            }
-          }
+          // Bundled add-ons are folded into the single base Purchase (see trackPurchaseEvent).
+          // Do not fire a separate Purchase for them here.
           trackPurchaseEvent(data);
         } catch (err) {
           console.error("PayPal payment processing error:", err);
@@ -392,15 +385,8 @@ const PaymentSuccess = () => {
         setOrderDetails(data);
         if (data.package_unlocked) {
           setPkgAdded(true);
-          if (sessionId && (data.package_addon_cents ?? 0) > 0) {
-            trackPackagePurchase(`chk_${sessionId}`, data.package_addon_cents ?? null);
-          }
         }
-        if (sessionId && data.rush_addon && (data.rush_addon_cents ?? 0) > 0) {
-          if (!rushSessionOnMount.current) {
-            trackAddonPurchase("rush", `chk_${sessionId}`, data.rush_addon_cents ?? null);
-          }
-        }
+        // Bundled add-ons are folded into the single base Purchase (see trackPurchaseEvent).
         trackPurchaseEvent(data);
         setLoading(false);
         return true; // Success
