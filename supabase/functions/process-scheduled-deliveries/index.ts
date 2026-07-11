@@ -2388,18 +2388,30 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     // pickup loop (it excludes that status). Alert support once every 24h so
     // aging orders can't sit forever unnoticed. Fully isolated.
     try {
-      const ninetyDaysAgoIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: needsReviewOrders, error: nrErr } = await supabase
+      const fourteenDaysAgoIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: nrRaw, error: nrErr } = await supabase
         .from("orders")
-        .select("id, created_at, customer_email, recipient_name, delivery_last_error")
+        .select("id, created_at, customer_email, customer_name, recipient_name, delivery_last_error")
         .eq("delivery_status", "needs_review")
         .is("sent_at", null)
-        .gt("created_at", ninetyDaysAgoIso)
+        .gt("created_at", fourteenDaysAgoIso)
+        .not("customer_email", "ilike", "%hyperdrivelab%")
+        .not("customer_email", "ilike", "%example.%")
+        .not("customer_name", "ilike", "%test%")
+        .not("recipient_name", "ilike", "%test%")
         .order("created_at", { ascending: true })
-        .limit(50);
+        .limit(100);
       if (nrErr) console.error("[NEEDS-REVIEW] query error:", nrErr);
 
-      if (needsReviewOrders && needsReviewOrders.length > 0) {
+      // Dedupe by id in case of duplicate rows / concurrent runs
+      const seenNr = new Set<string>();
+      const needsReviewOrders = (nrRaw || []).filter((o: any) => {
+        if (seenNr.has(o.id)) return false;
+        seenNr.add(o.id);
+        return true;
+      }).slice(0, 50);
+
+      if (needsReviewOrders.length > 0) {
         // Throttle: once per 24h max
         const { data: lastAlertRow } = await supabase
           .from("admin_settings")
