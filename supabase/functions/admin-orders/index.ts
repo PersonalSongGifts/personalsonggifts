@@ -81,13 +81,14 @@ Deno.serve(async (req) => {
     if (req.method === "GET") {
       const status = url.searchParams.get("status");
       
-      // Lean columns for the GET listing path — heavy text/jsonb fields
-      // (special_qualities, favorite_memory, special_message, song_history,
-      // prev_song_url, automation_last_error, sms_last_error, delivery_last_error,
-      // inputs_hash, sent_to_emails, reaction_video_url) are NOT shown in the
-      // list table and are re-fetched by the get_order_detail action when a
-      // row is opened. Keeping them out here avoids the 8s PostgREST timeout.
-      const listOrderColumns = "id, created_at, status, pricing_tier, price, price_cents, customer_name, customer_email, customer_email_cc, customer_email_override, customer_phone, recipient_name, recipient_name_pronunciation, recipient_type, occasion, genre, singer_preference, song_url, song_title, cover_image_url, notes, device_type, expected_delivery, delivered_at, sent_at, reaction_submitted_at, reaction_email_24h_sent_at, reaction_email_72h_sent_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term, automation_status, automation_started_at, automation_retry_count, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, next_attempt_at, delivery_status, delivery_retry_count, source, lyrics_language_code, phone_e164, sms_opt_in, sms_sent_at, sms_scheduled_for, sms_status, timezone, lyrics_unlocked_at, lyrics_price_cents, download_unlocked_at, download_price_cents, scheduled_delivery_at, song_played_at, song_play_count, song_downloaded_at, song_download_count, unplayed_resend_sent_at, resend_scheduled_at, revision_token, revision_count, max_revisions, revision_requested_at, pending_revision, revision_status, revision_reason, sender_context, billing_country_code, billing_country_name, dismissed_at, automation_manual_override_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_automation_status, bonus_automation_started_at, bonus_unlocked_at, bonus_price_cents, package_unlocked_at, package_price_cents, rush_addon, rush_price_cents";
+      // Lean columns for the GET listing path — drops truly heavy jsonb /
+      // rarely-used blobs (song_history, prev_song_url, inputs_hash,
+      // sent_to_emails, sms_last_error) that are only shown in the detail
+      // modal (re-fetched via get_order_detail). Fields the list UI actively
+      // uses (special_qualities/favorite_memory/special_message for search,
+      // automation_last_error/delivery_last_error for badges, reaction_video_url
+      // for reaction rows) are retained.
+      const listOrderColumns = "id, created_at, status, pricing_tier, price, price_cents, customer_name, customer_email, customer_email_cc, customer_email_override, customer_phone, recipient_name, recipient_name_pronunciation, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, song_url, song_title, cover_image_url, notes, device_type, expected_delivery, delivered_at, sent_at, reaction_video_url, reaction_submitted_at, reaction_email_24h_sent_at, reaction_email_72h_sent_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term, automation_status, automation_started_at, automation_retry_count, automation_last_error, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, next_attempt_at, delivery_status, delivery_last_error, delivery_retry_count, source, lyrics_language_code, phone_e164, sms_opt_in, sms_sent_at, sms_scheduled_for, sms_status, timezone, lyrics_unlocked_at, lyrics_price_cents, download_unlocked_at, download_price_cents, scheduled_delivery_at, song_played_at, song_play_count, song_downloaded_at, song_download_count, unplayed_resend_sent_at, resend_scheduled_at, revision_token, revision_count, max_revisions, revision_requested_at, pending_revision, revision_status, revision_reason, sender_context, billing_country_code, billing_country_name, dismissed_at, automation_manual_override_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_automation_status, bonus_automation_started_at, bonus_automation_last_error, bonus_unlocked_at, bonus_price_cents, package_unlocked_at, package_price_cents, rush_addon, rush_price_cents";
       let query = supabase
         .from("orders")
         .select(listOrderColumns)
@@ -118,12 +119,11 @@ Deno.serve(async (req) => {
         const rangeStart = page * pageSize;
         const rangeEnd = rangeStart + pageSize - 1;
 
-        // Lean columns for the LIST path — drops heavy text/jsonb fields
-        // (special_qualities, favorite_memory, special_message, song_history,
-        // prev_song_url, automation_last_error, sms_last_error, delivery_last_error,
-        // inputs_hash, sent_to_emails, reaction_video_url) not shown in the
-        // list table. Detail view re-fetches full row via get_order_detail.
-        const orderColumns = "id, created_at, status, pricing_tier, price, price_cents, customer_name, customer_email, customer_email_cc, customer_email_override, customer_phone, recipient_name, recipient_name_pronunciation, recipient_type, occasion, genre, singer_preference, song_url, song_title, cover_image_url, notes, device_type, expected_delivery, delivered_at, sent_at, reaction_submitted_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term, automation_status, automation_started_at, automation_retry_count, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, next_attempt_at, delivery_status, delivery_retry_count, source, lyrics_language_code, phone_e164, sms_opt_in, sms_sent_at, sms_scheduled_for, sms_status, timezone, lyrics_unlocked_at, lyrics_price_cents, download_unlocked_at, download_price_cents, scheduled_delivery_at, song_played_at, song_play_count, song_downloaded_at, song_download_count, unplayed_resend_sent_at, resend_scheduled_at, revision_token, revision_count, max_revisions, revision_requested_at, pending_revision, revision_status, revision_reason, sender_context, billing_country_code, billing_country_name, dismissed_at, automation_manual_override_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_automation_status, bonus_automation_started_at, bonus_unlocked_at, bonus_price_cents, package_unlocked_at, package_price_cents, rush_addon, rush_price_cents";
+        // Lean columns for the LIST path — drops truly heavy jsonb / blobs
+        // (song_history, prev_song_url, inputs_hash, sent_to_emails,
+        // sms_last_error) only needed in the detail modal. Retains fields the
+        // list UI actively renders (search text, error badges, reaction row).
+        const orderColumns = "id, created_at, status, pricing_tier, price, price_cents, customer_name, customer_email, customer_email_cc, customer_email_override, customer_phone, recipient_name, recipient_name_pronunciation, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, song_url, song_title, cover_image_url, notes, device_type, expected_delivery, delivered_at, sent_at, reaction_video_url, reaction_submitted_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term, automation_status, automation_started_at, automation_retry_count, automation_last_error, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, next_attempt_at, delivery_status, delivery_last_error, delivery_retry_count, source, lyrics_language_code, phone_e164, sms_opt_in, sms_sent_at, sms_scheduled_for, sms_status, timezone, lyrics_unlocked_at, lyrics_price_cents, download_unlocked_at, download_price_cents, scheduled_delivery_at, song_played_at, song_play_count, song_downloaded_at, song_download_count, unplayed_resend_sent_at, resend_scheduled_at, revision_token, revision_count, max_revisions, revision_requested_at, pending_revision, revision_status, revision_reason, sender_context, billing_country_code, billing_country_name, dismissed_at, automation_manual_override_at, bonus_song_url, bonus_preview_url, bonus_song_title, bonus_automation_status, bonus_automation_started_at, bonus_automation_last_error, bonus_unlocked_at, bonus_price_cents, package_unlocked_at, package_price_cents, rush_addon, rush_price_cents";
         let orderQuery = supabase
           .from("orders")
           .select(orderColumns)
@@ -135,11 +135,11 @@ Deno.serve(async (req) => {
         const { data: orders, error: orderErr } = await orderQuery;
         if (orderErr) throw orderErr;
 
-        // Fetch paginated leads (lean columns — drops heavy blobs; detail
-        // view re-fetches full row via get_lead_detail).
+        // Fetch paginated leads (lean — drops song_history, prev_song_url,
+        // inputs_hash jsonb/blobs; detail view re-fetches via get_lead_detail).
         const { data: leads, error: leadErr } = await supabase
           .from("leads")
-          .select("id, email, phone, customer_name, recipient_name, recipient_type, recipient_name_pronunciation, occasion, genre, singer_preference, status, captured_at, converted_at, order_id, quality_score, preview_song_url, full_song_url, song_title, cover_image_url, preview_token, preview_sent_at, preview_opened_at, preview_played_at, preview_play_count, preview_scheduled_at, follow_up_sent_at, dismissed_at, utm_source, utm_medium, utm_campaign, automation_status, automation_started_at, automation_retry_count, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, sent_at, lead_email_override, lead_email_cc, preview_sent_to_emails, sms_opt_in, sms_sent_at, sms_scheduled_for, phone_e164, sms_status, lyrics_language_code")
+          .select("id, email, phone, customer_name, recipient_name, recipient_type, recipient_name_pronunciation, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, captured_at, converted_at, order_id, quality_score, preview_song_url, full_song_url, song_title, cover_image_url, preview_token, preview_sent_at, preview_opened_at, preview_played_at, preview_play_count, preview_scheduled_at, follow_up_sent_at, dismissed_at, utm_source, utm_medium, utm_campaign, automation_status, automation_started_at, automation_retry_count, automation_last_error, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, sent_at, lead_email_override, lead_email_cc, preview_sent_to_emails, sms_opt_in, sms_sent_at, sms_scheduled_for, phone_e164, sms_status, lyrics_language_code")
           .order("captured_at", { ascending: false })
           .range(rangeStart, rangeEnd);
         if (leadErr) {
