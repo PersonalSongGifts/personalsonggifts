@@ -729,12 +729,25 @@ Deno.serve(async (req) => {
     const estimatedDurationSec = Math.round((audioBytes.length * 8) / (estimatedBitrate * 1000));
     console.log(`[CALLBACK] Estimated duration: ${estimatedDurationSec}s (${estimatedBitrate}kbps, ${audioBytes.length} bytes)`);
 
-    if (estimatedDurationSec < 180) {
-      console.log(`[CALLBACK] ⚠️ Song too short (${estimatedDurationSec}s < 180s)`);
+    // Bonus tracks accept anything ≥60s (Suno often returns solid 2–3 min songs
+    // that were previously being discarded). Primary songs keep the 180s floor
+    // with existing retry logic.
+    const MIN_BONUS_DURATION_SEC = 60;
+    const MIN_PRIMARY_DURATION_SEC = 180;
+    const durationTooShort = isBonusCallback
+      ? estimatedDurationSec < MIN_BONUS_DURATION_SEC
+      : estimatedDurationSec < MIN_PRIMARY_DURATION_SEC;
+
+    if (isBonusCallback && estimatedDurationSec >= MIN_BONUS_DURATION_SEC && estimatedDurationSec < MIN_PRIMARY_DURATION_SEC) {
+      console.warn(`[CALLBACK] Bonus song shorter than ideal (${estimatedDurationSec}s < 180s) but accepting since ≥${MIN_BONUS_DURATION_SEC}s`);
+    }
+
+    if (durationTooShort) {
+      console.log(`[CALLBACK] ⚠️ Song too short (${estimatedDurationSec}s < ${isBonusCallback ? MIN_BONUS_DURATION_SEC : MIN_PRIMARY_DURATION_SEC}s)`);
       if (isBonusCallback) {
         await supabase.from(tableName).update({
           bonus_automation_status: "failed",
-          bonus_automation_last_error: `Bonus song too short (${estimatedDurationSec}s), expected 180s+.`,
+          bonus_automation_last_error: `Bonus song too short (${estimatedDurationSec}s), expected ${MIN_BONUS_DURATION_SEC}s+.`,
         }).eq("id", entityId);
       } else {
         const currentShortRetry = (entity.short_retry_count as number) || 0;
