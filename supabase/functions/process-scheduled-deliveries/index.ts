@@ -2487,21 +2487,32 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     // so CS can re-trigger from admin. Fully isolated — errors here must never
     // affect the delivery loop.
     try {
-      const ninetyDaysAgoIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const fourteenDaysAgoIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
       const twoHoursAgoIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      const { data: bonusFailedOrders, error: bfErr } = await supabase
+      const { data: bfRaw, error: bfErr } = await supabase
         .from("orders")
-        .select("id, created_at, customer_email, recipient_name, bonus_style_prompt")
+        .select("id, created_at, customer_email, customer_name, recipient_name, bonus_style_prompt")
         .eq("bonus_automation_status", "failed")
         .not("sent_at", "is", null)
         .is("bonus_notified_at", null)
-        .gt("created_at", ninetyDaysAgoIso)
+        .gt("created_at", fourteenDaysAgoIso)
         .lt("created_at", twoHoursAgoIso)
+        .not("customer_email", "ilike", "%hyperdrivelab%")
+        .not("customer_email", "ilike", "%example.%")
+        .not("customer_name", "ilike", "%test%")
+        .not("recipient_name", "ilike", "%test%")
         .order("created_at", { ascending: true })
-        .limit(50);
+        .limit(100);
       if (bfErr) console.error("[BONUS-FAILED] query error:", bfErr);
 
-      if (bonusFailedOrders && bonusFailedOrders.length > 0) {
+      const seenBf = new Set<string>();
+      const bonusFailedOrders = (bfRaw || []).filter((o: any) => {
+        if (seenBf.has(o.id)) return false;
+        seenBf.add(o.id);
+        return true;
+      }).slice(0, 50);
+
+      if (bonusFailedOrders.length > 0) {
         // Throttle: once per 24h max
         const { data: lastAlertRow } = await supabase
           .from("admin_settings")
