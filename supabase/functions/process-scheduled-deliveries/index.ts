@@ -2395,10 +2395,6 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         .eq("delivery_status", "needs_review")
         .is("sent_at", null)
         .gt("created_at", fourteenDaysAgoIso)
-        .not("customer_email", "ilike", "%hyperdrivelab%")
-        .not("customer_email", "ilike", "%example.%")
-        .not("customer_name", "ilike", "%test%")
-        .not("recipient_name", "ilike", "%test%")
         .order("created_at", { ascending: true })
         .limit(100);
       if (nrErr) console.error("[NEEDS-REVIEW] query error:", nrErr);
@@ -2408,6 +2404,11 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       const needsReviewOrders = (nrRaw || []).filter((o: any) => {
         if (seenNr.has(o.id)) return false;
         seenNr.add(o.id);
+        // Exclude test orders in JS (NULL/empty treated as non-test → kept)
+        const e = (o.customer_email || "").toLowerCase();
+        const cn = (o.customer_name || "").toLowerCase();
+        const rn = (o.recipient_name || "").toLowerCase();
+        if (e.includes("hyperdrivelab") || e.includes("example.") || cn.includes("test") || rn.includes("test")) return false;
         return true;
       }).slice(0, 50);
 
@@ -2497,10 +2498,6 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
         .is("bonus_notified_at", null)
         .gt("created_at", fourteenDaysAgoIso)
         .lt("created_at", twoHoursAgoIso)
-        .not("customer_email", "ilike", "%hyperdrivelab%")
-        .not("customer_email", "ilike", "%example.%")
-        .not("customer_name", "ilike", "%test%")
-        .not("recipient_name", "ilike", "%test%")
         .order("created_at", { ascending: true })
         .limit(100);
       if (bfErr) console.error("[BONUS-FAILED] query error:", bfErr);
@@ -2509,6 +2506,10 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       const bonusFailedOrders = (bfRaw || []).filter((o: any) => {
         if (seenBf.has(o.id)) return false;
         seenBf.add(o.id);
+        const e = (o.customer_email || "").toLowerCase();
+        const cn = (o.customer_name || "").toLowerCase();
+        const rn = (o.recipient_name || "").toLowerCase();
+        if (e.includes("hyperdrivelab") || e.includes("example.") || cn.includes("test") || rn.includes("test")) return false;
         return true;
       }).slice(0, 50);
 
