@@ -574,7 +574,7 @@ const { data, error } = await listOrders("all", 0, 100);
       setTotalLeadCount(data.totalLeads || 0);
 
       // Load remaining pages in background
-      const bgPageSize = 250;
+      const bgPageSize = 100;
       const maxPages = Math.max(
         Math.ceil((data.totalOrders || 0) / bgPageSize),
         Math.ceil((data.totalLeads || 0) / bgPageSize)
