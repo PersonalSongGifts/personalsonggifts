@@ -2479,12 +2479,12 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
       const twoHoursAgoIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const { data: bonusFailedOrders, error: bfErr } = await supabase
         .from("orders")
-        .select("id, created_at, updated_at, customer_email, recipient_name, bonus_style_prompt")
+        .select("id, created_at, customer_email, recipient_name, bonus_style_prompt")
         .eq("bonus_automation_status", "failed")
         .not("sent_at", "is", null)
         .is("bonus_notified_at", null)
         .gt("created_at", ninetyDaysAgoIso)
-        .lt("updated_at", twoHoursAgoIso)
+        .lt("created_at", twoHoursAgoIso)
         .order("created_at", { ascending: true })
         .limit(50);
       if (bfErr) console.error("[BONUS-FAILED] query error:", bfErr);

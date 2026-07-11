@@ -164,22 +164,19 @@ const Checkout = () => {
   // fictitious former-price claim (FTC 16 CFR 233). Default state: flat $29.
   const hasFlashBaseDiscount = activeFlashPromo.active && baseSongCents < BASE_SONG_CENTS;
   const flashAnchorCents = hasFlashBaseDiscount ? BASE_SONG_CENTS : 0;
-  const anchorSavingsCents = hasFlashBaseDiscount
-    ? Math.max(0, BASE_SONG_CENTS - baseSongCents)
+  // Song savings = the anchor visibly shown on the song line item MINUS the
+  // final charged song price (post-promo). Computed once — no separate promo
+  // term to avoid double-counting when a promo code is stacked on top.
+  const songAnchorShownCents = hasFlashBaseDiscount
+    ? flashAnchorCents
+    : (songTotalCents < FORMER_LIST_ANCHOR_CENTS ? FORMER_LIST_ANCHOR_CENTS : 0);
+  const songSavingsCents = songAnchorShownCents > 0
+    ? Math.max(0, songAnchorShownCents - songTotalCents)
     : 0;
-  // Former-list ($49.99 → live song price) savings — only counted when the
-  // struck-through anchor is actually rendered on the song line item below,
-  // so the "You save" total always matches what the customer visibly sees.
-  const formerListSavingsCents =
-    !hasFlashBaseDiscount && songTotalCents < FORMER_LIST_ANCHOR_CENTS
-      ? FORMER_LIST_ANCHOR_CENTS - songTotalCents
-      : 0;
   const packageSavingsCents = packageSelected
     ? Math.max(0, PACKAGE_ANCHOR_CENTS - ADDON_PRICES_CENTS.forever_memory)
     : 0;
-  const promoSavingsCents = additionalSavingsCents;
-  const totalSavingsCents =
-    anchorSavingsCents + formerListSavingsCents + packageSavingsCents + promoSavingsCents;
+  const totalSavingsCents = songSavingsCents + packageSavingsCents;
 
   const recipientName = formData?.recipientName?.trim() || "your loved one";
 
