@@ -762,6 +762,34 @@ const SongPlayer = () => {
 
   if (error || !songData) {
     const shortId = orderId ? orderId.substring(0, 8).toUpperCase() : null;
+    const isTransient = errorKind !== "not_found";
+
+    if (isTransient) {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center p-4">
+          <Card className="max-w-md w-full">
+            <CardContent className="pt-6 text-center">
+              <Music className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h1 className="text-xl font-semibold mb-2">Your song is taking a moment to load…</h1>
+              <p className="text-muted-foreground mb-6">
+                We're fetching your song now. This usually just takes a few seconds.
+              </p>
+              <Button
+                onClick={() => {
+                  setError(null);
+                  setErrorKind(null);
+                  setLoading(true);
+                  fetchSongData();
+                }}
+              >
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -769,7 +797,7 @@ const SongPlayer = () => {
             <Music className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <h1 className="text-xl font-semibold mb-2">Song Not Found</h1>
             <p className="text-muted-foreground mb-4">
-              {error || "This song may not be ready yet or the link is invalid."}
+              This song may not be ready yet or the link is invalid.
             </p>
             {shortId && (
               <p className="text-sm text-muted-foreground mb-4">
