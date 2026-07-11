@@ -160,10 +160,11 @@ const SongPlayer = () => {
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-song-page?orderId=${orderId}&t=${Date.now()}${freshParam}`;
     const maxAttempts = 3;
     let lastError: unknown = null;
+    let notFound = false;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+      const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
 
       try {
         const response = await fetch(url, { cache: "no-store", signal: controller.signal });
@@ -172,6 +173,7 @@ const SongPlayer = () => {
           const data = await response.json();
           setSongData(data);
           setError(null);
+          setErrorKind(null);
           setLoading(false);
           return;
         }
@@ -185,11 +187,19 @@ const SongPlayer = () => {
           serverMsg = "";
         }
 
-        // 4xx (except 408/429) = real "not found" / bad request — don't retry
-        if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
-          setError(serverMsg || "Song not found");
-          setLoading(false);
-          return;
+        // Genuine 404 = order truly doesn't exist. Don't retry, show
+        // the "Song Not Found" card.
+        if (response.status === 404) {
+          notFound = true;
+          lastError = new Error(serverMsg || "Song not found");
+          break;
+        }
+
+        // Other 4xx (except 408/429) = bad request — don't retry, but
+        // treat as transient from the customer's perspective (retry UI).
+        if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429 && response.status !== 499) {
+          lastError = new Error(serverMsg || `Request failed (${response.status})`);
+          break;
         }
 
         // 5xx / 408 / 429 = transient, fall through to retry
@@ -207,6 +217,7 @@ const SongPlayer = () => {
     }
 
     setError(lastError instanceof Error ? lastError.message : "Failed to load song");
+    setErrorKind(notFound ? "not_found" : "transient");
     setLoading(false);
   };
 
