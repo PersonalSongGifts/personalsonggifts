@@ -37,7 +37,7 @@ const PaymentSuccess = () => {
   const sessionId = searchParams.get("session_id");
   const paypalToken = searchParams.get("token"); // PayPal returns ?token=<orderID>
   const source = searchParams.get("source"); // "lead" if from lead conversion
-  const { trackEvent: trackMetaEvent } = useMetaPixel();
+  const { trackEvent: trackMetaEvent, trackCustomEvent: trackMetaCustomEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const { trackEvent: trackTikTokEvent } = useTikTokPixel();
   const hasTrackedPurchase = useRef(false);
@@ -107,21 +107,28 @@ const PaymentSuccess = () => {
     const key = `${dedupePrefix}${pkgSession}`;
     try { if (sessionStorage.getItem(key)) return; } catch { /* ignore */ }
     const value = amountCents / 100;
-    trackMetaEvent('Purchase', { value, currency: 'USD', transaction_id: `${txnPrefix}${pkgSession}` });
-    trackGAEvent('purchase', {
-      transaction_id: `${txnPrefix}${pkgSession}`,
+    const txnId = `${txnPrefix}${pkgSession}`;
+    // Post-purchase upsells fire a CUSTOM event (not Purchase) so they don't
+    // inflate standard Purchase counts in Meta/GA/TikTok.
+    trackMetaCustomEvent(
+      'AddOnPurchase',
+      { value, currency: 'USD', content_name: itemName, transaction_id: txnId },
+      { eventID: `addon_${txnId}` },
+    );
+    trackGAEvent('add_on_purchase', {
+      transaction_id: txnId,
       value,
       currency: 'USD',
       items: [{ item_name: itemName, price: value, quantity: 1 }],
     });
-    trackTikTokEvent('CompletePayment', {
+    trackTikTokEvent('AddOnPurchase', {
       content_type: 'product',
       content_id: contentId,
       value,
       currency: 'USD',
     });
     try { sessionStorage.setItem(key, "1"); } catch { /* ignore */ }
-  }, [trackMetaEvent, trackGAEvent, trackTikTokEvent]);
+  }, [trackMetaCustomEvent, trackGAEvent, trackTikTokEvent]);
   const trackPackagePurchase = useCallback(
     (pkgSession: string, amountCents: number | null) => trackAddonPurchase("pkg", pkgSession, amountCents),
     [trackAddonPurchase],
@@ -135,18 +142,22 @@ const PaymentSuccess = () => {
 
     if (hasTrackedPurchase.current) return;
 
-    const purchaseValue = data.price ?? (data.pricingTier === "priority" ? 79 : 49);
+    const baseVal = data.price ?? (data.pricingTier === "priority" ? 79 : 49);
+    const purchaseValue =
+      baseVal +
+      (data.package_addon_cents || 0) / 100 +
+      (data.rush_addon_cents || 0) / 100;
     if (purchaseValue <= 0) {
       hasTrackedPurchase.current = true;
       try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
       return; // $0 test orders must not pollute ad pixels
     }
 
-    trackMetaEvent('Purchase', {
-      value: purchaseValue,
-      currency: 'USD',
-      transaction_id: data.orderId,
-    });
+    trackMetaEvent(
+      'Purchase',
+      { value: purchaseValue, currency: 'USD', transaction_id: data.orderId },
+      { eventID: `purchase_${data.orderId}` },
+    );
 
     trackGAEvent('purchase', {
       transaction_id: data.orderId,
