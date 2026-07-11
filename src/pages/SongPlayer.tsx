@@ -102,6 +102,7 @@ const SongPlayer = () => {
   const [songData, setSongData] = useState<SongData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<"not_found" | "transient" | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [bonusLoading, setBonusLoading] = useState(false);
