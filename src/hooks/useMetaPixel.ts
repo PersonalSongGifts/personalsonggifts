@@ -5,11 +5,25 @@ declare global {
 }
 
 export const useMetaPixel = () => {
-  const trackEvent = (eventName: string, params?: Record<string, unknown>) => {
+  const trackEvent = (
+    eventName: string,
+    params?: Record<string, unknown>,
+    options?: { eventID?: string },
+  ) => {
     if (typeof window !== 'undefined' && window.fbq) {
-      window.fbq('track', eventName, params);
+      window.fbq('track', eventName, params, options);
     }
   };
 
-  return { trackEvent };
+  const trackCustomEvent = (
+    eventName: string,
+    params?: Record<string, unknown>,
+    options?: { eventID?: string },
+  ) => {
+    if (typeof window !== 'undefined' && window.fbq) {
+      window.fbq('trackCustom', eventName, params, options);
+    }
+  };
+
+  return { trackEvent, trackCustomEvent };
 };
