@@ -103,19 +103,17 @@ export function ReactionsTable({ orders, loading, sort, onSortChange }: Reaction
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {sortedOrders.map((order) => (
           <Card key={order.id} className="overflow-hidden hover:shadow-md transition-shadow">
-            <div 
-              className="aspect-video bg-muted relative cursor-pointer group"
+            <button
+              type="button"
+              className="aspect-video bg-muted relative cursor-pointer group w-full flex items-center justify-center"
               onClick={() => setSelectedReaction(order)}
+              aria-label={`Play reaction from ${order.customer_name}`}
             >
-              <video
-                src={order.reaction_video_url}
-                className="w-full h-full object-cover"
-                preload="metadata"
-              />
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Video className="h-10 w-10 text-white" />
-              </div>
-            </div>
+              <Video className="h-10 w-10 text-muted-foreground group-hover:text-foreground transition-colors" />
+              <span className="absolute bottom-2 right-2 text-[10px] uppercase tracking-wide bg-black/60 text-white px-2 py-0.5 rounded">
+                Click to play
+              </span>
+            </button>
             <CardContent className="p-4 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
