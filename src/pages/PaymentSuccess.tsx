@@ -142,7 +142,7 @@ const PaymentSuccess = () => {
 
     if (hasTrackedPurchase.current) return;
 
-    const baseVal = data.price ?? (data.pricingTier === "priority" ? 79 : 49);
+    const baseVal = data.price ?? (data.pricingTier === "priority" ? 79 : 29);
     const purchaseValue =
       baseVal +
       (data.package_addon_cents || 0) / 100 +
