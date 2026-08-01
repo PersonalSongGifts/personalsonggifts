@@ -9,6 +9,7 @@ import { validateStep } from "@/lib/songFormValidation";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
+import { useActivePromo } from "@/hooks/useActivePromo";
 import { useUtmCapture, getStoredUtmParams } from "@/hooks/useUtmCapture";
 
 // Form step components
@@ -84,6 +85,11 @@ const CreateSong = () => {
   const { trackEvent: trackMetaEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const { trackEvent: trackTikTokEvent } = useTikTokPixel();
+  const { promo: activeFlashPromo } = useActivePromo();
+  const BASE_SONG_CENTS = 2900;
+  const trackedValue = (activeFlashPromo?.active && activeFlashPromo.standardPriceCents
+    ? activeFlashPromo.standardPriceCents
+    : BASE_SONG_CENTS) / 100;
   const hasTrackedViewContent = useRef(false);
   
   // Capture UTM parameters on this page too (in case user lands here directly)
@@ -243,7 +249,7 @@ const CreateSong = () => {
       trackMetaEvent('AddToCart', {
         content_name: formData.recipientName,
         content_category: formData.occasion,
-        value: 49,
+        value: trackedValue,
         currency: 'USD',
         em: formData.yourEmail,
         ph: formData.phoneNumber || undefined,
@@ -252,11 +258,11 @@ const CreateSong = () => {
       // Google Analytics
       trackGAEvent('add_to_cart', {
         currency: 'USD',
-        value: 49,
+        value: trackedValue,
         items: [{
           item_name: `Custom Song for ${formData.recipientName}`,
           item_category: formData.occasion,
-          price: 49,
+          price: trackedValue,
           quantity: 1,
         }],
       });
@@ -265,7 +271,7 @@ const CreateSong = () => {
       trackTikTokEvent('AddToCart', {
         content_type: 'product',
         content_name: `Custom Song for ${formData.recipientName}`,
-        value: 49,
+        value: trackedValue,
         currency: 'USD',
       });
       
