@@ -1,0 +1,2 @@
+CREATE INDEX IF NOT EXISTS idx_leads_bonus_automation_task_id ON public.leads (bonus_automation_task_id) WHERE bonus_automation_task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_bonus_automation_task_id ON public.orders (bonus_automation_task_id) WHERE bonus_automation_task_id IS NOT NULL;
