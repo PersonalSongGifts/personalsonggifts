@@ -43,23 +43,39 @@ export default function TipDialog({ open, onOpenChange, orderId }: TipDialogProp
 
     setLoading(true);
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-tip-checkout`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderId, amountCents }),
+          signal: controller.signal,
         },
       );
+      clearTimeout(timeout);
       const data = await response.json();
       if (!response.ok || !data.url) {
         throw new Error(data.error || "Could not start tip checkout");
       }
-      window.open(data.url, "_blank");
+      const popup = window.open(data.url, "_blank");
+      if (!popup || popup.closed || typeof popup.closed === "undefined") {
+        // Popup blocked (common after an async delay) — go in the same tab.
+        window.location.href = data.url;
+        return;
+      }
       onOpenChange(false);
     } catch (err) {
       console.error("Tip checkout failed:", err);
-      toast.error(err instanceof Error ? err.message : "Could not start checkout");
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      toast.error(
+        aborted
+          ? "Checkout is taking longer than usual. Please try again."
+          : err instanceof Error
+            ? err.message
+            : "Could not start checkout",
+      );
     } finally {
       setLoading(false);
     }
@@ -130,7 +146,7 @@ export default function TipDialog({ open, onOpenChange, orderId }: TipDialogProp
           ) : (
             <Heart className="h-4 w-4" />
           )}
-          Send a tip →
+          {loading ? "Opening secure checkout…" : "Send a tip →"}
         </Button>
         <p className="text-xs text-center text-muted-foreground">
           Secure checkout powered by Stripe. USD.
