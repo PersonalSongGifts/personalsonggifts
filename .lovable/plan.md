@@ -28,32 +28,52 @@ Other confirmed facts:
 
 ---
 
-# Phase 0 — emergency compatibility patch (smallest change that removes the saturation risk)
+# The Lovable/Supabase boundary that shapes these phases
 
-Goal: keep today's `allOrders` / `leads` full-dataset behavior exactly as panels expect, but make the load bounded and never automatic. No architecture rewrite of a 3,000-line admin page during an outage response.
+The preview frontend and the published production site share **one** backend. Frontend edits stay in preview until Ryan clicks Publish, but an edit to `supabase/functions/admin-orders/index.ts` is deployed to the **live** backend immediately, even if the website is never published — so it would affect the production admin dashboard and anything else calling that function. That asymmetry is why the emergency patch is split: the frontend-only fix can be tested in preview with zero production deployment, while any Edge Function change is a separate, explicitly approved production change.
 
-Files: `src/pages/Admin.tsx` and `supabase/functions/admin-orders/index.ts` only. No schema change, no migration.
+A second consequence: preview testing still runs real queries against the production database, so preview verification must happen at low traffic.
+
+# Phase 0A — frontend-only emergency guard (no Edge Function edit, no deployment)
+
+Goal: remove the automatic saturation triggers and bound concurrency, while keeping today's `allOrders` / `leads` full-dataset behavior exactly as the panels expect. No architecture rewrite of a 3,000-line admin page during an outage response.
+
+File: `src/pages/Admin.tsx` **only**. No Edge Function edit, no deployment, no migration, no schema change.
 
 1. **Delete the automatic reloads.** Remove the 30-second `setInterval` and the `window` focus listener that call `fetchOrders()`. The only refresh paths left are login and the explicit Refresh button.
-2. **Keep the full background loader, but never automatic.** It runs after a successful login or after an explicit manual Refresh, and at no other time.
-3. **Replace `Promise.allSettled` over all pages with a worker queue capped at 2 concurrent page requests.** Two workers pull page numbers from a shared cursor until the pages are exhausted, so at most 2 `admin-orders` requests are in flight at any moment.
-4. **Counts once.** `action=list` computes the two `count: "exact"` scans only when `page === 0` (or when an explicit `withCounts` flag is set). Pages 1..N skip both count queries entirely; the client keeps the totals it already received from page 0.
-5. **Single in-flight guard.** One ref guards login and refresh together, so they cannot overlap or be re-entered. The Refresh button is disabled while a load is running.
-6. **Abort and fail-soft.** An `AbortController` tied to the load is aborted on unmount and when a new load supersedes the old one, with its signal passed to every `functions.invoke` call via `{ signal }` (confirmed supported in supabase-js 2.93.1). After the first page error the queue stops scheduling new pages, already-loaded rows are kept, and a clear partial-load warning is shown ("Loaded 1,200 of 28,752 records — some older records are missing. Refresh to retry.").
-7. **Progress and freshness UI.** A progress indicator ("Loading older records… 14 of 288 pages") plus a "last updated HH:MM PST" line, so the admin always knows whether older records are still loading or missing.
-8. **Page size stays 100.** Only consider 250 after measuring actual response payload size against Edge Function response limits and PostgREST behavior. No unverified size change in this phase.
+2. **Keep the full background loader, but never automatic.** It runs after a successful login or an explicit manual Refresh, and at no other time.
+3. **Replace `Promise.allSettled` over all pages with a worker queue capped at 2 concurrent page requests.** Two workers pull page numbers from a shared cursor until pages are exhausted, so at most 2 `admin-orders` requests are ever in flight.
+4. **Single in-flight guard.** One ref guards login and refresh together so they cannot overlap or be re-entered; the Refresh button is disabled while a load runs.
+5. **Abort and fail-soft.** An `AbortController` tied to the load is aborted on unmount and when a new load supersedes it, with its signal passed to every `functions.invoke` call via `{ signal }` (confirmed supported in the installed supabase-js 2.93.1). After the first page error the queue stops scheduling new pages, already-loaded rows are kept, and a clear partial-load warning appears ("Loaded 1,200 of 28,752 records — some older records are missing. Refresh to retry.").
+6. **Progress and freshness UI.** A progress line ("Loading older records… 14 of 288 pages") plus "last updated HH:MM PST", so the admin always knows whether older records are still loading or missing.
+7. **Page size stays 100.** Consider 250 only after measuring real payload size against Edge Function response limits and PostgREST behavior. No unverified size change here.
 
-**Effect:** the burst drops from about 288 concurrent function calls and about 1,152 statements per refresh to at most 2 concurrent calls, with the two count scans running once per load instead of once per page. Total statements for a full load fall from ~1,152 to ~578 (two per page plus two counts) and, more importantly, they are serialized two at a time instead of arriving all at once, and nothing runs unless a human asks for it.
+**Honest limitation:** Phase 0A **still runs the two exact-count scans on every page**, because the live `admin-orders` contract is unchanged and this phase deploys nothing to the backend. A full load remains about 288 requests and ~1,152 statements in total. The safety gain is entirely from (a) eliminating every automatic trigger, so nothing runs unless a human asks, and (b) bounding concurrency from ~288 simultaneous function calls to 2 — turning an instantaneous burst into a slow, serialized trickle the instance can absorb. Reducing total statement count is Phase 0B's job.
 
-**Rollout gate (all must pass in preview at low traffic, because preview uses the production database):**
+**Rollout gate (all must pass in Lovable preview at low traffic, since preview uses the production database):**
 - Network panel shows at most 2 concurrent `admin-orders` requests at any instant.
 - Zero `admin-orders` requests from timers or window focus — leave the tab idle and backgrounded for several minutes and confirm no traffic.
-- Count queries appear once per load (check the function logs and the `calls` delta on the two count statements in `pg_stat_statements`).
 - Every existing admin panel and action still works: orders/leads tables and detail modals, upload song, deliver/resend, regenerate, dismiss, revisions (approve / edit & approve / auto-approve), unlock bonus, promos, tips, reactions, email panels, remarketing panels, analytics/charts, CS assistant.
-- A known months-old customer is findable in the UI once the bounded load completes.
-- Interrupting the load (navigate away mid-load) leaves no further requests firing.
+- A known months-old customer is findable once the bounded load completes.
+- Navigating away mid-load fires no further requests.
+- `pg_stat_statements` shows no growth on the four admin statements while the admin tab sits idle.
 
-**Rollback:** one revert of the two files restores prior behavior exactly. Nothing persisted, no migration, no schema or contract change (the `withCounts` parameter is optional and defaulted so an old client still gets counts).
+**Rollback:** revert one file (`src/pages/Admin.tsx`). Because nothing was deployed to the backend, the production site is unaffected either way until Ryan publishes.
+**Publish gate:** only after the preview gate passes should Ryan approve publishing the frontend, which is what actually stops the storm for the live dashboard.
+
+# Phase 0B — backward-compatible `admin-orders` counts optimization (separate approval, production backend change)
+
+File: `supabase/functions/admin-orders/index.ts` only.
+
+- `action=list` accepts an optional `withCounts` boolean. When it is `true` (or `page === 0`), the two `count: "exact"` scans run; otherwise both are skipped and the response omits the totals.
+- **Default must preserve today's behavior**, because deploying this function immediately affects the live backend while an unpublished or older production frontend is still calling it. An old client that sends no `withCounts` must keep receiving exact counts exactly as it does now — the flag is opt-out only for the new client.
+- The Phase 0A client then sends `withCounts: true` for page 0 and omits it for pages 1..N, keeping the page-0 totals for progress display.
+- Effect once both are live: statements per full load drop from ~1,152 to ~578, with the two count scans running once per load instead of 288 times.
+
+**This is a production deployment even before the website is published.** Treat it as a live backend change: deploy it during low traffic, watch `admin-orders` logs for errors immediately after, and confirm the production admin dashboard still shows correct totals with the *current* (pre-publish) frontend before the new frontend goes out.
+
+**Rollout gate:** old-client compatibility verified (a request with no `withCounts` returns counts); new-client behavior verified (page 1+ requests return no counts and produce no count statements in `pg_stat_statements`); admin totals correct in the UI.
+**Rollback:** revert and redeploy the function; the contract change is additive, so reverting cannot break either client generation.
 
 ---
 
