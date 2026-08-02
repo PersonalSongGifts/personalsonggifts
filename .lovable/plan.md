@@ -164,7 +164,11 @@ Do **not** use repeated production `fresh=1` calls as failure injection.
 
 Right now, every 30 seconds — and again whenever you click back into the admin window — the dashboard tries to download every order and every lead at once, firing roughly 288 simultaneous requests that become over a thousand database queries. Two of those overlapping is a very plausible reason the database has been flattening and customer song pages have taken minutes.
 
-**Phase 0** is the emergency patch and deliberately small: the automatic 30-second and click-back reloads are removed, the dashboard still loads everything you're used to seeing, but only when you log in or press Refresh, and it fetches at most two pages at a time instead of 288 at once. The record-count queries run once per load instead of once per page. You get a progress line and a "last updated" time, and if something fails mid-load you keep what loaded and see a clear warning instead of a silently short list. Two files change; one revert undoes it.
+One more thing worth knowing: the preview site and the live site use the same backend. Frontend changes stay in preview until you press Publish, but any change to a backend function goes live immediately, even if you never publish. That's why the emergency patch is now two separate approvals.
+
+**Phase 0A** is frontend only — one file, `Admin.tsx`, nothing deployed to the backend. The automatic 30-second and click-back reloads are removed. The dashboard still loads everything you're used to seeing, but only when you log in or press Refresh, and it fetches two pages at a time instead of 288 at once. You get a progress line, a "last updated" time, and if something fails mid-load you keep what loaded and see a clear warning instead of a silently short list. Being honest about the limit: it still asks for the record counts on every page, because that lives in the backend function we're deliberately not touching yet — so the total number of queries is unchanged; what changes is that they trickle two at a time and only when you ask. You test it in preview, and only if that looks right do you publish.
+
+**Phase 0B** is the small backend follow-up that stops re-counting all 28,752 leads on every page, cutting total queries per full load roughly in half. It's separate because deploying it changes the live backend right away, before any publish, so it's built to keep behaving exactly as today for the currently published site.
 
 **Phase 1** comes after, once we've listed every panel that currently relies on having all records in the browser. That's the permanent fix — the server does the paging, filtering and searching, so nothing needs to load 28,752 leads into your browser at all. It's kept separate on purpose: rushing it risks analytics, remarketing, and support panels quietly showing partial numbers.
 
@@ -173,7 +177,9 @@ Then the song-page timeout and caching fixes, the monitoring work (native Supaba
 ## Requires Ryan's approval
 
 - Any code edit, deploy, or migration — nothing in this plan has been applied.
-- **Phase 0** (emergency admin refresh guard) — recommended first and on its own.
+- **Phase 0A** (frontend-only emergency admin refresh guard) — recommended first and on its own; no backend deployment.
+- **Publishing the frontend** after the Phase 0A preview gate passes — this is the step that actually protects the live dashboard.
+- **Phase 0B** (`admin-orders` `withCounts` optimization) — separate approval, and note it deploys to the live backend immediately, before/independent of any website publish.
 - **Phase 1** (server-side pagination/filter/search redesign) — separately, and only after the consumer inventory is reviewed.
 - Phases 2, 3, 4B, and 5 individually.
 - Any change to the background page size (100 → 250), which requires the payload/limit measurement first.
