@@ -79,7 +79,7 @@ File: `supabase/functions/admin-orders/index.ts` only.
 
 # Phase 1 — permanent efficiency fix: server-side pagination, filtering and search (needs its own approval)
 
-Do not bundle this into Phase 0. Partial-data bugs in analytics, alerts, remarketing, or support workflows are the main regression risk, so this phase starts with an inventory, not with code.
+Do not bundle this into Phase 0A/0B. Partial-data bugs in analytics, alerts, remarketing, or support workflows are the main regression risk, so this phase starts with an inventory, not with code.
 
 **Step 1 — inventory (read-only, no edits).** Enumerate every consumer of `orders`, `allOrders`, and `leads` in `src/pages/Admin.tsx` and in `src/components/admin/*` (known so far: `UnplayedResendPanel`, `ReactionEmailPanel`, plus the analytics/chart and remarketing components), and for each one record: does it need all rows, an aggregate, or just the visible page? Nothing changes until every consumer has an answer.
 
@@ -87,12 +87,12 @@ Do not bundle this into Phase 0. Partial-data bugs in analytics, alerts, remarke
 
 **Step 3 — server-side paging, filtering, search.** Independent paging for orders and leads (they are 3,629 vs 28,752 rows and should not share a cursor); `status`, date and source filters applied in SQL; a `search` parameter matching email, customer name, recipient name and short id across the whole table with a ~400 ms debounce and a "searching all records" hint. Search must never be silently limited to loaded rows.
 
-**Step 4 — retire the background loader** once no consumer needs the full array. Until then it stays as the Phase 0 bounded, manual loader.
+**Step 4 — retire the background loader** once no consumer needs the full array. Until then it stays as the Phase 0A bounded, manual loader.
 
 **Trim payloads** in the same phase: the leads list select drops the long free-text columns the list rows never render (detail modals already re-fetch full rows via `get_lead_detail` / `get_order_detail`).
 
-**Gate:** the inventory is complete and reviewed; every migrated panel is compared against Phase 0 numbers for identical output; a seeded months-old record is found by server-side search.
-**Rollback:** per-step reverts; the Phase 0 behavior remains the fallback until the loader is retired, and retiring it is the last step, not the first.
+**Gate:** the inventory is complete and reviewed; every migrated panel is compared against Phase 0A numbers for identical output; a seeded months-old record is found by server-side search. Each backend step here is also a live-backend deployment and must stay backward compatible with the currently published frontend.
+**Rollback:** per-step reverts; the Phase 0A behavior remains the fallback until the loader is retired, and retiring it is the last step, not the first.
 
 ---
 
@@ -137,26 +137,28 @@ One attribute in `src/pages/SongPlayer.tsx` line 846. No database involvement.
 
 Do **not** use repeated production `fresh=1` calls as failure injection.
 - Playwright against the local dev server with `page.route` interception on `get-song-page`, synthesizing 503, 500, malformed body, a 30 s hang, an aborted connection, and a genuine 404. Assert bounded wait, retry state, correct not-found card, and that no timeout renders "Song Not Found".
-- Admin: intercept `admin-orders` with a fixture reporting 28,752 leads and 3,629 orders; assert at most 2 concurrent requests, counts requested once, no timer/focus requests, abort on unmount, and a correct partial-load warning when a page fixture returns 500.
+- Admin: intercept `admin-orders` with a fixture reporting 28,752 leads and 3,629 orders; assert at most 2 concurrent requests, no timer/focus requests, abort on unmount, and a correct partial-load warning when a page fixture returns 500. Interception also covers the Phase 0B contract (a request without `withCounts` still returns totals) without deploying anything.
 - Mount/unmount the song route repeatedly under interception; assert no orphaned in-flight requests.
 - Server deadline exercised locally against a delaying stub.
 - No test requires a checkout, a Suno generation, or a Kie call.
 
 ## Success metrics
 
-- Phase 0: peak concurrent `admin-orders` requests 288 → 2; automatic (timer/focus) requests per hour → 0; count statements per full load 288 pairs → 1 pair; no admin panel or action regressions.
+- Phase 0A (frontend only): peak concurrent `admin-orders` requests 288 → 2; automatic timer/focus requests per hour → 0; requests only after login or a human pressing Refresh; count statements unchanged at 288 pairs per full load (stated honestly — 0B's job); no admin panel or action regressions.
+- Phase 0B (backend): count statements per full load 288 pairs → 1 pair; total statements per full load ~1,152 → ~578; old-client requests still receive exact counts.
 - Phase 1: statements per admin interaction → 1–2; full-dataset loads eliminated; search across all 28,752 leads under ~1 s.
 - Phases 2–3: `/song/<id>` p95 under 2 s; worst-case customer wait bounded ~18 s with a retry affordance; no infinite spinner, no false "not found", no entitlement served from stale cache.
 - Database: connections stay well clear of 60 during admin sessions; memory does not climb with admin usage.
 
 ## What could break, and the prevention
 
-- **Phase 0:** losing automatic refresh means an admin could act on stale data → explicit Refresh button, visible last-updated timestamp, and progress state. Partial loads could hide records → explicit warning naming loaded vs total counts, and never a silent truncation.
+- **Phase 0A:** losing automatic refresh means an admin could act on stale data → explicit Refresh button, visible last-updated timestamp, and progress state. Partial loads could hide records → explicit warning naming loaded vs total counts, never a silent truncation.
+- **Phase 0B:** a deployed function change hitting the still-published old frontend → the `withCounts` default reproduces current behavior exactly, so old clients are unaffected; deploy at low traffic and watch function logs.
 - **Phase 1:** panels reading the full arrays showing partial data → the inventory step gates the whole phase; each panel migrates to a server-side aggregate and is diffed against Phase 0 output before the loader is retired.
 - Search feeling weaker → server-side search covers all rows, which is strictly better than today's search over loaded rows.
 - Shorter client timeout abandoning a recoverable load → one automatic retry plus explicit Try again; copy never implies the song is missing.
 - Stale/shared cache leaking entitlements → entitlement fields never cached, `no-store` retained, `fresh=1` bypasses both caches, coalescing keyed per order id.
-- **Business flows:** no phase touches Stripe, PayPal, webhooks, tips, unlock verification (lyrics/download/package/bonus), revisions, cover art, delivery scheduling, or pixels/tracking. Phase 0 changes only admin refresh mechanics plus an optional `withCounts` parameter; Phase 1 is admin read paths; Phases 2–3 are one read function and one page; Phase 4A is observation only; Phase 5 is one attribute. Every existing admin action keeps its current request shape and is re-tested before each release.
+- **Business flows:** no phase touches Stripe, PayPal, webhooks, tips, unlock verification (lyrics/download/package/bonus), revisions, cover art, delivery scheduling, or pixels/tracking. Phase 0A changes admin refresh mechanics in one frontend file; Phase 0B adds one optional backend parameter; Phase 1 is admin read paths; Phases 2–3 are one read function and one page; Phase 4A is observation only; Phase 5 is one attribute. Every existing admin action keeps its current request shape and is re-tested before each release.
 
 ## Next steps in plain English
 
