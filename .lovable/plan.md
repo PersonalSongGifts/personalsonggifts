@@ -1,134 +1,161 @@
 # Stopping the admin refresh storm and the multi-minute /song loads
 
-## Correction to the previous version of this plan
+## What is confirmed in the code and the database
 
-Your correction is confirmed in the code. `fetchOrders()` in `src/pages/Admin.tsx` (and the identical block inside `handleLogin`) fetches page 0, computes
-`maxPages = max(ceil(totalOrders/100), ceil(totalLeads/100))`, builds `Array.from({length: maxPages - 1}, ...)` of `listOrders` calls, and fires all of them at once through `Promise.allSettled`. With 28,752 leads that is about 288 concurrent Edge Function invocations per refresh, and since each `action=list` request runs four database statements (orders page, leads page, orders exact count, leads exact count), roughly 1,152 database statements per refresh. Both the 30-second interval and the window-focus handler call `fetchOrders()` with no in-flight guard, so a focus event during a refresh doubles the storm. 12,950 calls on each top statement is therefore about 45 full refreshes, not 12,950 polls.
+`fetchOrders()` in `src/pages/Admin.tsx` (and the identical block inside `handleLogin`) fetches page 0, computes
+`maxPages = max(ceil(totalOrders/100), ceil(totalLeads/100))`, builds `Array.from({length: maxPages - 1}, ...)` of `listOrders` calls, and fires all of them at once via `Promise.allSettled`. With 28,752 leads that is about 288 concurrent Edge Function invocations per refresh, and because each `action=list` request runs four database statements (orders page, leads page, orders exact count, leads exact count), roughly 1,152 statements per refresh. Both a 30-second `setInterval` and a `window` focus listener call `fetchOrders()`, with no in-flight guard and no abort, so overlapping refreshes multiply the burst.
 
-I also overclaimed previously: the cumulative `pg_stat_statements` totals do not by themselves prove what happened during the outages. They strongly implicate this refresh storm as the mechanism, but the counters were reset by the restarts, so outage-window causality still needs timestamped Edge Function logs and connection/CPU charts covering those windows.
+The four statements at the top of `pg_stat_statements` by total time are exactly those four, 12,950 calls each, about 84 minutes of database time combined — roughly 45 full refreshes. Everything else in the top 15 is under 2.2 s cumulative, so automation, delivery and Suno callback queries are not the load.
 
-## Confirmed by read-only inspection
+To be precise about causality: these cumulative counters strongly implicate the refresh storm, but they do not by themselves prove what happened during the outage windows — the counters were reset by the restarts. Outage-window causality still needs timestamped Edge Function logs and connection/CPU charts for those windows (Phase 3A).
 
-- `src/pages/Admin.tsx`: unbounded parallel full-dataset reload as described above, in both `handleLogin` and `fetchOrders`; 30 s `setInterval` plus a `focus` listener, no in-flight guard, no `AbortController`, no visibility check.
-- `supabase/functions/admin-orders/index.ts` `action=list`: four statements per request, including two `count: "exact"` scans repeated on every page of the fan-out.
-- Top four statements by total database time are exactly those four, 12,950 calls each, ~84 minutes of database time combined. Everything else in the top 15 is under 2.2 s cumulative — automation, delivery, and callback queries are not the load.
-- Role timeouts (`pg_roles.rolconfig`), not a global assumption: `anon = statement_timeout 3s`; `authenticated = 8s`; `authenticator = statement_timeout 8s, lock_timeout 8s`; `service_role` has **no** `rolconfig`; database-global `statement_timeout = 120000`.
-- Instance: Postgres 17.6, `max_connections = 60`, `shared_buffers = 256 MB`, `effective_cache_size = 768 MB`. Live snapshot: memory 61%, disk 15%, 32 sessions (1 active), pool clients 1/200, database 774 MB, WAL 272 MB, 0 restarts since boot. Rows: `orders` 3,629, `leads` 28,752.
+Other confirmed facts:
+- Role timeouts from `pg_roles.rolconfig`: `anon = statement_timeout 3s`, `authenticated = 8s`, `authenticator = statement_timeout 8s, lock_timeout 8s`, `service_role` has **no** rolconfig; database-global `statement_timeout = 120000`.
+- Instance: Postgres 17.6, `max_connections = 60`, `shared_buffers = 256 MB`, `effective_cache_size = 768 MB`. Snapshot: memory 61%, disk 15%, 32 sessions (1 active), pool clients 1/200, database 774 MB, WAL 272 MB, 0 restarts since boot. Rows: `orders` 3,629, `leads` 28,752.
+- `@supabase/supabase-js` 2.93.1 is installed and `FunctionInvokeOptions` includes `signal?: AbortSignal`, so `functions.invoke(..., { signal })` cancellation is available (verified in `node_modules/@supabase/functions-js`).
 - Song page: `find_orders_by_short_id` uses `idx_orders_id_text_pattern`; automation task-id lookups indexed on both tables. No cheap missing-index win remains.
-- `src/pages/SongPlayer.tsx`: up to 3 attempts at 20 s each plus backoff (~62 s worst case per mount), `&t=${Date.now()}` plus `cache: "no-store"` so nothing can be absorbed upstream, and `preload="auto"` on the main audio (line 846) while the bonus audio already uses `preload="none"`.
-- `supabase/functions/get-song-page/index.ts`: per-instance in-memory caches only (30 s success, 10 min stale). Its Supabase calls use no `abortSignal`, so a client abort does not stop server-side work. `fresh=1` bypasses `successCache` only — on a database failure the stale path can still serve up to 10-minute-old unlock/package/revision state, including after a purchase.
+- `src/pages/SongPlayer.tsx`: up to 3 attempts at 20 s each plus backoff (~62 s worst case per mount), `&t=${Date.now()}` plus `cache: "no-store"`, and `preload="auto"` on the main audio (line 846) while the bonus audio uses `preload="none"`.
+- `supabase/functions/get-song-page/index.ts`: per-instance in-memory caches only (30 s success, 10 min stale); Supabase calls pass no `abortSignal`, so a client abort leaves server work running; `fresh=1` bypasses `successCache` only, so on a database failure the stale path can still serve up to 10-minute-old unlock/package/revision state — including right after a purchase.
 
-## Unresolved / must be measured, not assumed
+## Unresolved, to be measured rather than assumed
 
-- **Effective statement timeout for PostgREST service-role requests.** `service_role` has no `rolconfig`, `authenticator` has 8 s. Whether an `action=list` statement is capped at 8 s (inherited from the login role's session setting) or at the 120 s database default (if the role switch clears it) is not decidable from `rolconfig` alone. Resolve it by reading `current_setting('statement_timeout')` from inside a service-role request before relying on either number.
-- Outage-window causality (needs timestamped logs and connection charts, see monitoring section).
-- What actually made the 291 ms leads page slow — sort, wide-column heap/TOAST reads, or contention. Needs `EXPLAIN (ANALYZE, BUFFERS)`.
+- Effective statement timeout for PostgREST service-role requests. `service_role` has no `rolconfig` and `authenticator` has 8 s; whether a list statement is capped at 8 s or at the 120 s database default is not decidable from `rolconfig`. Read `current_setting('statement_timeout')` from inside a service-role request before relying on either.
+- Outage-window causality (needs Phase 3A evidence).
+- What makes the 291 ms leads page slow — sort, wide-column heap/TOAST reads, or contention. Needs `EXPLAIN (ANALYZE, BUFFERS)`.
 - Whether multiple admin tabs or repeated focus events multiplied the storm during the outages.
-- Which compute tier Ryan moved to (not visible from SQL; read it in Cloud → Advanced settings).
+- Which compute tier Ryan moved to (not visible from SQL; read Cloud → Advanced settings).
+- Whether a 250-row background page is safe for response size and Edge/PostgREST limits. Unverified, so Phase 0 keeps 100.
 
-## Phase 1 — remove the storm, keep the dashboard fully usable
+---
 
-Files: `src/pages/Admin.tsx`, `supabase/functions/admin-orders/index.ts`.
+# Phase 0 — emergency compatibility patch (smallest change that removes the saturation risk)
 
-**1a. Delete the fan-out.** Remove the `Array.from({length: maxPages - 1})` + `Promise.allSettled` block from both `handleLogin` and `fetchOrders`. The dashboard loads page 0 only.
+Goal: keep today's `allOrders` / `leads` full-dataset behavior exactly as panels expect, but make the load bounded and never automatic. No architecture rewrite of a 3,000-line admin page during an outage response.
 
-**1b. Make the server the source of truth for paging, filtering, and search**, so nothing is silently limited to loaded rows:
-- `action=list` accepts independent paging for the two datasets (`ordersPage`, `leadsPage`, and separate page sizes) because 3,629 orders and 28,752 leads should not share a cursor.
-- Add a `search` parameter handled in SQL against email, customer name, recipient name, and short id, with `status`/date filters also applied server-side. Search runs over the whole table, never over the loaded slice.
-- Return exact counts only when a page-0 or explicit-count request asks for them; subsequent page requests skip the two count scans entirely.
-- The admin search box calls the server with a debounce (about 400 ms) and shows "searching all records", so locating an old customer from months ago works by search rather than by loading everything.
+Files: `src/pages/Admin.tsx` and `supabase/functions/admin-orders/index.ts` only. No schema change, no migration.
 
-**1c. Tame the refresh loop.**
-- One in-flight guard (ref) so a refresh can never overlap another; a superseded refresh is aborted with an `AbortController`.
-- Interval only while the tab is visible, at 60 s, and it refreshes the current page/filter — not the whole dataset.
-- Focus/visibility refetch is throttled (no refetch if one ran in the last 15 s).
-- An explicit Refresh button with a visible "last updated" timestamp, so slower automatic refresh never feels stale.
+1. **Delete the automatic reloads.** Remove the 30-second `setInterval` and the `window` focus listener that call `fetchOrders()`. The only refresh paths left are login and the explicit Refresh button.
+2. **Keep the full background loader, but never automatic.** It runs after a successful login or after an explicit manual Refresh, and at no other time.
+3. **Replace `Promise.allSettled` over all pages with a worker queue capped at 2 concurrent page requests.** Two workers pull page numbers from a shared cursor until the pages are exhausted, so at most 2 `admin-orders` requests are in flight at any moment.
+4. **Counts once.** `action=list` computes the two `count: "exact"` scans only when `page === 0` (or when an explicit `withCounts` flag is set). Pages 1..N skip both count queries entirely; the client keeps the totals it already received from page 0.
+5. **Single in-flight guard.** One ref guards login and refresh together, so they cannot overlap or be re-entered. The Refresh button is disabled while a load is running.
+6. **Abort and fail-soft.** An `AbortController` tied to the load is aborted on unmount and when a new load supersedes the old one, with its signal passed to every `functions.invoke` call via `{ signal }` (confirmed supported in supabase-js 2.93.1). After the first page error the queue stops scheduling new pages, already-loaded rows are kept, and a clear partial-load warning is shown ("Loaded 1,200 of 28,752 records — some older records are missing. Refresh to retry.").
+7. **Progress and freshness UI.** A progress indicator ("Loading older records… 14 of 288 pages") plus a "last updated HH:MM PST" line, so the admin always knows whether older records are still loading or missing.
+8. **Page size stays 100.** Only consider 250 after measuring actual response payload size against Edge Function response limits and PostgREST behavior. No unverified size change in this phase.
 
-**1d. Trim the leads list payload** to the columns the list rows and badges actually render; long free-text fields stay in the existing detail fetch (`get_lead_detail` / `get_order_detail` already re-fetch full rows).
+**Effect:** the burst drops from about 288 concurrent function calls and about 1,152 statements per refresh to at most 2 concurrent calls, with the two count scans running once per load instead of once per page. Total statements for a full load fall from ~1,152 to ~578 (two per page plus two counts) and, more importantly, they are serialized two at a time instead of arriving all at once, and nothing runs unless a human asks for it.
 
-**Temporary compatibility batch loader (only if some panel genuinely still needs the full set):** keep a manual "Load all records" button that runs pages sequentially with a concurrency cap of 2, requests counts once, stops on the first error, and is never triggered by an interval, a focus event, or login. It is safe because it is user-initiated, bounded to at most two concurrent statements pairs, cannot repeat, and cannot be re-entered while running. Preferred outcome: identify which panels read `allOrders`/`leads` wholesale (analytics cards, remarketing panels) and move their aggregates server-side in Phase 1b or a follow-up, then delete the loader.
+**Rollout gate (all must pass in preview at low traffic, because preview uses the production database):**
+- Network panel shows at most 2 concurrent `admin-orders` requests at any instant.
+- Zero `admin-orders` requests from timers or window focus — leave the tab idle and backgrounded for several minutes and confirm no traffic.
+- Count queries appear once per load (check the function logs and the `calls` delta on the two count statements in `pg_stat_statements`).
+- Every existing admin panel and action still works: orders/leads tables and detail modals, upload song, deliver/resend, regenerate, dismiss, revisions (approve / edit & approve / auto-approve), unlock bonus, promos, tips, reactions, email panels, remarketing panels, analytics/charts, CS assistant.
+- A known months-old customer is findable in the UI once the bounded load completes.
+- Interrupting the load (navigate away mid-load) leaves no further requests firing.
 
-**Rollout gate:** verify in preview with the real backend during a low-traffic window, with one tab, watching `calls` deltas on the four statements before and after. Ship only if search finds a known months-old customer, paging works on both tabs, and every existing admin action still succeeds.
-**Rollback:** revert `Admin.tsx` and `admin-orders/index.ts`; no migration, no persisted state. The old client keeps working against the new function because new parameters are optional and defaulted.
-**Preview vs production:** identical behavior; both hit the same backend, so preview testing itself adds (small, bounded) production database load — do it deliberately at low traffic.
+**Rollback:** one revert of the two files restores prior behavior exactly. Nothing persisted, no migration, no schema or contract change (the `withCounts` parameter is optional and defaulted so an old client still gets counts).
 
-## Phase 2 — one bounded customer wait with real cancellation (needs approval)
+---
+
+# Phase 1 — permanent efficiency fix: server-side pagination, filtering and search (needs its own approval)
+
+Do not bundle this into Phase 0. Partial-data bugs in analytics, alerts, remarketing, or support workflows are the main regression risk, so this phase starts with an inventory, not with code.
+
+**Step 1 — inventory (read-only, no edits).** Enumerate every consumer of `orders`, `allOrders`, and `leads` in `src/pages/Admin.tsx` and in `src/components/admin/*` (known so far: `UnplayedResendPanel`, `ReactionEmailPanel`, plus the analytics/chart and remarketing components), and for each one record: does it need all rows, an aggregate, or just the visible page? Nothing changes until every consumer has an answer.
+
+**Step 2 — move aggregates server-side.** Panels that only need totals, rates, or grouped counts get a dedicated `admin-orders` action returning the aggregate, so they stop depending on a full client-side array.
+
+**Step 3 — server-side paging, filtering, search.** Independent paging for orders and leads (they are 3,629 vs 28,752 rows and should not share a cursor); `status`, date and source filters applied in SQL; a `search` parameter matching email, customer name, recipient name and short id across the whole table with a ~400 ms debounce and a "searching all records" hint. Search must never be silently limited to loaded rows.
+
+**Step 4 — retire the background loader** once no consumer needs the full array. Until then it stays as the Phase 0 bounded, manual loader.
+
+**Trim payloads** in the same phase: the leads list select drops the long free-text columns the list rows never render (detail modals already re-fetch full rows via `get_lead_detail` / `get_order_detail`).
+
+**Gate:** the inventory is complete and reviewed; every migrated panel is compared against Phase 0 numbers for identical output; a seeded months-old record is found by server-side search.
+**Rollback:** per-step reverts; the Phase 0 behavior remains the fallback until the loader is retired, and retiring it is the last step, not the first.
+
+---
+
+# Phase 2 — one bounded customer wait with real cancellation (needs approval)
 
 Files: `supabase/functions/get-song-page/index.ts`, `src/pages/SongPlayer.tsx`.
 
-- Server: one total request deadline (about 6 s) enforced with an `AbortController` whose signal is passed to **every** Supabase call via `.abortSignal(signal)` — the short-id RPC, the full-uuid select, and the `admin_settings` lookup — plus a matching in-SQL cap by setting a short `statement_timeout` for those statements once 1's measurement tells us what the effective value is. A frontend abort alone leaves the function running and holding a connection, which is what turns one slow page into connection pressure.
-- Server: propagate the incoming `req.signal` into the same controller so a client disconnect actually cancels the database work.
-- Client: one attempt with an 8 s abort, one automatic retry, then a clear "this is taking longer than usual — Try again" state. Worst case about 18 s rather than 62 s. Abort in-flight fetches on unmount so remounts cannot orphan requests. A timeout or abort never renders "Song Not Found".
+- Server: one total request deadline (about 6 s) enforced by an `AbortController` whose signal is passed to **every** Supabase call with `.abortSignal(signal)` — the short-id RPC, the full-uuid select, and the `admin_settings` lookup — plus a short in-SQL statement timeout once the measurement above tells us the effective value. A client-side abort alone does not stop the function, which is how one slow page becomes connection pressure.
+- Server: wire `req.signal` into the same controller so a real client disconnect cancels the database work.
+- Client: one attempt with an 8 s abort, one automatic retry, then a clear "this is taking longer than usual — Try again" state. Worst case ~18 s instead of ~62 s. Abort in-flight fetches on unmount. A timeout or abort must never render "Song Not Found".
 
-**Gate:** verified against mocked slow/failing responses (see testing) before any production deploy.
-**Rollback:** revert both files; nothing persisted.
+**Gate:** verified only against local mocks/interception (see testing). **Rollback:** revert both files.
 
-## Phase 3 — coalescing and a privacy-safe fallback (needs approval)
+# Phase 3 — caching and privacy hardening (needs approval)
 
-Treat this data as sensitive. `get-song-page` returns song URLs, `revision_token`, unlock/package/bonus state, recipient name, and occasion. None of it may enter a shared or CDN cache, and `Cache-Control: no-store` stays.
+`get-song-page` returns song URLs, `revision_token`, unlock/package/bonus state, recipient name and occasion. None of it may enter a shared or CDN cache; `Cache-Control: no-store` stays.
 
-- In-instance request coalescing: concurrent identical lookups share one database round trip. This is a per-process promise map, not a cache, so it cannot serve one customer another customer's data — key strictly on the normalized order id.
-- Split the fallback: only always-public presentation fields (song title, cover URL, occasion, recipient first name) may be served stale. `revision_token`, `lyrics_unlocked`, `download_unlocked`, `package_unlocked`, `bonus_*`, and signed/song URLs are fetched live or omitted with a "refresh to see your unlocks" state.
-- Fix the `fresh=1` gap: `fresh=1` must bypass both `successCache` and `staleCache`, and the stale path must never answer a request made right after a purchase-verification redirect. Cap stale age for anything unlock-related to zero.
+- In-instance request coalescing (a per-process promise map keyed strictly on the normalized order id, not a cache) so a burst on one link becomes one database query.
+- Split the fallback: only always-public presentation fields (song title, cover URL, occasion, recipient first name) may be served stale. `revision_token`, `lyrics_unlocked`, `download_unlocked`, `package_unlocked`, `bonus_*` and song URLs are live or omitted with a "refresh to see your unlocks" state.
+- Fix the `fresh=1` gap: it must bypass **both** `successCache` and `staleCache`, and entitlement fields get a zero stale age so a page loaded right after a purchase can never show pre-purchase unlock state.
 
-**Gate:** review the exact response shape field-by-field against a "public vs entitlement" list before deploy.
-**Rollback:** revert; in-memory structures disappear on the next deploy.
+**Gate:** field-by-field review of the response against a public-vs-entitlement list. **Rollback:** revert; in-memory structures vanish on deploy.
 
-## Phase 4 — monitoring, native first (needs approval only if it goes past step A)
+# Phase 4 — monitoring, native first (3A needs no approval beyond reading; 4B does)
 
-**A. Native, no code, no cost, do this before any future restart:** Supabase/Cloud Reports (CPU, memory, connection count, disk IO) for the outage timestamps; Logs Explorer for `edge_logs` and `postgres_logs` filtered to `admin-orders` and `get-song-page` around those windows; `pg_stat_statements` snapshots taken *before* any restart, since a restart wipes them; the connections chart to see whether 60 was approached. This alone should confirm or refute the storm as the outage cause with timestamped evidence.
+**A. Native, no code, no cost — and do this before any future restart.** Cloud Reports (CPU, memory, connections, disk IO) for the outage timestamps; Logs Explorer over `edge_logs` and `postgres_logs` filtered to `admin-orders` and `get-song-page` in those windows; `pg_stat_statements` snapshots captured *before* any restart, since a restart wipes them; the connections chart to see whether 60 was approached. This is what turns "strongly implicated" into proven causality.
 
-**B. Only if native retention proves too short** to cover a future event: a custom snapshot table plus a key-protected read-only endpoint. Risks to design for, not gloss over: the table needs RLS with no `anon`/`authenticated` access at all (service-role writes only); `pg_stat_activity.query` text must be redacted before storage because it can contain customer emails and names; a fixed retention window (for example 7 days) with pruning, or it becomes another disk and vacuum problem; and it is least likely to work exactly when it is most needed, because during saturation the endpoint's own connection may be refused — so it must use a short timeout, avoid retries, and degrade to a partial snapshot rather than hanging. A Log Drain is a paid add-on; do not enable one before showing Ryan the current per-GB and monthly cost from the Cloud billing page.
+**B. Only if native retention is too short to cover a future event:** a snapshot table plus a key-protected read-only endpoint. Risks to design for explicitly: RLS with no `anon`/`authenticated` access at all (service-role writes only); redaction of `pg_stat_activity.query` text, which can contain customer emails and names; a fixed retention window (e.g. 7 days) with pruning so it does not become another disk/vacuum problem; and the fact that it is least likely to work exactly when most needed — during saturation its own connection may be refused, so short timeout, no retries, degrade to a partial snapshot rather than hang. A Log Drain is a paid add-on: show Ryan the current per-GB and monthly cost from the Cloud billing page before recommending it.
 
-**Rollback:** step A leaves no trace; step B is dropping a table and a function.
+**Rollback:** A leaves no trace; B is dropping a table and a function.
 
-## Phase 5 — `preload="auto"` → `preload="metadata"` (separate, low risk, needs approval)
+# Phase 5 — `preload="auto"` → `preload="metadata"` (separate, low risk, needs approval)
 
 One attribute in `src/pages/SongPlayer.tsx` line 846. No database involvement.
-- Benefit: the browser fetches only container headers and duration instead of eagerly downloading the whole MP3 on page load — several MB of storage bandwidth saved per view and a faster first render, most noticeable on mobile.
-- Tradeoff: duration and the seek bar still appear immediately, but the first tap on Play buffers briefly (usually well under a second on broadband, one to two seconds on weak mobile) instead of starting instantly. Mitigations: keep the existing buffering indicator, and optionally call `load()` on the first user interaction with the page so the delay happens before the tap.
+- Benefit: the browser fetches only headers and duration instead of eagerly downloading the whole MP3 on load — several MB saved per view and a faster first render, most noticeable on mobile.
+- Tradeoff: duration and the seek bar still appear immediately, but the first tap on Play buffers briefly (usually well under a second on broadband, one to two seconds on weak mobile) instead of starting instantly. Mitigations: keep the buffering indicator, optionally call `load()` on first page interaction so the delay lands before the tap.
 - Rollback: one-word revert.
+
+---
 
 ## Testing without production load, real orders, or Kie/Suno credits
 
-Do **not** hammer production with `fresh=1`. Instead:
-- Playwright against the local dev server with `page.route` interception on the `get-song-page` URL to synthesize: 503, 500, malformed body, a 30 s hang, an aborted connection, and a genuine 404. Assert bounded wait, retry state, correct not-found card, and that no timeout renders "Song Not Found".
-- Mount/unmount the song route repeatedly under interception and assert no orphaned in-flight requests.
-- Admin: intercept `admin-orders` with fixtures for 28,752 leads to prove the fan-out is gone (count outgoing requests per refresh: must be 1), that hidden tabs issue none, that focus throttling holds, and that search returns a seeded old record that is not in page 0.
-- Server-side deadline: exercise `get-song-page` locally against a stub that delays, confirming the 6 s budget returns rather than hanging.
-- No test needs a checkout, a Suno generation, or a Kie call.
+Do **not** use repeated production `fresh=1` calls as failure injection.
+- Playwright against the local dev server with `page.route` interception on `get-song-page`, synthesizing 503, 500, malformed body, a 30 s hang, an aborted connection, and a genuine 404. Assert bounded wait, retry state, correct not-found card, and that no timeout renders "Song Not Found".
+- Admin: intercept `admin-orders` with a fixture reporting 28,752 leads and 3,629 orders; assert at most 2 concurrent requests, counts requested once, no timer/focus requests, abort on unmount, and a correct partial-load warning when a page fixture returns 500.
+- Mount/unmount the song route repeatedly under interception; assert no orphaned in-flight requests.
+- Server deadline exercised locally against a delaying stub.
+- No test requires a checkout, a Suno generation, or a Kie call.
 
 ## Success metrics
 
-- Requests per admin refresh: from ~288 to 1 (measured in the network panel).
-- Database statements per refresh: from ~1,152 to 2 (page queries; counts only when requested).
-- The two exact-count statements leave the top five of `pg_stat_statements` and grow only on explicit count requests.
-- Admin login and page load under ~3 s; search across all 28,752 leads under ~1 s.
-- `/song/<id>` p95 under 2 s in normal conditions; worst-case customer wait bounded at ~18 s with a retry affordance, never an infinite spinner and never a false "not found".
-- Connections stay well clear of 60 during an admin session; memory does not climb with admin usage.
+- Phase 0: peak concurrent `admin-orders` requests 288 → 2; automatic (timer/focus) requests per hour → 0; count statements per full load 288 pairs → 1 pair; no admin panel or action regressions.
+- Phase 1: statements per admin interaction → 1–2; full-dataset loads eliminated; search across all 28,752 leads under ~1 s.
+- Phases 2–3: `/song/<id>` p95 under 2 s; worst-case customer wait bounded ~18 s with a retry affordance; no infinite spinner, no false "not found", no entitlement served from stale cache.
+- Database: connections stay well clear of 60 during admin sessions; memory does not climb with admin usage.
 
 ## What could break, and the prevention
 
-- Panels that read the full `allOrders`/`leads` arrays (analytics, remarketing, funnel, heatmap) would show partial data → inventory every consumer of those arrays first; either move its aggregate server-side or keep it behind the manual bounded loader until moved. This is the main correctness risk in Phase 1 and gates the release.
-- Search feels weaker → search moves server-side across all rows, which is strictly better than today's search-over-loaded-rows; keep the same input and add a "searching all records" hint.
-- Approximate counts confuse admin → return exact counts on the page-0/count request and label anything approximate.
-- Losing sight of recent activity with 60 s refresh → visible last-updated time, Refresh button, and throttled focus refresh.
+- **Phase 0:** losing automatic refresh means an admin could act on stale data → explicit Refresh button, visible last-updated timestamp, and progress state. Partial loads could hide records → explicit warning naming loaded vs total counts, and never a silent truncation.
+- **Phase 1:** panels reading the full arrays showing partial data → the inventory step gates the whole phase; each panel migrates to a server-side aggregate and is diffed against Phase 0 output before the loader is retired.
+- Search feeling weaker → server-side search covers all rows, which is strictly better than today's search over loaded rows.
 - Shorter client timeout abandoning a recoverable load → one automatic retry plus explicit Try again; copy never implies the song is missing.
-- Stale or shared cache leaking entitlements → entitlement fields never cached, `no-store` retained, `fresh=1` bypasses both caches, coalescing keyed strictly per order id.
-- Business flows regressing → no phase touches Stripe, PayPal, webhooks, tips, unlock verification (lyrics/download/package/bonus), revisions, cover art, delivery scheduling, or pixels/tracking. Phase 1 changes admin read paths and adds optional parameters; Phases 2–3 change one read function and one page; Phase 4A is read-only observation; Phase 5 is one attribute. Every existing admin action (`update`, `deliver`, resend, regenerate, dismiss, revision approve/edit, unlock bonus, promos, tips) keeps its current request shape and is re-tested before release.
+- Stale/shared cache leaking entitlements → entitlement fields never cached, `no-store` retained, `fresh=1` bypasses both caches, coalescing keyed per order id.
+- **Business flows:** no phase touches Stripe, PayPal, webhooks, tips, unlock verification (lyrics/download/package/bonus), revisions, cover art, delivery scheduling, or pixels/tracking. Phase 0 changes only admin refresh mechanics plus an optional `withCounts` parameter; Phase 1 is admin read paths; Phases 2–3 are one read function and one page; Phase 4A is observation only; Phase 5 is one attribute. Every existing admin action keeps its current request shape and is re-tested before each release.
 
-## Revised Phase 1 in plain English
+## Next steps in plain English
 
-Right now, every time the admin dashboard refreshes — every 30 seconds, and again whenever you click back into the window — it tries to download every order and every lead at once, firing roughly 288 simultaneous requests that turn into over a thousand database queries. Two overlapping refreshes double that. That is almost certainly what has been flattening the database and making customer song pages take minutes.
+Right now, every 30 seconds — and again whenever you click back into the admin window — the dashboard tries to download every order and every lead at once, firing roughly 288 simultaneous requests that become over a thousand database queries. Two of those overlapping is a very plausible reason the database has been flattening and customer song pages have taken minutes.
 
-Phase 1 stops that. The dashboard will load one page of records at a time and ask the server for whatever page, filter, or search you need, so searching for a customer from months ago still works — the search runs across all 28,752 leads on the server, not just what happens to be on screen. Refresh becomes one request instead of 288, it pauses while the tab is in the background, it can't overlap itself, and there's a Refresh button plus a "last updated" time so you always know how current the view is. Nothing about orders, payments, deliveries, unlocks, or revisions changes.
+**Phase 0** is the emergency patch and deliberately small: the automatic 30-second and click-back reloads are removed, the dashboard still loads everything you're used to seeing, but only when you log in or press Refresh, and it fetches at most two pages at a time instead of 288 at once. The record-count queries run once per load instead of once per page. You get a progress line and a "last updated" time, and if something fails mid-load you keep what loaded and see a clear warning instead of a silently short list. Two files change; one revert undoes it.
 
-## Requires Ryan's approval before anything happens
+**Phase 1** comes after, once we've listed every panel that currently relies on having all records in the browser. That's the permanent fix — the server does the paging, filtering and searching, so nothing needs to load 28,752 leads into your browser at all. It's kept separate on purpose: rushing it risks analytics, remarketing, and support panels quietly showing partial numbers.
+
+Then the song-page timeout and caching fixes, the monitoring work (native Supabase reports and logs first, before any future restart erases the evidence), and finally the small audio-preload change.
+
+## Requires Ryan's approval
 
 - Any code edit, deploy, or migration — nothing in this plan has been applied.
-- Phase 1 (the admin refresh rewrite) as a whole, and the decision on whether to keep the temporary bounded "Load all records" button.
+- **Phase 0** (emergency admin refresh guard) — recommended first and on its own.
+- **Phase 1** (server-side pagination/filter/search redesign) — separately, and only after the consumer inventory is reviewed.
 - Phases 2, 3, 4B, and 5 individually.
+- Any change to the background page size (100 → 250), which requires the payload/limit measurement first.
 - Enabling a Log Drain, after seeing its cost.
 - Creating the diagnostics table/endpoint (Phase 4B needs a migration).
 - Any further compute or disk resize. Current evidence does not support one: memory 61%, disk 15%, pool clients 1/200. Remove the storm, then re-measure.
-- Any backend restart. Restarts erase `pg_stat_statements`, the main evidence trail — snapshot first.
+- Any backend restart — restarts erase `pg_stat_statements`, the main evidence trail; snapshot first.
