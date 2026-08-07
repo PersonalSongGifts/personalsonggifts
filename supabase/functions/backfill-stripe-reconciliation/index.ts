@@ -28,6 +28,20 @@ const COUNTRY_NAMES: Record<string, string> = {
   ID: "Indonesia", KR: "South Korea", CN: "China", HK: "Hong Kong",
   TW: "Taiwan", IL: "Israel", TR: "Turkey", CL: "Chile",
   CO: "Colombia", PE: "Peru",
+  // Added entries
+  PR: "Puerto Rico", UA: "Ukraine", CZ: "Czechia", HU: "Hungary",
+  BG: "Bulgaria", HR: "Croatia", RS: "Serbia", SK: "Slovakia",
+  SI: "Slovenia", EE: "Estonia", LV: "Latvia", LT: "Lithuania",
+  LU: "Luxembourg", IS: "Iceland", MT: "Malta", CY: "Cyprus",
+  NP: "Nepal", LK: "Sri Lanka", KH: "Cambodia", MM: "Myanmar",
+  QA: "Qatar", KW: "Kuwait", BH: "Bahrain", OM: "Oman", JO: "Jordan",
+  LB: "Lebanon", MA: "Morocco", DZ: "Algeria", TN: "Tunisia",
+  ET: "Ethiopia", RW: "Rwanda", ZM: "Zambia", BW: "Botswana",
+  NA: "Namibia", MW: "Malawi", MZ: "Mozambique", AO: "Angola",
+  DO: "Dominican Republic", GT: "Guatemala", CR: "Costa Rica",
+  PA: "Panama", EC: "Ecuador", UY: "Uruguay", PY: "Paraguay",
+  BO: "Bolivia", VE: "Venezuela", BS: "Bahamas", BB: "Barbados",
+  GY: "Guyana", BZ: "Belize", FJ: "Fiji", PG: "Papua New Guinea",
 };
 
 Deno.serve(async (req) => {
@@ -56,179 +70,118 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const listParams: Record<string, unknown> = { limit };
+    const listParams: Record<string, unknown> = { limit, status: "complete" };
     if (startingAfter) listParams.starting_after = startingAfter;
-    const charges = await stripe.charges.list(listParams as never);
 
-    let charges_scanned = 0;
-    let matched_by_order_id = 0;
-    let matched_by_email_time = 0;
-    let ambiguous = 0;
+    // deno-lint-ignore no-explicit-any
+    const page = await stripe.checkout.sessions.list(listParams as any);
+
+    let sessions_scanned = 0;
+    let matched = 0;
     let unmatched = 0;
-    let country_from_billing_address = 0;
-    let country_from_card_fallback = 0;
+    let ambiguous = 0;
     let no_country_available = 0;
-    let updates = 0;
     let skipped_already_had_country = 0;
-    let refunded_charges_seen = 0;
-    let disputed_charges_seen = 0;
+    let would_update = 0;
+    let did_update = 0;
     const country_breakdown: Record<string, number> = {};
-    const sample_matches: Array<Record<string, unknown>> = [];
-    const errors: Array<{ charge_id: string; error: string }> = [];
+    const sample_matches: Array<{ session_id: string; order_id: string; country: string }> = [];
+    const errors: Array<{ session_id: string; error: string }> = [];
+    const claimedOrderIds = new Set<string>();
+    const countedOrderIds = new Set<string>();
 
-    let next_cursor: string | null = null;
+    for (const session of page.data) {
+      if (session.payment_status !== "paid") continue;
+      sessions_scanned++;
 
-    for (const charge of charges.data) {
-      next_cursor = charge.id;
-      if (charge.status !== "succeeded" || charge.paid !== true) continue;
-      charges_scanned++;
-
-      // --- derive fields
-      const billingCountry = charge.billing_details?.address?.country ?? null;
-      // deno-lint-ignore no-explicit-any
-      const cardCountry = (charge.payment_method_details as any)?.card?.country ?? null;
-      let country: string | null = null;
-      let country_source: string = "none";
-      if (billingCountry) {
-        country = billingCountry;
-        country_source = "billing_address";
-        country_from_billing_address++;
-      } else if (cardCountry) {
-        country = cardCountry;
-        country_source = "card_fallback";
-        country_from_card_fallback++;
-      } else {
-        no_country_available++;
-      }
-
-      const refunded_amount = charge.amount_refunded ?? 0;
-      if (refunded_amount > 0) refunded_charges_seen++;
-      if (charge.disputed === true) disputed_charges_seen++;
-      // deno-lint-ignore no-explicit-any
-      const presentment_currency =
-        (charge as any).presentment_details?.presentment_currency ?? charge.currency;
-
-      // --- match to exactly one order
-      let orderId: string | null = null;
-      let match_rule: string | null = null;
-      let existingCountry: string | null = null;
-      const metaOrderId = (charge.metadata?.orderId || "").trim();
-      const email = (charge.metadata?.customerEmail ?? charge.billing_details?.email ?? "")
-        .toLowerCase()
-        .trim();
-
+      const sessionId = session.id;
       try {
-        if (metaOrderId) {
-          const { data, error } = await supabase
-            .from("orders")
-            .select("id, billing_country_code")
-            .eq("id", metaOrderId)
-            .maybeSingle();
-          if (error) throw error;
-          if (data) {
-            orderId = data.id;
-            existingCountry = data.billing_country_code ?? null;
-            match_rule = "order_id_metadata";
-            matched_by_order_id++;
-          }
+        const rawCountry = session.customer_details?.address?.country ?? null;
+        if (!rawCountry) {
+          no_country_available++;
+          continue;
+        }
+        const cc = rawCountry.toUpperCase();
+
+        const { data: rows, error: selErr } = await supabase
+          .from("orders")
+          .select("id, billing_country_code")
+          .or(`notes.eq.stripe_session:${sessionId},notes.eq.lead_session:${sessionId}`);
+
+        if (selErr) throw new Error(selErr.message);
+
+        if (!rows || rows.length === 0) {
+          unmatched++;
+          continue;
+        }
+        if (rows.length > 1) {
+          ambiguous++;
+          continue;
         }
 
-        if (!orderId) {
-          if (!email) {
-            unmatched++;
-            continue;
-          }
-          const created = charge.created * 1000;
-          const from = new Date(created - 180_000).toISOString();
-          const to = new Date(created + 180_000).toISOString();
-          const { data, error } = await supabase
-            .from("orders")
-            .select("id, customer_email, billing_country_code")
-            .gte("created_at", from)
-            .lte("created_at", to);
-          if (error) throw error;
-          const candidates = (data || []).filter(
-            (o) => (o.customer_email || "").toLowerCase().trim() === email,
-          );
-          if (candidates.length > 1) {
-            ambiguous++;
-            continue;
-          }
-          if (candidates.length === 0) {
-            unmatched++;
-            continue;
-          }
-          orderId = candidates[0].id;
-          existingCountry = candidates[0].billing_country_code ?? null;
-          match_rule = "email_time_window";
-          matched_by_email_time++;
+        const order = rows[0];
+        matched++;
+        if (!countedOrderIds.has(order.id)) {
+          countedOrderIds.add(order.id);
+          country_breakdown[cc] = (country_breakdown[cc] || 0) + 1;
         }
-
-        if (country) {
-          country_breakdown[country] = (country_breakdown[country] || 0) + 1;
-        }
-
         if (sample_matches.length < 10) {
-          sample_matches.push({
-            charge_id: charge.id,
-            order_id: orderId,
-            email: email || null,
-            country,
-            country_source,
-            match_rule,
-            refunded_amount,
-            is_disputed: charge.disputed === true,
-            presentment_currency,
-          });
+          sample_matches.push({ session_id: sessionId, order_id: order.id, country: cc });
         }
 
-        if (!country || existingCountry) {
-          if (country && existingCountry) skipped_already_had_country++;
+        if (order.billing_country_code) {
+          skipped_already_had_country++;
           continue;
         }
 
         if (apply) {
-          const { error: upErr } = await supabase
+          const { data: updated, error: updErr } = await supabase
             .from("orders")
             .update({
-              billing_country_code: country,
-              billing_country_name: COUNTRY_NAMES[country] ?? country,
+              billing_country_code: cc,
+              billing_country_name: COUNTRY_NAMES[cc] ?? cc,
+              billing_country_source: "checkout_session",
             })
-            .eq("id", orderId)
-            .is("billing_country_code", null);
-          if (upErr) throw upErr;
+            .eq("id", order.id)
+            .is("billing_country_code", null)
+            .select("id");
+          if (updErr) throw new Error(updErr.message);
+          did_update += updated?.length ?? 0;
+        } else if (!claimedOrderIds.has(order.id)) {
+          claimedOrderIds.add(order.id);
+          would_update++;
         }
-        updates++;
       } catch (e) {
-        errors.push({ charge_id: charge.id, error: e instanceof Error ? e.message : "unknown" });
+        errors.push({ session_id: sessionId, error: e instanceof Error ? e.message : String(e) });
+        if (errors.length > 5) {
+          return json({
+            error: "Aborted: too many per-session errors on this page; cursor not advanced",
+            dry_run: !apply,
+            sessions_scanned,
+            errors,
+          }, 500);
+        }
       }
     }
 
-    const result: Record<string, unknown> = {
+    const lastSession = page.data[page.data.length - 1];
+
+    return json({
       dry_run: !apply,
-      charges_scanned,
-      matched_by_order_id,
-      matched_by_email_time,
-      ambiguous,
+      sessions_scanned,
+      matched,
       unmatched,
-      country_from_billing_address,
-      country_from_card_fallback,
+      ambiguous,
       no_country_available,
       skipped_already_had_country,
-      refunded_charges_seen,
-      disputed_charges_seen,
+      ...(apply ? { did_update } : { would_update }),
       country_breakdown,
-      has_more: charges.has_more,
-      next_cursor,
+      has_more: page.has_more,
+      next_cursor: page.has_more && lastSession ? lastSession.id : null,
       sample_matches,
       errors,
-    };
-    if (apply) result.did_update = updates;
-    else result.would_update = updates;
-
-    return json(result);
+    });
   } catch (e) {
-    console.error("backfill-stripe-reconciliation error:", e);
-    return json({ error: e instanceof Error ? e.message : "Internal error" }, 500);
+    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
