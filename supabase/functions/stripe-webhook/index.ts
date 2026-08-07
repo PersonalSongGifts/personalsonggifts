@@ -14,6 +14,30 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
 };
 
+// ISO-2 → English country name map. Used to populate billing_country_name on
+// new orders from the Stripe Checkout Session's shipping/billing address.
+// Codes not in this map fall back to storing the raw uppercase code as the name.
+const COUNTRY_NAMES: Record<string, string> = {
+  US: "United States", CA: "Canada", GB: "United Kingdom", AU: "Australia",
+  NZ: "New Zealand", IE: "Ireland", ZA: "South Africa", NG: "Nigeria",
+  KE: "Kenya", GH: "Ghana", ZW: "Zimbabwe", UG: "Uganda", TZ: "Tanzania",
+  JM: "Jamaica", TT: "Trinidad and Tobago", BS: "Bahamas", BB: "Barbados",
+  PH: "Philippines", IN: "India", PK: "Pakistan", BD: "Bangladesh",
+  LK: "Sri Lanka", NP: "Nepal", DE: "Germany", FR: "France", NL: "Netherlands",
+  ES: "Spain", IT: "Italy", PT: "Portugal", SE: "Sweden", NO: "Norway",
+  DK: "Denmark", FI: "Finland", PL: "Poland", CH: "Switzerland", AT: "Austria",
+  BE: "Belgium", RO: "Romania", GR: "Greece", CZ: "Czechia", HU: "Hungary",
+  UA: "Ukraine", MX: "Mexico", BR: "Brazil", AR: "Argentina", CL: "Chile",
+  CO: "Colombia", PE: "Peru", DO: "Dominican Republic", PR: "Puerto Rico",
+  JP: "Japan", KR: "South Korea", CN: "China", HK: "Hong Kong", TW: "Taiwan",
+  SG: "Singapore", MY: "Malaysia", TH: "Thailand", VN: "Vietnam",
+  ID: "Indonesia", AE: "United Arab Emirates", SA: "Saudi Arabia", QA: "Qatar",
+  KW: "Kuwait", IL: "Israel", TR: "Turkey", EG: "Egypt", MA: "Morocco",
+  DZ: "Algeria", TN: "Tunisia", ET: "Ethiopia", ZM: "Zambia", BW: "Botswana",
+  NA: "Namibia", MZ: "Mozambique", CM: "Cameroon", CI: "Cote d'Ivoire",
+  SN: "Senegal", FJ: "Fiji", PG: "Papua New Guinea",
+};
+
 // Timing constants
 const STABILIZATION_MINUTES = 5; // Wait before generation starts
 const HOURS_BEFORE_EXPECTED_TO_SEND = 12; // Send 12h before expected delivery
