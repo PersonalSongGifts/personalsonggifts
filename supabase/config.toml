@@ -140,3 +140,6 @@ verify_jwt = false
 
 [functions.verify-rush-upgrade]
 verify_jwt = false
+
+[functions.backfill-stripe-reconciliation]
+verify_jwt = false
