@@ -987,6 +987,8 @@ Deno.serve(async (req) => {
           utm_term: metadata.utmTerm || null,
           ...addonUnlockFields,
           ...rushFields,
+          billing_country_code: billingCountryCode ? billingCountryCode.toUpperCase() : null,
+          billing_country_name: billingCountryCode ? (COUNTRY_NAMES[billingCountryCode.toUpperCase()] ?? billingCountryCode.toUpperCase()) : null,
         })
         .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, revision_token")
         .single();
