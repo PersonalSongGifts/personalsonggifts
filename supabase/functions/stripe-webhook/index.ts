@@ -943,6 +943,10 @@ Deno.serve(async (req) => {
         metadata.lyricsLanguageCode || "en",
       ]);
 
+      // Derive billing country from the Stripe Checkout Session address.
+      const billingCountryCode: string | null =
+        session.customer_details?.address?.country ?? null;
+
       const { data: newOrder, error: insertError } = await supabase
         .from("orders")
         .insert({
