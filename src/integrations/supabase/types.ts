@@ -399,6 +399,7 @@ export type Database = {
           automation_task_id: string | null
           billing_country_code: string | null
           billing_country_name: string | null
+          billing_country_source: string | null
           bonus_automation_last_error: string | null
           bonus_automation_started_at: string | null
           bonus_automation_status: string | null
@@ -537,6 +538,7 @@ export type Database = {
           automation_task_id?: string | null
           billing_country_code?: string | null
           billing_country_name?: string | null
+          billing_country_source?: string | null
           bonus_automation_last_error?: string | null
           bonus_automation_started_at?: string | null
           bonus_automation_status?: string | null
@@ -675,6 +677,7 @@ export type Database = {
           automation_task_id?: string | null
           billing_country_code?: string | null
           billing_country_name?: string | null
+          billing_country_source?: string | null
           bonus_automation_last_error?: string | null
           bonus_automation_started_at?: string | null
           bonus_automation_status?: string | null
@@ -1141,6 +1144,7 @@ export type Database = {
           automation_task_id: string | null
           billing_country_code: string | null
           billing_country_name: string | null
+          billing_country_source: string | null
           bonus_automation_last_error: string | null
           bonus_automation_started_at: string | null
           bonus_automation_status: string | null
