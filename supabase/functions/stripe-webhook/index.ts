@@ -667,6 +667,10 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Derive billing country from the Stripe Checkout Session address.
+        const billingCountryCode: string | null =
+          session.customer_details?.address?.country ?? null;
+
         // Create order with ALL fields from the lead (mirrors process-lead-payment)
         const { data: leadOrder, error: leadInsertError } = await supabase
           .from("orders")
