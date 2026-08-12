@@ -2,7 +2,6 @@ import { Card } from "@/components/ui/card";
 import { 
   Heart, 
   User, 
-  Users, 
   Baby, 
   UserCheck, 
   Sparkles,
@@ -19,15 +18,16 @@ interface RecipientStepProps {
 }
 
 const recipientOptions = [
-  { id: "mom", label: "Mom", icon: Heart },
   { id: "wife", label: "Wife", icon: Heart },
-  { id: "partner", label: "Partner", icon: Heart },
+  { id: "girlfriend", label: "Girlfriend", icon: Heart },
   { id: "husband", label: "Husband", icon: Heart },
-  { id: "dad", label: "Dad", icon: Users },
+  { id: "boyfriend", label: "Boyfriend", icon: Heart },
+  { id: "partner", label: "Partner", icon: Heart },
+  { id: "mom", label: "Mom", icon: Heart },
+  { id: "dad", label: "Dad", icon: User },
   { id: "child", label: "Child", icon: Baby },
   { id: "friend", label: "Friend", icon: UserCheck },
   { id: "pet", label: "Pet", icon: PawPrint },
-  { id: "myself", label: "Myself", icon: User },
   { id: "other", label: "Other", icon: Sparkles },
 ];
 
@@ -56,7 +56,7 @@ const RecipientStep = ({ formData, updateFormData, errors, onAutoAdvance }: Reci
             <div className={`w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center ${
               isSelected ? "bg-primary text-primary-foreground" : "bg-secondary"
             }`}>
-              <option.icon className={`h-6 w-6 ${(option.id === "mom" || option.id === "wife" || option.id === "partner") && !isSelected ? "text-red-500 fill-red-500" : ""}`} />
+              <option.icon className={`h-6 w-6 ${option.icon === Heart && !isSelected ? "text-red-500 fill-red-500" : ""}`} />
             </div>
             <span className="font-medium text-foreground">{option.label}</span>
           </Card>

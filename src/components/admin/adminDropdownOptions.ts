@@ -74,6 +74,8 @@ export function getLanguageLabel(code: string): string {
 export const recipientOptions = [
   { id: "husband", label: "Husband" },
   { id: "wife", label: "Wife" },
+  { id: "girlfriend", label: "Girlfriend" },
+  { id: "boyfriend", label: "Boyfriend" },
   { id: "partner", label: "Partner" },
   { id: "mom", label: "Mom" },
   { id: "dad", label: "Dad" },
