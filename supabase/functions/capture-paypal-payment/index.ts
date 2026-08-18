@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/lead-order-matching.ts";
+import { sendMetaPurchase } from "../_shared/meta-capi.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -432,6 +433,21 @@ Deno.serve(async (req) => {
     }
 
     await logActivity(supabase, "order", newOrder.id, "order_created", "system", `New order via PayPal, ${pricingTier}, $${priceCents / 100}${foreverMemory ? " + Forever Memory Package" : ""}${rushAddon ? " + Rush (1h)" : ""}`);
+
+    // Meta CAPI server-side Purchase (fire-and-forget, never blocks).
+    // eventId matches the frontend's eventID `purchase_${orderId}` so Meta dedupes.
+    try {
+      await sendMetaPurchase({
+        eventId: `purchase_${newOrder.id}`,
+        email: newOrder.customer_email || metadata.customerEmail,
+        phone: metadata.phoneE164 || metadata.customerPhone,
+        value: priceCents / 100,
+        orderId: newOrder.id,
+        contentName: "Custom Song",
+      });
+    } catch (metaErr) {
+      console.error("[META-CAPI] paypal order call failed:", metaErr);
+    }
 
     // Mark only the matching lead as converted (non-blocking)
     try {
