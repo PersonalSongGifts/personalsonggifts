@@ -1344,6 +1344,21 @@ Deno.serve(async (req) => {
         console.error("[TIKTOK] Failed to send server event:", tiktokError);
       }
 
+      // Meta CAPI server-side Purchase (fire-and-forget, never blocks).
+      // eventId matches the frontend's eventID `purchase_${orderId}` so Meta dedupes.
+      try {
+        await sendMetaPurchase({
+          eventId: `purchase_${newOrder.id}`,
+          email: metadata.customerEmail || session.customer_email,
+          phone: metadata.phoneE164 || metadata.customerPhone,
+          value: (songPriceCents + packageAddonCents + rushAddonCents) / 100,
+          orderId: newOrder.id,
+          contentName: "Custom Song",
+        });
+      } catch (metaErr) {
+        console.error("[META-CAPI] main order call failed:", metaErr);
+      }
+
       // Sync order to Zapier → Google Sheets (non-blocking)
       const zapierWebhookUrl = Deno.env.get("ZAPIER_WEBHOOK_URL");
       if (zapierWebhookUrl) {
