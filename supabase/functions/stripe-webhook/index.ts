@@ -4,6 +4,7 @@ import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/lead-order-matching.ts";
 import { buildLeadAssetPatch, shouldDispatchDelivery } from "../_shared/lead-conversion.ts";
+import { sendMetaPurchase } from "../_shared/meta-capi.ts";
 
 function normalizeMatch(v?: string | null): string {
   return (v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -259,6 +260,23 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Meta CAPI server-side Purchase (fire-and-forget, never blocks)
+        try {
+          if (amountCents > 0) {
+            await sendMetaPurchase({
+              eventId: `tip_${session.id}`,
+              email: session.customer_details?.email ?? session.customer_email,
+              value: amountCents / 100,
+              orderId: tipOrderId,
+              contentName: "Tip",
+            });
+          } else {
+            console.log("[META-CAPI] Skipped tip event (no amount)");
+          }
+        } catch (metaErr) {
+          console.error("[META-CAPI] tip call failed:", metaErr);
+        }
+
         return new Response(
           JSON.stringify({ received: true, type: "song_tip", orderId: tipOrderId }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -297,6 +315,23 @@ Deno.serve(async (req) => {
           console.error("[WEBHOOK] Failed to unlock lyrics:", lyricsUpdateError);
         } else {
           console.log(`[WEBHOOK] Lyrics unlocked for order ${lyricsOrderId}`);
+        }
+
+        // Meta CAPI server-side Purchase (fire-and-forget, never blocks)
+        try {
+          if (session.amount_total && session.amount_total > 0) {
+            await sendMetaPurchase({
+              eventId: `lyrics_${session.id}`,
+              email: session.customer_details?.email ?? session.customer_email,
+              value: session.amount_total / 100,
+              orderId: lyricsOrderId,
+              contentName: "Lyrics Unlock",
+            });
+          } else {
+            console.log("[META-CAPI] Skipped lyrics event (no amount)");
+          }
+        } catch (metaErr) {
+          console.error("[META-CAPI] lyrics call failed:", metaErr);
         }
 
         return new Response(
@@ -342,6 +377,23 @@ Deno.serve(async (req) => {
           await logActivity(supabase, "order", downloadOrderId, "download_unlocked", "system", `Download unlocked via Stripe, $${(session.amount_total || 0) / 100}`);
         }
 
+        // Meta CAPI server-side Purchase (fire-and-forget, never blocks)
+        try {
+          if (session.amount_total && session.amount_total > 0) {
+            await sendMetaPurchase({
+              eventId: `download_${session.id}`,
+              email: session.customer_details?.email ?? session.customer_email,
+              value: session.amount_total / 100,
+              orderId: downloadOrderId,
+              contentName: "Download Unlock",
+            });
+          } else {
+            console.log("[META-CAPI] Skipped download event (no amount)");
+          }
+        } catch (metaErr) {
+          console.error("[META-CAPI] download call failed:", metaErr);
+        }
+
         return new Response(
           JSON.stringify({ received: true, type: "download_unlock", orderId: downloadOrderId }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -383,6 +435,23 @@ Deno.serve(async (req) => {
         } else {
           console.log(`[WEBHOOK] Bonus unlocked for order ${bonusOrderId}`);
           await logActivity(supabase, "order", bonusOrderId, "bonus_unlocked", "system", `Bonus unlocked via Stripe webhook, $${(session.amount_total || 0) / 100}`);
+        }
+
+        // Meta CAPI server-side Purchase (fire-and-forget, never blocks)
+        try {
+          if (session.amount_total && session.amount_total > 0) {
+            await sendMetaPurchase({
+              eventId: `bonus_${session.id}`,
+              email: session.customer_details?.email ?? session.customer_email,
+              value: session.amount_total / 100,
+              orderId: bonusOrderId,
+              contentName: "Bonus Track",
+            });
+          } else {
+            console.log("[META-CAPI] Skipped bonus event (no amount)");
+          }
+        } catch (metaErr) {
+          console.error("[META-CAPI] bonus call failed:", metaErr);
         }
 
         return new Response(
@@ -454,6 +523,23 @@ Deno.serve(async (req) => {
           .update({ bonus_unlocked_at: nowIso, bonus_price_cents: 0 })
           .eq("id", packageOrderId)
           .is("bonus_unlocked_at", null);
+
+        // Meta CAPI server-side Purchase (fire-and-forget, never blocks)
+        try {
+          if (amountTotal > 0) {
+            await sendMetaPurchase({
+              eventId: `pkg_${session.id}`,
+              email: session.customer_details?.email ?? session.customer_email,
+              value: amountTotal / 100,
+              orderId: packageOrderId,
+              contentName: "Forever Memory Package",
+            });
+          } else {
+            console.log("[META-CAPI] Skipped package event (no amount)");
+          }
+        } catch (metaErr) {
+          console.error("[META-CAPI] package call failed:", metaErr);
+        }
 
         return new Response(
           JSON.stringify({ received: true, type: "package_unlock", orderId: packageOrderId }),
@@ -587,6 +673,23 @@ Deno.serve(async (req) => {
           "system",
           `1-Hour Rush upgrade via Stripe webhook, $${(amountTotal / 100).toFixed(2)}`
         );
+
+        // Meta CAPI server-side Purchase (fire-and-forget, never blocks)
+        try {
+          if (amountTotal > 0) {
+            await sendMetaPurchase({
+              eventId: `rush_${session.id}`,
+              email: session.customer_details?.email ?? session.customer_email,
+              value: amountTotal / 100,
+              orderId: rushOrderId,
+              contentName: "Rush Upgrade",
+            });
+          } else {
+            console.log("[META-CAPI] Skipped rush event (no amount)");
+          }
+        } catch (metaErr) {
+          console.error("[META-CAPI] rush call failed:", metaErr);
+        }
 
         return new Response(
           JSON.stringify({ received: true, type: "rush_upgrade", orderId: rushOrderId }),
@@ -751,6 +854,20 @@ Deno.serve(async (req) => {
           .eq("id", lead.id);
 
         await logActivity(supabase, "lead", lead.id, "lead_converted", "system", `Converted to order ${leadOrder.id.slice(0, 8).toUpperCase()} via webhook`);
+
+        // Meta CAPI server-side Purchase (fire-and-forget, never blocks)
+        try {
+          await sendMetaPurchase({
+            eventId: `purchase_${leadOrder.id}`,
+            email: lead.email || session.customer_email,
+            phone: lead.phone_e164 || lead.phone,
+            value: leadPriceCents / 100,
+            orderId: leadOrder.id,
+            contentName: "Custom Song",
+          });
+        } catch (metaErr) {
+          console.error("[META-CAPI] lead order call failed:", metaErr);
+        }
 
         // Remove from Brevo lead lists (fire-and-forget)
         fetch(`${supabaseUrl}/functions/v1/brevo-remove-converted`, {
