@@ -15,7 +15,13 @@ const thankedKey = (orderId: string) => `tip_thanked_${orderId}`;
 
 export default function TipJar({ orderId, customerName }: TipJarProps) {
   const [open, setOpen] = useState(false);
+  const [presetCents, setPresetCents] = useState<number | undefined>(undefined);
   const [thanked, setThanked] = useState(false);
+
+  const openTip = (cents?: number) => {
+    setPresetCents(cents);
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
