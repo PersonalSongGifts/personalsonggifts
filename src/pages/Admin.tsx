@@ -521,11 +521,13 @@ const { data, error } = await listOrders("all", 0, 100);
         let accOrders = [...(data.orders || [])];
         let accLeads = [...(data.leads || [])];
 
-        // Fire all remaining pages in parallel
-        const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
-          listOrders("all", i + 1, bgPageSize)
+        // Fetch remaining pages with bounded concurrency (max 5 at a time)
+        const results = await runPooled(
+          Array.from({ length: maxPages - 1 }, (_, i) =>
+            () => listOrders("all", i + 1, bgPageSize)
+          ),
+          5,
         );
-        const results = await Promise.allSettled(pagePromises);
 
         for (const result of results) {
           if (result.status === "fulfilled" && result.value.data) {
@@ -581,6 +583,9 @@ const { data, error } = await listOrders("all", 0, 100);
       setIsAuthenticated(false);
       return;
     }
+    // In-flight guard: prevents the 30s interval + focus listener from stacking waves
+    if (fetchInFlight.current) return;
+    fetchInFlight.current = true;
 
     setLoading(true);
     try {
@@ -606,11 +611,13 @@ const { data, error } = await listOrders("all", 0, 100);
       if (maxPages > 1) {
         setLoadingMore(true);
 
-        // Fire all remaining pages in parallel
-        const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
-          listOrders("all", i + 1, bgPageSize)
+        // Fetch remaining pages with bounded concurrency (max 5 at a time)
+        const results = await runPooled(
+          Array.from({ length: maxPages - 1 }, (_, i) =>
+            () => listOrders("all", i + 1, bgPageSize)
+          ),
+          5,
         );
-        const results = await Promise.allSettled(pagePromises);
 
         for (const result of results) {
           if (result.status === "fulfilled" && result.value.data) {
