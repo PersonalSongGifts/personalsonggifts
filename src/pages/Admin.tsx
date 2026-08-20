@@ -196,6 +196,28 @@ const statusIcons: Record<string, React.ReactNode> = {
 
 // Lead interface is imported from LeadsTable
 
+// Runs tasks with bounded concurrency (default 5) and returns settled results
+// in the original order — replaces unbounded Promise.allSettled fan-outs.
+async function runPooled<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency = 5,
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      try {
+        results[i] = { status: "fulfilled", value: await tasks[i]() };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+  return results;
+}
+
 export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
