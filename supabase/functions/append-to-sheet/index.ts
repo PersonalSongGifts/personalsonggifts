@@ -16,15 +16,35 @@ function textToBase64Url(text: string): string {
 
 // Import PEM private key for RS256 signing
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
+  // Unwrap a JSON-quoted secret value (e.g. "-----BEGIN...\n...")
+  if (pem.trim().startsWith('"')) {
+    try {
+      pem = JSON.parse(pem.trim());
+    } catch {
+      // leave as-is; armor filtering below may still recover it
+    }
+  }
+
+  if (/BEGIN RSA PRIVATE KEY/.test(pem)) {
+    throw new Error("GOOGLE_PRIVATE_KEY is PKCS#1; convert to PKCS#8 with: openssl pkcs8 -topk8 -nocrypt");
+  }
+
   // Handle escaped newlines from environment variables and remove headers
   const normalizedPem = pem.replace(/\\n/g, "\n");
   const pemContents = normalizedPem
-    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
-    .replace(/-----END PRIVATE KEY-----/g, "")
-    .replace(/\s/g, "");
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/[^A-Za-z0-9+/=]/g, "");
 
   // Decode base64 to binary
-  const binaryString = atob(pemContents);
+  let binaryString: string;
+  try {
+    binaryString = atob(pemContents);
+  } catch (e) {
+    throw new Error(
+      `Failed to base64-decode GOOGLE_PRIVATE_KEY body (post-strip length: ${pemContents.length}): ${e instanceof Error ? e.message : "unknown error"}`
+    );
+  }
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
