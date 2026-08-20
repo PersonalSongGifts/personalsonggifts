@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
     let privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY") || "";
     const spreadsheetId = Deno.env.get("GOOGLE_SPREADSHEET_ID");
 
-    console.log("Private key starts with:", privateKey.substring(0, 50));
+    console.log("Private key length (no content logged):", privateKey.length);
     console.log("Private key length:", privateKey.length);
 
     // Handle case where full JSON credentials file was pasted instead of just the private key
@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
     // Normalize escaped newlines to actual newlines (important for PEM parsing)
     privateKey = privateKey.replace(/\\n/g, "\n");
     
-    console.log("After normalization, key starts with:", privateKey.substring(0, 30));
+    console.log("After normalization, key length:", privateKey.length);
     console.log("Key contains BEGIN marker:", privateKey.includes("-----BEGIN PRIVATE KEY-----"));
 
     if (!serviceAccountEmail || !privateKey || !spreadsheetId) {
