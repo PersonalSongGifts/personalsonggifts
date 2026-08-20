@@ -328,6 +328,7 @@ export default function Admin() {
   })();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fetchInFlight = useRef(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
