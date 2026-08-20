@@ -174,8 +174,8 @@ Deno.serve(async (req) => {
           JSON.stringify({
             orders: orders || [],
             leads: leads || [],
-            totalOrders: totalOrders || 0,
-            totalLeads: totalLeads || 0,
+            totalOrders,
+            totalLeads,
             page,
             pageSize,
           }),
