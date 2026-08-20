@@ -6,6 +6,7 @@ import { LucideIcon } from "lucide-react";
 interface Order {
   id: string;
   price: number;
+  price_cents?: number | null;
   status: string;
   pricing_tier: string;
   created_at: string;
@@ -81,7 +82,8 @@ function orderTotalDollars(o: Order): number {
     (o.bonus_price_cents ?? 0) +
     (o.package_price_cents ?? 0) +
     (o.rush_price_cents ?? 0);
-  return o.price + upsellCents / 100;
+  const baseDollars = o.price_cents != null ? o.price_cents / 100 : (o.price || 0);
+  return baseDollars + upsellCents / 100;
 }
 
 interface TipsSummary {
@@ -133,7 +135,7 @@ function useStats(
 
   // Revenue with payment source breakdown — includes base + all upsells
   const activeOrders = orders.filter((o) => o.status !== "cancelled");
-  const baseRevenue = activeOrders.reduce((sum, o) => sum + o.price, 0);
+  const baseRevenue = activeOrders.reduce((sum, o) => sum + (o.price_cents != null ? o.price_cents / 100 : (o.price || 0)), 0);
   const lyricsRevAll = activeOrders.reduce((sum, o) => sum + (o.lyrics_price_cents ?? 0), 0) / 100;
   const downloadRevAll = activeOrders.reduce((sum, o) => sum + (o.download_price_cents ?? 0), 0) / 100;
   const bonusRevAll = activeOrders.reduce((sum, o) => sum + (o.bonus_price_cents ?? 0), 0) / 100;
