@@ -147,18 +147,26 @@ Deno.serve(async (req) => {
           console.error("Failed to fetch leads page:", leadErr);
         }
 
-        // Get total counts (head-only queries, no data loaded)
-        let orderCountQuery = supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true });
-        if (status && status !== "all") {
-          orderCountQuery = orderCountQuery.eq("status", status);
-        }
-        const { count: totalOrders } = await orderCountQuery;
+        // Get total counts (head-only queries, no data loaded).
+        // Only needed on page 0 — the frontend uses page-0 counts to compute
+        // maxPages. Skipping on later pages removes 2 full COUNT scans per page.
+        let totalOrders: number | null = null;
+        let totalLeads: number | null = null;
+        if (page === 0) {
+          let orderCountQuery = supabase
+            .from("orders")
+            .select("id", { count: "exact", head: true });
+          if (status && status !== "all") {
+            orderCountQuery = orderCountQuery.eq("status", status);
+          }
+          const { count: oCount } = await orderCountQuery;
+          totalOrders = oCount ?? 0;
 
-        const { count: totalLeads } = await supabase
-          .from("leads")
-          .select("id", { count: "exact", head: true });
+          const { count: lCount } = await supabase
+            .from("leads")
+            .select("id", { count: "exact", head: true });
+          totalLeads = lCount ?? 0;
+        }
 
         console.log(`[ADMIN] Returning page ${page}: ${(orders || []).length} orders, ${(leads || []).length} leads (total: ${totalOrders} orders, ${totalLeads} leads)`);
 
