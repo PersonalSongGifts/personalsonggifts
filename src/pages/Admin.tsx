@@ -196,6 +196,28 @@ const statusIcons: Record<string, React.ReactNode> = {
 
 // Lead interface is imported from LeadsTable
 
+// Runs tasks with bounded concurrency (default 5) and returns settled results
+// in the original order — replaces unbounded Promise.allSettled fan-outs.
+async function runPooled<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency = 5,
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      try {
+        results[i] = { status: "fulfilled", value: await tasks[i]() };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+  return results;
+}
+
 export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
@@ -328,6 +350,7 @@ export default function Admin() {
   })();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fetchInFlight = useRef(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -498,11 +521,13 @@ const { data, error } = await listOrders("all", 0, 100);
         let accOrders = [...(data.orders || [])];
         let accLeads = [...(data.leads || [])];
 
-        // Fire all remaining pages in parallel
-        const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
-          listOrders("all", i + 1, bgPageSize)
+        // Fetch remaining pages with bounded concurrency (max 5 at a time)
+        const results = await runPooled(
+          Array.from({ length: maxPages - 1 }, (_, i) =>
+            () => listOrders("all", i + 1, bgPageSize)
+          ),
+          5,
         );
-        const results = await Promise.allSettled(pagePromises);
 
         for (const result of results) {
           if (result.status === "fulfilled" && result.value.data) {
@@ -558,6 +583,9 @@ const { data, error } = await listOrders("all", 0, 100);
       setIsAuthenticated(false);
       return;
     }
+    // In-flight guard: prevents the 30s interval + focus listener from stacking waves
+    if (fetchInFlight.current) return;
+    fetchInFlight.current = true;
 
     setLoading(true);
     try {
@@ -583,11 +611,13 @@ const { data, error } = await listOrders("all", 0, 100);
       if (maxPages > 1) {
         setLoadingMore(true);
 
-        // Fire all remaining pages in parallel
-        const pagePromises = Array.from({ length: maxPages - 1 }, (_, i) =>
-          listOrders("all", i + 1, bgPageSize)
+        // Fetch remaining pages with bounded concurrency (max 5 at a time)
+        const results = await runPooled(
+          Array.from({ length: maxPages - 1 }, (_, i) =>
+            () => listOrders("all", i + 1, bgPageSize)
+          ),
+          5,
         );
-        const results = await Promise.allSettled(pagePromises);
 
         for (const result of results) {
           if (result.status === "fulfilled" && result.value.data) {
@@ -612,6 +642,7 @@ const { data, error } = await listOrders("all", 0, 100);
       });
     } finally {
       setLoading(false);
+      fetchInFlight.current = false;
     }
   };
 

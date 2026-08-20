@@ -6,6 +6,7 @@ import { logActivity } from "../_shared/activity-log.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Max-Age": "86400",
 };
 
 Deno.serve(async (req) => {
@@ -146,18 +147,26 @@ Deno.serve(async (req) => {
           console.error("Failed to fetch leads page:", leadErr);
         }
 
-        // Get total counts (head-only queries, no data loaded)
-        let orderCountQuery = supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true });
-        if (status && status !== "all") {
-          orderCountQuery = orderCountQuery.eq("status", status);
-        }
-        const { count: totalOrders } = await orderCountQuery;
+        // Get total counts (head-only queries, no data loaded).
+        // Only needed on page 0 — the frontend uses page-0 counts to compute
+        // maxPages. Skipping on later pages removes 2 full COUNT scans per page.
+        let totalOrders: number | null = null;
+        let totalLeads: number | null = null;
+        if (page === 0) {
+          let orderCountQuery = supabase
+            .from("orders")
+            .select("id", { count: "exact", head: true });
+          if (status && status !== "all") {
+            orderCountQuery = orderCountQuery.eq("status", status);
+          }
+          const { count: oCount } = await orderCountQuery;
+          totalOrders = oCount ?? 0;
 
-        const { count: totalLeads } = await supabase
-          .from("leads")
-          .select("id", { count: "exact", head: true });
+          const { count: lCount } = await supabase
+            .from("leads")
+            .select("id", { count: "exact", head: true });
+          totalLeads = lCount ?? 0;
+        }
 
         console.log(`[ADMIN] Returning page ${page}: ${(orders || []).length} orders, ${(leads || []).length} leads (total: ${totalOrders} orders, ${totalLeads} leads)`);
 
@@ -165,8 +174,8 @@ Deno.serve(async (req) => {
           JSON.stringify({
             orders: orders || [],
             leads: leads || [],
-            totalOrders: totalOrders || 0,
-            totalLeads: totalLeads || 0,
+            totalOrders,
+            totalLeads,
             page,
             pageSize,
           }),

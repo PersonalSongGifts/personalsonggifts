@@ -16,15 +16,35 @@ function textToBase64Url(text: string): string {
 
 // Import PEM private key for RS256 signing
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
+  // Unwrap a JSON-quoted secret value (e.g. "-----BEGIN...\n...")
+  if (pem.trim().startsWith('"')) {
+    try {
+      pem = JSON.parse(pem.trim());
+    } catch {
+      // leave as-is; armor filtering below may still recover it
+    }
+  }
+
+  if (/BEGIN RSA PRIVATE KEY/.test(pem)) {
+    throw new Error("GOOGLE_PRIVATE_KEY is PKCS#1; convert to PKCS#8 with: openssl pkcs8 -topk8 -nocrypt");
+  }
+
   // Handle escaped newlines from environment variables and remove headers
   const normalizedPem = pem.replace(/\\n/g, "\n");
   const pemContents = normalizedPem
-    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
-    .replace(/-----END PRIVATE KEY-----/g, "")
-    .replace(/\s/g, "");
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/[^A-Za-z0-9+/=]/g, "");
 
   // Decode base64 to binary
-  const binaryString = atob(pemContents);
+  let binaryString: string;
+  try {
+    binaryString = atob(pemContents);
+  } catch (e) {
+    throw new Error(
+      `Failed to base64-decode GOOGLE_PRIVATE_KEY body (post-strip length: ${pemContents.length}): ${e instanceof Error ? e.message : "unknown error"}`
+    );
+  }
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
@@ -147,7 +167,7 @@ Deno.serve(async (req) => {
     let privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY") || "";
     const spreadsheetId = Deno.env.get("GOOGLE_SPREADSHEET_ID");
 
-    console.log("Private key starts with:", privateKey.substring(0, 50));
+    console.log("Private key length (no content logged):", privateKey.length);
     console.log("Private key length:", privateKey.length);
 
     // Handle case where full JSON credentials file was pasted instead of just the private key
@@ -164,7 +184,7 @@ Deno.serve(async (req) => {
     // Normalize escaped newlines to actual newlines (important for PEM parsing)
     privateKey = privateKey.replace(/\\n/g, "\n");
     
-    console.log("After normalization, key starts with:", privateKey.substring(0, 30));
+    console.log("After normalization, key length:", privateKey.length);
     console.log("Key contains BEGIN marker:", privateKey.includes("-----BEGIN PRIVATE KEY-----"));
 
     if (!serviceAccountEmail || !privateKey || !spreadsheetId) {
