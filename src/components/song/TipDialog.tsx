@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Heart, Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -15,14 +15,22 @@ interface TipDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   orderId: string;
+  initialCents?: number;
 }
 
 const PRESETS = [500, 1000, 2000]; // $5, $10, $20
 
-export default function TipDialog({ open, onOpenChange, orderId }: TipDialogProps) {
-  const [selected, setSelected] = useState<number | "custom">(1000);
+export default function TipDialog({ open, onOpenChange, orderId, initialCents }: TipDialogProps) {
+  const [selected, setSelected] = useState<number | "custom">(initialCents ?? 1000);
   const [customDollars, setCustomDollars] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setSelected(initialCents ?? 1000);
+      setCustomDollars("");
+    }
+  }, [open, initialCents]);
 
   const resolveAmountCents = (): number | null => {
     if (selected === "custom") {
@@ -59,13 +67,7 @@ export default function TipDialog({ open, onOpenChange, orderId }: TipDialogProp
       if (!response.ok || !data.url) {
         throw new Error(data.error || "Could not start tip checkout");
       }
-      const popup = window.open(data.url, "_blank");
-      if (!popup || popup.closed || typeof popup.closed === "undefined") {
-        // Popup blocked (common after an async delay) — go in the same tab.
-        window.location.href = data.url;
-        return;
-      }
-      onOpenChange(false);
+      window.location.href = data.url;
     } catch (err) {
       console.error("Tip checkout failed:", err);
       const aborted = err instanceof DOMException && err.name === "AbortError";

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import { Heart } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,13 @@ const thankedKey = (orderId: string) => `tip_thanked_${orderId}`;
 
 export default function TipJar({ orderId, customerName }: TipJarProps) {
   const [open, setOpen] = useState(false);
+  const [presetCents, setPresetCents] = useState<number | undefined>(undefined);
   const [thanked, setThanked] = useState(false);
+
+  const openTip = (cents?: number) => {
+    setPresetCents(cents);
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -45,14 +52,14 @@ export default function TipJar({ orderId, customerName }: TipJarProps) {
           <div className="pt-2">
             <button
               type="button"
-              onClick={() => setOpen(true)}
+              onClick={() => openTip()}
               className="text-sm font-medium text-primary underline-offset-4 hover:underline"
             >
               Leave another tip
             </button>
           </div>
         </CardContent>
-        <TipDialog open={open} onOpenChange={setOpen} orderId={orderId} />
+        <TipDialog open={open} onOpenChange={setOpen} orderId={orderId} initialCents={presetCents} />
       </Card>
     );
   }
@@ -69,17 +76,17 @@ export default function TipJar({ orderId, customerName }: TipJarProps) {
             A small thank-you goes a long way — it keeps our songwriters writing.
           </p>
           <div className="flex justify-center gap-2 flex-wrap pt-2">
-            <Button variant="outline" onClick={() => setOpen(true)} className="min-w-[72px]">$5</Button>
-            <Button variant="outline" onClick={() => setOpen(true)} className="min-w-[72px]">$10</Button>
-            <Button variant="outline" onClick={() => setOpen(true)} className="min-w-[72px]">$20</Button>
-            <Button onClick={() => setOpen(true)} className="gap-2">
+            <Button variant="outline" onClick={() => openTip(500)} className="min-w-[72px]">$5</Button>
+            <Button variant="outline" onClick={() => openTip(1000)} className="min-w-[72px]">$10</Button>
+            <Button variant="outline" onClick={() => openTip(2000)} className="min-w-[72px]">$20</Button>
+            <Button onClick={() => openTip()} className="gap-2">
               <Heart className="h-4 w-4" />
               Leave a tip
             </Button>
           </div>
         </CardContent>
       </Card>
-      <TipDialog open={open} onOpenChange={setOpen} orderId={orderId} />
+      <TipDialog open={open} onOpenChange={setOpen} orderId={orderId} initialCents={presetCents} />
     </>
   );
 }
