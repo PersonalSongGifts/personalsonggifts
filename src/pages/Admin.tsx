@@ -642,6 +642,7 @@ const { data, error } = await listOrders("all", 0, 100);
       });
     } finally {
       setLoading(false);
+      fetchInFlight.current = false;
     }
   };
 
