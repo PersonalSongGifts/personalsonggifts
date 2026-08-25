@@ -1074,6 +1074,15 @@ Deno.serve(async (req) => {
       const billingCountryCode: string | null =
         session.customer_details?.address?.country ?? null;
 
+      // Passive annotation only: never block order creation on this.
+      let orderPromoCode: string | null = null;
+      try {
+        const rawPromo = metadata.additionalPromoCode ?? metadata.promoCode;
+        if (rawPromo && typeof rawPromo === "string" && rawPromo.trim()) orderPromoCode = rawPromo.trim().toUpperCase();
+      } catch (_e) { orderPromoCode = null; }
+
+
+
       const { data: newOrder, error: insertError } = await supabase
         .from("orders")
         .insert({
