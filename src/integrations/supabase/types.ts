@@ -470,6 +470,7 @@ export type Database = {
           price: number
           price_cents: number | null
           pricing_tier: string
+          promo_code: string | null
           reaction_email_24h_sent_at: string | null
           reaction_email_72h_sent_at: string | null
           reaction_submitted_at: string | null
@@ -609,6 +610,7 @@ export type Database = {
           price: number
           price_cents?: number | null
           pricing_tier: string
+          promo_code?: string | null
           reaction_email_24h_sent_at?: string | null
           reaction_email_72h_sent_at?: string | null
           reaction_submitted_at?: string | null
@@ -748,6 +750,7 @@ export type Database = {
           price?: number
           price_cents?: number | null
           pricing_tier?: string
+          promo_code?: string | null
           reaction_email_24h_sent_at?: string | null
           reaction_email_72h_sent_at?: string | null
           reaction_submitted_at?: string | null
@@ -1215,6 +1218,7 @@ export type Database = {
           price: number
           price_cents: number | null
           pricing_tier: string
+          promo_code: string | null
           reaction_email_24h_sent_at: string | null
           reaction_email_72h_sent_at: string | null
           reaction_submitted_at: string | null

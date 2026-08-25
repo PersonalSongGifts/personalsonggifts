@@ -49,6 +49,7 @@ import { ReactionEmailPanel } from "@/components/admin/ReactionEmailPanel";
 import { LeadFollowupPanel } from "@/components/admin/LeadFollowupPanel";
 import { CSAssistant } from "@/components/admin/CSAssistant";
 import { PromosPanel } from "@/components/admin/PromosPanel";
+import { DiscountCodesPanel } from "@/components/admin/DiscountCodesPanel";
 import { BonusTrackAnalytics } from "@/components/admin/BonusTrackAnalytics";
 import { BonusTrackEmailPanel } from "@/components/admin/BonusTrackEmailPanel";
 import { TipsAnalytics } from "@/components/admin/TipsAnalytics";
@@ -2060,6 +2061,7 @@ const { data, error } = await listOrders("all", 0, 100);
 
           <TabsContent value="promos" className="space-y-6">
             <PromosPanel adminPassword={password} />
+            <DiscountCodesPanel adminPassword={password} />
           </TabsContent>
         </Tabs>
       </main>

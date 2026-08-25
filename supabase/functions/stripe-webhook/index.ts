@@ -774,6 +774,15 @@ Deno.serve(async (req) => {
         const billingCountryCode: string | null =
           session.customer_details?.address?.country ?? null;
 
+        // Passive annotation only: never block order creation on this.
+        let leadPromoCode: string | null = null;
+        try {
+          const raw = metadata.additionalPromoCode ?? metadata.promoCode;
+          if (raw && typeof raw === "string" && raw.trim()) leadPromoCode = raw.trim().toUpperCase();
+        } catch (_e) { leadPromoCode = null; }
+
+
+
         // Create order with ALL fields from the lead (mirrors process-lead-payment)
         const { data: leadOrder, error: leadInsertError } = await supabase
           .from("orders")
@@ -814,6 +823,7 @@ Deno.serve(async (req) => {
             delivered_at: lead.full_song_url ? new Date().toISOString() : null,
             billing_country_code: billingCountryCode ? billingCountryCode.toUpperCase() : null,
             billing_country_name: billingCountryCode ? (COUNTRY_NAMES[billingCountryCode.toUpperCase()] ?? billingCountryCode.toUpperCase()) : null,
+            promo_code: leadPromoCode,
           })
           .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents, revision_token")
           .single();
@@ -1064,6 +1074,15 @@ Deno.serve(async (req) => {
       const billingCountryCode: string | null =
         session.customer_details?.address?.country ?? null;
 
+      // Passive annotation only: never block order creation on this.
+      let orderPromoCode: string | null = null;
+      try {
+        const rawPromo = metadata.additionalPromoCode ?? metadata.promoCode;
+        if (rawPromo && typeof rawPromo === "string" && rawPromo.trim()) orderPromoCode = rawPromo.trim().toUpperCase();
+      } catch (_e) { orderPromoCode = null; }
+
+
+
       const { data: newOrder, error: insertError } = await supabase
         .from("orders")
         .insert({
@@ -1106,6 +1125,7 @@ Deno.serve(async (req) => {
           ...rushFields,
           billing_country_code: billingCountryCode ? billingCountryCode.toUpperCase() : null,
           billing_country_name: billingCountryCode ? (COUNTRY_NAMES[billingCountryCode.toUpperCase()] ?? billingCountryCode.toUpperCase()) : null,
+          promo_code: orderPromoCode,
         })
         .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, revision_token")
         .single();
