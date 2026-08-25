@@ -37,7 +37,12 @@ Always write lyrics in this structure:
 7. [Final Chorus] - strongest/biggest
 8. [Outro] - 1-4 short lines
 
-CRITICAL DURATION REQUIREMENT: The song MUST have enough lyrics for at least 3 minutes of audio. A typical 3-minute song needs 250-350 words of sung lyrics. Do NOT write fewer words — short lyrics produce unacceptably short songs. If in doubt, add an extra verse or extend the bridge. Target 3:00-3:30 of audio. Keep line lengths short and singable (4-10 words per line).
+CRITICAL LENGTH WINDOW: Write between 250 and 380 words of sung lyrics — this is a hard window, not a suggestion.
+- Fewer than 250 words produces an unacceptably short song.
+- MORE THAN 380 WORDS IS JUST AS BAD: the singer is forced to cram syllables, which produces rushed, half-rapped phrasing and unstable vocals (wrong gender, accidental duets). NEVER exceed 400 words.
+- Do NOT repeat every chorus in full if it pushes you over the window; the repeated [Chorus] and [Final Chorus] should reuse the SAME 4-6 lines, not new ones.
+- Do NOT write more than 3 verses. Do NOT stack extra lines onto verses to fit in more detail — SELECT the 3-4 strongest details from the customer's input and leave the rest out.
+Target 3:00-3:30 of audio. Keep line lengths short and singable (4-10 words per line).
 
 # Genre Vibes
 - Pop/Acoustic: Emotional clarity, intimate
@@ -354,7 +359,7 @@ Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
 - Mention the RecipientName 3-7 times naturally.
 - Make it wholesome and heartfelt.
-- CRITICAL: Write at least 250 words of lyrics to ensure the song is at least 3 minutes long. Do NOT write a short song.`;
+- CRITICAL LENGTH: between 250 and 380 words of sung lyrics. Never fewer than 250, never more than 400. Reuse the same chorus lines on each repeat, max 3 verses.`;
 
     console.log(`[LYRICS] Calling Gemini API, prompt length: ${userPrompt.length} chars, language: ${languageCode}`);
 
@@ -424,7 +429,7 @@ Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
 - Mention the RecipientName 3-7 times naturally.
 - Make it wholesome and heartfelt.
-- CRITICAL: Write at least 250 words of lyrics to ensure the song is at least 3 minutes long. Do NOT write a short song.`;
+- CRITICAL LENGTH: between 250 and 380 words of sung lyrics. Never fewer than 250, never more than 400. Reuse the same chorus lines on each repeat, max 3 verses.`;
 
       const attempt2Result = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, retryUserPrompt);
       
@@ -496,19 +501,51 @@ Remember:
       );
     }
 
-    // Word count validation
-    const wordCount = finalLyrics.split(/\s+/).filter((w: string) => w.length > 0).length;
+    // ===== Word count validation (both floor AND ceiling) =====
+    // Ceiling matters as much as the floor: >400 words forces Suno to cram
+    // syllables, which produces rushed / half-rapped phrasing and unstable
+    // vocals (wrong gender, accidental duets). See order D205840E.
+    const LYRICS_MIN_WORDS = 200;
+    const LYRICS_MAX_WORDS = 400;
+    const LYRICS_TARGET_MAX = 360;
+
+    const countWords = (s: string) => s.split(/\s+/).filter((w: string) => w.length > 0).length;
+    const wordCount = countWords(finalLyrics);
     console.log(`[LYRICS] Final lyrics word count: ${wordCount}`);
 
-    if (wordCount < 200) {
+    if (wordCount < LYRICS_MIN_WORDS) {
       console.log(`[LYRICS] ⚠️ Lyrics too short (${wordCount} words), requesting extension`);
-      const extensionPrompt = `The following song lyrics are too short (${wordCount} words). A 3-minute song needs at least 250 words. Add one more verse and extend the bridge to bring the total above 250 words. Keep the same style, tone, and theme. Output the COMPLETE extended lyrics with all sections:\n\n${finalLyrics}`;
+      const extensionPrompt = `The following song lyrics are too short (${wordCount} words). A 3-minute song needs at least 250 words. Add one more verse and extend the bridge to bring the total above 250 words (never exceed 380). Keep the same style, tone, and theme. Output the COMPLETE extended lyrics with all sections:\n\n${finalLyrics}`;
       const extensionResult = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, extensionPrompt);
       if (!extensionResult.error && extensionResult.lyrics) {
-        const extWordCount = extensionResult.lyrics.split(/\s+/).filter((w: string) => w.length > 0).length;
+        const extWordCount = countWords(extensionResult.lyrics);
         console.log(`[LYRICS] Extension result: ${extWordCount} words (was ${wordCount})`);
-        if (extWordCount > wordCount) {
+        if (extWordCount > wordCount && extWordCount <= LYRICS_MAX_WORDS) {
           finalLyrics = extensionResult.lyrics;
+        }
+      }
+    } else if (wordCount > LYRICS_MAX_WORDS) {
+      console.log(`[LYRICS] ⚠️ Lyrics too LONG (${wordCount} words), requesting condense pass`);
+      const condensePrompt = `The following song lyrics are TOO LONG (${wordCount} words). Over 400 words forces the singer to cram syllables, which produces rushed, half-rapped phrasing and unstable vocals. Condense them to between 280 and ${LYRICS_TARGET_MAX} words while keeping the SAME structure, emotional meaning, names, and specific personal details that carry the most weight.
+
+Rules for condensing:
+- Keep the section tags exactly: [Intro], [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], [Final Chorus], [Outro].
+- The repeated [Chorus] and [Final Chorus] must reuse the SAME lines as the first chorus — do not write new chorus lines.
+- Keep a maximum of 3 verses, 4-6 short lines each (4-10 words per line).
+- Cut list-like pile-ups of details; keep the 3-4 strongest, most specific ones.
+- Keep the recipient's name and any pronunciation exactly as written.
+- Do NOT add anything new. Do NOT change the language.
+
+Output ONLY the complete condensed lyrics:\n\n${finalLyrics}`;
+      const condenseResult = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, condensePrompt);
+      if (!condenseResult.error && condenseResult.lyrics) {
+        const condWordCount = countWords(condenseResult.lyrics);
+        console.log(`[LYRICS] Condense result: ${condWordCount} words (was ${wordCount})`);
+        // Only accept if it actually got shorter and didn't collapse below the floor.
+        if (condWordCount < wordCount && condWordCount >= 240) {
+          finalLyrics = condenseResult.lyrics;
+        } else {
+          console.log(`[LYRICS] Condense rejected (${condWordCount} words) — keeping original`);
         }
       }
     }
