@@ -774,6 +774,15 @@ Deno.serve(async (req) => {
         const billingCountryCode: string | null =
           session.customer_details?.address?.country ?? null;
 
+        // Passive annotation only: never block order creation on this.
+        let leadPromoCode: string | null = null;
+        try {
+          const raw = metadata.additionalPromoCode ?? metadata.promoCode;
+          if (raw && typeof raw === "string" && raw.trim()) leadPromoCode = raw.trim().toUpperCase();
+        } catch (_e) { leadPromoCode = null; }
+
+
+
         // Create order with ALL fields from the lead (mirrors process-lead-payment)
         const { data: leadOrder, error: leadInsertError } = await supabase
           .from("orders")
