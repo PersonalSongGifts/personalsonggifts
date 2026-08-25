@@ -359,7 +359,7 @@ Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
 - Mention the RecipientName 3-7 times naturally.
 - Make it wholesome and heartfelt.
-- CRITICAL: Write at least 250 words of lyrics to ensure the song is at least 3 minutes long. Do NOT write a short song.`;
+- CRITICAL LENGTH: between 250 and 380 words of sung lyrics. Never fewer than 250, never more than 400. Reuse the same chorus lines on each repeat, max 3 verses.`;
 
     console.log(`[LYRICS] Calling Gemini API, prompt length: ${userPrompt.length} chars, language: ${languageCode}`);
 
@@ -429,7 +429,7 @@ Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
 - Mention the RecipientName 3-7 times naturally.
 - Make it wholesome and heartfelt.
-- CRITICAL: Write at least 250 words of lyrics to ensure the song is at least 3 minutes long. Do NOT write a short song.`;
+- CRITICAL LENGTH: between 250 and 380 words of sung lyrics. Never fewer than 250, never more than 400. Reuse the same chorus lines on each repeat, max 3 verses.`;
 
       const attempt2Result = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, retryUserPrompt);
       
