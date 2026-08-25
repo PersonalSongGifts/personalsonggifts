@@ -823,6 +823,7 @@ Deno.serve(async (req) => {
             delivered_at: lead.full_song_url ? new Date().toISOString() : null,
             billing_country_code: billingCountryCode ? billingCountryCode.toUpperCase() : null,
             billing_country_name: billingCountryCode ? (COUNTRY_NAMES[billingCountryCode.toUpperCase()] ?? billingCountryCode.toUpperCase()) : null,
+            promo_code: leadPromoCode,
           })
           .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents, revision_token")
           .single();
