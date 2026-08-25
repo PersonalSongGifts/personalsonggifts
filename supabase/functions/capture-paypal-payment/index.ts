@@ -392,6 +392,13 @@ Deno.serve(async (req) => {
         timezone: metadata.timezone || null,
         ...addonUnlockFields,
         ...rushFields,
+        // Passive annotation only: never block order creation on this.
+        promo_code: (() => {
+          try {
+            const raw = metadata.additionalPromoCode ?? metadata.promoCode;
+            return raw && typeof raw === "string" && raw.trim() ? raw.trim().toUpperCase() : null;
+          } catch (_e) { return null; }
+        })(),
       })
       .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, price_cents, revision_token")
       .single();
