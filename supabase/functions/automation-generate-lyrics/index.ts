@@ -501,19 +501,51 @@ Remember:
       );
     }
 
-    // Word count validation
-    const wordCount = finalLyrics.split(/\s+/).filter((w: string) => w.length > 0).length;
+    // ===== Word count validation (both floor AND ceiling) =====
+    // Ceiling matters as much as the floor: >400 words forces Suno to cram
+    // syllables, which produces rushed / half-rapped phrasing and unstable
+    // vocals (wrong gender, accidental duets). See order D205840E.
+    const LYRICS_MIN_WORDS = 200;
+    const LYRICS_MAX_WORDS = 400;
+    const LYRICS_TARGET_MAX = 360;
+
+    const countWords = (s: string) => s.split(/\s+/).filter((w: string) => w.length > 0).length;
+    const wordCount = countWords(finalLyrics);
     console.log(`[LYRICS] Final lyrics word count: ${wordCount}`);
 
-    if (wordCount < 200) {
+    if (wordCount < LYRICS_MIN_WORDS) {
       console.log(`[LYRICS] ⚠️ Lyrics too short (${wordCount} words), requesting extension`);
-      const extensionPrompt = `The following song lyrics are too short (${wordCount} words). A 3-minute song needs at least 250 words. Add one more verse and extend the bridge to bring the total above 250 words. Keep the same style, tone, and theme. Output the COMPLETE extended lyrics with all sections:\n\n${finalLyrics}`;
+      const extensionPrompt = `The following song lyrics are too short (${wordCount} words). A 3-minute song needs at least 250 words. Add one more verse and extend the bridge to bring the total above 250 words (never exceed 380). Keep the same style, tone, and theme. Output the COMPLETE extended lyrics with all sections:\n\n${finalLyrics}`;
       const extensionResult = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, extensionPrompt);
       if (!extensionResult.error && extensionResult.lyrics) {
-        const extWordCount = extensionResult.lyrics.split(/\s+/).filter((w: string) => w.length > 0).length;
+        const extWordCount = countWords(extensionResult.lyrics);
         console.log(`[LYRICS] Extension result: ${extWordCount} words (was ${wordCount})`);
-        if (extWordCount > wordCount) {
+        if (extWordCount > wordCount && extWordCount <= LYRICS_MAX_WORDS) {
           finalLyrics = extensionResult.lyrics;
+        }
+      }
+    } else if (wordCount > LYRICS_MAX_WORDS) {
+      console.log(`[LYRICS] ⚠️ Lyrics too LONG (${wordCount} words), requesting condense pass`);
+      const condensePrompt = `The following song lyrics are TOO LONG (${wordCount} words). Over 400 words forces the singer to cram syllables, which produces rushed, half-rapped phrasing and unstable vocals. Condense them to between 280 and ${LYRICS_TARGET_MAX} words while keeping the SAME structure, emotional meaning, names, and specific personal details that carry the most weight.
+
+Rules for condensing:
+- Keep the section tags exactly: [Intro], [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], [Final Chorus], [Outro].
+- The repeated [Chorus] and [Final Chorus] must reuse the SAME lines as the first chorus — do not write new chorus lines.
+- Keep a maximum of 3 verses, 4-6 short lines each (4-10 words per line).
+- Cut list-like pile-ups of details; keep the 3-4 strongest, most specific ones.
+- Keep the recipient's name and any pronunciation exactly as written.
+- Do NOT add anything new. Do NOT change the language.
+
+Output ONLY the complete condensed lyrics:\n\n${finalLyrics}`;
+      const condenseResult = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, condensePrompt);
+      if (!condenseResult.error && condenseResult.lyrics) {
+        const condWordCount = countWords(condenseResult.lyrics);
+        console.log(`[LYRICS] Condense result: ${condWordCount} words (was ${wordCount})`);
+        // Only accept if it actually got shorter and didn't collapse below the floor.
+        if (condWordCount < wordCount && condWordCount >= 240) {
+          finalLyrics = condenseResult.lyrics;
+        } else {
+          console.log(`[LYRICS] Condense rejected (${condWordCount} words) — keeping original`);
         }
       }
     }
