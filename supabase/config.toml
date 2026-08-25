@@ -143,3 +143,5 @@ verify_jwt = false
 
 [functions.backfill-stripe-reconciliation]
 verify_jwt = false
+[functions.admin-promo-codes]
+verify_jwt = false
