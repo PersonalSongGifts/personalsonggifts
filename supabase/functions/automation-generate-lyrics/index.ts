@@ -37,7 +37,12 @@ Always write lyrics in this structure:
 7. [Final Chorus] - strongest/biggest
 8. [Outro] - 1-4 short lines
 
-CRITICAL DURATION REQUIREMENT: The song MUST have enough lyrics for at least 3 minutes of audio. A typical 3-minute song needs 250-350 words of sung lyrics. Do NOT write fewer words — short lyrics produce unacceptably short songs. If in doubt, add an extra verse or extend the bridge. Target 3:00-3:30 of audio. Keep line lengths short and singable (4-10 words per line).
+CRITICAL LENGTH WINDOW: Write between 250 and 380 words of sung lyrics — this is a hard window, not a suggestion.
+- Fewer than 250 words produces an unacceptably short song.
+- MORE THAN 380 WORDS IS JUST AS BAD: the singer is forced to cram syllables, which produces rushed, half-rapped phrasing and unstable vocals (wrong gender, accidental duets). NEVER exceed 400 words.
+- Do NOT repeat every chorus in full if it pushes you over the window; the repeated [Chorus] and [Final Chorus] should reuse the SAME 4-6 lines, not new ones.
+- Do NOT write more than 3 verses. Do NOT stack extra lines onto verses to fit in more detail — SELECT the 3-4 strongest details from the customer's input and leave the rest out.
+Target 3:00-3:30 of audio. Keep line lengths short and singable (4-10 words per line).
 
 # Genre Vibes
 - Pop/Acoustic: Emotional clarity, intimate
