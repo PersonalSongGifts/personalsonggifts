@@ -1125,6 +1125,7 @@ Deno.serve(async (req) => {
           ...rushFields,
           billing_country_code: billingCountryCode ? billingCountryCode.toUpperCase() : null,
           billing_country_name: billingCountryCode ? (COUNTRY_NAMES[billingCountryCode.toUpperCase()] ?? billingCountryCode.toUpperCase()) : null,
+          promo_code: orderPromoCode,
         })
         .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, expected_delivery, revision_token")
         .single();
