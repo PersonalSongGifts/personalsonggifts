@@ -17,6 +17,7 @@ const TEST_CODES: Record<string, number> = {
   "INFLCR-GLOW-9M": 100,
   "INFLCR-RISE-5Q": 100,
   "ADMINTEST99": 99,
+  "JJJACOB_07": 100,
 };
 
 // Codes with a usage limit tracked in admin_settings
@@ -26,6 +27,7 @@ const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = 
   "INFLCR-WAVE-3K": { maxUses: 1, settingsKey: "inflcr_wave_3k_usage_count" },
   "INFLCR-GLOW-9M": { maxUses: 1, settingsKey: "inflcr_glow_9m_usage_count" },
   "INFLCR-RISE-5Q": { maxUses: 1, settingsKey: "inflcr_rise_5q_usage_count" },
+  "JJJACOB_07": { maxUses: 1, settingsKey: "jjjacob_07_usage_count" },
 };
 
 async function lookupCouponForPromoCode(stripe: Stripe, rawCode: string): Promise<{ coupon: Stripe.Coupon; code: string } | null> {

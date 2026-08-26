@@ -44,6 +44,7 @@ const FREE_TEST_CODES: Record<string, boolean> = {
   "INFLCR-WAVE-3K": true,
   "INFLCR-GLOW-9M": true,
   "INFLCR-RISE-5Q": true,
+  "JJJACOB_07": true,
 };
 
 // Hardcoded discount codes that go through real payment (not free)
@@ -58,6 +59,7 @@ const LIMITED_CODES: Record<string, { maxUses: number; settingsKey: string }> = 
   "INFLCR-WAVE-3K": { maxUses: 1, settingsKey: "inflcr_wave_3k_usage_count" },
   "INFLCR-GLOW-9M": { maxUses: 1, settingsKey: "inflcr_glow_9m_usage_count" },
   "INFLCR-RISE-5Q": { maxUses: 1, settingsKey: "inflcr_rise_5q_usage_count" },
+  "JJJACOB_07": { maxUses: 1, settingsKey: "jjjacob_07_usage_count" },
 };
 
 // Base prices in cents (LEGACY — priority still uses this + seasonal halving)
