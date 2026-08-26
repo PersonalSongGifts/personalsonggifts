@@ -513,16 +513,6 @@ export default function SongPreview() {
             </div>
           )}
 
-          {isFollowup && !isVday10 && (
-            <div className="bg-accent/10 border border-accent rounded-lg p-4 text-center">
-              <Badge className="bg-accent text-accent-foreground mb-2">
-                $10 off — already applied
-              </Badge>
-              <p className="text-sm">
-                $10 off — no code needed, it's already applied!
-              </p>
-            </div>
-          )}
 
           <Card
             className={`cursor-pointer hover:shadow-lg transition-shadow border-2 max-w-md mx-auto ${isVday10 ? "hover:border-pink-500" : "hover:border-primary"}`}
