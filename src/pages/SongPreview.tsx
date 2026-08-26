@@ -380,12 +380,12 @@ export default function SongPreview() {
   // Compute the displayed default price (when no flash promo applies):
   // pick the cheaper of the configured default ladder and any active sitewide promo.
   const baseDefaultCents = isVday10 && isFollowup
-    ? 2999
+    ? 2900
     : isVday10
-    ? 3999
+    ? 2900
     : isFollowup
-    ? 3999
-    : 4999;
+    ? 2900
+    : 2900;
   const effectiveDefaultCents = sitewideLeadCents !== null
     ? Math.min(baseDefaultCents, sitewideLeadCents)
     : baseDefaultCents;
@@ -566,20 +566,20 @@ export default function SongPreview() {
             </CardContent>
           </Card>
 
-          {/* Promo Badge */}
-          <div className="text-center">
-            <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
-              {flashShowPrice
-                ? "⏳ 72-hour flash sale — act now"
-                : isVday10
-                ? isFollowup
-                  ? "Valentine's Day Special + $10 off"
-                  : "Valentine's Day Special"
-                : isFollowup
-                ? "$10 off — already applied"
-                : "50% Off Auto-Applied"}
-            </Badge>
-          </div>
+          {/* Promo Badge — only render when a real promo (flash or Valentine's/vday10) is active */}
+          {(flashShowPrice || isVday10) && (
+            <div className="text-center">
+              <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
+                {flashShowPrice
+                  ? "⏳ 72-hour flash sale — act now"
+                  : isVday10
+                  ? isFollowup
+                    ? "Valentine's Day Special + $10 off"
+                    : "Valentine's Day Special"
+                  : ""}
+              </Badge>
+            </div>
+          )}
         </div>
 
         {/* Trust Elements */}
