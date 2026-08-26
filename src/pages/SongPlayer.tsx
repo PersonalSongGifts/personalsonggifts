@@ -960,22 +960,39 @@ const SongPlayer = () => {
         </Card>
 
         {/* Action Buttons */}
+        {songData.download_unlocked ? (
+          <div className="flex justify-center mb-4">
+            <Button
+              size="lg"
+              onClick={downloadSong}
+              disabled={downloadLoading}
+              className="w-full sm:w-auto sm:min-w-[320px] gap-2 bg-green-600 hover:bg-green-700 text-white dark:bg-green-600 dark:hover:bg-green-500 dark:text-white"
+            >
+              {downloadLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Download Your Song (MP3)
+            </Button>
+          </div>
+        ) : null}
         <div className="flex justify-center gap-3 mb-8 flex-wrap">
-          <Button
-            variant={songData.download_unlocked ? "outline" : "default"}
-            onClick={downloadSong}
-            disabled={downloadLoading}
-            className="gap-2"
-          >
-            {downloadLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : songData.download_unlocked ? (
-              <Download className="h-4 w-4" />
-            ) : (
-              <Lock className="h-4 w-4" />
-            )}
-            {songData.download_unlocked ? "Download" : "Download Song + Unlimited Commercial Rights & Usage — $19.99 USD"}
-          </Button>
+          {!songData.download_unlocked && (
+            <Button
+              variant="default"
+              onClick={downloadSong}
+              disabled={downloadLoading}
+              className="gap-2"
+            >
+              {downloadLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Lock className="h-4 w-4" />
+              )}
+              Download Song + Unlimited Commercial Rights & Usage — $19.99 USD
+            </Button>
+          )}
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
