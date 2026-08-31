@@ -3,8 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil, Gift, Zap } from "lucide-react";
+import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil, Zap } from "lucide-react";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
@@ -44,10 +43,6 @@ const PaymentSuccess = () => {
   // Blocker #1: the main payment lookup must run exactly once per mount.
   // Without this, changes to memoized callbacks re-fire the effect indefinitely.
   const didRunMainEffectRef = useRef(false);
-  // Guard rush pixel double-firing when a return-trip verify has also fired it.
-  const rushSessionOnMount = useRef<string | null>(
-    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("rush_session_id") : null,
-  );
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,43 +51,18 @@ const PaymentSuccess = () => {
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isLeadConversion, setIsLeadConversion] = useState(false);
   const [showProcessingMessage, setShowProcessingMessage] = useState(false);
-  const [pkgLoading, setPkgLoading] = useState(false);
   const [pkgAdded, setPkgAdded] = useState(false);
-  const [pkgCode, setPkgCode] = useState("");
-  const [showPkgCode, setShowPkgCode] = useState(false);
-  const [pkgError, setPkgError] = useState<string | null>(null);
   const [pkgConfirming, setPkgConfirming] = useState(false);
   const [pkgVerifyFailed, setPkgVerifyFailed] = useState(false);
-  const [pkgDeclined, setPkgDeclined] = useState(false);
-  const [rushLoading, setRushLoading] = useState(false);
   const [rushAdded, setRushAdded] = useState(false);
-  const [rushError, setRushError] = useState<string | null>(null);
   const [rushConfirming, setRushConfirming] = useState(false);
   const [rushVerifyFailed, setRushVerifyFailed] = useState(false);
-  const [rushDeclined, setRushDeclined] = useState(false);
   const [rushRefunded, setRushRefunded] = useState(false);
   const [rushRefundOk, setRushRefundOk] = useState<boolean | null>(null);
   // Add-on amounts captured via post-purchase verify (so Price paid reflects them).
   const [pkgVerifiedAmountCents, setPkgVerifiedAmountCents] = useState<number>(0);
   const [rushVerifiedAmountCents, setRushVerifiedAmountCents] = useState<number>(0);
 
-  // Persist package decline per-order so a return trip from Stripe doesn't re-pitch.
-  useEffect(() => {
-    if (!orderDetails?.orderId) return;
-    try {
-      if (sessionStorage.getItem(`psg_pkg_declined_${orderDetails.orderId}`)) {
-        setPkgDeclined(true);
-      }
-    } catch { /* ignore */ }
-  }, [orderDetails?.orderId]);
-  const persistPkgDecline = () => {
-    setPkgDeclined(true);
-    try {
-      if (orderDetails?.orderId) {
-        sessionStorage.setItem(`psg_pkg_declined_${orderDetails.orderId}`, "1");
-      }
-    } catch { /* ignore */ }
-  };
 
   const trackAddonPurchase = useCallback((
     kind: "pkg" | "rush",
@@ -204,58 +174,6 @@ const PaymentSuccess = () => {
     hasTrackedPurchase.current = true;
     try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
   }, [sessionId, paypalToken, trackMetaEvent, trackGAEvent, trackTikTokEvent]);
-
-  const handleAddPackage = async () => {
-    if (!orderDetails?.orderId) return;
-    setPkgLoading(true);
-    setPkgError(null);
-    try {
-      const returnPath = window.location.pathname + window.location.search;
-      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-package-checkout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: orderDetails.orderId, returnPath, promoCode: pkgCode.trim() || undefined }),
-      });
-      const data = await r.json();
-      if (data.alreadyUnlocked) { setPkgAdded(true); return; }
-      if (data.url) { window.location.href = data.url; return; }
-      setPkgError(data.error || "Something went wrong. Please try again.");
-      console.error("Package checkout failed:", data.error);
-    } catch (e) {
-      console.error("Package checkout error:", e);
-      setPkgError("Network error. Please try again.");
-    } finally {
-      setPkgLoading(false);
-    }
-  };
-
-  const handleAddRush = async () => {
-    if (!orderDetails?.orderId) return;
-    setRushLoading(true);
-    setRushError(null);
-    try {
-      const returnPath = window.location.pathname + window.location.search;
-      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-rush-upgrade`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: orderDetails.orderId, returnPath }),
-      });
-      const data = await r.json();
-      if (data.alreadyRush) {
-        setRushAdded(true);
-        setOrderDetails(prev => prev ? { ...prev, rush_addon: true } : prev);
-        return;
-      }
-      if (data.url) { window.location.href = data.url; return; }
-      setRushError(data.error || "Something went wrong. Please try again.");
-      console.error("Rush upgrade failed:", data.error);
-    } catch (e) {
-      console.error("Rush upgrade error:", e);
-      setRushError("Network error. Please try again.");
-    } finally {
-      setRushLoading(false);
-    }
-  };
 
   useEffect(() => {
     if (!sessionId && !paypalToken) {
@@ -672,7 +590,7 @@ const PaymentSuccess = () => {
   const deliveryTime = isLeadConversion
     ? "Instant"
     : orderDetails.rush_addon
-      ? "1 hour"
+      ? "about 1 hour"
       : "24 hours";
   const expectedDate = orderDetails.expectedDelivery
     ? new Date(orderDetails.expectedDelivery)
@@ -682,15 +600,15 @@ const PaymentSuccess = () => {
   const NEAR_NOW_MS = 5 * 60 * 1000; // 5 minutes
   const showConcreteDate =
     !!expectedDate && expectedDate.getTime() > Date.now() + NEAR_NOW_MS;
-  const softDeliveryLabel = orderDetails.rush_addon ? "Within the hour" : "Shortly";
+  const softDeliveryLabel = orderDetails.rush_addon ? "Priority delivery" : "Shortly";
 
   // Delivery-speed label: derived from pricing_tier + rush_addon.
   // Lead conversions unlock the finished song immediately — must not read "Standard (24 hours)".
-  // New orders: Standard (24h) or Express (1h). Legacy priority-tier orders keep their label.
+  // New orders: Standard (24h) or Priority delivery (about 1h). Legacy priority-tier orders keep their label.
   const deliverySpeedLabel = isLeadConversion
     ? "Instant"
     : orderDetails.rush_addon
-      ? "Express (1 hour)"
+      ? "Priority delivery (about 1 hour)"
       : orderDetails.pricingTier === "priority"
         ? "Priority (24 hours)"
         : "Standard (24 hours)";
@@ -724,7 +642,7 @@ const PaymentSuccess = () => {
             {isLeadConversion ? (
               <>Your personalized song for <span className="text-foreground font-medium">{orderDetails.recipientName}</span> is now unlocked and ready to share!</>
             ) : (
-              <>We've received your order and our songwriters are getting started on your 
+              <>We've received your order and we&apos;re getting started on your
               personalized song for <span className="text-foreground font-medium">{orderDetails.recipientName}</span>.</>
             )}
           </p>
@@ -806,26 +724,17 @@ const PaymentSuccess = () => {
               {orderDetails.rush_addon && (
                 <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-primary">
                   <Zap className="h-3.5 w-3.5" />
-                  1-hour delivery active
+                  Priority delivery active
                 </p>
               )}
             </Card>
           )}
 
-          {/* Sequential post-purchase offers — bundle FIRST, then rush */}
+          {/* Included package confirmation and legacy rush-return handling. */}
           {orderDetails?.orderId && (() => {
-            const declineButton = (onClick: () => void, testId: string) => (
-              <button
-                type="button"
-                onClick={onClick}
-                data-testid={testId}
-                className="mt-4 text-sm text-muted-foreground hover:text-foreground underline underline-offset-2"
-              >
-                No thanks — maybe later
-              </button>
-            );
-
-            // ---------------- Card 1: Forever Memory Package ----------------
+            // This page confirms a package already included at checkout. New
+            // package offers live at checkout or on the song page after the
+            // alternate version is available for immediate fulfilment.
             let card1: JSX.Element | null = null;
             if (pkgConfirming && !pkgAdded) {
               card1 = (
@@ -845,8 +754,8 @@ const PaymentSuccess = () => {
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {isLeadConversion
-                      ? <>Your printable keepsake, custom album covers, full lyrics, download, and acoustic version are all waiting on {orderDetails.recipientName}'s song page right now.</>
-                      : <>Your printable keepsake, custom album covers, full lyrics, download, and acoustic version will all be waiting on {orderDetails.recipientName}'s song page when the song is ready.</>}
+                      ? <>Your printable keepsake, full lyrics, download, and included second version are ready on {orderDetails.recipientName}'s song page. You can add a photo there to create a custom cover.</>
+                      : <>Your printable keepsake, full lyrics, download, and custom-cover tools are included. The second version will appear on {orderDetails.recipientName}'s song page when it finishes.</>}
                   </p>
                 </Card>
               );
@@ -867,80 +776,10 @@ const PaymentSuccess = () => {
                   </p>
                 </Card>
               );
-            } else if (!pkgDeclined) {
-              card1 = (
-                <Card className="p-0 mb-6 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-900 text-xs font-semibold">
-                    <Clock className="h-3.5 w-3.5" />
-                    Limited-time offer — today only
-                  </div>
-                  <div className="p-6 text-center">
-                    <div className="flex items-center justify-center gap-2 mb-3">
-                      <Gift className="h-5 w-5 text-primary" />
-                      <h3 className="text-xl font-bold text-foreground">Forever Memory Package</h3>
-                    </div>
-                    <ul className="text-sm text-left max-w-sm mx-auto space-y-2 mb-4">
-                      <li className="flex items-start gap-2">
-                        <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                        <span className="text-muted-foreground">A frameable lyric keepsake with a QR code — scan to play the song anytime</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                        <span className="text-muted-foreground">Your photo turned into custom cover art for the song</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                        <span className="text-muted-foreground">A bonus version of the song in a second style</span>
-                      </li>
-                    </ul>
-                    <div className="flex items-baseline justify-center gap-2 mb-1">
-                      <span className="text-sm text-muted-foreground line-through">$37.00</span>
-                      <span className="text-3xl font-bold text-primary">$24.00</span>
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Save $13</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      {isLeadConversion
-                        ? <>Everything unlocks on {orderDetails.recipientName}'s song page — available right now.</>
-                        : <>Everything unlocks on {orderDetails.recipientName}'s song page as soon as the song is ready.</>}
-                    </p>
-                    <Button size="lg" disabled={pkgLoading} onClick={handleAddPackage} className="gap-2 w-full sm:w-auto">
-                      {pkgLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
-                      Complete the Gift
-                    </Button>
-                    <div className="mt-3">
-                      {!showPkgCode ? (
-                        <button
-                          type="button"
-                          onClick={() => setShowPkgCode(true)}
-                          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-                        >
-                          Have a promo code?
-                        </button>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1">
-                          <Input
-                            value={pkgCode}
-                            onChange={(e) => { setPkgCode(e.target.value); if (pkgError) setPkgError(null); }}
-                            placeholder="Promo code"
-                            className="max-w-[200px] text-center"
-                          />
-                          {pkgError && <p className="text-xs text-red-600">{pkgError}</p>}
-                        </div>
-                      )}
-                    </div>
-                    {declineButton(persistPkgDecline, "decline-package")}
-                  </div>
-                </Card>
-              );
             }
 
-            // Card 2 gate. Confirmation/refund/verify states must render regardless of
-            // whether rush is now on the order (return-trip: rush_addon flipped true).
-            const pkgResolved = pkgAdded || pkgDeclined || pkgVerifyFailed;
-            const rushAlreadyDone = orderDetails.rush_addon === true;
-            const rushHasFeedbackState = rushConfirming || rushAdded || rushVerifyFailed || rushRefunded;
-            const rushOfferEligible = !isLeadConversion && !rushAlreadyDone && !rushHasFeedbackState;
-
+            // Existing $6.99 sessions may still return from Stripe. Confirm
+            // those safely, but never show a new discounted rush offer here.
             let card2: JSX.Element | null = null;
             if (rushRefunded) {
               card2 = (
@@ -955,80 +794,42 @@ const PaymentSuccess = () => {
                   </p>
                 </Card>
               );
-            } else if (pkgResolved && (rushOfferEligible || rushHasFeedbackState)) {
-              if (rushConfirming && !rushAdded) {
-                card2 = (
-                  <Card className="p-6 mb-6 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                      <p className="text-sm text-muted-foreground">Locking in 1-hour delivery…</p>
-                    </div>
-                  </Card>
-                );
-              } else if (rushAdded) {
-                card2 = (
-                  <Card className="p-6 mb-6 text-center border-primary/40 bg-primary/5">
-                    <div className="flex items-center justify-center gap-2 mb-1">
-                      <Check className="h-5 w-5 text-primary" />
-                      <h3 className="font-semibold text-foreground">1-hour delivery locked in ✓</h3>
-                    </div>
-                    <p className="text-sm text-muted-foreground">Your song will arrive within the hour.</p>
-                  </Card>
-                );
-              } else if (rushVerifyFailed) {
-                card2 = (
-                  <Card className="p-6 mb-6 text-center">
-                    <div className="flex items-center justify-center gap-2 mb-2">
-                      <Loader2 className="h-5 w-5 text-primary" />
-                      <h3 className="font-semibold text-foreground">We're confirming your rush upgrade</h3>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      If you just completed the checkout, you're all set and don't need
-                      to buy again. This can take a minute — refresh shortly, or email{" "}
-                      <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
-                        support@personalsonggifts.com
-                      </a>{" "}
-                      if it doesn't update.
-                    </p>
-                  </Card>
-                );
-              } else if (rushOfferEligible && !rushDeclined) {
-                card2 = (
-                  <Card className="p-6 mb-6 text-center bg-neutral-900 text-neutral-100 border-neutral-800">
-                    <div className="flex items-center justify-center gap-2 mb-3">
-                      <Zap className="h-5 w-5 text-amber-400" />
-                      <h3 className="text-xl font-bold">Guarantee 1-Hour Delivery</h3>
-                    </div>
-                    <p className="text-sm text-neutral-300 mb-4">
-                      Orders are filling up fast — lock in delivery within the hour.
-                    </p>
-                    <div className="flex items-baseline justify-center gap-2 mb-4">
-                      <span className="text-sm text-neutral-400 line-through">$10.00</span>
-                      <span className="text-3xl font-bold">$6.99</span>
-                    </div>
-                    <Button
-                      size="lg"
-                      disabled={rushLoading}
-                      onClick={handleAddRush}
-                      className="gap-2 w-full sm:w-auto bg-amber-400 hover:bg-amber-300 text-neutral-900"
-                    >
-                      {rushLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                      Lock in 1-Hour Delivery
-                    </Button>
-                    {rushError && <p className="text-xs text-red-300 mt-2">{rushError}</p>}
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => setRushDeclined(true)}
-                        data-testid="decline-rush"
-                        className="mt-4 text-sm text-neutral-400 hover:text-neutral-200 underline underline-offset-2"
-                      >
-                        No thanks — maybe later
-                      </button>
-                    </div>
-                  </Card>
-                );
-              }
+            } else if (rushConfirming && !rushAdded) {
+              card2 = (
+                <Card className="p-6 mb-6 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Confirming priority delivery…</p>
+                  </div>
+                </Card>
+              );
+            } else if (rushAdded) {
+              card2 = (
+                <Card className="p-6 mb-6 text-center border-primary/40 bg-primary/5">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <Check className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Priority delivery added ✓</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Your order has been moved to the front of the queue.</p>
+                </Card>
+              );
+            } else if (rushVerifyFailed) {
+              card2 = (
+                <Card className="p-6 mb-6 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Loader2 className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">We're confirming your priority-delivery upgrade</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    If you just completed the checkout, you're all set and don't need
+                    to buy again. This can take a minute — refresh shortly, or email{" "}
+                    <a href="mailto:support@personalsonggifts.com" className="text-primary underline">
+                      support@personalsonggifts.com
+                    </a>{" "}
+                    if it doesn't update.
+                  </p>
+                </Card>
+              );
             }
 
             return (<>{card1}{card2}</>);
