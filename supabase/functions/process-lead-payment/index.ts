@@ -158,11 +158,18 @@ Deno.serve(async (req) => {
         package_price_cents: metadata.package_price_cents,
         offerPriceCents: metadata.offerPriceCents,
       });
+      await alertPaidLeadSessionBlocked(sessionId, String(lead.id), "Invalid lead checkout pricing", {
+        amount_total: session.amount_total,
+        forever_memory: metadata.forever_memory,
+        package_price_cents: metadata.package_price_cents,
+        offerPriceCents: metadata.offerPriceCents,
+      });
       return new Response(
         JSON.stringify({ error: "Invalid lead checkout pricing" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
     const priceCents = checkoutAmounts.baseCents;
     const price = Math.floor(priceCents / 100); // backward-compat integer dollars
 
