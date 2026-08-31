@@ -6,7 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const RUSH_UPGRADE_PRICE_CENTS = 699;
+// New rush purchases must match the $10 checkout add-on. Historical orders
+// keep their stored rush_price_cents and are never recomputed from this value.
+const RUSH_UPGRADE_PRICE_CENTS = 1000;
 
 const FREE_TEST_CODES: Record<string, boolean> = {
   "HYPERDRIVETEST": true,
@@ -143,8 +145,8 @@ Deno.serve(async (req) => {
         price_data: {
           currency: "usd",
           product_data: {
-            name: "1-Hour Express Delivery",
-            description: "Upgrade this order to arrive within 1 hour.",
+            name: "Priority Delivery (about 1 hour)",
+            description: "Prioritize this order; it is usually ready in about 1 hour.",
           },
           unit_amount: unitAmount,
         },

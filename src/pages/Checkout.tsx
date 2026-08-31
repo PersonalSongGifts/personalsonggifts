@@ -274,7 +274,7 @@ const Checkout = () => {
       currency: "USD",
       value,
       items: [{
-        item_name: rushSelected ? "Custom Song (Express)" : "Custom Song (Standard)",
+        item_name: rushSelected ? "Custom Song (Priority Delivery)" : "Custom Song (Standard)",
         item_category: formData.occasion,
         price: value,
         quantity: 1,
@@ -540,11 +540,10 @@ const Checkout = () => {
                   </div>
                   <div className="flex-1">
                     <div className="font-semibold text-foreground flex items-center gap-1.5">
-                      Express delivery
+                      Priority delivery
                       <Zap className="h-3.5 w-3.5 text-primary" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary px-1.5 py-0.5 rounded">guaranteed</span>
                     </div>
-                    <div className="text-xs text-muted-foreground">Ready within 1 hour</div>
+                    <div className="text-xs text-muted-foreground">Usually ready in about 1 hour</div>
                   </div>
                   <div className="text-sm font-semibold text-foreground">+{fmt(ADDON_PRICES_CENTS.rush)}</div>
                 </div>
@@ -664,7 +663,7 @@ const Checkout = () => {
                 <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                 <span className="text-foreground" data-testid="delivery-bullet">
                   {rushSelected ? (
-                    <>Delivered within 1 hour <Zap className="inline h-3.5 w-3.5 text-primary" /></>
+                    <>Priority delivery, usually ready in about 1 hour <Zap className="inline h-3.5 w-3.5 text-primary" /></>
                   ) : (
                     <>Delivered within 24 hours</>
                   )}
@@ -713,7 +712,7 @@ const Checkout = () => {
               )}
               {rushSelected && (
                 <div className="flex justify-between text-foreground">
-                  <span>Express delivery</span>
+                  <span>Priority delivery</span>
                   <span>{isFullyFreeCode ? <span className="text-primary font-medium">FREE</span> : fmt(rushChargeCents)}</span>
                 </div>
               )}
@@ -781,7 +780,7 @@ const Checkout = () => {
                 className="w-full text-center text-sm text-primary hover:underline flex items-center justify-center gap-1.5 py-1"
               >
                 <Zap className="h-3.5 w-3.5" />
-                Need it sooner? Get it in 1 hour for {fmt(ADDON_PRICES_CENTS.rush)} →
+                Need it sooner? Choose priority delivery — usually ready in about 1 hour for {fmt(ADDON_PRICES_CENTS.rush)} →
               </button>
             )}
           </div>

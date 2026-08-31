@@ -204,10 +204,15 @@ Deno.serve(async (req) => {
     const input: CheckoutInput = await req.json();
     const { pricingTier, formData, additionalPromoCode, promoSlug } = input;
 
-    // Validate tier
-    if (!["standard", "priority"].includes(pricingTier)) {
+    // The public checkout has one base product. Keep historical priority-tier
+    // orders readable elsewhere, but never let a stale client request create
+    // a new legacy-priced session.
+    if (pricingTier !== "standard") {
       return new Response(
-        JSON.stringify({ error: "Invalid pricing tier" }),
+        JSON.stringify({
+          error: "This older purchase option is no longer available. Please return to checkout.",
+          code: "LEGACY_TIER_UNAVAILABLE",
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -396,14 +401,14 @@ Deno.serve(async (req) => {
     // Rush Delivery add-on (standard tier only). Absent → no-op.
     const rushAddon = input.addons?.rush === true;
     const RUSH_PRICE_CENTS = 1000;
-    // Rush is allowed on any tier (standard or priority).
+    // Rush is an add-on to the current standard purchase flow.
     const rushCents = rushAddon ? (FREE_TEST_CODES[upperAdditional] ? 0 : RUSH_PRICE_CENTS) : 0;
     if (rushAddon) {
       metadata.rush = "true";
       metadata.rush_price_cents = String(rushCents);
     }
 
-    const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
+    const productName = "Custom Song";
 
     // Stripe rejects checkout sessions that include payment_intent_data when
     // the total is $0 (no PaymentIntent is created). Match create-package-checkout.
@@ -446,8 +451,8 @@ Deno.serve(async (req) => {
           price_data: {
             currency: "usd" as const,
             product_data: {
-              name: "Rush Delivery (1 hour)",
-              description: "Your song is produced and delivered within 1 hour.",
+              name: "Priority Delivery (about 1 hour)",
+              description: "Your song is prioritized and is usually ready in about 1 hour.",
             },
             unit_amount: rushCents,
           },
