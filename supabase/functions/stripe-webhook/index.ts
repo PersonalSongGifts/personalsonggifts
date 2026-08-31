@@ -11,6 +11,49 @@ function normalizeMatch(v?: string | null): string {
   return (v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+// Non-blocking operator alert for paid-but-blocked lead sessions. Fully
+// swallowed: a Brevo failure must never change the HTTP response or throw.
+async function alertPaidLeadSessionBlocked(
+  sessionId: string,
+  leadId: string,
+  failedCheck: string,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+    if (!brevoApiKey) return;
+    const senderEmail = Deno.env.get("BREVO_SENDER_EMAIL") || "support@personalsonggifts.com";
+    const senderName = Deno.env.get("BREVO_SENDER_NAME") || "Personal Song Gifts";
+    const body = [
+      `A paid lead checkout session was blocked before order creation.`,
+      ``,
+      `Failed check: ${failedCheck}`,
+      `Stripe session id: ${sessionId}`,
+      `Lead id: ${leadId}`,
+      details ? `Details: ${JSON.stringify(details)}` : "",
+      ``,
+      `The webhook returned 500 so Stripe will retry. If this alert repeats, a human needs to intervene.`,
+    ].filter(Boolean).join("\n");
+    await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "api-key": brevoApiKey,
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: "support@personalsonggifts.com", name: "Support" }],
+        subject: "ALERT: paid lead session blocked",
+        textContent: body,
+      }),
+    });
+  } catch (alertErr) {
+    console.error("[WEBHOOK] paid-lead-blocked alert failed (non-blocking):", alertErr);
+  }
+}
+
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
