@@ -173,6 +173,9 @@ interface Order {
   bonus_automation_status?: string | null;
   bonus_unlocked_at?: string | null;
   bonus_price_cents?: number | null;
+  // Forever Memory Package
+  package_unlocked_at?: string | null;
+  package_price_cents?: number | null;
 }
 
 const statusColors: Record<string, string> = {

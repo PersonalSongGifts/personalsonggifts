@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Play, Pause, Music, Lock, Check, Loader2, AlertCircle, Download } from "lucide-react";
+import { Play, Pause, Music, Lock, Check, Loader2, AlertCircle, Gift } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActivePromo } from "@/hooks/useActivePromo";
 
@@ -25,6 +25,7 @@ interface PreviewData {
   sitewidePromoSlug?: string | null;
   sitewidePromoLeadPriceCents?: number | null;
   sitewidePromoEndsAt?: string | null;
+  memoryPackageAvailable?: boolean;
   // Back-compat (older server response)
   flash20Eligible?: boolean;
   flash20Expired?: boolean;
@@ -47,6 +48,7 @@ export default function SongPreview() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(45);
   const [purchasing, setPurchasing] = useState(false);
+  const [packageSelected, setPackageSelected] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const hasTrackedPlay = useRef(false);
@@ -263,7 +265,7 @@ export default function SongPreview() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handlePurchase = async (tier: "standard" | "priority") => {
+  const handlePurchase = async () => {
     if (!token) return;
     
     setPurchasing(true);
@@ -281,9 +283,11 @@ export default function SongPreview() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             previewToken: token,
-            tier,
             applyFollowupDiscount: isFollowup,
             applyVday10Discount: isVday10,
+            addons: {
+              forever_memory: packageSelected,
+            },
             // Only send promoSlug when server confirmed eligibility for a targeted promo,
             // OR a non-targeted promo param is in URL (rare, legacy).
             promoSlug: eligibleSlug ?? (promoParam && promoParam !== "flash20" ? promoParam : undefined),
@@ -313,6 +317,14 @@ export default function SongPreview() {
           });
           await refetchPromo();
           setPurchasing(false);
+          return;
+        }
+        if (data.error === "package_not_ready") {
+          setPackageSelected(false);
+          toast({
+            title: "The package is still getting ready",
+            description: "Your full song is ready now. The extra version will be available on your song page once it finishes.",
+          });
           return;
         }
         throw new Error(data.error || "Failed to create checkout");
@@ -390,6 +402,8 @@ export default function SongPreview() {
     ? Math.min(baseDefaultCents, sitewideLeadCents)
     : baseDefaultCents;
   const formatUsd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+  const displayedBaseCents = flashShowPrice ? flashPriceCents! : effectiveDefaultCents;
+  const displayedTotalCents = displayedBaseCents + (packageSelected ? 2400 : 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
@@ -515,8 +529,7 @@ export default function SongPreview() {
 
 
           <Card
-            className={`cursor-pointer hover:shadow-lg transition-shadow border-2 max-w-md mx-auto ${isVday10 ? "hover:border-pink-500" : "hover:border-primary"}`}
-            onClick={() => handlePurchase("standard")}
+            className={`transition-shadow border-2 max-w-md mx-auto ${isVday10 ? "border-pink-300" : "border-primary/30"}`}
           >
             <CardContent className="p-6 text-center space-y-4">
               <div>
@@ -526,9 +539,7 @@ export default function SongPreview() {
                   </p>
                 )}
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
-                  {flashShowPrice
-                    ? `$${(flashPriceCents! / 100).toFixed(2)}`
-                    : formatUsd(effectiveDefaultCents)}
+                  {formatUsd(displayedBaseCents)}
                   <span className="text-sm font-normal text-muted-foreground ml-1">USD</span>
                 </p>
               </div>
@@ -550,8 +561,58 @@ export default function SongPreview() {
                   Share with anyone
                 </li>
               </ul>
-              <Button className={`w-full ${isVday10 ? "bg-pink-600 hover:bg-pink-700" : ""}`} size="lg" disabled={purchasing}>
-                {purchasing ? "Loading..." : "Get Full Song"}
+
+              {previewData.memoryPackageAvailable && (
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={packageSelected}
+                  onClick={() => setPackageSelected((selected) => !selected)}
+                  className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                    packageSelected
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      aria-hidden="true"
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${
+                        packageSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground"
+                      }`}
+                    >
+                      {packageSelected && <Check className="h-3 w-3" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-3 font-semibold text-foreground">
+                        <span className="flex items-center gap-1.5"><Gift className="h-4 w-4 text-primary" />Forever Memory Package</span>
+                        <span className="shrink-0 text-primary">+$24.00</span>
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        Printable lyric keepsake, a custom cover you create from your photo, full lyrics, and an included second version of the song.
+                      </span>
+                    </span>
+                  </div>
+                </button>
+              )}
+
+              {packageSelected && (
+                <p className="text-sm font-medium text-foreground">
+                  Today&apos;s total: {formatUsd(displayedTotalCents)}
+                </p>
+              )}
+
+              <Button
+                className={`w-full ${isVday10 ? "bg-pink-600 hover:bg-pink-700" : ""}`}
+                size="lg"
+                disabled={purchasing}
+                onClick={handlePurchase}
+              >
+                {purchasing
+                  ? "Loading..."
+                  : packageSelected
+                    ? `Get Full Song + Package — ${formatUsd(displayedTotalCents)}`
+                    : `Get Full Song — ${formatUsd(displayedBaseCents)}`}
               </Button>
             </CardContent>
           </Card>

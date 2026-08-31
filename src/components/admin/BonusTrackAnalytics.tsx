@@ -7,6 +7,8 @@ interface Order {
   bonus_preview_url?: string | null;
   bonus_unlocked_at?: string | null;
   bonus_price_cents?: number | null;
+  package_unlocked_at?: string | null;
+  package_price_cents?: number | null;
   bonus_automation_status?: string | null;
   bonus_play_count?: number | null;
   bonus_first_played_at?: string | null;
@@ -54,6 +56,9 @@ export function BonusTrackAnalytics({ orders }: BonusTrackAnalyticsProps) {
   );
   const failed = orders.filter(
     (o) => o.bonus_automation_status === "failed" || o.bonus_automation_status === "permanently_failed"
+  );
+  const paidPackagesMissingBonus = orders.filter(
+    (o) => !!o.package_unlocked_at && (o.package_price_cents ?? 0) > 0 && !o.bonus_song_url
   );
 
   return (
@@ -122,13 +127,18 @@ export function BonusTrackAnalytics({ orders }: BonusTrackAnalyticsProps) {
         </div>
 
         {/* Pipeline Status */}
-        {(inProgress.length > 0 || failed.length > 0) && (
+        {(inProgress.length > 0 || failed.length > 0 || paidPackagesMissingBonus.length > 0) && (
           <div className="flex items-center gap-3 text-sm">
             {inProgress.length > 0 && (
               <Badge variant="secondary">{inProgress.length} in progress</Badge>
             )}
             {failed.length > 0 && (
               <Badge variant="destructive">{failed.length} failed</Badge>
+            )}
+            {paidPackagesMissingBonus.length > 0 && (
+              <Badge variant="destructive">
+                {paidPackagesMissingBonus.length} paid package{paidPackagesMissingBonus.length === 1 ? "" : "s"} need bonus follow-up
+              </Badge>
             )}
           </div>
         )}

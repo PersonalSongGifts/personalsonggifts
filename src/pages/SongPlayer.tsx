@@ -78,6 +78,7 @@ interface SongData {
   delivered_at?: string | null;
   download_unlocked: boolean;
   bonus_available?: boolean;
+  bonus_ready?: boolean;
   bonus_preview_url?: string | null;
   bonus_song_url?: string | null;
   bonus_song_title?: string | null;
@@ -1057,17 +1058,18 @@ const SongPlayer = () => {
           </p>
         )}
 
-        {/* --- Forever Memory Package (unlocked view always renders for paid customers; sell card is flag-gated) --- */}
+        {/* --- Forever Memory Package (only offered once its included bonus is ready) --- */}
         {(() => {
-          const flagEnabled =
-            import.meta.env.VITE_MEMORY_PACKAGE_ENABLED === "true" ||
-            searchParams.get("preview") === "1";
           if (!orderId) return null;
 
           const unlocked = !!songData.package_unlocked;
+          const bonusReady = !!songData.bonus_ready;
+          const bonusNeedsAttention = ["failed", "permanently_failed"].includes(songData.bonus_status || "");
 
-          // Paid customers must always see what they own.
-          if (!unlocked && !flagEnabled) return null;
+          // Paid customers must always see what they own. Everyone else sees
+          // the offer only after the included second version is ready, so a
+          // package checkout can never create a new fulfilment obligation.
+          if (!unlocked && !bonusReady) return null;
 
           if (!unlocked) {
             return (
@@ -1096,72 +1098,75 @@ const SongPlayer = () => {
                       <span className="text-muted-foreground">Full lyrics + song download included</span>
                     </li>
                   </ul>
-                  <div className="flex items-baseline justify-center gap-2">
-                    <span className="text-sm text-muted-foreground line-through">$37.00</span>
-                    <span className="text-3xl font-bold text-primary">$24.00</span>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Save $13</span>
-                  </div>
-                  <Button
-                    size="lg"
-                    disabled={packageLoading}
-                    className="gap-2"
-                    onClick={async () => {
-                      setPackageLoading(true);
-                      setPkgError(null);
-                      try {
-                        const response = await fetch(
-                          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-package-checkout`,
-                          {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ orderId, promoCode: pkgCode.trim() || undefined }),
+                  {bonusReady ? (
+                    <>
+                      <p className="text-3xl font-bold text-primary">$24.00</p>
+                      <Button
+                        size="lg"
+                        disabled={packageLoading}
+                        className="gap-2"
+                        onClick={async () => {
+                          setPackageLoading(true);
+                          setPkgError(null);
+                          try {
+                            const response = await fetch(
+                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-package-checkout`,
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ orderId, promoCode: pkgCode.trim() || undefined }),
+                              }
+                            );
+                            const data = await response.json();
+                            if (data.alreadyUnlocked) {
+                              await fetchSongData();
+                              toast.success("Already unlocked!");
+                              return;
+                            }
+                            if (data.url) {
+                              window.location.href = data.url;
+                            } else {
+                              setPkgError(data.error || "Failed to start checkout");
+                            }
+                          } catch {
+                            setPkgError("Failed to start package checkout");
+                          } finally {
+                            setPackageLoading(false);
                           }
-                        );
-                        const data = await response.json();
-                        if (data.alreadyUnlocked) {
-                          await fetchSongData();
-                          toast.success("Already unlocked!");
-                          return;
-                        }
-                        if (data.url) {
-                          window.location.href = data.url;
-                        } else {
-                          setPkgError(data.error || "Failed to start checkout");
-                        }
-                      } catch {
-                        setPkgError("Failed to start package checkout");
-                      } finally {
-                        setPackageLoading(false);
-                      }
-                    }}
-                  >
-                    {packageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
-                    Unlock Everything — $24.00
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Bought separately, these run $44.97 — get them all for $24.00.
-                  </p>
-                  <div className="mt-1">
-                    {!showPkgCode ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowPkgCode(true)}
-                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                        }}
                       >
-                        Have a promo code?
-                      </button>
-                    ) : (
-                      <div className="flex flex-col items-center gap-1">
-                        <Input
-                          value={pkgCode}
-                          onChange={(e) => { setPkgCode(e.target.value); if (pkgError) setPkgError(null); }}
-                          placeholder="Promo code"
-                          className="max-w-[200px] text-center"
-                        />
-                        {pkgError && <p className="text-xs text-red-600">{pkgError}</p>}
+                        {packageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
+                        Unlock Everything — $24.00
+                      </Button>
+                      <div className="mt-1">
+                        {!showPkgCode ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowPkgCode(true)}
+                            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                          >
+                            Have a promo code?
+                          </button>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1">
+                            <Input
+                              value={pkgCode}
+                              onChange={(e) => { setPkgCode(e.target.value); if (pkgError) setPkgError(null); }}
+                              placeholder="Promo code"
+                              className="max-w-[200px] text-center"
+                            />
+                            {pkgError && <p className="text-xs text-red-600">{pkgError}</p>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {bonusNeedsAttention
+                        ? "The included second version needs a quick check before this package can be added. Please contact support with your order ID."
+                        : "The included second version is still being prepared. This package will be available once it appears on this song page."}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -1177,7 +1182,11 @@ const SongPlayer = () => {
                     <h2 className="text-2xl font-bold">Your Forever Memory</h2>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Everything in your package is ready.
+                    {bonusReady
+                      ? "Your lyrics, download, printable keepsake, and included second version are ready. Add a photo below whenever you are ready to create your cover."
+                      : bonusNeedsAttention
+                        ? "Your lyrics, download, and printable keepsake are ready. The included second version needs a quick check; please contact support with your order ID."
+                        : "Your lyrics, download, and printable keepsake are ready. Your included second version is still finishing and will appear here automatically. Add a photo below whenever you are ready to create your cover."}
                   </p>
                 </div>
 
@@ -1197,7 +1206,7 @@ const SongPlayer = () => {
                 <div>
                   <h3 className="font-semibold mb-2">Custom album cover from your photo</h3>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Upload a photo of the recipient; we'll style it into an album cover matched to the song's mood.
+                    Add a photo of the recipient to create a custom cover matched to the song's mood.
                   </p>
                   <AlbumCoverStudio
                     orderId={orderId}
