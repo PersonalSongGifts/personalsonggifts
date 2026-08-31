@@ -2301,7 +2301,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     }
 
     // ======= RUSH SLA BREACH ALERT (isolated & non-blocking) =======
-    // Rush orders promise delivery within 1 hour. Flag any that are >45 min old
+    // Priority-delivery orders target about one hour. Flag any that are >45 min old
     // without a delivery so a human can intervene. Fully wrapped so it can never
     // break generation or delivery.
     try {

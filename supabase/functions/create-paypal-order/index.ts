@@ -207,9 +207,14 @@ Deno.serve(async (req) => {
     const input: CheckoutInput = await req.json();
     const { pricingTier, formData, additionalPromoCode, promoSlug } = input;
 
-    if (!["standard", "priority"].includes(pricingTier)) {
+    // Match Stripe: only the current standard base product may create a new
+    // checkout. Historical priority-tier orders remain readable in Admin.
+    if (pricingTier !== "standard") {
       return new Response(
-        JSON.stringify({ error: "Invalid pricing tier" }),
+        JSON.stringify({
+          error: "This older purchase option is no longer available. Please return to checkout.",
+          code: "LEGACY_TIER_UNAVAILABLE",
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -339,12 +344,12 @@ Deno.serve(async (req) => {
     }
 
     const unitAmountDollars = (unitAmountCents / 100).toFixed(2);
-    const productName = pricingTier === "priority" ? "Priority Song" : "Standard Song";
+    const productName = "Custom Song";
 
-    // Add-ons: Forever Memory Package ($24) and 1-Hour Express rush ($10)
+    // Add-ons: Forever Memory Package ($24) and Priority Delivery ($10).
     const foreverMemory = input.addons?.forever_memory === true;
     const rushAddon = input.addons?.rush === true;
-    // Rush is allowed on any tier (standard or priority).
+    // Rush is an add-on to the current standard purchase flow.
     const PACKAGE_ADDON_PRICE_CENTS = 2400;
     const RUSH_PRICE_CENTS = 1000;
     const packageCents = foreverMemory ? (FREE_TEST_CODES[upperAdditional] ? 0 : PACKAGE_ADDON_PRICE_CENTS) : 0;
@@ -397,7 +402,7 @@ Deno.serve(async (req) => {
               currency_code: "USD",
               value: totalDollars,
             },
-            description: `${productName}${rushAddon ? " (1-Hour Express)" : ""} for ${formData.recipientName}${foreverMemory ? " + Forever Memory Package" : ""}`,
+            description: `${productName}${rushAddon ? " (Priority Delivery - about 1 hour)" : ""} for ${formData.recipientName}${foreverMemory ? " + Forever Memory Package" : ""}`,
           },
         ],
         application_context: {

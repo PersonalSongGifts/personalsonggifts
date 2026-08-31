@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     }
 
     const tierLabel = rushAddon
-      ? "Rush (1 hour)"
+      ? "Priority delivery (about 1 hour)"
       : (pricingTier === "priority" ? "Priority (24-hour)" : "Standard (24-hour)");
     const deliveryDate = new Date(expectedDelivery).toLocaleDateString("en-US", {
       weekday: "long",
@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
       timeZone: "America/New_York",
     });
     const deliveryLine = rushAddon
-      ? `${tierLabel} — within 1 hour`
+      ? `${tierLabel} — usually ready in about 1 hour`
       : `${tierLabel} — by ${deliveryDate}`;
 
     const messageId = `<${orderId}.${Date.now()}@personalsonggifts.com>`;
