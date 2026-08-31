@@ -7,6 +7,11 @@ import {
   shouldDispatchDelivery,
   isConvertedOrderMissingAssets,
 } from "../_shared/lead-conversion.ts";
+import {
+  buildLeadCheckoutAmounts,
+  hasReadyLeadBonus,
+  resolveLeadCheckoutAmounts,
+} from "../_shared/lead-checkout.ts";
 
 const FROZEN = new Date("2026-05-04T12:00:00.000Z");
 
@@ -76,6 +81,27 @@ Deno.test("prev_* snapshot fields are copied through", () => {
   assertEquals(patch!.prev_cover_image_url, withSnap.prev_cover_image_url);
 });
 
+Deno.test("ready lead bonus assets transfer with the converted order", () => {
+  const withBonus = {
+    ...fullLead,
+    bonus_song_url: "https://cdn.example/bonus.mp3",
+    bonus_preview_url: "https://cdn.example/bonus-preview.mp3",
+    bonus_song_title: "For Mom (Acoustic)",
+    bonus_cover_image_url: "https://cdn.example/bonus-cover.jpg",
+    bonus_style_prompt: "Acoustic",
+    bonus_automation_status: "completed",
+    bonus_automation_task_id: "task_bonus_123",
+  };
+  const patch = buildLeadAssetPatch(withBonus, FROZEN);
+  assertEquals(patch!.bonus_song_url, withBonus.bonus_song_url);
+  assertEquals(patch!.bonus_preview_url, withBonus.bonus_preview_url);
+  assertEquals(patch!.bonus_song_title, withBonus.bonus_song_title);
+  assertEquals(patch!.bonus_cover_image_url, withBonus.bonus_cover_image_url);
+  assertEquals(patch!.bonus_style_prompt, withBonus.bonus_style_prompt);
+  assertEquals(patch!.bonus_automation_status, "completed");
+  assertEquals(patch!.bonus_automation_task_id, "task_bonus_123");
+});
+
 Deno.test("when lead has no prev_*, fall back to live assets so Restore Previous Version always works", () => {
   // Regression for the bug where lead-converted orders had no prev_song_url
   // and the admin Restore button was hidden. The patch must seed prev_* with
@@ -103,4 +129,73 @@ Deno.test("monitor: converted order missing song_url is flagged", () => {
     isConvertedOrderMissingAssets({ status: "pending", song_url: null, automation_lyrics: null }),
     false,
   );
+});
+
+Deno.test("lead package pricing records the base song and package separately", () => {
+  assertEquals(buildLeadCheckoutAmounts(2900, false), {
+    baseCents: 2900,
+    packageCents: 0,
+    totalCents: 2900,
+    hasForeverMemory: false,
+  });
+  assertEquals(buildLeadCheckoutAmounts(2900, true), {
+    baseCents: 2900,
+    packageCents: 2400,
+    totalCents: 5300,
+    hasForeverMemory: true,
+  });
+  assertEquals(buildLeadCheckoutAmounts(1999, true), {
+    baseCents: 1999,
+    packageCents: 2400,
+    totalCents: 4399,
+    hasForeverMemory: true,
+  });
+});
+
+Deno.test("paid Stripe lead sessions resolve exact package ledger amounts", () => {
+  assertEquals(resolveLeadCheckoutAmounts(5300, {
+    offerPriceCents: "2900",
+    forever_memory: "true",
+    package_price_cents: "2400",
+  }), {
+    baseCents: 2900,
+    packageCents: 2400,
+    totalCents: 5300,
+    hasForeverMemory: true,
+  });
+  assertEquals(resolveLeadCheckoutAmounts(4399, {
+    offerPriceCents: "1999",
+    forever_memory: "true",
+    package_price_cents: "2400",
+  }), {
+    baseCents: 1999,
+    packageCents: 2400,
+    totalCents: 4399,
+    hasForeverMemory: true,
+  });
+  assertEquals(resolveLeadCheckoutAmounts(2900, { offerPriceCents: "2900" }), {
+    baseCents: 2900,
+    packageCents: 0,
+    totalCents: 2900,
+    hasForeverMemory: false,
+  });
+});
+
+Deno.test("malformed package metadata and underpaid totals are rejected", () => {
+  assertEquals(resolveLeadCheckoutAmounts(5300, {
+    offerPriceCents: "2900",
+    forever_memory: "true",
+    package_price_cents: "1",
+  }), null);
+  assertEquals(resolveLeadCheckoutAmounts(2300, {
+    offerPriceCents: "2900",
+    forever_memory: "true",
+    package_price_cents: "2400",
+  }), null);
+});
+
+Deno.test("a lead package can only be sold after its bonus file exists", () => {
+  assertEquals(hasReadyLeadBonus({ bonus_song_url: "https://cdn.example/bonus.mp3" }), true);
+  assertEquals(hasReadyLeadBonus({ bonus_song_url: "   " }), false);
+  assertEquals(hasReadyLeadBonus({ bonus_song_url: null }), false);
 });
