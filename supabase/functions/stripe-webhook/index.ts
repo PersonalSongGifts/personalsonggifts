@@ -808,6 +808,12 @@ Deno.serve(async (req) => {
             package_price_cents: metadata.package_price_cents,
             offerPriceCents: metadata.offerPriceCents,
           });
+          await alertPaidLeadSessionBlocked(session.id, String(metadata.leadId), "Invalid lead checkout pricing", {
+            amount_total: session.amount_total,
+            forever_memory: metadata.forever_memory,
+            package_price_cents: metadata.package_price_cents,
+            offerPriceCents: metadata.offerPriceCents,
+          });
           return new Response(
             JSON.stringify({ error: "Invalid lead checkout pricing" }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -821,11 +827,13 @@ Deno.serve(async (req) => {
         // browser/session cannot turn a paid package into an unfulfilled one.
         if (leadCheckoutAmounts.hasForeverMemory && !hasReadyLeadBonus(lead)) {
           console.error(`[WEBHOOK] Package lead ${lead.id} no longer has a ready bonus asset for session ${session.id}`);
+          await alertPaidLeadSessionBlocked(session.id, String(lead.id), "Package fulfilment asset is unavailable");
           return new Response(
             JSON.stringify({ error: "Package fulfilment asset is unavailable" }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
+
 
         const leadNotesValue = `lead_session:${session.id}`;
         if (!/^lead_session:cs_[a-zA-Z0-9_]+$/.test(leadNotesValue)) {
