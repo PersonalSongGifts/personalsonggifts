@@ -245,6 +245,9 @@ Deno.serve(async (req) => {
       album_cover_bonus_status: order.album_cover_bonus_status || null,
       genre: order.genre || null,
       bonus_available: !!(order.bonus_preview_url || order.bonus_song_url),
+      // Do not expose a locked bonus file, but let the package offer know whether
+      // the asset is ready before it starts a payment session.
+      bonus_ready: !!order.bonus_song_url,
       bonus_preview_url: order.bonus_preview_url || null,
       bonus_song_url: order.bonus_unlocked_at ? (order.bonus_song_url || null) : null,
       bonus_song_title: order.bonus_song_title || null,

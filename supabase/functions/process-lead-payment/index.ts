@@ -1,11 +1,56 @@
 import Stripe from "npm:stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { logActivity } from "../_shared/activity-log.ts";
+import { buildLeadAssetPatch } from "../_shared/lead-conversion.ts";
+import { hasReadyLeadBonus, resolveLeadCheckoutAmounts } from "../_shared/lead-checkout.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Non-blocking operator alert for paid-but-blocked lead sessions. Fully
+// swallowed: a Brevo failure must never change the HTTP response or throw.
+async function alertPaidLeadSessionBlocked(
+  sessionId: string,
+  leadId: string,
+  failedCheck: string,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+    if (!brevoApiKey) return;
+    const senderEmail = Deno.env.get("BREVO_SENDER_EMAIL") || "support@personalsonggifts.com";
+    const senderName = Deno.env.get("BREVO_SENDER_NAME") || "Personal Song Gifts";
+    const body = [
+      `A paid lead checkout session was blocked before order creation.`,
+      ``,
+      `Failed check: ${failedCheck}`,
+      `Stripe session id: ${sessionId}`,
+      `Lead id: ${leadId}`,
+      details ? `Details: ${JSON.stringify(details)}` : "",
+      ``,
+      `The endpoint returned 500 so the caller will retry. If this alert repeats, a human needs to intervene.`,
+    ].filter(Boolean).join("\n");
+    await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "api-key": brevoApiKey,
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: "support@personalsonggifts.com", name: "Support" }],
+        subject: "ALERT: paid lead session blocked",
+        textContent: body,
+      }),
+    });
+  } catch (alertErr) {
+    console.error("[LEAD-PAYMENT] paid-lead-blocked alert failed (non-blocking):", alertErr);
+  }
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -64,7 +109,7 @@ Deno.serve(async (req) => {
     // Check for existing order with this session (idempotency)
     const { data: existingOrder } = await supabase
       .from("orders")
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents, package_unlocked_at, package_unlock_session_id, package_price_cents")
       .eq("notes", `lead_session:${sessionId}`)
       .single();
 
@@ -79,6 +124,10 @@ Deno.serve(async (req) => {
           customerEmail: existingOrder.customer_email,
           songUrl: existingOrder.song_url,
           price: existingOrder.price_cents != null ? existingOrder.price_cents / 100 : undefined,
+          package_unlocked: !!existingOrder.package_unlocked_at,
+          package_addon_cents: existingOrder.package_unlock_session_id === sessionId
+            ? (existingOrder.package_price_cents || 0)
+            : 0,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -101,12 +150,36 @@ Deno.serve(async (req) => {
 
     const pricingTier = metadata.pricingTier || "standard";
 
-    // Canonical price: session.amount_total (Stripe's actual total charge, cents).
-    // Lead checkout may have different pricing than standard checkout.
-    const priceCents: number = (session.amount_total
-      ?? (metadata.offerPriceCents ? parseInt(metadata.offerPriceCents, 10) : NaN))
-      || 4999; // legacy fallback
+    const checkoutAmounts = resolveLeadCheckoutAmounts(session.amount_total, metadata);
+    if (!checkoutAmounts) {
+      console.error(`[LEAD-PAYMENT] Invalid checkout pricing for ${sessionId}`, {
+        amount_total: session.amount_total,
+        forever_memory: metadata.forever_memory,
+        package_price_cents: metadata.package_price_cents,
+        offerPriceCents: metadata.offerPriceCents,
+      });
+      await alertPaidLeadSessionBlocked(sessionId, String(lead.id), "Invalid lead checkout pricing", {
+        amount_total: session.amount_total,
+        forever_memory: metadata.forever_memory,
+        package_price_cents: metadata.package_price_cents,
+        offerPriceCents: metadata.offerPriceCents,
+      });
+      return new Response(
+        JSON.stringify({ error: "Invalid lead checkout pricing" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const priceCents = checkoutAmounts.baseCents;
     const price = Math.floor(priceCents / 100); // backward-compat integer dollars
+
+    if (checkoutAmounts.hasForeverMemory && !hasReadyLeadBonus(lead)) {
+      console.error(`[LEAD-PAYMENT] Package lead ${lead.id} no longer has a ready bonus asset for session ${sessionId}`);
+      return new Response(
+        JSON.stringify({ error: "Package fulfilment asset is unavailable" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // Strict notes format assertion -- do not proceed if format is wrong
     const notesValue = `lead_session:${sessionId}`;
@@ -118,15 +191,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create order from lead data
-    // SYNC POINT: When adding new fields to leads, also add them here for lead conversion.
+    const conversionNow = new Date().toISOString();
+    const leadAssetPatch = buildLeadAssetPatch(lead, new Date(conversionNow)) || {};
+    const paymentIntentId = typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null;
+    const leadPackageFields = checkoutAmounts.hasForeverMemory ? {
+      package_unlocked_at: conversionNow,
+      package_price_cents: checkoutAmounts.packageCents,
+      package_unlock_session_id: session.id,
+      package_unlock_payment_intent_id: paymentIntentId,
+      lyrics_unlocked_at: conversionNow,
+      lyrics_price_cents: 0,
+      download_unlocked_at: conversionNow,
+      download_price_cents: 0,
+      bonus_unlocked_at: conversionNow,
+      bonus_price_cents: 0,
+    } : {};
+
+    // Create order from lead data. The shared patch carries pre-generated
+    // primary and bonus assets across rather than leaving them on the lead.
     const { data: newOrder, error: insertError } = await supabase
       .from("orders")
       .insert({
         pricing_tier: pricingTier,
         price: price,            // integer dollars (backward compat)
         price_cents: priceCents, // canonical cents from Stripe amount_total
-        expected_delivery: new Date().toISOString(), // Immediate - already heard preview
+        expected_delivery: conversionNow, // Immediate - already heard preview
         customer_name: lead.customer_name,
         customer_email: lead.email,
         customer_phone: lead.phone,
@@ -138,20 +229,14 @@ Deno.serve(async (req) => {
         special_qualities: lead.special_qualities,
         favorite_memory: lead.favorite_memory,
         special_message: lead.special_message,
-        song_url: lead.full_song_url, // Copy the full song URL from lead
-        song_title: lead.song_title,
-        cover_image_url: lead.cover_image_url,
-        automation_lyrics: lead.automation_lyrics,
-        automation_status: lead.full_song_url ? "completed" : (lead.automation_lyrics ? "lyrics_ready" : null),
         lyrics_language_code: lead.lyrics_language_code || "en",
         inputs_hash: lead.inputs_hash,
-        source: "lead_conversion",
         device_type: "Web",
         notes: `lead_session:${sessionId}`,
-        status: lead.full_song_url ? "delivered" : "pending",
-        delivered_at: lead.full_song_url ? new Date().toISOString() : null,
+        ...leadAssetPatch,
+        ...leadPackageFields,
       })
-      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents")
+      .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents, package_unlocked_at, package_price_cents")
       .single();
 
     // Handle unique constraint violation (race condition) - re-query for existing order
@@ -161,7 +246,7 @@ Deno.serve(async (req) => {
         console.log(`Race condition detected for lead session ${sessionId}, fetching existing order`);
         const { data: raceOrder } = await supabase
           .from("orders")
-          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents, package_unlocked_at, package_unlock_session_id, package_price_cents")
           .eq("notes", `lead_session:${sessionId}`)
           .single();
 
@@ -176,6 +261,10 @@ Deno.serve(async (req) => {
               customerEmail: raceOrder.customer_email,
               songUrl: raceOrder.song_url,
               price: raceOrder.price_cents != null ? raceOrder.price_cents / 100 : undefined,
+              package_unlocked: !!raceOrder.package_unlocked_at,
+              package_addon_cents: raceOrder.package_unlock_session_id === sessionId
+                ? (raceOrder.package_price_cents || 0)
+                : 0,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -202,7 +291,14 @@ Deno.serve(async (req) => {
     console.log(`Lead ${lead.id} converted to order ${newOrder.id}`);
 
     await logActivity(supabase, "lead", lead.id, "lead_converted", "system", `Converted to order ${newOrder.id.slice(0, 8).toUpperCase()}`);
-    await logActivity(supabase, "order", newOrder.id, "order_created", "system", `Created from lead conversion, $${priceCents / 100}`);
+    await logActivity(
+      supabase,
+      "order",
+      newOrder.id,
+      "order_created",
+      "system",
+      `Created from lead conversion, $${checkoutAmounts.totalCents / 100}${checkoutAmounts.hasForeverMemory ? " including Forever Memory Package" : ""}`,
+    );
 
     // Fallback: if lyrics are missing, trigger generation for the new order.
     // Use force=true when audio exists so the lyrics guard is bypassed.
@@ -236,7 +332,7 @@ Deno.serve(async (req) => {
           createdAt: new Date().toISOString(),
           status: "delivered",
           pricingTier: pricingTier,
-          price: priceCents / 100, // canonical cents → dollars for external sync
+          price: checkoutAmounts.totalCents / 100, // exact charged total for external sync
           customerName: lead.customer_name,
           customerEmail: lead.email,
           customerPhone: lead.phone || "",
@@ -256,7 +352,7 @@ Deno.serve(async (req) => {
 
     // Send full song delivery email immediately
     try {
-      await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
+      const deliveryResponse = await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -272,7 +368,15 @@ Deno.serve(async (req) => {
           revisionToken: newOrder.revision_token,
         }),
       });
-      console.log("Full song delivery email sent");
+      if (deliveryResponse.ok) {
+        await supabase
+          .from("orders")
+          .update({ sent_at: new Date().toISOString(), delivery_status: "sent" })
+          .eq("id", newOrder.id);
+        console.log("Full song delivery email sent");
+      } else {
+        console.error("Full song delivery email failed:", await deliveryResponse.text().catch(() => ""));
+      }
     } catch (e) {
       console.error("Failed to send delivery email:", e);
     }
@@ -287,6 +391,8 @@ Deno.serve(async (req) => {
         customerEmail: newOrder.customer_email,
         songUrl: newOrder.song_url,
         price: newOrder.price_cents != null ? newOrder.price_cents / 100 : priceCents / 100,
+        package_unlocked: !!newOrder.package_unlocked_at,
+        package_addon_cents: checkoutAmounts.hasForeverMemory ? checkoutAmounts.packageCents : 0,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

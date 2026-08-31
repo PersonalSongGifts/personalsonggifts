@@ -44,7 +44,7 @@ function shortId(id: string) {
 function buildEmail(order: EligibleOrder): { subject: string; html: string; text: string } {
   const firstName = (order.customer_name || "").split(" ")[0] || "there";
   const songLink = `${SITE_URL}/song/${order.id.substring(0, 8)}`;
-  const subject = `A second version of ${order.recipient_name}'s song`;
+  const subject = `A second version of ${order.recipient_name}'s song is ready to preview`;
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -52,11 +52,11 @@ function buildEmail(order: EligibleOrder): { subject: string; html: string; text
 <div style="max-width:560px;margin:0 auto;padding:32px 20px;">
 <p>Hi ${firstName},</p>
 
-<p>We loved making your song so much that we also produced a second version in a different style that we think you'd love as a little bonus. It's sitting on your song page, ready to listen (scroll down).</p>
+<p>We also created a second version in a different style for you to preview on the song page (scroll down).</p>
 
 <p><a href="${songLink}" style="color:#1a73e8;">${songLink}</a></p>
 
-<p>Have a listen and see which version you and ${order.recipient_name} like more.</p>
+<p>Have a listen and see which version you and ${order.recipient_name} like more. The Forever Memory Package on that page includes full access to the second version, plus a printable lyric keepsake, download, and custom cover tools.</p>
 
 <p>If you'd rather not hear from us about this, just reply with "no thanks" and we'll stop.</p>
 
@@ -65,11 +65,11 @@ function buildEmail(order: EligibleOrder): { subject: string; html: string; text
 
   const text = `Hi ${firstName},
 
-We loved making your song so much that we also produced a second version in a different style that we think you'd love as a little bonus. It's sitting on your song page, ready to listen (scroll down).
+We also created a second version in a different style for you to preview on the song page (scroll down).
 
 ${songLink}
 
-Have a listen and see which version you and ${order.recipient_name} like more.
+Have a listen and see which version you and ${order.recipient_name} like more. The Forever Memory Package on that page includes full access to the second version, plus a printable lyric keepsake, download, and custom cover tools.
 
 If you'd rather not hear from us about this, just reply with "no thanks" and we'll stop.
 

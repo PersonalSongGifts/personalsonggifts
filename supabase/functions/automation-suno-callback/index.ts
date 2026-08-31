@@ -985,7 +985,7 @@ Deno.serve(async (req) => {
               const recipient = claimed.recipient_name || "your loved one";
               const customerName = claimed.customer_name || "there";
               const messageId = `<${entityId}.bonus.${Date.now()}@personalsonggifts.com>`;
-              const subject = `A bonus version of ${recipient}'s song just dropped 🎁`;
+              const subject = `A second version of ${recipient}'s song is ready to preview`;
 
               const html = `
 <!DOCTYPE html>
@@ -993,17 +993,17 @@ Deno.serve(async (req) => {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
   <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
-    <p style="color:#1E3A5F;font-size:22px;font-weight:bold;margin:0 0 30px 0;">Your bonus track just arrived 🎁</p>
+    <p style="color:#1E3A5F;font-size:22px;font-weight:bold;margin:0 0 30px 0;">A second version is ready to preview</p>
     <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${customerName},</p>
     <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">
-      Good news — ${bonusArticle} version of ${recipient}'s song is now ready and waiting on the same song page as the original.
+      Good news — ${bonusArticle} version of ${recipient}'s song is ready to preview on the same song page as the original.
     </p>
     <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 8px 0;"><strong>Listen here:</strong></p>
     <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 24px 0;">
       <a href="${songPageUrl}" style="color:#1E3A5F;">${songPageUrl}</a>
     </p>
     <p style="text-align:left;margin:0 0 32px 0;">
-      <a href="${songPageUrl}" style="background-color:#1E3A5F;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-size:16px;">Play the bonus version</a>
+      <a href="${songPageUrl}" style="background-color:#1E3A5F;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-size:16px;">Preview the second version</a>
     </p>
     <p style="color:#555555;font-size:14px;margin:0 0 4px 0;"><strong>Order ID:</strong> ${shortId.toUpperCase()}</p>
     <p style="color:#333333;font-size:16px;line-height:1.6;margin:30px 0 40px 0;">
@@ -1018,11 +1018,11 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-              const text = `Your bonus track just arrived 🎁
+              const text = `A second version is ready to preview
 
 Hi ${customerName},
 
-Good news — ${bonusArticle} version of ${recipient}'s song is now ready and waiting on the same song page as the original.
+Good news — ${bonusArticle} version of ${recipient}'s song is ready to preview on the same song page as the original.
 
 Listen here: ${songPageUrl}
 

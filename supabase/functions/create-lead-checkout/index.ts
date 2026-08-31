@@ -1,5 +1,9 @@
 import Stripe from "npm:stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
+import {
+  buildLeadCheckoutAmounts,
+  hasReadyLeadBonus,
+} from "../_shared/lead-checkout.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,7 +22,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { previewToken, applyFollowupDiscount, applyVday10Discount, promoSlug } = await req.json();
+    const { previewToken, applyFollowupDiscount, applyVday10Discount, promoSlug, addons } = await req.json();
+    const includeForeverMemory = addons?.forever_memory === true;
+
+    // Preview purchases are delivered immediately because the complete song
+    // already exists. A rush fee here would charge for no additional service.
+    if (addons?.rush === true) {
+      return new Response(
+        JSON.stringify({ error: "Rush delivery is not available for an instant-access preview purchase." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     if (!previewToken || previewToken.length < 16) {
       return new Response(
@@ -34,7 +48,7 @@ Deno.serve(async (req) => {
     // Find lead by preview token
     const { data: lead, error: leadError } = await supabase
       .from("leads")
-      .select("id, email, customer_name, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, full_song_url")
+      .select("id, email, customer_name, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, full_song_url, bonus_song_url")
       .eq("preview_token", previewToken)
       .single();
 
@@ -57,6 +71,16 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "Song not ready" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Never take payment for the package on a lead purchase unless the
+    // included second version already exists and can be copied to the order.
+    // This keeps a payment from becoming a hidden Kie/Suno fulfilment debt.
+    if (includeForeverMemory && !hasReadyLeadBonus(lead)) {
+      return new Response(
+        JSON.stringify({ error: "package_not_ready" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -184,13 +208,18 @@ Deno.serve(async (req) => {
       }
     }
 
+    const checkoutAmounts = buildLeadCheckoutAmounts(unitAmount, includeForeverMemory);
+
     // Get origin for redirect URLs
     const origin = req.headers.get("origin") || "https://personalsonggifts.lovable.app";
 
-    // Create Stripe checkout session - leads only get standard pricing
+    // Create the exact server-priced Stripe session. Stripe's generic coupon
+    // field is intentionally disabled when the package is selected so a
+    // coupon cannot discount the package without being reflected in our order
+    // ledger. Targeted and sitewide offers above still apply to the base song.
     const session = await stripe.checkout.sessions.create({
       customer_email: lead.email,
-      allow_promotion_codes: allowPromotionCodes,
+      allow_promotion_codes: allowPromotionCodes && !includeForeverMemory,
       line_items: [
         {
           price_data: {
@@ -198,10 +227,21 @@ Deno.serve(async (req) => {
             product_data: {
               name: "Full Song (Lead Offer)",
             },
-            unit_amount: unitAmount,
+            unit_amount: checkoutAmounts.baseCents,
           },
           quantity: 1,
         },
+        ...(includeForeverMemory ? [{
+          price_data: {
+            currency: "usd" as const,
+            product_data: {
+              name: "Forever Memory Package",
+              description: "Printable lyric keepsake, custom cover studio, and a second song version.",
+            },
+            unit_amount: checkoutAmounts.packageCents,
+          },
+          quantity: 1,
+        }] : []),
       ],
       mode: "payment",
       success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}&source=lead`,
@@ -211,7 +251,13 @@ Deno.serve(async (req) => {
         leadId: lead.id,
         previewToken: previewToken,
         pricingTier: "standard",
-        offerPriceCents: String(unitAmount),
+        // This remains the BASE price; Stripe's amount_total remains the
+        // canonical charged total and is split again at webhook time.
+        offerPriceCents: String(checkoutAmounts.baseCents),
+        ...(includeForeverMemory ? {
+          forever_memory: "true",
+          package_price_cents: String(checkoutAmounts.packageCents),
+        } : {}),
         vday10Applied: applyVday10Discount ? "true" : "false",
         customerName: lead.customer_name,
         customerEmail: lead.email,

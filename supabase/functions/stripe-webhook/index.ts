@@ -4,11 +4,55 @@ import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/lead-order-matching.ts";
 import { buildLeadAssetPatch, shouldDispatchDelivery } from "../_shared/lead-conversion.ts";
+import { hasReadyLeadBonus, resolveLeadCheckoutAmounts } from "../_shared/lead-checkout.ts";
 import { sendMetaPurchase } from "../_shared/meta-capi.ts";
 
 function normalizeMatch(v?: string | null): string {
   return (v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
+
+// Non-blocking operator alert for paid-but-blocked lead sessions. Fully
+// swallowed: a Brevo failure must never change the HTTP response or throw.
+async function alertPaidLeadSessionBlocked(
+  sessionId: string,
+  leadId: string,
+  failedCheck: string,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+    if (!brevoApiKey) return;
+    const senderEmail = Deno.env.get("BREVO_SENDER_EMAIL") || "support@personalsonggifts.com";
+    const senderName = Deno.env.get("BREVO_SENDER_NAME") || "Personal Song Gifts";
+    const body = [
+      `A paid lead checkout session was blocked before order creation.`,
+      ``,
+      `Failed check: ${failedCheck}`,
+      `Stripe session id: ${sessionId}`,
+      `Lead id: ${leadId}`,
+      details ? `Details: ${JSON.stringify(details)}` : "",
+      ``,
+      `The webhook returned 500 so Stripe will retry. If this alert repeats, a human needs to intervene.`,
+    ].filter(Boolean).join("\n");
+    await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "api-key": brevoApiKey,
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: "support@personalsonggifts.com", name: "Support" }],
+        subject: "ALERT: paid lead session blocked",
+        textContent: body,
+      }),
+    });
+  } catch (alertErr) {
+    console.error("[WEBHOOK] paid-lead-blocked alert failed (non-blocking):", alertErr);
+  }
+}
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -671,7 +715,7 @@ Deno.serve(async (req) => {
           rushOrderId,
           "rush_upgrade_purchased",
           "system",
-          `1-Hour Rush upgrade via Stripe webhook, $${(amountTotal / 100).toFixed(2)}`
+          `Priority delivery upgrade via Stripe webhook, $${(amountTotal / 100).toFixed(2)}`
         );
 
         // Meta CAPI server-side Purchase (fire-and-forget, never blocks)
@@ -756,10 +800,40 @@ Deno.serve(async (req) => {
         }
 
         const leadPricingTier = metadata.pricingTier || "standard";
-        const leadPriceCents: number = (session.amount_total
-          ?? (metadata.offerPriceCents ? parseInt(metadata.offerPriceCents, 10) : NaN))
-          || 4999;
+        const leadCheckoutAmounts = resolveLeadCheckoutAmounts(session.amount_total, metadata);
+        if (!leadCheckoutAmounts) {
+          console.error(`[WEBHOOK] Invalid lead checkout pricing for session ${session.id}`, {
+            amount_total: session.amount_total,
+            forever_memory: metadata.forever_memory,
+            package_price_cents: metadata.package_price_cents,
+            offerPriceCents: metadata.offerPriceCents,
+          });
+          await alertPaidLeadSessionBlocked(session.id, String(metadata.leadId), "Invalid lead checkout pricing", {
+            amount_total: session.amount_total,
+            forever_memory: metadata.forever_memory,
+            package_price_cents: metadata.package_price_cents,
+            offerPriceCents: metadata.offerPriceCents,
+          });
+          return new Response(
+            JSON.stringify({ error: "Invalid lead checkout pricing" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const leadPriceCents = leadCheckoutAmounts.baseCents;
         const leadPrice = Math.floor(leadPriceCents / 100);
+
+        // A package lead session is created only after the alternate version
+        // exists. Re-check immediately before creating the order so a stale
+        // browser/session cannot turn a paid package into an unfulfilled one.
+        if (leadCheckoutAmounts.hasForeverMemory && !hasReadyLeadBonus(lead)) {
+          console.error(`[WEBHOOK] Package lead ${lead.id} no longer has a ready bonus asset for session ${session.id}`);
+          await alertPaidLeadSessionBlocked(session.id, String(lead.id), "Package fulfilment asset is unavailable");
+          return new Response(
+            JSON.stringify({ error: "Package fulfilment asset is unavailable" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
 
         const leadNotesValue = `lead_session:${session.id}`;
         if (!/^lead_session:cs_[a-zA-Z0-9_]+$/.test(leadNotesValue)) {
@@ -783,14 +857,34 @@ Deno.serve(async (req) => {
 
 
 
-        // Create order with ALL fields from the lead (mirrors process-lead-payment)
+        const conversionNow = new Date().toISOString();
+        const leadAssetPatch = buildLeadAssetPatch(lead, new Date(conversionNow)) || {};
+        const leadPaymentIntentId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id ?? null;
+        const leadPackageFields = leadCheckoutAmounts.hasForeverMemory ? {
+          package_unlocked_at: conversionNow,
+          package_price_cents: leadCheckoutAmounts.packageCents,
+          package_unlock_session_id: session.id,
+          package_unlock_payment_intent_id: leadPaymentIntentId,
+          lyrics_unlocked_at: conversionNow,
+          lyrics_price_cents: 0,
+          download_unlocked_at: conversionNow,
+          download_price_cents: 0,
+          bonus_unlocked_at: conversionNow,
+          bonus_price_cents: 0,
+        } : {};
+
+        // Create order with all persisted lead assets. The shared asset patch
+        // includes a completed bonus track when available, preventing it from
+        // being stranded on the lead row after purchase.
         const { data: leadOrder, error: leadInsertError } = await supabase
           .from("orders")
           .insert({
             pricing_tier: leadPricingTier,
             price: leadPrice,
             price_cents: leadPriceCents,
-            expected_delivery: new Date().toISOString(),
+            expected_delivery: conversionNow,
             customer_name: lead.customer_name,
             customer_email: lead.email,
             customer_phone: lead.phone,
@@ -803,29 +897,20 @@ Deno.serve(async (req) => {
             special_qualities: lead.special_qualities,
             favorite_memory: lead.favorite_memory,
             special_message: lead.special_message,
-            song_url: lead.full_song_url,
-            song_title: lead.song_title,
-            cover_image_url: lead.cover_image_url,
-            automation_lyrics: lead.automation_lyrics,
-            automation_status: lead.full_song_url ? "completed" : (lead.automation_lyrics ? "lyrics_ready" : null),
             lyrics_language_code: lead.lyrics_language_code || "en",
             inputs_hash: lead.inputs_hash,
             phone_e164: lead.phone_e164,
             sms_opt_in: lead.sms_opt_in || false,
             timezone: lead.timezone,
-            prev_automation_lyrics: lead.prev_automation_lyrics,
-            prev_song_url: lead.prev_song_url,
-            prev_cover_image_url: lead.prev_cover_image_url,
-            source: "lead_conversion",
             device_type: "Web",
             notes: leadNotesValue,
-            status: lead.full_song_url ? "delivered" : "pending",
-            delivered_at: lead.full_song_url ? new Date().toISOString() : null,
             billing_country_code: billingCountryCode ? billingCountryCode.toUpperCase() : null,
             billing_country_name: billingCountryCode ? (COUNTRY_NAMES[billingCountryCode.toUpperCase()] ?? billingCountryCode.toUpperCase()) : null,
             promo_code: leadPromoCode,
+            ...leadAssetPatch,
+            ...leadPackageFields,
           })
-          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents, revision_token")
+          .select("id, recipient_name, occasion, genre, pricing_tier, customer_email, song_url, price_cents, revision_token, package_unlocked_at, package_price_cents")
           .single();
 
         // Handle race condition
@@ -871,7 +956,7 @@ Deno.serve(async (req) => {
             eventId: `purchase_${leadOrder.id}`,
             email: lead.email || session.customer_email,
             phone: lead.phone_e164 || lead.phone,
-            value: leadPriceCents / 100,
+            value: leadCheckoutAmounts.totalCents / 100,
             orderId: leadOrder.id,
             contentName: "Custom Song",
           });
@@ -885,7 +970,14 @@ Deno.serve(async (req) => {
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseServiceKey}` },
           body: JSON.stringify({ email: lead.email }),
         }).catch((e) => console.error("[WEBHOOK] Brevo remove failed:", e));
-        await logActivity(supabase, "order", leadOrder.id, "order_created", "system", `Created from lead conversion via webhook, $${leadPriceCents / 100}`);
+        await logActivity(
+          supabase,
+          "order",
+          leadOrder.id,
+          "order_created",
+          "system",
+          `Created from lead conversion via webhook, $${leadCheckoutAmounts.totalCents / 100}${leadCheckoutAmounts.hasForeverMemory ? " including Forever Memory Package" : ""}`,
+        );
 
         // Trigger lyrics generation if missing
         if (!lead.automation_lyrics) {
@@ -978,7 +1070,7 @@ Deno.serve(async (req) => {
               createdAt: new Date().toISOString(),
               status: lead.full_song_url ? "delivered" : "pending",
               pricingTier: leadPricingTier,
-              price: leadPriceCents / 100,
+              price: leadCheckoutAmounts.totalCents / 100,
               customerName: lead.customer_name,
               customerEmail: lead.email,
               customerPhone: lead.phone || "",

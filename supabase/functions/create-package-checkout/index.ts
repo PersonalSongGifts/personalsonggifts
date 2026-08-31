@@ -86,13 +86,43 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Load the canonical current fulfilment state even when the caller used a
+    // short order ID. This prevents a post-purchase package checkout from
+    // being created before its included second version exists.
+    const { data: currentOrder, error: currentOrderError } = await supabase
+      .from("orders")
+      .select("id, package_unlocked_at, bonus_song_url, bonus_automation_status")
+      .eq("id", order.id)
+      .maybeSingle();
+
+    if (currentOrderError) throw currentOrderError;
+    if (!currentOrder) {
+      return new Response(
+        JSON.stringify({ error: "Order not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // Already unlocked
-    if (order.package_unlocked_at) {
+    if (currentOrder.package_unlocked_at) {
       return new Response(
         JSON.stringify({ alreadyUnlocked: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    if (!currentOrder.bonus_song_url) {
+      return new Response(
+        JSON.stringify({
+          error: "Your included second version is still being prepared. Please return once it appears on the song page to add the package.",
+          code: "BONUS_NOT_READY",
+          bonusStatus: currentOrder.bonus_automation_status || null,
+        }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    order = currentOrder;
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
       apiVersion: "2025-08-27.basil",
