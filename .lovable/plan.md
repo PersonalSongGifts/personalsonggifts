@@ -1,189 +1,107 @@
-# Stopping the admin refresh storm and the multi-minute /song loads
+# Checkout & Fulfillment Improvements — Inspection + Safe Rollout Plan
 
-## What is confirmed in the code and the database
+Advice only. Nothing was changed. Base price stays $29.
 
-`fetchOrders()` in `src/pages/Admin.tsx` (and the identical block inside `handleLogin`) fetches page 0, computes
-`maxPages = max(ceil(totalOrders/100), ceil(totalLeads/100))`, builds `Array.from({length: maxPages - 1}, ...)` of `listOrders` calls, and fires all of them at once via `Promise.allSettled`. With 28,752 leads that is about 288 concurrent Edge Function invocations per refresh, and because each `action=list` request runs four database statements (orders page, leads page, orders exact count, leads exact count), roughly 1,152 statements per refresh. Both a 30-second `setInterval` and a `window` focus listener call `fetchOrders()`, with no in-flight guard and no abort, so overlapping refreshes multiply the burst.
+## 1. Current behavior (verified in code / DB)
 
-The four statements at the top of `pg_stat_statements` by total time are exactly those four, 12,950 calls each, about 84 minutes of database time combined — roughly 45 full refreshes. Everything else in the top 15 is under 2.2 s cumulative, so automation, delivery and Suno callback queries are not the load.
+**Base + add-on checkout (Stripe)** — `supabase/functions/create-checkout/index.ts`
+- `BASE_SONG_PRICE_CENTS = 2900`. Legacy `BASE_PRICES.priority = 15999` with `SEASONAL_DISCOUNT_PERCENT = 50` is still live for `pricingTier: "priority"` (~$79.99) even though the UI no longer sells it.
+- Add-ons already exist: `addons.forever_memory` → `PACKAGE_ADDON_PRICE_CENTS` line item, `addons.rush` → `RUSH_PRICE_CENTS` (1000). Both write `metadata.package_price_cents` / `rush`, `rush_price_cents`, and total to `metadata.amount_total_cents`.
+- `allow_promotion_codes` is suppressed when an add-on or promo slug is present.
 
-To be precise about causality: these cumulative counters strongly implicate the refresh storm, but they do not by themselves prove what happened during the outage windows — the counters were reset by the restarts. Outage-window causality still needs timestamped Edge Function logs and connection/CPU charts for those windows (Phase 3A).
+**Base + add-on checkout (PayPal)** — `create-paypal-order/index.ts`
+- Mirrors the same constants locally (`BASE_SONG_PRICE_CENTS = 2900`, `PACKAGE_ADDON_PRICE_CENTS = 2400`, `RUSH_PRICE_CENTS = 1000`) and stashes the whole order payload into `admin_settings` under `paypal_order:<id>` (visible in the table today).
 
-Other confirmed facts:
-- Role timeouts from `pg_roles.rolconfig`: `anon = statement_timeout 3s`, `authenticated = 8s`, `authenticator = statement_timeout 8s, lock_timeout 8s`, `service_role` has **no** rolconfig; database-global `statement_timeout = 120000`.
-- Instance: Postgres 17.6, `max_connections = 60`, `shared_buffers = 256 MB`, `effective_cache_size = 768 MB`. Snapshot: memory 61%, disk 15%, 32 sessions (1 active), pool clients 1/200, database 774 MB, WAL 272 MB, 0 restarts since boot. Rows: `orders` 3,629, `leads` 28,752.
-- `@supabase/supabase-js` 2.93.1 is installed and `FunctionInvokeOptions` includes `signal?: AbortSignal`, so `functions.invoke(..., { signal })` cancellation is available (verified in `node_modules/@supabase/functions-js`).
-- Song page: `find_orders_by_short_id` uses `idx_orders_id_text_pattern`; automation task-id lookups indexed on both tables. No cheap missing-index win remains.
-- `src/pages/SongPlayer.tsx`: up to 3 attempts at 20 s each plus backoff (~62 s worst case per mount), `&t=${Date.now()}` plus `cache: "no-store"`, and `preload="auto"` on the main audio (line 846) while the bonus audio uses `preload="none"`.
-- `supabase/functions/get-song-page/index.ts`: per-instance in-memory caches only (30 s success, 10 min stale); Supabase calls pass no `abortSignal`, so a client abort leaves server work running; `fresh=1` bypasses `successCache` only, so on a database failure the stale path can still serve up to 10-minute-old unlock/package/revision state — including right after a purchase.
+**Order creation + entitlement writes**
+- Stripe: `stripe-webhook/index.ts` — order insert for `checkout.session.completed`, plus separate branches for `entitlement === "lyrics_unlock"`, `"bonus_unlock"`, `type/entitlement === "package_unlock"` (which also back-fills `lyrics_unlocked_at`, `download_unlocked_at`, `bonus_unlocked_at` at 0 cents), and `"rush_upgrade"`.
+- PayPal: `capture-paypal-payment/index.ts` writes the order **and** the package/rush fields inline (`package_unlocked_at`, `lyrics_unlocked_at`, `download_unlocked_at`, `bonus_unlocked_at`, `rush_addon`).
+- Post-purchase upsell checkouts: `create-package-checkout` ($24, `PACKAGE_PRICE_CENTS = 2400`), `create-bonus-checkout` (default 1999, override via `admin_settings.bonus_song_price_cents = 1999` or `promotions.bonus_price_cents`), `create-lyrics-checkout`, `create-download-checkout`, `create-rush-upgrade` (**699**).
+- Browser-side verifiers exist in parallel with the webhook: `verify-package-purchase`, `verify-lyrics-purchase`, `verify-download-purchase`, `verify-bonus-purchase`, `verify-rush-upgrade`. All use `.is(<field>, null)` guards, so webhook + browser are idempotent per entitlement.
 
-## Unresolved, to be measured rather than assumed
+**Bonus song generation** — `automation-generate-audio/index.ts` fires the bonus Suno task alongside the primary song whenever `admin_settings.bonus_song_enabled !== "false"` (currently `true`), independent of purchase. `bonusOnly: true` regenerates just the bonus. `automation-suno-callback` owns `bonus_automation_status` (`audio_generating` → `completed` / `failed`) and `bonus_notified_at`.
 
-- Effective statement timeout for PostgREST service-role requests. `service_role` has no `rolconfig` and `authenticator` has 8 s; whether a list statement is capped at 8 s or at the 120 s database default is not decidable from `rolconfig`. Read `current_setting('statement_timeout')` from inside a service-role request before relying on either.
-- Outage-window causality (needs Phase 3A evidence).
-- What makes the 291 ms leads page slow — sort, wide-column heap/TOAST reads, or contention. Needs `EXPLAIN (ANALYZE, BUFFERS)`.
-- Whether multiple admin tabs or repeated focus events multiplied the storm during the outages.
-- Which compute tier Ryan moved to (not visible from SQL; read Cloud → Advanced settings).
-- Whether a 250-row background page is safe for response size and Edge/PostgREST limits. Unverified, so Phase 0 keeps 100.
+**Cover art** — `generate-album-cover` / `check-album-cover` (Kie Jobs, GPT Image 2), surfaced by `AlbumCoverStudio.tsx` / `CoverStudio.tsx`, columns `album_cover_url|status|task_id` and `album_cover_bonus_*`.
 
----
+**Song page** — `get-song-page/index.ts` returns `package_unlocked`, `lyrics_unlocked`, `download_unlocked`, `bonus_*` and cover fields; `SongPlayer.tsx` renders paywalls from those flags.
 
-# The Lovable/Supabase boundary that shapes these phases
+**Lead-preview flow** — `create-lead-checkout` ($2900 both branches after the parity fix) → `process-lead-payment` copies lead assets onto the order. It sells **no** package and **no** rush today; `SongPreview.tsx` has no add-on UI. That already satisfies "don't sell rush where the song is instant".
 
-The preview frontend and the published production site share **one** backend. Frontend edits stay in preview until Ryan clicks Publish, but an edit to `supabase/functions/admin-orders/index.ts` is deployed to the **live** backend immediately, even if the website is never published — so it would affect the production admin dashboard and anything else calling that function. That asymmetry is why the emergency patch is split: the frontend-only fix can be tested in preview with zero production deployment, while any Edge Function change is a separate, explicitly approved production change.
+## 2. Contradictions to surface (no pricing change in this task)
 
-A second consequence: preview testing still runs real queries against the production database, so preview verification must happen at low traffic.
+1. **Rush price mismatch:** $10.00 at checkout vs **$6.99** in `create-rush-upgrade`. Same product, two prices.
+2. **Rush promise is a guarantee, not an estimate:** copy says "1-Hour Express", "Within 1 hour", "Upgrade this order to arrive within 1 hour", while `stripe-webhook` schedules `created_at + 30min + up to 15min jitter` and the global 30-minute delivery floor applies. Needs "usually ready in about an hour".
+3. **Package vs à-la-carte:** bonus alone is $19.99, lyrics $4.99, download $19.99 — the $24 package dominates them; the standalone ladder is now mostly dead weight and can confuse.
+4. **Legacy priority tier ($79.99) is still reachable** by posting `pricingTier: "priority"` to either checkout function.
+5. **Package copy already promises a printable lyric keepsake and custom album cover** (`create-checkout` line-item description) — confirm every promised artifact actually ships before widening the offer.
+6. `admin_settings` is doubling as a PayPal payload cache (`paypal_order:*`) — it makes any settings-based flag reads noisy.
 
-# Phase 0A — frontend-only emergency guard (no Edge Function edit, no deployment)
+## 3. Server-side source of truth (keep this invariant)
 
-Goal: remove the automatic saturation triggers and bound concurrency, while keeping today's `allOrders` / `leads` full-dataset behavior exactly as the panels expect. No architecture rewrite of a 3,000-line admin page during an outage response.
+| Concern | Stripe | PayPal |
+|---|---|---|
+| Price | recomputed in `create-checkout` from server constants; `session.amount_total` is canonical after payment | recomputed in `create-paypal-order`; captured amount from PayPal capture response |
+| Payment state | `checkout.session.completed` + `session.payment_status` | PayPal capture status in `capture-paypal-payment` |
+| Entitlement state | `orders.{package,lyrics,download,bonus}_unlocked_at`, `rush_addon` | same columns |
+| Fulfillment state | `orders.automation_status`, `bonus_automation_status`, `album_cover_status`, `sent_at`, `delivery_status` | same |
 
-File: `src/pages/Admin.tsx` **only**. No Edge Function edit, no deployment, no migration, no schema change.
+Client never asserts entitlement; it only reads `get-song-page`.
 
-1. **Delete the automatic reloads.** Remove the 30-second `setInterval` and the `window` focus listener that call `fetchOrders()`. The only refresh paths left are login and the explicit Refresh button.
-2. **Keep the full background loader, but never automatic.** It runs after a successful login or an explicit manual Refresh, and at no other time.
-3. **Replace `Promise.allSettled` over all pages with a worker queue capped at 2 concurrent page requests.** Two workers pull page numbers from a shared cursor until pages are exhausted, so at most 2 `admin-orders` requests are ever in flight.
-4. **Single in-flight guard.** One ref guards login and refresh together so they cannot overlap or be re-entered; the Refresh button is disabled while a load runs.
-5. **Abort and fail-soft.** An `AbortController` tied to the load is aborted on unmount and when a new load supersedes it, with its signal passed to every `functions.invoke` call via `{ signal }` (confirmed supported in the installed supabase-js 2.93.1). After the first page error the queue stops scheduling new pages, already-loaded rows are kept, and a clear partial-load warning appears ("Loaded 1,200 of 28,752 records — some older records are missing. Refresh to retry.").
-6. **Progress and freshness UI.** A progress line ("Loading older records… 14 of 288 pages") plus "last updated HH:MM PST", so the admin always knows whether older records are still loading or missing.
-7. **Page size stays 100.** Consider 250 only after measuring real payload size against Edge Function response limits and PostgREST behavior. No unverified size change here.
+## 4. Failure modes to design for
 
-**Honest limitation:** Phase 0A **still runs the two exact-count scans on every page**, because the live `admin-orders` contract is unchanged and this phase deploys nothing to the backend. A full load remains about 288 requests and ~1,152 statements in total. The safety gain is entirely from (a) eliminating every automatic trigger, so nothing runs unless a human asks, and (b) bounding concurrency from ~288 simultaneous function calls to 2 — turning an instantaneous burst into a slow, serialized trickle the instance can absorb. Reducing total statement count is Phase 0B's job.
+- Webhook/browser race on the same entitlement → already mitigated by `.is(null)` guards; keep that pattern for any new write and keep `logActivity` gated on the row actually being claimed.
+- Duplicate Stripe events / retried webhook → idempotent by session id; a 500 is intentionally returned so Stripe retries.
+- Payment succeeded but order missing (past incident under DB saturation) → keep `process-payment` / `capture-paypal-payment` reconciliation path and the "favor broken records over silent drops" rule.
+- **Package paid but bonus failed/absent** → currently nothing blocks the sale on `bonus_automation_status = 'failed'`. Needs an availability gate + a clear "still being made" state, not a false "ready".
+- Lyrics double-charge → `create-lyrics-checkout` guards only on `lyrics_unlocked_at`; because package back-fills it, this holds *only if* the package write always lands. Add an explicit `package_unlocked_at` guard to lyrics/download/bonus checkout functions as belt-and-braces.
+- Rush after delivery → already auto-refunds; keep.
+- Stale UI: song page flags cached → keep cache-busting; re-fetch after any verify call.
+- Email duplication → `delivery_status` row-lock pattern and `bonus_notified_at` must stay the single writers.
+- Refunds/cancellations do not clear `*_unlocked_at`; admin has no un-entitle action.
+- Admin visibility gaps: no single "package fulfillment" view (package paid + bonus status + cover status + lyrics) — CS cannot answer "is their package complete?" in one place.
 
-**Rollout gate (all must pass in Lovable preview at low traffic, since preview uses the production database):**
-- Network panel shows at most 2 concurrent `admin-orders` requests at any instant.
-- Zero `admin-orders` requests from timers or window focus — leave the tab idle and backgrounded for several minutes and confirm no traffic.
-- Every existing admin panel and action still works: orders/leads tables and detail modals, upload song, deliver/resend, regenerate, dismiss, revisions (approve / edit & approve / auto-approve), unlock bonus, promos, tips, reactions, email panels, remarketing panels, analytics/charts, CS assistant.
-- A known months-old customer is findable once the bounded load completes.
-- Navigating away mid-load fires no further requests.
-- `pg_stat_statements` shows no growth on the four admin statements while the admin tab sits idle.
+## 5. Recommended sequence (feature-flagged, preview-testable)
 
-**Rollback:** revert one file (`src/pages/Admin.tsx`). Because nothing was deployed to the backend, the production site is unaffected either way until Ryan publishes.
-**Publish gate:** only after the preview gate passes should Ryan approve publishing the frontend, which is what actually stops the storm for the live dashboard.
+Flag store: `admin_settings` keys read server-side, never trusted from the client.
+- `package_offer_enabled` (default `false`) — gates *new* sales only.
+- `package_offer_requires_bonus_ready` (default `true`) — refuse the sale when the order has no bonus asset and `bonus_automation_status` is `failed`.
+- `rush_offer_enabled` + `rush_price_cents` (single source, replacing the two hardcoded constants).
+- `package_offer_allowlist_emails` — preview-test with `admin_tester_emails`-style allowlist before public rollout.
 
-# Phase 0B — backward-compatible `admin-orders` counts optimization (separate approval, production backend change)
+Order of work:
+1. **Read-only observability first** — admin panel showing package fulfillment state per order; no customer-facing change.
+2. **Server guards** — availability + already-owned guards in `create-package-checkout`, `create-checkout`, `create-paypal-order`, and the lyrics/download/bonus checkouts. Behavior-neutral when the flag is off.
+3. **Single rush price + honest copy** — one constant/flag, "usually ready in about an hour" everywhere.
+4. **Flagged UI** — package card and package state on `Checkout.tsx`, `PaymentSuccess.tsx`, `SongPlayer.tsx` behind the flag + allowlist. Never render the package on `SongPreview.tsx`/lead flow.
+5. **Turn the flag on for allowlist → then public.**
 
-File: `supabase/functions/admin-orders/index.ts` only.
+## 6. Acceptance tests (all must pass pre-deploy)
 
-- `action=list` accepts an optional `withCounts` boolean. When it is `true` (or `page === 0`), the two `count: "exact"` scans run; otherwise both are skipped and the response omits the totals.
-- **Default must preserve today's behavior**, because deploying this function immediately affects the live backend while an unpublished or older production frontend is still calling it. An old client that sends no `withCounts` must keep receiving exact counts exactly as it does now — the flag is opt-out only for the new client.
-- The Phase 0A client then sends `withCounts: true` for page 0 and omits it for pages 1..N, keeping the page-0 totals for progress display.
-- Effect once both are live: statements per full load drop from ~1,152 to ~578, with the two count scans running once per load instead of 288 times.
+Stripe test mode:
+1. $29 only → order created once, no entitlements.
+2. $29 + package → one session, `amount_total = 5300`; package/lyrics/download/bonus all unlocked, `package_price_cents = 2400`.
+3. Package purchased post-purchase via `create-package-checkout` → same end state, one `package_unlocked` activity row.
+4. Replay `checkout.session.completed` twice → no duplicate entitlement, no duplicate email, one activity row.
+5. Refresh the success URL 5× → `verify-package-purchase` stays idempotent.
+6. Order already owning package → `create-lyrics-checkout` / `create-download-checkout` / `create-bonus-checkout` return `alreadyUnlocked`, never a payable session.
+7. Rush: price identical in checkout and post-purchase; rush after `sent_at` → auto-refund path fires.
+8. Bonus `failed` order → package offer hidden and `create-package-checkout` refuses (with flag on).
+9. Flag off → checkout, success page, and song page render exactly as today; previously sold package orders still show full entitlements.
 
-**This is a production deployment even before the website is published.** Treat it as a live backend change: deploy it during low traffic, watch `admin-orders` logs for errors immediately after, and confirm the production admin dashboard still shows correct totals with the *current* (pre-publish) frontend before the new frontend goes out.
+PayPal sandbox: repeat 1, 2, 4 (double capture), 6, plus declined-instrument recovery and the duplicate-capture unique index still holding.
 
-**Rollout gate:** old-client compatibility verified (a request with no `withCounts` returns counts); new-client behavior verified (page 1+ requests return no counts and produce no count statements in `pg_stat_statements`); admin totals correct in the UI.
-**Rollback:** revert and redeploy the function; the contract change is additive, so reverting cannot break either client generation.
+Lead flow: preview → paid conversion shows no package/rush offer and no false discount badge.
 
----
+## 7. Rollback design
 
-# Phase 1 — permanent efficiency fix: server-side pagination, filtering and search (needs its own approval)
+- Flipping `package_offer_enabled` to `false` hides the offer and blocks new sessions but changes **no** `*_unlocked_at` data, so already-sold packages keep every entitlement (`get-song-page` reads columns, not the flag).
+- All new server guards are additive early-returns; reverting the frontend commit alone leaves a consistent backend.
+- No destructive migration: any new column is nullable with a default, and no existing column is renamed or dropped.
 
-Do not bundle this into Phase 0A/0B. Partial-data bugs in analytics, alerts, remarketing, or support workflows are the main regression risk, so this phase starts with an inventory, not with code.
+## 8. Smallest safe first batch
 
-**Step 1 — inventory (read-only, no edits).** Enumerate every consumer of `orders`, `allOrders`, and `leads` in `src/pages/Admin.tsx` and in `src/components/admin/*` (known so far: `UnplayedResendPanel`, `ReactionEmailPanel`, plus the analytics/chart and remarketing components), and for each one record: does it need all rows, an aggregate, or just the visible page? Nothing changes until every consumer has an answer.
+1. Migration: insert flag rows (`package_offer_enabled=false`, `package_offer_requires_bonus_ready=true`, `rush_price_cents=1000`) — inert while `false`.
+2. `create-package-checkout`: add already-owned + bonus-availability guards and flag check (no-op for current traffic since the offer is already live only where it is today).
+3. Add `package_unlocked_at` guards to `create-lyrics-checkout`, `create-download-checkout`, `create-bonus-checkout` — closes the double-charge hole with zero UI change.
+4. Read-only admin "Package fulfillment" column/section.
 
-**Step 2 — move aggregates server-side.** Panels that only need totals, rates, or grouped counts get a dedicated `admin-orders` action returning the aggregate, so they stop depending on a full client-side array.
-
-**Step 3 — server-side paging, filtering, search.** Independent paging for orders and leads (they are 3,629 vs 28,752 rows and should not share a cursor); `status`, date and source filters applied in SQL; a `search` parameter matching email, customer name, recipient name and short id across the whole table with a ~400 ms debounce and a "searching all records" hint. Search must never be silently limited to loaded rows.
-
-**Step 4 — retire the background loader** once no consumer needs the full array. Until then it stays as the Phase 0A bounded, manual loader.
-
-**Trim payloads** in the same phase: the leads list select drops the long free-text columns the list rows never render (detail modals already re-fetch full rows via `get_lead_detail` / `get_order_detail`).
-
-**Gate:** the inventory is complete and reviewed; every migrated panel is compared against Phase 0A numbers for identical output; a seeded months-old record is found by server-side search. Each backend step here is also a live-backend deployment and must stay backward compatible with the currently published frontend.
-**Rollback:** per-step reverts; the Phase 0A behavior remains the fallback until the loader is retired, and retiring it is the last step, not the first.
-
----
-
-# Phase 2 — one bounded customer wait with real cancellation (needs approval)
-
-Files: `supabase/functions/get-song-page/index.ts`, `src/pages/SongPlayer.tsx`.
-
-- Server: one total request deadline (about 6 s) enforced by an `AbortController` whose signal is passed to **every** Supabase call with `.abortSignal(signal)` — the short-id RPC, the full-uuid select, and the `admin_settings` lookup — plus a short in-SQL statement timeout once the measurement above tells us the effective value. A client-side abort alone does not stop the function, which is how one slow page becomes connection pressure.
-- Server: wire `req.signal` into the same controller so a real client disconnect cancels the database work.
-- Client: one attempt with an 8 s abort, one automatic retry, then a clear "this is taking longer than usual — Try again" state. Worst case ~18 s instead of ~62 s. Abort in-flight fetches on unmount. A timeout or abort must never render "Song Not Found".
-
-**Gate:** verified only against local mocks/interception (see testing). **Rollback:** revert both files.
-
-# Phase 3 — caching and privacy hardening (needs approval)
-
-`get-song-page` returns song URLs, `revision_token`, unlock/package/bonus state, recipient name and occasion. None of it may enter a shared or CDN cache; `Cache-Control: no-store` stays.
-
-- In-instance request coalescing (a per-process promise map keyed strictly on the normalized order id, not a cache) so a burst on one link becomes one database query.
-- Split the fallback: only always-public presentation fields (song title, cover URL, occasion, recipient first name) may be served stale. `revision_token`, `lyrics_unlocked`, `download_unlocked`, `package_unlocked`, `bonus_*` and song URLs are live or omitted with a "refresh to see your unlocks" state.
-- Fix the `fresh=1` gap: it must bypass **both** `successCache` and `staleCache`, and entitlement fields get a zero stale age so a page loaded right after a purchase can never show pre-purchase unlock state.
-
-**Gate:** field-by-field review of the response against a public-vs-entitlement list. **Rollback:** revert; in-memory structures vanish on deploy.
-
-# Phase 4 — monitoring, native first (3A needs no approval beyond reading; 4B does)
-
-**A. Native, no code, no cost — and do this before any future restart.** Cloud Reports (CPU, memory, connections, disk IO) for the outage timestamps; Logs Explorer over `edge_logs` and `postgres_logs` filtered to `admin-orders` and `get-song-page` in those windows; `pg_stat_statements` snapshots captured *before* any restart, since a restart wipes them; the connections chart to see whether 60 was approached. This is what turns "strongly implicated" into proven causality.
-
-**B. Only if native retention is too short to cover a future event:** a snapshot table plus a key-protected read-only endpoint. Risks to design for explicitly: RLS with no `anon`/`authenticated` access at all (service-role writes only); redaction of `pg_stat_activity.query` text, which can contain customer emails and names; a fixed retention window (e.g. 7 days) with pruning so it does not become another disk/vacuum problem; and the fact that it is least likely to work exactly when most needed — during saturation its own connection may be refused, so short timeout, no retries, degrade to a partial snapshot rather than hang. A Log Drain is a paid add-on: show Ryan the current per-GB and monthly cost from the Cloud billing page before recommending it.
-
-**Rollback:** A leaves no trace; B is dropping a table and a function.
-
-# Phase 5 — `preload="auto"` → `preload="metadata"` (separate, low risk, needs approval)
-
-One attribute in `src/pages/SongPlayer.tsx` line 846. No database involvement.
-- Benefit: the browser fetches only headers and duration instead of eagerly downloading the whole MP3 on load — several MB saved per view and a faster first render, most noticeable on mobile.
-- Tradeoff: duration and the seek bar still appear immediately, but the first tap on Play buffers briefly (usually well under a second on broadband, one to two seconds on weak mobile) instead of starting instantly. Mitigations: keep the buffering indicator, optionally call `load()` on first page interaction so the delay lands before the tap.
-- Rollback: one-word revert.
-
----
-
-## Testing without production load, real orders, or Kie/Suno credits
-
-Do **not** use repeated production `fresh=1` calls as failure injection.
-- Playwright against the local dev server with `page.route` interception on `get-song-page`, synthesizing 503, 500, malformed body, a 30 s hang, an aborted connection, and a genuine 404. Assert bounded wait, retry state, correct not-found card, and that no timeout renders "Song Not Found".
-- Admin: intercept `admin-orders` with a fixture reporting 28,752 leads and 3,629 orders; assert at most 2 concurrent requests, no timer/focus requests, abort on unmount, and a correct partial-load warning when a page fixture returns 500. Interception also covers the Phase 0B contract (a request without `withCounts` still returns totals) without deploying anything.
-- Mount/unmount the song route repeatedly under interception; assert no orphaned in-flight requests.
-- Server deadline exercised locally against a delaying stub.
-- No test requires a checkout, a Suno generation, or a Kie call.
-
-## Success metrics
-
-- Phase 0A (frontend only): peak concurrent `admin-orders` requests 288 → 2; automatic timer/focus requests per hour → 0; requests only after login or a human pressing Refresh; count statements unchanged at 288 pairs per full load (stated honestly — 0B's job); no admin panel or action regressions.
-- Phase 0B (backend): count statements per full load 288 pairs → 1 pair; total statements per full load ~1,152 → ~578; old-client requests still receive exact counts.
-- Phase 1: statements per admin interaction → 1–2; full-dataset loads eliminated; search across all 28,752 leads under ~1 s.
-- Phases 2–3: `/song/<id>` p95 under 2 s; worst-case customer wait bounded ~18 s with a retry affordance; no infinite spinner, no false "not found", no entitlement served from stale cache.
-- Database: connections stay well clear of 60 during admin sessions; memory does not climb with admin usage.
-
-## What could break, and the prevention
-
-- **Phase 0A:** losing automatic refresh means an admin could act on stale data → explicit Refresh button, visible last-updated timestamp, and progress state. Partial loads could hide records → explicit warning naming loaded vs total counts, never a silent truncation.
-- **Phase 0B:** a deployed function change hitting the still-published old frontend → the `withCounts` default reproduces current behavior exactly, so old clients are unaffected; deploy at low traffic and watch function logs.
-- **Phase 1:** panels reading the full arrays showing partial data → the inventory step gates the whole phase; each panel migrates to a server-side aggregate and is diffed against Phase 0 output before the loader is retired.
-- Search feeling weaker → server-side search covers all rows, which is strictly better than today's search over loaded rows.
-- Shorter client timeout abandoning a recoverable load → one automatic retry plus explicit Try again; copy never implies the song is missing.
-- Stale/shared cache leaking entitlements → entitlement fields never cached, `no-store` retained, `fresh=1` bypasses both caches, coalescing keyed per order id.
-- **Business flows:** no phase touches Stripe, PayPal, webhooks, tips, unlock verification (lyrics/download/package/bonus), revisions, cover art, delivery scheduling, or pixels/tracking. Phase 0A changes admin refresh mechanics in one frontend file; Phase 0B adds one optional backend parameter; Phase 1 is admin read paths; Phases 2–3 are one read function and one page; Phase 4A is observation only; Phase 5 is one attribute. Every existing admin action keeps its current request shape and is re-tested before each release.
-
-## Next steps in plain English
-
-Right now, every 30 seconds — and again whenever you click back into the admin window — the dashboard tries to download every order and every lead at once, firing roughly 288 simultaneous requests that become over a thousand database queries. Two of those overlapping is a very plausible reason the database has been flattening and customer song pages have taken minutes.
-
-One more thing worth knowing: the preview site and the live site use the same backend. Frontend changes stay in preview until you press Publish, but any change to a backend function goes live immediately, even if you never publish. That's why the emergency patch is now two separate approvals.
-
-**Phase 0A** is frontend only — one file, `Admin.tsx`, nothing deployed to the backend. The automatic 30-second and click-back reloads are removed. The dashboard still loads everything you're used to seeing, but only when you log in or press Refresh, and it fetches two pages at a time instead of 288 at once. You get a progress line, a "last updated" time, and if something fails mid-load you keep what loaded and see a clear warning instead of a silently short list. Being honest about the limit: it still asks for the record counts on every page, because that lives in the backend function we're deliberately not touching yet — so the total number of queries is unchanged; what changes is that they trickle two at a time and only when you ask. You test it in preview, and only if that looks right do you publish.
-
-**Phase 0B** is the small backend follow-up that stops re-counting all 28,752 leads on every page, cutting total queries per full load roughly in half. It's separate because deploying it changes the live backend right away, before any publish, so it's built to keep behaving exactly as today for the currently published site.
-
-**Phase 1** comes after, once we've listed every panel that currently relies on having all records in the browser. That's the permanent fix — the server does the paging, filtering and searching, so nothing needs to load 28,752 leads into your browser at all. It's kept separate on purpose: rushing it risks analytics, remarketing, and support panels quietly showing partial numbers.
-
-Then the song-page timeout and caching fixes, the monitoring work (native Supabase reports and logs first, before any future restart erases the evidence), and finally the small audio-preload change.
-
-## Requires Ryan's approval
-
-- Any code edit, deploy, or migration — nothing in this plan has been applied.
-- **Phase 0A** (frontend-only emergency admin refresh guard) — recommended first and on its own; no backend deployment.
-- **Publishing the frontend** after the Phase 0A preview gate passes — this is the step that actually protects the live dashboard.
-- **Phase 0B** (`admin-orders` `withCounts` optimization) — separate approval, and note it deploys to the live backend immediately, before/independent of any website publish.
-- **Phase 1** (server-side pagination/filter/search redesign) — separately, and only after the consumer inventory is reviewed.
-- Phases 2, 3, 4B, and 5 individually.
-- Any change to the background page size (100 → 250), which requires the payload/limit measurement first.
-- Enabling a Log Drain, after seeing its cost.
-- Creating the diagnostics table/endpoint (Phase 4B needs a migration).
-- Any further compute or disk resize. Current evidence does not support one: memory 61%, disk 15%, pool clients 1/200. Remove the storm, then re-measure.
-- Any backend restart — restarts erase `pg_stat_statements`, the main evidence trail; snapshot first.
+No pricing change, no customer-visible change in this batch.
