@@ -61,6 +61,7 @@ export function resolveLeadCheckoutAmounts(
   const packageCents = hasForeverMemory ? parseCents(metadata.package_price_cents) : 0;
 
   if (hasForeverMemory && packageCents !== FOREVER_MEMORY_PACKAGE_CENTS) return null;
+  if (packageCents === null) return null;
 
   const metadataBaseCents = parseCents(metadata.offerPriceCents);
   const totalCents = isNonNegativeInteger(stripeTotalCents)
