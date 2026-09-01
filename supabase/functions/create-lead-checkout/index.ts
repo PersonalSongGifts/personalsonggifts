@@ -14,7 +14,8 @@ const corsHeaders = {
 // We set the offer amount server-side so Stripe ALWAYS shows the discounted lead offer,
 // even if promo-code configuration changes in Stripe.
 const LEAD_STANDARD_TOTAL_CENTS = 2900;
-const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = 2900; // at parity with the public $29.00 price
+const FOLLOWUP_DISCOUNT_CENTS = 1000; // follow-up email promise: always $10 off the current price
+const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = Math.max(0, LEAD_STANDARD_TOTAL_CENTS - FOLLOWUP_DISCOUNT_CENTS);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -170,7 +171,8 @@ Deno.serve(async (req) => {
 
       // VDay10: subtract $10 server-side when remarketing link is used
       const VDAY10_DISCOUNT_CENTS = 1000;
-      if (applyVday10Discount) {
+      // Never stack vday10 on top of the followup discount — one $10 off, not two.
+      if (applyVday10Discount && !applyFollowupDiscount) {
         const { data: vdaySetting } = await supabase
           .from("admin_settings")
           .select("value")

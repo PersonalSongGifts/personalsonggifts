@@ -37,8 +37,8 @@ function buildFollowupEmail(
 
   const promoPrice = promo
     ? `$${(promo.lead_price_cents / 100).toFixed(2)}`
-    : "$39.99";
-  const originalPrice = "$99.99";
+    : "$19.00";
+  const originalPrice = "$29.00";
 
   const offerParagraph = promo
     ? `We're running a sale right now — get the full song for just ${promoPrice} (normally ${originalPrice}). No code needed, the discount is already applied to the link below.`
@@ -323,7 +323,7 @@ Deno.serve(async (req) => {
     const result = await response.json();
     const offerDesc = activePromo
       ? `${activePromo.name} promo at $${(activePromo.lead_price_cents / 100).toFixed(2)}`
-      : "$10 off ($39.99)";
+      : "$10 off ($19.00)";
     console.log(`Follow-up email (${source || "manual"}) sent to ${lead.email} with offer: ${offerDesc}`, result);
 
     // Log activity
