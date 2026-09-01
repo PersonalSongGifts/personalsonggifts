@@ -391,13 +391,11 @@ export default function SongPreview() {
 
   // Compute the displayed default price (when no flash promo applies):
   // pick the cheaper of the configured default ladder and any active sitewide promo.
-  const baseDefaultCents = isVday10 && isFollowup
-    ? 2900
-    : isVday10
-    ? 2900
-    : isFollowup
-    ? 2900
-    : 2900;
+  const LEAD_BASE_CENTS = 2900;
+  const FOLLOWUP_DISCOUNT_CENTS = 1000;
+  const baseDefaultCents = isFollowup
+    ? LEAD_BASE_CENTS - FOLLOWUP_DISCOUNT_CENTS
+    : LEAD_BASE_CENTS;
   const effectiveDefaultCents = sitewideLeadCents !== null
     ? Math.min(baseDefaultCents, sitewideLeadCents)
     : baseDefaultCents;
@@ -618,7 +616,7 @@ export default function SongPreview() {
           </Card>
 
           {/* Promo Badge — only render when a real promo (flash or Valentine's/vday10) is active */}
-          {(flashShowPrice || isVday10) && (
+          {(flashShowPrice || isVday10 || isFollowup) && (
             <div className="text-center">
               <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
                 {flashShowPrice
@@ -627,7 +625,7 @@ export default function SongPreview() {
                   ? isFollowup
                     ? "Valentine's Day Special + $10 off"
                     : "Valentine's Day Special"
-                  : ""}
+                  : isFollowup ? "🎁 $10 off — already applied" : ""}
               </Badge>
             </div>
           )}
