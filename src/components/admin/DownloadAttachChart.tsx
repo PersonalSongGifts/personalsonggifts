@@ -16,6 +16,7 @@ import { format, subDays, startOfDay, parseISO } from "date-fns";
 interface Order {
   id: string;
   status: string;
+  created_at?: string | null;
   delivered_at?: string | null;
   download_unlocked_at?: string | null;
   download_price_cents?: number | null;
@@ -29,6 +30,9 @@ const DAYS = 30;
 
 export function DownloadAttachChart({ orders }: DownloadAttachChartProps) {
   const { chartData, totals } = useMemo(() => {
+    // "Last 30 Days" is independent of the dashboard date picker.
+    const cutoff = startOfDay(subDays(new Date(), DAYS - 1));
+    const scoped = orders.filter((o) => !!o.created_at && parseISO(o.created_at) >= cutoff);
     const days = Array.from({ length: DAYS }, (_, i) => {
       const date = startOfDay(subDays(new Date(), DAYS - 1 - i));
       return {
@@ -52,7 +56,7 @@ export function DownloadAttachChart({ orders }: DownloadAttachChartProps) {
     let deliveredTotal = 0;
     let revenueTotal = 0;
 
-    orders.forEach((o) => {
+    scoped.forEach((o) => {
       if (o.status === "cancelled") return;
 
       // Bucket delivered orders (denominator for attach rate)

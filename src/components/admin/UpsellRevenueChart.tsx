@@ -25,6 +25,9 @@ interface UpsellRevenueChartProps {
 
 export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
   const { chartData, totals } = useMemo(() => {
+    // "Last 30 Days" is independent of the dashboard date picker.
+    const cutoff = startOfDay(subDays(new Date(), 29));
+    const scoped = orders.filter((o) => !!o.created_at && parseISO(o.created_at) >= cutoff);
     const last30Days = Array.from({ length: 30 }, (_, i) => {
       const date = startOfDay(subDays(new Date(), 29 - i));
       return {
@@ -54,7 +57,7 @@ export function UpsellRevenueChart({ orders }: UpsellRevenueChartProps) {
       return last30Days.find((row) => row.date.getTime() === d.getTime());
     };
 
-    orders.forEach((o) => {
+    scoped.forEach((o) => {
       if (o.status === "cancelled") return;
 
       if (o.lyrics_unlocked_at && (o.lyrics_price_cents ?? 0) > 0) {

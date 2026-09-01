@@ -1,11 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { orderTotalDollars } from "./orderTotals";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 
 interface Order {
   id: string;
   price: number;
+  price_cents?: number | null;
   status: string;
   utm_source?: string | null;
+  lyrics_price_cents?: number | null;
+  download_price_cents?: number | null;
+  bonus_price_cents?: number | null;
+  package_price_cents?: number | null;
+  rush_price_cents?: number | null;
 }
 
 interface Lead {
@@ -38,6 +45,8 @@ function getSourceColor(source: string): string {
 
 function normalizeSource(source: string | null | undefined): string {
   if (!source) return "Direct";
+  // Unresolved ad-platform macros (e.g. "{{site_source_name}}") are labeled honestly.
+  if (source.includes("{{") || source.includes("}}")) return "meta (unresolved macro)";
   // Capitalize first letter
   return source.charAt(0).toUpperCase() + source.slice(1).toLowerCase();
 }
@@ -62,7 +71,7 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
   const revenueBySource = orders.reduce((acc, order) => {
     if (order.status === "cancelled") return acc;
     const source = normalizeSource(order.utm_source);
-    acc[source] = (acc[source] || 0) + order.price;
+    acc[source] = (acc[source] || 0) + orderTotalDollars(order);
     return acc;
   }, {} as Record<string, number>);
 
@@ -93,7 +102,7 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
   const conversionData = allSources.map((source) => {
     const sourceLeads = leadsBySource[source] || 0;
     const sourceOrders = ordersBySource[source] || 0;
-    const sourceRevenue = revenueBySource[source] || 0;
+    const sourceRevenue = Math.round(revenueBySource[source] || 0);
     const conversionRate = sourceLeads > 0 ? Math.round((sourceOrders / sourceLeads) * 100) : 0;
     const aov = sourceOrders > 0 ? Math.round(sourceRevenue / sourceOrders) : 0;
     return {
@@ -108,7 +117,7 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
 
   const totalLeads = leads.length;
   const totalOrders = orders.filter((o) => o.status !== "cancelled").length;
-  const totalRevenue = orders.reduce((sum, o) => o.status !== "cancelled" ? sum + o.price : sum, 0);
+  const totalRevenue = orders.reduce((sum, o) => o.status !== "cancelled" ? sum + orderTotalDollars(o) : sum, 0);
 
   if (totalLeads === 0 && totalOrders === 0) {
     return (
@@ -131,6 +140,7 @@ export function SourceAnalytics({ orders, leads }: SourceAnalyticsProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Traffic Source Performance</CardTitle>
+          <p className="text-sm text-muted-foreground">Revenue and AOV incl. upsells, excl. tips</p>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
