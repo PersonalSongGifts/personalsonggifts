@@ -379,6 +379,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          album_cover_attempts: number
           album_cover_bonus_status: string | null
           album_cover_bonus_task_id: string | null
           album_cover_bonus_url: string | null
@@ -519,6 +520,7 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          album_cover_attempts?: number
           album_cover_bonus_status?: string | null
           album_cover_bonus_task_id?: string | null
           album_cover_bonus_url?: string | null
@@ -659,6 +661,7 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          album_cover_attempts?: number
           album_cover_bonus_status?: string | null
           album_cover_bonus_task_id?: string | null
           album_cover_bonus_url?: string | null
@@ -1118,6 +1121,10 @@ export type Database = {
         }
         Returns: number
       }
+      claim_album_cover_attempt: {
+        Args: { p_max: number; p_order_id: string }
+        Returns: number
+      }
       find_orders_by_short_id: {
         Args: {
           max_results?: number
@@ -1127,6 +1134,7 @@ export type Database = {
           status_filter?: string[]
         }
         Returns: {
+          album_cover_attempts: number
           album_cover_bonus_status: string | null
           album_cover_bonus_task_id: string | null
           album_cover_bonus_url: string | null

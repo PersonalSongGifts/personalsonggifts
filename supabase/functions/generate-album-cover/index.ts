@@ -93,12 +93,53 @@ Deno.serve(async (req) => {
     }
     const { data: order, error: orderErr } = await supabase
       .from("orders")
-      .select("id, genre, occasion, song_title, recipient_name, bonus_song_title, bonus_style_prompt")
+      .select("id, genre, occasion, song_title, recipient_name, bonus_song_title, bonus_style_prompt, package_unlocked_at")
       .eq("id", resolvedOrderId)
       .maybeSingle();
     if (orderErr || !order) {
       return new Response(JSON.stringify({ error: "Order not found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // --- Entitlement: cover generation is part of the Forever Memory Package. ---
+    if (!order.package_unlocked_at) {
+      return new Response(JSON.stringify({
+        error: "The cover studio is part of the Forever Memory Package.",
+        code: "package_required",
+      }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // --- photoUrl must be a photo we stored ourselves. Anything else would let a
+    // caller spend our image-generation credits transforming arbitrary remote images. ---
+    const allowedPhotoPrefix = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/songs/cover-photos/`;
+    if (typeof photoUrl !== "string" || !photoUrl.startsWith(allowedPhotoPrefix)) {
+      return new Response(JSON.stringify({
+        error: "Please upload your photo again before generating a cover.",
+        code: "invalid_photo_url",
+      }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // --- Per-order generation cap, claimed atomically BEFORE any paid Kie call. ---
+    const MAX_COVER_ATTEMPTS = 24;
+    const { data: attemptNo, error: attemptErr } = await supabase
+      .rpc("claim_album_cover_attempt", { p_order_id: resolvedOrderId, p_max: MAX_COVER_ATTEMPTS });
+    if (attemptErr) {
+      console.error("[album-cover] attempt claim failed", attemptErr);
+      return new Response(JSON.stringify({ error: "Could not start generation. Please try again." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (typeof attemptNo !== "number" || attemptNo < 0) {
+      return new Response(JSON.stringify({
+        error: "You've reached the cover-generation limit for this order. Email support@personalsonggifts.com and we'll help.",
+        code: "generation_limit_reached",
+      }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     let promptGenre: string;
