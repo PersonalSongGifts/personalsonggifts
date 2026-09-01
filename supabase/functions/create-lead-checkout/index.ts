@@ -161,8 +161,12 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Promo price takes TOTAL precedence — ignore followup and vday10
-      unitAmount = promo.lead_price_cents;
+      // Promo price takes precedence over vday10, but the follow-up email's
+      // "$10 off" promise is a FLOOR: a promo may never charge more than the
+      // price we already put in writing to that lead.
+      unitAmount = applyFollowupDiscount
+        ? Math.min(promo.lead_price_cents, LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS)
+        : promo.lead_price_cents;
       allowPromotionCodes = false;
     } else {
       unitAmount = applyFollowupDiscount
