@@ -2143,7 +2143,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 <body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
 <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Hi ${firstName},</p>
-<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">You listened to ${lead.recipient_name}'s song the other day — we hope it put a smile on your face.</p>
+<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">You listened to ${lead.recipient_name}'s song ${listenedPhrase} — we hope it put a smile on your face.</p>
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.</p>
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 24px 0;"><a href="${previewUrl}" style="color:#1E3A5F;">${previewUrl}</a></p>
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.</p>
