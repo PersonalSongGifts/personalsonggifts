@@ -78,7 +78,10 @@ export type Database = {
           earliest_generate_at: string | null
           email: string
           favorite_memory: string
+          follow_up_2_sent_at: string | null
+          follow_up_3_sent_at: string | null
           follow_up_sent_at: string | null
+          followup_completed_at: string | null
           full_song_url: string | null
           generated_at: string | null
           genre: string
@@ -171,7 +174,10 @@ export type Database = {
           earliest_generate_at?: string | null
           email: string
           favorite_memory: string
+          follow_up_2_sent_at?: string | null
+          follow_up_3_sent_at?: string | null
           follow_up_sent_at?: string | null
+          followup_completed_at?: string | null
           full_song_url?: string | null
           generated_at?: string | null
           genre: string
@@ -264,7 +270,10 @@ export type Database = {
           earliest_generate_at?: string | null
           email?: string
           favorite_memory?: string
+          follow_up_2_sent_at?: string | null
+          follow_up_3_sent_at?: string | null
           follow_up_sent_at?: string | null
+          followup_completed_at?: string | null
           full_song_url?: string | null
           generated_at?: string | null
           genre?: string
