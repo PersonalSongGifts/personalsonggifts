@@ -322,6 +322,7 @@ async function sendOneEmail(
   const senderEmail = "support@personalsonggifts.com";
   const senderName = "Personal Song Gifts";
   const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(params.email)}`;
+  const oneClickUnsub = `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(params.email)}`;
 
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -337,7 +338,7 @@ async function sendOneEmail(
         "Message-ID": messageId,
         "X-Entity-Ref-ID": leadId,
         "Precedence": "transactional",
-        "List-Unsubscribe": `<mailto:${senderEmail}?subject=unsubscribe>, <${unsubscribeUrl}>`,
+        "List-Unsubscribe": `<mailto:${senderEmail}?subject=unsubscribe>, <${oneClickUnsub}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
     }),
