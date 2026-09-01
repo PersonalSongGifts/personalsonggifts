@@ -15,7 +15,12 @@ Deno.serve(async (req) => {
   try {
     const form = await req.formData();
     const file = form.get("file");
-    const orderId = (form.get("orderId") as string | null) || "unknown";
+    const orderId = (form.get("orderId") as string | null) || "";
+    if (!orderId) {
+      return new Response(JSON.stringify({ error: "orderId required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     if (!file || !(file instanceof File)) {
       return new Response(JSON.stringify({ error: "No file" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -51,8 +56,47 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // --- Entitlement: only a paid Forever Memory Package order may store a cover photo.
+    // Without this, the endpoint is open image hosting on our storage bucket. ---
+    let resolvedOrderId = orderId;
+    if (orderId.length === 8) {
+      const { data: shortMatches, error: shortErr } = await supabase
+        .rpc("find_orders_by_short_id", {
+          short_id: orderId,
+          status_filter: null,
+          require_song_url: false,
+          max_results: 2,
+        });
+      if (shortErr) console.error("[cover-photo] short id resolve error", shortErr);
+      if (!shortMatches || shortMatches.length !== 1) {
+        return new Response(JSON.stringify({ error: "Order not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      resolvedOrderId = shortMatches[0].id as string;
+    }
+    const { data: order, error: orderErr } = await supabase
+      .from("orders")
+      .select("id, package_unlocked_at")
+      .eq("id", resolvedOrderId)
+      .maybeSingle();
+    if (orderErr || !order) {
+      return new Response(JSON.stringify({ error: "Order not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!order.package_unlocked_at) {
+      return new Response(JSON.stringify({
+        error: "The cover studio is part of the Forever Memory Package.",
+        code: "package_required",
+      }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const ext = effectiveType === "image/png" ? "png" : effectiveType === "image/webp" ? "webp" : "jpg";
-    const shortId = orderId.slice(0, 8).toUpperCase();
+    const shortId = resolvedOrderId.slice(0, 8).toUpperCase();
     const path = `cover-photos/${shortId}-${Date.now()}.${ext}`;
     const buf = new Uint8Array(await file.arrayBuffer());
     const { error: upErr } = await supabase.storage.from("songs").upload(path, buf, {
