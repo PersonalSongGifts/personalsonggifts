@@ -270,7 +270,7 @@ function getSongDeliveryHtml(data: { customerName: string; recipientName: string
       <a href="${data.songUrl}" style="color: #1E3A5F;">${data.songUrl}</a>
     </p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      From the song page you can listen, download, and share with friends and family. We hope it brings joy!
+      From the song page you can listen and share with friends and family. We hope it brings joy!
     </p>
     <p style="color: #555555; font-size: 14px; margin: 0 0 4px 0;"><strong>Order ID:</strong> ${data.orderId}</p>
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 30px 0 40px 0;">
