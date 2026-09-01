@@ -7,9 +7,17 @@ import { format, startOfDay, isSameDay } from "date-fns";
 
 const TZ = "America/Los_Angeles";
 
+import { orderTotalDollars } from "./orderTotals";
+
 interface Order {
   id: string;
   price: number;
+  price_cents?: number | null;
+  lyrics_price_cents?: number | null;
+  download_price_cents?: number | null;
+  bonus_price_cents?: number | null;
+  package_price_cents?: number | null;
+  rush_price_cents?: number | null;
   status: string;
   created_at: string;
 }
@@ -46,13 +54,13 @@ export function SalesVelocity({ orders }: SalesVelocityProps) {
 
       if (isSameDay(orderPST, todayStartPST)) {
         todayOrders++;
-        todayRevenue += order.price;
+        todayRevenue += orderTotalDollars(order);
       } else if (isSameDay(orderPST, yesterdayStartPST)) {
         yesterdayFullOrders++;
-        yesterdayFullRevenue += order.price;
+        yesterdayFullRevenue += orderTotalDollars(order);
         if (orderPST <= yesterdayCutoffPST) {
           yesterdayByNowOrders++;
-          yesterdayByNowRevenue += order.price;
+          yesterdayByNowRevenue += orderTotalDollars(order);
         }
       }
     }
@@ -138,7 +146,7 @@ export function SalesVelocity({ orders }: SalesVelocityProps) {
 
           {/* Revenue comparison */}
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Revenue</p>
+            <p className="text-sm text-muted-foreground">Revenue (incl. upsells)</p>
             <div className="flex items-baseline flex-wrap">
               <span className="text-2xl font-bold">${data.todayRevenue.toLocaleString()}</span>
               <span className="text-sm text-muted-foreground ml-1.5">
