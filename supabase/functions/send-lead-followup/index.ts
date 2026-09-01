@@ -216,6 +216,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    const occasionLower = (lead.occasion || "").toLowerCase();
+    if (occasionLower === "memorial" || occasionLower === "pet-memorial") {
+      console.log(`Memorial occasion — lead ${lead.id} excluded from follow-up offers`);
+      return new Response(
+        JSON.stringify({ error: "Memorial leads are excluded from follow-up offers" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!lead.preview_sent_at) {
       return new Response(
         JSON.stringify({ error: "Preview not sent yet - send preview first" }),

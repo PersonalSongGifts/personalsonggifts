@@ -2073,6 +2073,16 @@ To unsubscribe: ${unsubLink}`;
               continue;
             }
 
+            const occasionLower = (lead.occasion || "").toLowerCase();
+            if (occasionLower === "memorial" || occasionLower === "pet-memorial") {
+              console.log(`[FOLLOWUP] Memorial occasion — marking lead ${lead.id} dismissed, no marketing follow-up`);
+              await supabase.from("leads")
+                .update({ dismissed_at: new Date().toISOString() })
+                .eq("id", lead.id)
+                .is("dismissed_at", null);
+              continue;
+            }
+
             // Purchase guard: check if lead already converted via fingerprint match
             const { data: candidateOrders } = await supabase
               .from("orders")
