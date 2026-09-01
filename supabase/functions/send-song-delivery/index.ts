@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     </p>
 
     <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-      From the song page you can listen, download, and share with friends and family. We hope it brings joy!
+      From the song page you can listen${downloadIncluded ? ", download," : ""} and share with friends and family. We hope it brings joy!
     </p>
 
     <div style="border: 1px solid #eeeeee; border-radius: 6px; padding: 16px 18px; margin: 24px 0;">
@@ -208,7 +208,7 @@ Order ID: ${orderId.slice(0, 8).toUpperCase()}
 ${revisionToken ? `\nWant changes? Request a revision: https://personalsonggifts.lovable.app/song/revision/${revisionToken}\n` : ''}
 ${showBonusPS ? `P.S. We also made ${bonusGenreLabel === "R&B" ? "an R&B" : "an acoustic"} version of your song — visit your song page to check it out.\n` : ''}
 ${showBonusPending ? `P.S. Your bonus ${pendingStyle} version is still in the studio — we'll email you the moment it's ready.\n` : ''}
-We hope it brings joy!
+From the song page you can listen${downloadIncluded ? ", download," : ""} and share with friends and family. We hope it brings joy!
 
 ---
 Share the moment — earn a $100 gift card
@@ -268,9 +268,6 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
     console.log("Song delivery email sent:", result);
 
     // Log activity
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sbClient = createClient(supabaseUrl, supabaseServiceKey);
     await logActivity(sbClient, "order", orderId, "delivery_sent", "system", `Delivery email sent to ${customerEmail}`);
 
     // === SMS DELIVERY (after email success) ===
