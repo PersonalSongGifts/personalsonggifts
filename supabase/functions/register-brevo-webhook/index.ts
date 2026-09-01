@@ -52,17 +52,31 @@ Deno.serve(async (req) => {
       throw new Error("BREVO_API_KEY not configured");
     }
 
-    // Generate a random 32-hex secret
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    const secret = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-
-    const { error: settingsError } = await supabase
+    // Reuse the existing secret if present so the webhook URL stays stable
+    const { data: existingSecretRow } = await supabase
       .from("admin_settings")
-      .upsert({ key: "brevo_webhook_secret", value: secret, updated_at: new Date().toISOString() });
+      .select("value")
+      .eq("key", "brevo_webhook_secret")
+      .maybeSingle();
 
-    if (settingsError) {
-      throw settingsError;
+    const existingSecret = (existingSecretRow as { value: string } | null)?.value?.trim();
+
+    let secret: string;
+    if (existingSecret) {
+      secret = existingSecret;
+    } else {
+      // Generate a random 32-hex secret
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      secret = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+      const { error: settingsError } = await supabase
+        .from("admin_settings")
+        .upsert({ key: "brevo_webhook_secret", value: secret, updated_at: new Date().toISOString() });
+
+      if (settingsError) {
+        throw settingsError;
+      }
     }
 
     const webhookUrl = `${WEBHOOK_BASE}?secret=${secret}`;
@@ -76,7 +90,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         url: webhookUrl,
-        events: ["hardBounce", "spam", "unsubscribed", "blocked", "invalidEmail"],
+        events: ["hardBounce", "spam", "unsubscribed", "blocked", "invalid"],
         type: "transactional",
         description: "PSG suppression sync",
       }),
