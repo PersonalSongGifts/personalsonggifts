@@ -2048,9 +2048,11 @@ To unsubscribe: ${unsubLink}`;
           .not("preview_played_at", "is", null)
           .neq("status", "converted")
           .is("follow_up_sent_at", null)
+          .is("followup_completed_at", null)
           .is("dismissed_at", null)
           .not("preview_token", "is", null)
           .not("full_song_url", "is", null)
+          .gte("captured_at", sixMonthsAgoIso)
           .lte("preview_sent_at", twentyFourHoursAgo)
           .order("preview_played_at", { ascending: true })
           .limit(MAX_FOLLOWUP_PER_RUN + 50); // Fetch extra to account for suppressions
