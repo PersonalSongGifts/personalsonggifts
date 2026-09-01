@@ -469,7 +469,7 @@ Deno.serve(async (req) => {
         textContent: textContent,
         headers: {
           "Precedence": "transactional",
-          "List-Unsubscribe": `<mailto:unsubscribe@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(email)}>`,
+          "List-Unsubscribe": `<mailto:unsubscribe@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(email)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }
       }),

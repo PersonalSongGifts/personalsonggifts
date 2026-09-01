@@ -1381,7 +1381,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
                   "Message-ID": `<${lead.id}.${Date.now()}@personalsonggifts.com>`,
                   "X-Entity-Ref-ID": lead.id,
                   "Precedence": "transactional",
-                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}>`,
+                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.lead_email_override || lead.email)}>`,
                   "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                 }
               }),
@@ -1677,7 +1677,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
                   "Message-ID": `<resend.${order.id}.${Date.now()}@personalsonggifts.com>`,
                   "X-Entity-Ref-ID": order.id,
                   "Precedence": "transactional",
-                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}>`,
+                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(effectiveEmail)}>`,
                   "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                 }
               }),
@@ -2173,7 +2173,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
                     "Message-ID": `<${lead.id}.followup.cron.${Date.now()}@personalsonggifts.com>`,
                     "X-Entity-Ref-ID": lead.id,
                     "Precedence": "transactional",
-                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.email)}>`,
                     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                   }
                 }),
