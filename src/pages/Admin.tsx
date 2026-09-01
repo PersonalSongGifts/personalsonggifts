@@ -353,6 +353,18 @@ export default function Admin() {
     return { rangeStart: cutoff, rangeEnd: new Date(), rangeLabel: labelMap[analyticsPreset] || "Range" };
   })();
 
+  // Leads filtered to the SAME window as analyticsOrders (by captured_at).
+  const analyticsLeads = (() => {
+    if (!rangeStart && !rangeEnd) return leads;
+    const start = rangeStart ?? new Date(0);
+    const end = rangeEnd ?? new Date();
+    return leads.filter((l) => {
+      if (!l.captured_at) return false;
+      const d = parseISO(l.captured_at);
+      return d >= start && d <= end;
+    });
+  })();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fetchInFlight = useRef(false);
   const { toast } = useToast();
@@ -442,7 +454,7 @@ export default function Admin() {
   const [totalLeadCount, setTotalLeadCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const listOrders = async (status: string, page = 0, pageSize = 100) => {
+  const listOrders = async (status: string, page = 0, pageSize = 100, skipOrders = false) => {
     return supabase.functions.invoke("admin-orders", {
       method: "POST",
       body: {
@@ -451,6 +463,7 @@ export default function Admin() {
         status,
         page,
         pageSize,
+        skipOrders,
       },
     });
   };
@@ -515,10 +528,9 @@ const { data, error } = await listOrders("all", 0, 100);
       const bgPageSize = 100;
       const totalOrders = data.totalOrders || 0;
       const totalLeads = data.totalLeads || 0;
-      const maxPages = Math.max(
-        Math.ceil(totalOrders / bgPageSize),
-        Math.ceil(totalLeads / bgPageSize)
-      );
+      const orderPages = Math.ceil(totalOrders / bgPageSize);
+      const leadPages = Math.ceil(totalLeads / bgPageSize);
+      const maxPages = Math.max(orderPages, leadPages);
 
       if (maxPages > 1) {
         setLoadingMore(true);
@@ -528,7 +540,7 @@ const { data, error } = await listOrders("all", 0, 100);
         // Fetch remaining pages with bounded concurrency (max 5 at a time)
         const results = await runPooled(
           Array.from({ length: maxPages - 1 }, (_, i) =>
-            () => listOrders("all", i + 1, bgPageSize)
+            () => listOrders("all", i + 1, bgPageSize, i + 1 >= orderPages)
           ),
           5,
         );
@@ -607,10 +619,9 @@ const { data, error } = await listOrders("all", 0, 100);
 
       // Load remaining pages in background
       const bgPageSize = 100;
-      const maxPages = Math.max(
-        Math.ceil((data.totalOrders || 0) / bgPageSize),
-        Math.ceil((data.totalLeads || 0) / bgPageSize)
-      );
+      const orderPages = Math.ceil((data.totalOrders || 0) / bgPageSize);
+      const leadPages = Math.ceil((data.totalLeads || 0) / bgPageSize);
+      const maxPages = Math.max(orderPages, leadPages);
 
       if (maxPages > 1) {
         setLoadingMore(true);
@@ -618,7 +629,7 @@ const { data, error } = await listOrders("all", 0, 100);
         // Fetch remaining pages with bounded concurrency (max 5 at a time)
         const results = await runPooled(
           Array.from({ length: maxPages - 1 }, (_, i) =>
-            () => listOrders("all", i + 1, bgPageSize)
+            () => listOrders("all", i + 1, bgPageSize, i + 1 >= orderPages)
           ),
           5,
         );
@@ -1526,13 +1537,13 @@ const { data, error } = await listOrders("all", 0, 100);
             <ConversionFunnel orders={analyticsOrders} leads={leads} />
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <RevenueChart orders={analyticsOrders} />
+              <RevenueChart orders={allOrders} />
               <OrdersChart orders={analyticsOrders} />
               <AOVChart orders={analyticsOrders} />
-              <UpsellRevenueChart orders={analyticsOrders} />
+              <UpsellRevenueChart orders={allOrders} />
             </div>
 
-            <DownloadAttachChart orders={analyticsOrders} />
+            <DownloadAttachChart orders={allOrders} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <StatusChart orders={analyticsOrders} />
@@ -1542,10 +1553,10 @@ const { data, error } = await listOrders("all", 0, 100);
             <SalesHeatmap orders={analyticsOrders} />
             
             {/* Source Analytics */}
-            <SourceAnalytics orders={analyticsOrders} leads={leads} />
+            <SourceAnalytics orders={analyticsOrders} leads={analyticsLeads} />
 
             {/* Device & Speed Insights */}
-            <FunnelInsights orders={analyticsOrders} leads={leads} />
+            <FunnelInsights orders={analyticsOrders} leads={analyticsLeads} />
 
             {/* Custom Occasion Insights */}
             <CustomOccasionInsights orders={analyticsOrders} />
