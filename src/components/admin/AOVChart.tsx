@@ -2,12 +2,19 @@ import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, ComposedChart } from "recharts";
 import { format, startOfDay, parseISO, eachDayOfInterval, min, max } from "date-fns";
+import { orderTotalDollars } from "./orderTotals";
 
 interface Order {
   id: string;
   price: number;
+  price_cents?: number | null;
   status: string;
   created_at: string;
+  lyrics_price_cents?: number | null;
+  download_price_cents?: number | null;
+  bonus_price_cents?: number | null;
+  package_price_cents?: number | null;
+  rush_price_cents?: number | null;
 }
 
 interface AOVChartProps {
@@ -28,7 +35,7 @@ export function AOVChart({ orders }: AOVChartProps) {
     activeOrders.forEach((o) => {
       const key = startOfDay(parseISO(o.created_at)).getTime();
       const existing = dayMap.get(key) || { revenue: 0, count: 0 };
-      existing.revenue += o.price;
+      existing.revenue += orderTotalDollars(o);
       existing.count += 1;
       dayMap.set(key, existing);
     });
@@ -59,7 +66,7 @@ export function AOVChart({ orders }: AOVChartProps) {
   const overallAOV = useMemo(() => {
     const active = orders.filter((o) => o.status !== "cancelled");
     if (active.length === 0) return 0;
-    return Math.round((active.reduce((s, o) => s + o.price, 0) / active.length) * 100) / 100;
+    return Math.round((active.reduce((s, o) => s + orderTotalDollars(o), 0) / active.length) * 100) / 100;
   }, [orders]);
 
   if (chartData.length === 0) {
@@ -80,7 +87,7 @@ export function AOVChart({ orders }: AOVChartProps) {
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-medium">AOV Trend</CardTitle>
         <p className="text-2xl font-bold">${overallAOV.toFixed(2)}</p>
-        <p className="text-sm text-muted-foreground">Average order value</p>
+        <p className="text-sm text-muted-foreground">Average order value · incl. upsells, excl. tips</p>
       </CardHeader>
       <CardContent>
         <div className="h-[250px]">

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, ShoppingCart, Clock, Users, Play, Download, TrendingUp, RefreshCw, MessageSquare, BookOpen, Loader2, Video, Gift, Sparkles, Heart } from "lucide-react";
 import { LucideIcon } from "lucide-react";
+import { orderTotalDollars } from "./orderTotals";
 
 interface Order {
   id: string;
@@ -40,6 +41,8 @@ interface Lead {
   preview_played_at?: string | null;
   preview_play_count?: number | null;
   preview_sent_at?: string | null;
+  converted_at?: string | null;
+  follow_up_sent_at?: string | null;
   order_id?: string | null;
   sms_opt_in?: boolean;
   sms_status?: string | null;
@@ -74,17 +77,7 @@ function getPaymentSource(order: Order): "paypal" | "stripe" {
   return order.notes?.startsWith("paypal_order:") ? "paypal" : "stripe";
 }
 
-// Total revenue per order in dollars = base price + paid upsells (cents-safe)
-function orderTotalDollars(o: Order): number {
-  const upsellCents =
-    (o.lyrics_price_cents ?? 0) +
-    (o.download_price_cents ?? 0) +
-    (o.bonus_price_cents ?? 0) +
-    (o.package_price_cents ?? 0) +
-    (o.rush_price_cents ?? 0);
-  const baseDollars = o.price_cents != null ? o.price_cents / 100 : (o.price || 0);
-  return baseDollars + upsellCents / 100;
-}
+
 
 interface TipsSummary {
   countAll: number;
@@ -209,23 +202,28 @@ function useStats(
   const convertedLeads = leadsInRange.filter((l) => l.status === "converted").length;
   const previewSentLeads = leadsInRange.filter((l) => l.status === "preview_sent").length;
 
-  // Lead recovery — scope to range by preview_sent_at
+  // Lead recovery — recoveries are dated by CONVERSION, not capture, so
+  // win-back conversions of older leads are counted in the selected window.
   const previewsSent = leadsInRange.filter((l) => (isAllTime ? l.preview_sent_at : inRange(l.preview_sent_at))).length;
-  const trueRecoveries = leadsInRange.filter((l) => l.preview_sent_at && l.status === "converted");
-  const trueRecoveryCount = trueRecoveries.length;
-  const trueRecoveryOrderIds = new Set(trueRecoveries.map((l) => l.order_id).filter(Boolean));
+  const recoveredLeads = leads.filter(
+    (l) => l.preview_sent_at && l.status === "converted" && (isAllTime || inRange(l.converted_at))
+  );
+  const trueRecoveryCount = recoveredLeads.length;
+  const trueRecoveryOrderIds = new Set(recoveredLeads.map((l) => l.order_id).filter(Boolean));
   const trueRecoveryRevenue = orders
     .filter((o) => trueRecoveryOrderIds.has(o.id) && o.status !== "cancelled")
     .reduce((sum, o) => sum + orderTotalDollars(o), 0);
+  const viaFollowup = recoveredLeads.filter(
+    (l) => l.follow_up_sent_at && l.converted_at && new Date(l.converted_at) > new Date(l.follow_up_sent_at)
+  ).length;
   const recoveryRate = previewsSent > 0 ? Math.round((trueRecoveryCount / previewsSent) * 100) : 0;
 
-  // Play-to-buy
-  const leadsWhoPlayedAndConverted = leadsInRange.filter(
-    (l) => l.preview_sent_at && l.preview_played_at && l.status === "converted"
-  ).length;
-  const leadsWhoPlayedPreview = leadsInRange.filter(
-    (l) => l.preview_sent_at && l.preview_played_at
-  ).length;
+  // Play-to-buy — dated by when the preview was actually played.
+  const playedLeads = leads.filter(
+    (l) => l.preview_sent_at && l.preview_played_at && (isAllTime || inRange(l.preview_played_at))
+  );
+  const leadsWhoPlayedPreview = playedLeads.length;
+  const leadsWhoPlayedAndConverted = playedLeads.filter((l) => l.status === "converted").length;
   const playToBuyRate = leadsWhoPlayedPreview > 0
     ? Math.round((leadsWhoPlayedAndConverted / leadsWhoPlayedPreview) * 100)
     : 0;
@@ -256,9 +254,12 @@ function useStats(
   // Download / Usage Rights Unlocks
   const downloadUnlocked = orders.filter((o) => o.download_unlocked_at);
   const downloadCount = downloadUnlocked.length;
+  const downloadPaidCount = downloadUnlocked.filter((o) => (o.download_price_cents ?? 0) > 0).length;
+  const downloadCompedCount = downloadCount - downloadPaidCount;
   const downloadRev = downloadUnlocked.reduce((s, o) => s + (o.download_price_cents ?? 0), 0) / 100;
+  // Paid-only attach rate — matches DownloadAttachChart.
   const downloadAttachRate = deliveredOrders.length > 0
-    ? Math.round((downloadCount / deliveredOrders.length) * 100)
+    ? Math.round((downloadPaidCount / deliveredOrders.length) * 100)
     : 0;
 
   // Bonus Track Unlocks
@@ -305,8 +306,8 @@ function useStats(
       stats: [
         { title: "Leads", value: totalLeads.toString(), description: `${convertedLeads} converted · ${previewSentLeads} preview sent · ${unconvertedLeads} new`, icon: Users, color: "text-indigo-600", bgColor: "bg-indigo-100" },
         { title: "Previews Sent", value: previewsSent.toString(), description: `of ${totalLeads} leads`, icon: Users, color: "text-violet-600", bgColor: "bg-violet-100" },
-        { title: "True Recoveries", value: trueRecoveryCount.toString(), description: `$${Math.round(trueRecoveryRevenue).toLocaleString()} revenue`, icon: TrendingUp, color: "text-emerald-600", bgColor: "bg-emerald-100" },
-        { title: "Recovery Rate", value: `${recoveryRate}%`, description: `${trueRecoveryCount} of ${previewsSent} sent`, icon: RefreshCw, color: "text-teal-600", bgColor: "bg-teal-100" },
+        { title: "True Recoveries", value: trueRecoveryCount.toString(), description: `$${Math.round(trueRecoveryRevenue).toLocaleString()} revenue · ${viaFollowup} via follow-up email`, icon: TrendingUp, color: "text-emerald-600", bgColor: "bg-emerald-100" },
+        { title: "Recovery Rate", value: `${recoveryRate}%`, description: `recoveries ÷ previews sent in range · ${trueRecoveryCount} of ${previewsSent}`, icon: RefreshCw, color: "text-teal-600", bgColor: "bg-teal-100" },
         { title: "Play → Buy", value: `${playToBuyRate}%`, description: `${leadsWhoPlayedAndConverted} of ${leadsWhoPlayedPreview} played`, icon: Play, color: "text-purple-600", bgColor: "bg-purple-100" },
       ],
     },
@@ -314,7 +315,7 @@ function useStats(
       label: "Upsell Performance",
       stats: [
         { title: "Lyrics Unlocks", value: `$${Math.round(unlockRevenue).toLocaleString()}`, description: `${lyricsPaidCount} paid · ${lyricsCompedCount} comped`, icon: BookOpen, color: "text-fuchsia-600", bgColor: "bg-fuchsia-100" },
-        { title: "Download Unlocks", value: `$${Math.round(downloadRev).toLocaleString()}`, description: `${downloadCount} customers · ${downloadAttachRate}% attach`, icon: Download, color: "text-blue-600", bgColor: "bg-blue-100" },
+        { title: "Download Unlocks", value: `$${Math.round(downloadRev).toLocaleString()}`, description: `${downloadPaidCount} paid · ${downloadCompedCount} comped · ${downloadAttachRate}% paid attach`, icon: Download, color: "text-blue-600", bgColor: "bg-blue-100" },
         { title: "Bonus Track Unlocks", value: `$${Math.round(bonusRev).toLocaleString()}`, description: `${bonusPaidCount} paid · ${bonusCompedCount} comped`, icon: Gift, color: "text-amber-600", bgColor: "bg-amber-100" },
         { title: "Forever Memory Package", value: `$${Math.round(packageRev).toLocaleString()}`, description: `${packagePaidCount} paid · ${packageCompedCount} comped`, icon: Gift, color: "text-emerald-600", bgColor: "bg-emerald-100" },
         { title: "Rush Delivery", value: `$${Math.round(rushRev).toLocaleString()}`, description: `${rushCount} rush orders`, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-100" },
