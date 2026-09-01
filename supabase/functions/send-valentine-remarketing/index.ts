@@ -206,6 +206,7 @@ Deno.serve(async (req) => {
         .gte("quality_score", 30)
         .not("preview_token", "is", null)
         .is("last_valentine_remarketing_sent_at", null)
+        .is("followup_completed_at", null)
         .limit(10);
 
       if (qErr) throw qErr;
@@ -218,7 +219,8 @@ Deno.serve(async (req) => {
         .neq("status", "converted")
         .gte("quality_score", 30)
         .not("preview_token", "is", null)
-        .is("last_valentine_remarketing_sent_at", null);
+        .is("last_valentine_remarketing_sent_at", null)
+        .is("followup_completed_at", null);
 
       // Check suppression count
       const { count: suppressedCount } = await supabase
@@ -328,6 +330,7 @@ Deno.serve(async (req) => {
         .gte("quality_score", 30)
         .not("preview_token", "is", null)
         .is("last_valentine_remarketing_sent_at", null)
+        .is("followup_completed_at", null)
         .limit(batchSize * 2); // Fetch extra to account for filtering
 
       if (fetchErr) throw fetchErr;
@@ -402,7 +405,8 @@ Deno.serve(async (req) => {
             .from("leads")
             .update({ last_valentine_remarketing_sent_at: new Date().toISOString() })
             .eq("id", lead.id)
-            .is("last_valentine_remarketing_sent_at", null);
+            .is("last_valentine_remarketing_sent_at", null)
+        .is("followup_completed_at", null);
 
           if (claimErr) {
             console.error(`Claim failed for ${lead.id}:`, claimErr);
@@ -456,7 +460,8 @@ Deno.serve(async (req) => {
         .neq("status", "converted")
         .gte("quality_score", 30)
         .not("preview_token", "is", null)
-        .is("last_valentine_remarketing_sent_at", null);
+        .is("last_valentine_remarketing_sent_at", null)
+        .is("followup_completed_at", null);
 
       const totalEligible = (remainingCount || 0) + settings.total_sent + totalSent;
 
