@@ -87,11 +87,11 @@ export function SalesVelocity({ orders }: SalesVelocityProps) {
 
     return {
       todayOrders,
-      todayRevenue,
+      todayRevenue: Math.round(todayRevenue),
       yesterdayByNowOrders,
-      yesterdayByNowRevenue,
+      yesterdayByNowRevenue: Math.round(yesterdayByNowRevenue),
       yesterdayFullOrders,
-      yesterdayFullRevenue,
+      yesterdayFullRevenue: Math.round(yesterdayFullRevenue),
       ordersPctChange,
       revenuePctChange,
       progressPct,
