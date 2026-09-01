@@ -13,10 +13,34 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
     const adminPassword = Deno.env.get("ADMIN_PASSWORD");
     const provided = req.headers.get("x-admin-password");
+    const passwordOk = !!adminPassword && !!provided && provided.trim() === adminPassword.trim();
 
-    if (!adminPassword || !provided || provided.trim() !== adminPassword.trim()) {
+    let tokenOk = false;
+    const registerToken = req.headers.get("x-register-token");
+    if (!passwordOk && registerToken && registerToken.trim() !== "") {
+      const { data: tokenRow } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "brevo_register_token")
+        .maybeSingle();
+
+      const storedToken = (tokenRow as { value: string } | null)?.value?.trim();
+      if (storedToken && storedToken === registerToken.trim()) {
+        tokenOk = true;
+        // Single-use: burn the token immediately before anything else
+        await supabase.from("admin_settings").delete().eq("key", "brevo_register_token");
+        console.log("[REGISTER-BREVO-WEBHOOK] Single-use register token consumed");
+      }
+    }
+
+    if (!passwordOk && !tokenOk) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -27,11 +51,6 @@ Deno.serve(async (req) => {
     if (!brevoApiKey) {
       throw new Error("BREVO_API_KEY not configured");
     }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Generate a random 32-hex secret
     const bytes = new Uint8Array(16);
