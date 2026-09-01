@@ -2032,7 +2032,11 @@ To unsubscribe: ${unsubLink}`;
 
       if (followupEnabled) {
         const MAX_FOLLOWUP_PER_RUN = 10;
+        const MAX_FOLLOWUP_STAGE_PER_RUN = 5;
+        const DAILY_FOLLOWUP_CEILING = 400;
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        // Never re-approach leads older than ~6 months — stale intent, higher complaint risk
+        const sixMonthsAgoIso = new Date(Date.now() - 183 * 24 * 60 * 60 * 1000).toISOString();
 
         // Get suppressed emails
         const { data: suppressedEmails } = await supabase
