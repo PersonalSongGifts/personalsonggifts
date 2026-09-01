@@ -2331,7 +2331,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
             const { data: purchasedOrders } = await supabase
               .from("orders")
               .select("id")
-              .eq("customer_email", lead.email.toLowerCase())
+              .ilike("customer_email", lead.email.replace(/[\\%_]/g, (m) => "\\" + m))
               .neq("status", "cancelled")
               .gte("created_at", lead.captured_at)
               .limit(1);

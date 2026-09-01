@@ -3,6 +3,9 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import {
   buildLeadCheckoutAmounts,
   hasReadyLeadBonus,
+  LEAD_STANDARD_TOTAL_CENTS,
+  FOLLOWUP_DISCOUNT_CENTS,
+  LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS,
 } from "../_shared/lead-checkout.ts";
 
 const corsHeaders = {
@@ -13,9 +16,6 @@ const corsHeaders = {
 // IMPORTANT:
 // We set the offer amount server-side so Stripe ALWAYS shows the discounted lead offer,
 // even if promo-code configuration changes in Stripe.
-const LEAD_STANDARD_TOTAL_CENTS = 2900;
-const FOLLOWUP_DISCOUNT_CENTS = 1000; // follow-up email promise: always $10 off the current price
-const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = Math.max(0, LEAD_STANDARD_TOTAL_CENTS - FOLLOWUP_DISCOUNT_CENTS);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
