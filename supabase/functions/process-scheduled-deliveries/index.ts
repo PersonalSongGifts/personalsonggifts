@@ -3,6 +3,14 @@ import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { sendSms } from "../_shared/brevo-sms.ts";
 import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
 import { logActivity } from "../_shared/activity-log.ts";
+import {
+  sanitizeQuote,
+  previewUrl,
+  jitterHours,
+  inSendWindow,
+  buildFollowupEmail2,
+  buildFollowupEmail3,
+} from "../_shared/lead-followup.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
