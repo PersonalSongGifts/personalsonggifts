@@ -2051,7 +2051,7 @@ To unsubscribe: ${unsubLink}`;
           .not("full_song_url", "is", null)
           .lte("preview_sent_at", twentyFourHoursAgo)
           .order("preview_played_at", { ascending: true })
-          .limit(MAX_FOLLOWUP_PER_RUN + 10); // Fetch extra to account for suppressions
+          .limit(MAX_FOLLOWUP_PER_RUN + 50); // Fetch extra to account for suppressions
 
         let followupSent = 0;
         const followupResults: { leadId: string; success: boolean; error?: string }[] = [];
@@ -2063,7 +2063,11 @@ To unsubscribe: ${unsubLink}`;
 
             // Check suppression
             if (suppressedSet.has(lead.email.toLowerCase())) {
-              console.log(`[FOLLOWUP] Skipping suppressed email: ${lead.email}`);
+              console.log(`[FOLLOWUP] Suppressed email — dismissing lead ${lead.id} so it stops blocking the queue`);
+              await supabase.from("leads")
+                .update({ dismissed_at: new Date().toISOString() })
+                .eq("id", lead.id)
+                .is("dismissed_at", null);
               continue;
             }
 
