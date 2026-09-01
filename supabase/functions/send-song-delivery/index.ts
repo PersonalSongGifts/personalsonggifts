@@ -87,6 +87,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Service-role client (also reused for activity logging below)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sbClient = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Only promise "download" when the customer actually owns it.
+    let downloadIncluded = false;
+    if (orderId.length === 36) {
+      try {
+        const { data: entitlement, error: entitlementError } = await sbClient
+          .from("orders")
+          .select("download_unlocked_at, package_unlocked_at")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (entitlementError) {
+          console.error("Entitlement lookup failed:", entitlementError.message);
+        } else {
+          downloadIncluded = !!(entitlement?.download_unlocked_at || entitlement?.package_unlocked_at);
+        }
+      } catch (e) {
+        console.error("Entitlement lookup threw:", e);
+      }
+    }
+
     const messageId = `<${orderId}.delivery.${Date.now()}@personalsonggifts.com>`;
 
     const songPageUrl = `https://personalsonggifts.lovable.app/song/${orderId.slice(0, 8)}`;
