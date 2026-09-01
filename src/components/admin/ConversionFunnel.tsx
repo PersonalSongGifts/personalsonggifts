@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { toZonedTime } from "date-fns-tz";
 import { format, subDays, startOfDay } from "date-fns";
+import { orderTotalDollars } from "./orderTotals";
 
 const TZ = "America/Los_Angeles";
 const DAYS = 14;
@@ -11,14 +12,21 @@ const DAYS = 14;
 interface Order {
   id: string;
   price: number;
+  price_cents?: number | null;
   status: string;
   created_at: string;
+  lyrics_price_cents?: number | null;
+  download_price_cents?: number | null;
+  bonus_price_cents?: number | null;
+  package_price_cents?: number | null;
+  rush_price_cents?: number | null;
 }
 
 interface Lead {
   id: string;
   captured_at: string;
   status: string;
+  converted_at?: string | null;
 }
 
 interface ConversionFunnelProps {
@@ -60,16 +68,24 @@ export function ConversionFunnel({ orders, leads }: ConversionFunnelProps) {
 
     for (const date of dates) {
       const dayOrders = orderBuckets[date];
-      const dayLeads = leadBuckets[date];
-      const leadCount = dayLeads.length;
+      const cohort = leadBuckets[date];
+      const cohortSize = cohort.length;
+      const cohortConverted = cohort.filter((l) => l.status === "converted").length;
       const orderCount = dayOrders.length;
-      const revenue = dayOrders.reduce((s, o) => s + o.price, 0);
-      const rate = leadCount > 0 ? (orderCount / leadCount) * 100 : 0;
+      const revenue = dayOrders.reduce((s, o) => s + orderTotalDollars(o), 0);
+      // Bounded cohort rate: leads captured that day that ever purchased.
+      const rate = cohortSize > 0 ? (cohortConverted / cohortSize) * 100 : 0;
       const aov = orderCount > 0 ? revenue / orderCount : 0;
       const label = format(new Date(date), "MMM d");
 
-      dailyConversion.push({ date, label, rate: Math.round(rate * 10) / 10, orders: orderCount, leads: leadCount });
-      dailyAov.push({ date, label, aov: Math.round(aov), orders: orderCount, revenue });
+      dailyConversion.push({
+        date,
+        label,
+        rate: Math.round(rate * 10) / 10,
+        orders: cohortConverted,
+        leads: cohortSize,
+      });
+      dailyAov.push({ date, label, aov: Math.round(aov), orders: orderCount, revenue: Math.round(revenue) });
     }
 
     // Stats
@@ -79,20 +95,21 @@ export function ConversionFunnel({ orders, leads }: ConversionFunnelProps) {
     const yesterdayRate = yesterday?.rate ?? 0;
     const rateDiff = yesterdayRate > 0 ? todayRate - yesterdayRate : null;
 
-    const avg7 =
-      dailyConversion.slice(-7).reduce((s, d) => s + d.rate, 0) / Math.min(7, dailyConversion.length);
-    const avg30 =
-      dailyConversion.reduce((s, d) => s + d.rate, 0) / dailyConversion.length;
+    const withCohort = dailyConversion.filter((d) => d.leads > 0);
+    const mean = (rows: typeof dailyConversion) =>
+      rows.length > 0 ? rows.reduce((s, d) => s + d.rate, 0) / rows.length : 0;
+    const avg7 = mean(withCohort.filter((d) => dailyConversion.slice(-7).includes(d)));
+    const avg30 = mean(withCohort);
 
-    const best = dailyConversion.reduce(
-      (b, d) => (d.rate > b.rate ? d : b),
-      dailyConversion[0]
+    const best = withCohort.reduce(
+      (b, d) => (!b || d.rate > b.rate ? d : b),
+      undefined as (typeof dailyConversion)[number] | undefined
     );
 
     return {
       conversionData: dailyConversion,
       aovData: dailyAov,
-      stats: { todayRate, yesterdayRate, rateDiff, avg7, avg30, bestDate: best?.label, bestRate: best?.rate },
+      stats: { todayRate, yesterdayRate, rateDiff, avg7, avg30, bestDate: best?.label ?? "—", bestRate: best?.rate ?? 0 },
     };
   }, [orders, leads]);
 
@@ -117,7 +134,7 @@ export function ConversionFunnel({ orders, leads }: ConversionFunnelProps) {
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-medium flex items-center justify-between">
             <span>Conversion Rate (Last {DAYS} Days)</span>
-            <span className="text-xs font-normal text-muted-foreground">leads → orders · PST</span>
+            <span className="text-xs font-normal text-muted-foreground">leads captured that day → ever purchased · PST</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -160,7 +177,7 @@ export function ConversionFunnel({ orders, leads }: ConversionFunnelProps) {
                         <div className="bg-popover border rounded-lg p-3 shadow-lg">
                           <p className="text-sm font-medium">{d.label}</p>
                           <p className="text-sm text-primary font-bold">{d.rate}%</p>
-                          <p className="text-xs text-muted-foreground">{d.orders} orders / {d.leads} leads</p>
+                          <p className="text-xs text-muted-foreground">{d.orders} converted / {d.leads} leads captured</p>
                         </div>
                       );
                     }
@@ -179,7 +196,7 @@ export function ConversionFunnel({ orders, leads }: ConversionFunnelProps) {
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-medium flex items-center justify-between">
             <span>Average Order Value (Last {DAYS} Days)</span>
-            <span className="text-xs font-normal text-muted-foreground">revenue / paid orders · PST</span>
+            <span className="text-xs font-normal text-muted-foreground">incl. upsells, excl. tips · PST</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
