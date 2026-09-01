@@ -3,6 +3,14 @@ import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { sendSms } from "../_shared/brevo-sms.ts";
 import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
 import { logActivity } from "../_shared/activity-log.ts";
+import {
+  sanitizeQuote,
+  previewUrl,
+  jitterHours,
+  inSendWindow,
+  buildFollowupEmail2,
+  buildFollowupEmail3,
+} from "../_shared/lead-followup.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2032,7 +2040,11 @@ To unsubscribe: ${unsubLink}`;
 
       if (followupEnabled) {
         const MAX_FOLLOWUP_PER_RUN = 10;
+        const MAX_FOLLOWUP_STAGE_PER_RUN = 5;
+        const DAILY_FOLLOWUP_CEILING = 400;
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        // Never re-approach leads older than ~6 months — stale intent, higher complaint risk
+        const sixMonthsAgoIso = new Date(Date.now() - 183 * 24 * 60 * 60 * 1000).toISOString();
 
         // Get suppressed emails
         const { data: suppressedEmails } = await supabase
@@ -2048,9 +2060,11 @@ To unsubscribe: ${unsubLink}`;
           .not("preview_played_at", "is", null)
           .neq("status", "converted")
           .is("follow_up_sent_at", null)
+          .is("followup_completed_at", null)
           .is("dismissed_at", null)
           .not("preview_token", "is", null)
           .not("full_song_url", "is", null)
+          .gte("captured_at", sixMonthsAgoIso)
           .lte("preview_sent_at", twentyFourHoursAgo)
           .order("preview_played_at", { ascending: true })
           .limit(MAX_FOLLOWUP_PER_RUN + 50); // Fetch extra to account for suppressions
@@ -2184,7 +2198,6 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
                   headers: {
                     "Message-ID": `<${lead.id}.followup.cron.${Date.now()}@personalsonggifts.com>`,
                     "X-Entity-Ref-ID": lead.id,
-                    "Precedence": "transactional",
                     "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.email)}>`,
                     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                   }
@@ -2223,6 +2236,215 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
           console.log(`[FOLLOWUP] Sent ${followupSent} follow-up emails`);
         }
         results.followupEmails = { sent: followupSent, details: followupResults };
+
+        // ======= WIN-BACK STAGES 2 & 3 =======
+        // Each stage is opt-in via its own admin flag, jittered per lead, and
+        // only sends inside the recipient's local daytime window (Mon–Sat).
+        // Stage 3 stamps followup_completed_at, which permanently retires the
+        // lead from every marketing blast (we promised it was the last email).
+        const runFollowupStage = async (
+          stage: 2 | 3,
+        ): Promise<{ sent: number; details: unknown[] } | { sent: number; disabled: true }> => {
+          const stageColumn = stage === 2 ? "follow_up_2_sent_at" : "follow_up_3_sent_at";
+          const prevColumn = stage === 2 ? "follow_up_sent_at" : "follow_up_2_sent_at";
+          const delayHours = stage === 2 ? 72 : 168;
+          const flagKey = stage === 2 ? "lead_followup_2_enabled" : "lead_followup_3_enabled";
+          const tag = `[FOLLOWUP${stage}]`;
+
+          const { data: flagRow } = await supabase
+            .from("admin_settings")
+            .select("value")
+            .eq("key", flagKey)
+            .maybeSingle();
+          if ((flagRow as { value: string } | null)?.value !== "true") {
+            return { sent: 0, disabled: true };
+          }
+
+          const brevoKey2 = Deno.env.get("BREVO_API_KEY");
+          if (!brevoKey2) return { sent: 0, details: [] };
+
+          // Daily ceiling across the whole account for this stage
+          const startOfTodayUtc = new Date();
+          startOfTodayUtc.setUTCHours(0, 0, 0, 0);
+          const { count: sentToday } = await supabase
+            .from("leads")
+            .select("id", { count: "exact", head: true })
+            .gte(stageColumn, startOfTodayUtc.toISOString());
+          if ((sentToday || 0) >= DAILY_FOLLOWUP_CEILING) {
+            console.log(`${tag} Daily ceiling reached (${sentToday}), skipping stage`);
+            return { sent: 0, details: [] };
+          }
+
+          const cutoffIso = new Date(Date.now() - delayHours * 60 * 60 * 1000).toISOString();
+
+          let query = supabase
+            .from("leads")
+            .select("id, email, customer_name, recipient_name, occasion, preview_token, captured_at, special_qualities, favorite_memory, follow_up_sent_at, follow_up_2_sent_at, timezone")
+            .not(prevColumn, "is", null)
+            .is(stageColumn, null)
+            .is("followup_completed_at", null)
+            .is("dismissed_at", null)
+            .neq("status", "converted")
+            .not("preview_token", "is", null)
+            .not("full_song_url", "is", null)
+            .gte("captured_at", sixMonthsAgoIso)
+            .lte(prevColumn, cutoffIso)
+            .order(prevColumn, { ascending: true })
+            .limit(60);
+
+          const { data: stageLeads } = await query;
+
+          let stageSent = 0;
+          const stageResults: { leadId: string; success: boolean; error?: string }[] = [];
+          const nowDate = new Date();
+
+          for (const lead of (stageLeads || [])) {
+            if (stageSent >= MAX_FOLLOWUP_STAGE_PER_RUN) break;
+
+            if (suppressedSet.has(lead.email.toLowerCase())) {
+              console.log(`${tag} Suppressed email — dismissing lead ${lead.id}`);
+              await supabase.from("leads")
+                .update({ dismissed_at: new Date().toISOString() })
+                .eq("id", lead.id)
+                .is("dismissed_at", null);
+              continue;
+            }
+
+            const occ = (lead.occasion || "").toLowerCase();
+            if (occ === "memorial" || occ === "pet-memorial") {
+              console.log(`${tag} Memorial occasion — dismissing lead ${lead.id}`);
+              await supabase.from("leads")
+                .update({ dismissed_at: new Date().toISOString() })
+                .eq("id", lead.id)
+                .is("dismissed_at", null);
+              continue;
+            }
+
+            // Jitter gate — spreads sends so the sequence never looks machine-timed
+            const prevTs = new Date((lead as Record<string, string>)[prevColumn]).getTime();
+            const dueAt = prevTs + delayHours * 3600000 + jitterHours(lead.id, 36) * 3600000;
+            if (nowDate.getTime() < dueAt) continue;
+
+            if (!inSendWindow(lead.timezone, nowDate)) continue;
+
+            // Purchase guard: any order on this email after capture retires the lead
+            const { data: purchasedOrders } = await supabase
+              .from("orders")
+              .select("id")
+              .eq("customer_email", lead.email.toLowerCase())
+              .neq("status", "cancelled")
+              .gte("created_at", lead.captured_at)
+              .limit(1);
+
+            if (purchasedOrders && purchasedOrders.length > 0) {
+              console.log(`${tag} Lead ${lead.id} already purchased (order ${purchasedOrders[0].id}), marking converted`);
+              await supabase.from("leads")
+                .update({ status: "converted", converted_at: new Date().toISOString(), order_id: purchasedOrders[0].id })
+                .eq("id", lead.id);
+              continue;
+            }
+
+            // Atomic claim before sending
+            const claimStamp = new Date().toISOString();
+            const { data: stageClaimed } = await supabase
+              .from("leads")
+              .update({ [stageColumn]: claimStamp })
+              .eq("id", lead.id)
+              .is(stageColumn, null)
+              .select("id")
+              .maybeSingle();
+            if (!stageClaimed) {
+              console.log(`${tag} Lead ${lead.id} already claimed, skipping`);
+              continue;
+            }
+
+            const firstName2 = (lead.customer_name || "").split(" ")[0] || "there";
+            const unsubscribeUrl = `https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}`;
+            const quote = stage === 2
+              ? (sanitizeQuote(lead.special_qualities) ?? sanitizeQuote(lead.favorite_memory))
+              : null;
+
+            const email = stage === 2
+              ? buildFollowupEmail2({
+                  firstName: firstName2,
+                  recipientName: lead.recipient_name,
+                  quote,
+                  url: previewUrl(lead.preview_token),
+                  unsubscribeUrl,
+                  email: lead.email,
+                })
+              : buildFollowupEmail3({
+                  firstName: firstName2,
+                  recipientName: lead.recipient_name,
+                  quote: null,
+                  url: previewUrl(lead.preview_token),
+                  unsubscribeUrl,
+                  email: lead.email,
+                });
+
+            try {
+              const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+                  "api-key": brevoKey2,
+                },
+                body: JSON.stringify({
+                  sender: { name: "Personal Song Gifts", email: "support@personalsonggifts.com" },
+                  replyTo: { email: "support@personalsonggifts.com", name: "Personal Song Gifts" },
+                  to: [{ email: lead.email, name: lead.customer_name }],
+                  subject: email.subject,
+                  htmlContent: email.htmlContent,
+                  textContent: email.textContent,
+                  headers: {
+                    "Message-ID": `<${lead.id}.followup${stage}.cron.${Date.now()}@personalsonggifts.com>`,
+                    "X-Entity-Ref-ID": lead.id,
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.email)}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                  }
+                }),
+              });
+
+              if (!res.ok) {
+                const errText = await res.text();
+                console.error(`${tag} Email failed for lead ${lead.id}:`, errText);
+                // Definite rejection — safe to release the claim for a later retry
+                await supabase.from("leads").update({ [stageColumn]: null }).eq("id", lead.id);
+                stageResults.push({ leadId: lead.id, success: false, error: errText });
+                continue;
+              }
+
+              if (stage === 3) {
+                await supabase.from("leads")
+                  .update({ followup_completed_at: new Date().toISOString() })
+                  .eq("id", lead.id);
+              }
+
+              console.log(`${tag} ✅ Sent to ${lead.email} for lead ${lead.id}`);
+              stageResults.push({ leadId: lead.id, success: true });
+              stageSent++;
+
+              await logActivity(
+                supabase,
+                "lead",
+                lead.id,
+                stage === 2 ? "followup2_sent" : "followup3_sent",
+                "system",
+                `Win-back email ${stage} sent to ${lead.email} (source: cron)`,
+              );
+            } catch (e) {
+              // Network-level uncertainty: keep the claim so we never double-send
+              console.error(`${tag} Network error sending to lead ${lead.id} (claim retained):`, e);
+              stageResults.push({ leadId: lead.id, success: false, error: e instanceof Error ? e.message : "Unknown" });
+            }
+          }
+
+          return { sent: stageSent, details: stageResults };
+        };
+
+        results.followupEmails2 = await runFollowupStage(2);
+        results.followupEmails3 = await runFollowupStage(3);
       } else {
         results.followupEmails = { sent: 0, disabled: true };
       }

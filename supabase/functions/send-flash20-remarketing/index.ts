@@ -382,6 +382,7 @@ function buildEligibilityQuery(supabase: ReturnType<typeof createClient>, promoS
     .not("full_song_url", "is", null)
     .neq("status", "converted")
     .is("dismissed_at", null)
+    .is("followup_completed_at", null)
     .lt("captured_at", fiveDaysAgo)
     .gte("quality_score", QUALITY_SCORE_MIN);
 }
