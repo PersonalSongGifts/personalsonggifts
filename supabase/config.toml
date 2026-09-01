@@ -145,3 +145,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.admin-promo-codes]
 verify_jwt = false
+
+[functions.brevo-events]
+verify_jwt = false

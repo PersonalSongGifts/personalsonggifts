@@ -133,6 +133,7 @@ async function sendEmail(
   const htmlContent = buildEmailHtml(customerName, recipientName, occasion, previewToken, origin);
   const textContent = buildPlainText(customerName, recipientName, occasion, previewToken, origin);
   const unsubscribeUrl = `${origin}/unsubscribe`;
+  const oneClickUnsub = `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(toEmail)}`;
   const messageId = `vday-remarket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@personalsonggifts.com`;
 
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -149,7 +150,7 @@ async function sendEmail(
       textContent,
       headers: {
         "Precedence": "transactional",
-        "List-Unsubscribe": `<mailto:${senderEmail}?subject=unsubscribe>, <${unsubscribeUrl}>`,
+        "List-Unsubscribe": `<mailto:${senderEmail}?subject=unsubscribe>, <${oneClickUnsub}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "Message-ID": `<${messageId}>`,
         "X-Entity-Ref-ID": messageId,

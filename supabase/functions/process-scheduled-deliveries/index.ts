@@ -1381,7 +1381,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
                   "Message-ID": `<${lead.id}.${Date.now()}@personalsonggifts.com>`,
                   "X-Entity-Ref-ID": lead.id,
                   "Precedence": "transactional",
-                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}>`,
+                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.lead_email_override || lead.email)}>`,
                   "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                 }
               }),
@@ -1677,7 +1677,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
                   "Message-ID": `<resend.${order.id}.${Date.now()}@personalsonggifts.com>`,
                   "X-Entity-Ref-ID": order.id,
                   "Precedence": "transactional",
-                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}>`,
+                  "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(effectiveEmail)}>`,
                   "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                 }
               }),
@@ -1807,6 +1807,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
               const firstName = order.customer_name?.split(" ")[0] || "there";
               const shareLink = `https://personalsonggifts.lovable.app/share-reaction?utm_source=email&utm_medium=postpurchase&utm_campaign=video_24h`;
               const unsubLink = `https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}`;
+              const oneClickUnsub = `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(effectiveEmail)}`;
 
               const html24h = `<!DOCTYPE html>
 <html>
@@ -1862,7 +1863,7 @@ To unsubscribe: ${unsubLink}`;
                     "Message-ID": `<reaction24h.${order.id}.${Date.now()}@personalsonggifts.com>`,
                     "X-Entity-Ref-ID": order.id,
                     "Precedence": "transactional",
-                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <${unsubLink}>`,
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <${oneClickUnsub}>`,
                     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                   }
                 }),
@@ -1927,6 +1928,7 @@ To unsubscribe: ${unsubLink}`;
               const firstName = order.customer_name?.split(" ")[0] || "there";
               const shareLink = `https://personalsonggifts.lovable.app/share-reaction?utm_source=email&utm_medium=postpurchase&utm_campaign=video_72h`;
               const unsubLink = `https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}`;
+              const oneClickUnsub = `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(effectiveEmail)}`;
 
               const html72h = `<!DOCTYPE html>
 <html>
@@ -1979,7 +1981,7 @@ To unsubscribe: ${unsubLink}`;
                     "Message-ID": `<reaction72h.${order.id}.${Date.now()}@personalsonggifts.com>`,
                     "X-Entity-Ref-ID": order.id,
                     "Precedence": "transactional",
-                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <${unsubLink}>`,
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <${oneClickUnsub}>`,
                     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                   }
                 }),
@@ -2064,6 +2066,16 @@ To unsubscribe: ${unsubLink}`;
             // Check suppression
             if (suppressedSet.has(lead.email.toLowerCase())) {
               console.log(`[FOLLOWUP] Suppressed email — dismissing lead ${lead.id} so it stops blocking the queue`);
+              await supabase.from("leads")
+                .update({ dismissed_at: new Date().toISOString() })
+                .eq("id", lead.id)
+                .is("dismissed_at", null);
+              continue;
+            }
+
+            const occasionLower = (lead.occasion || "").toLowerCase();
+            if (occasionLower === "memorial" || occasionLower === "pet-memorial") {
+              console.log(`[FOLLOWUP] Memorial occasion — marking lead ${lead.id} dismissed, no marketing follow-up`);
               await supabase.from("leads")
                 .update({ dismissed_at: new Date().toISOString() })
                 .eq("id", lead.id)
@@ -2173,7 +2185,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
                     "Message-ID": `<${lead.id}.followup.cron.${Date.now()}@personalsonggifts.com>`,
                     "X-Entity-Ref-ID": lead.id,
                     "Precedence": "transactional",
-                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
+                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.email)}>`,
                     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
                   }
                 }),

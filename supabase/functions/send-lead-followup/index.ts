@@ -216,6 +216,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    const occasionLower = (lead.occasion || "").toLowerCase();
+    if (occasionLower === "memorial" || occasionLower === "pet-memorial") {
+      console.log(`Memorial occasion — lead ${lead.id} excluded from follow-up offers`);
+      return new Response(
+        JSON.stringify({ error: "Memorial leads are excluded from follow-up offers" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!lead.preview_sent_at) {
       return new Response(
         JSON.stringify({ error: "Preview not sent yet - send preview first" }),
@@ -304,7 +313,7 @@ Deno.serve(async (req) => {
           "Message-ID": messageId,
           "X-Entity-Ref-ID": lead.id,
           "Precedence": "transactional",
-          "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}>`,
+          "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.email)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }
       }),

@@ -237,7 +237,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
           "Message-ID": messageId,
           "X-Entity-Ref-ID": lead.id,
           "Precedence": "transactional",
-          "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(effectiveEmail)}>`,
+          "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(effectiveEmail)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
         }
       }),

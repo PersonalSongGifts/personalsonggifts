@@ -77,6 +77,7 @@ async function sendPromoEmail(
 ): Promise<boolean> {
   const ctaUrl = `${origin}/preview/${previewToken}?promo=${promoSlug}`;
   const unsubscribeUrl = `${origin}/unsubscribe`;
+  const oneClickUnsub = `https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(toEmail)}`;
 
   // Replace template variables
   let htmlBody = emailBodyTemplate
@@ -122,7 +123,7 @@ ${htmlBody}
       textContent,
       headers: {
         "Precedence": "transactional",
-        "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=unsubscribe>, <${unsubscribeUrl}>`,
+        "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=unsubscribe>, <${oneClickUnsub}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "Message-ID": `<${messageId}>`,
         "X-Entity-Ref-ID": messageId,
