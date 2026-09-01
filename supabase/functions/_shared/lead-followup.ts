@@ -8,6 +8,8 @@
  * followup_completed_at.
  */
 
+import { followupDiscountPhrase } from "./lead-checkout.ts";
+
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -173,7 +175,7 @@ We put that in the song. It's finished — and ${recipientName} still hasn't hea
 
 ${openingText}
 
-Your $10 off (that's about a third off) is still on this link:
+Your ${followupDiscountPhrase()} is still on this link:
 ${url}
 
 If something felt off about the preview, just reply and tell me what to change. A real person reads these.
@@ -195,7 +197,7 @@ To unsubscribe: ${unsubscribeUrl}`;
   const htmlContent = wrapHtml(
     `<p ${P}>Hi ${fn},</p>
 ${openingHtml}
-<p ${P}>Your $10 off (that's about a third off) is still on this link:</p>
+<p ${P}>Your ${followupDiscountPhrase()} is still on this link:</p>
 <p ${P_LINK}><a href="${url}" style="color:#1E3A5F;">${url}</a></p>
 <p ${P}>If something felt off about the preview, just reply and tell me what to change. A real person reads these.</p>
 <p ${P_SIGN}>— Sara at Personal Song Gifts</p>`,
@@ -214,7 +216,7 @@ export function buildFollowupEmail3(args: FollowupEmailArgs): FollowupEmail {
 
 This is the last email we'll send about ${recipientName}'s song — we don't believe in pestering people.
 
-The song stays saved on your private link, and the $10 off stays with it:
+The song stays saved on your private link, and the ${followupDiscountPhrase().split(" (")[0]} stays with it:
 ${url}
 
 If you ever want it — next birthday, next anniversary, or just a random Tuesday — it'll be here.
@@ -232,7 +234,7 @@ To unsubscribe: ${unsubscribeUrl}`;
   const htmlContent = wrapHtml(
     `<p ${P}>Hi ${fn},</p>
 <p ${P}>This is the last email we'll send about ${rn}'s song — we don't believe in pestering people.</p>
-<p ${P}>The song stays saved on your private link, and the $10 off stays with it:</p>
+<p ${P}>The song stays saved on your private link, and the ${followupDiscountPhrase().split(" (")[0]} stays with it:</p>
 <p ${P_LINK}><a href="${url}" style="color:#1E3A5F;">${url}</a></p>
 <p ${P}>If you ever want it — next birthday, next anniversary, or just a random Tuesday — it'll be here.</p>
 <p ${P}>Thanks for letting us write about someone you love.</p>

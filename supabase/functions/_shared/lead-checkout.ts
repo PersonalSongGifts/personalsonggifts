@@ -79,3 +79,15 @@ export function resolveLeadCheckoutAmounts(
     hasForeverMemory,
   };
 }
+
+export const LEAD_STANDARD_TOTAL_CENTS = 2900;
+export const FOLLOWUP_DISCOUNT_CENTS = 1000;
+export const LEAD_STANDARD_FOLLOWUP_TOTAL_CENTS = Math.max(0, LEAD_STANDARD_TOTAL_CENTS - FOLLOWUP_DISCOUNT_CENTS);
+
+export function followupDiscountPhrase(): string {
+  const pct = Math.round((FOLLOWUP_DISCOUNT_CENTS / LEAD_STANDARD_TOTAL_CENTS) * 100);
+  const dollars = `$${(FOLLOWUP_DISCOUNT_CENTS / 100).toFixed(0)} off`;
+  if (pct >= 30 && pct <= 37) return `${dollars} (that's about a third off)`;
+  if (pct >= 45 && pct <= 55) return `${dollars} (that's about half off)`;
+  return `${dollars} (that's about ${pct}% off)`;
+}
