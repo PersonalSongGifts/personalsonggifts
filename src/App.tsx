@@ -222,7 +222,10 @@ const App = () => (
               </>
             }
           />
+          <Route path="/custom-song" element={<CustomSongHub />} />
+          <Route path="/custom-song/:slug" element={<CustomSongLanding />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
           <Route
             path="*"
             element={

@@ -1,5 +1,37 @@
 import { Link } from "react-router-dom";
 import { Heart, Mail } from "lucide-react";
+import { landingPages } from "@/data/landingPages";
+
+const shortLabels: Record<string, string> = {
+  "for-wife": "For your wife",
+  "for-husband": "For your husband",
+  "for-mom": "For your mom",
+  "for-dad": "For your dad",
+  anniversary: "Anniversary",
+  birthday: "Birthday",
+  "thank-you": "Thank you",
+  memorial: "Memorial",
+  "valentines-day": "Valentine's Day",
+  wedding: "Wedding",
+  proposal: "Proposal",
+  "mothers-day": "Mother's Day",
+  "fathers-day": "Father's Day",
+  "south-africa": "South Africa",
+  nigeria: "Nigeria",
+  kenya: "Kenya",
+  philippines: "Philippines",
+  jamaica: "Jamaica",
+  ghana: "Ghana",
+};
+
+const labelFor = (slug: string) =>
+  shortLabels[slug] || slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+const landingGroups: { heading: string; kind: "occasion" | "recipient" | "country" }[] = [
+  { heading: "By occasion", kind: "occasion" },
+  { heading: "By person", kind: "recipient" },
+  { heading: "By country", kind: "country" },
+];
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -8,6 +40,7 @@ const Footer = () => {
     <footer className="bg-secondary border-t border-border">
       <div className="container mx-auto px-4 py-12 md:py-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12">
+
           {/* Brand */}
           <div className="md:col-span-2">
             <Link 
