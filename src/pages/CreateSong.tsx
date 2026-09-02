@@ -15,7 +15,7 @@ import { useUtmCapture, getStoredUtmParams } from "@/hooks/useUtmCapture";
 // Form step components
 import RecipientStep from "@/components/create/RecipientStep";
 import DetailsStep from "@/components/create/DetailsStep";
-import OccasionStep from "@/components/create/OccasionStep";
+import OccasionStep, { occasionIds } from "@/components/create/OccasionStep";
 import GenreStep from "@/components/create/GenreStep";
 import SingerVoiceStep from "@/components/create/SingerVoiceStep";
 import StoryStep from "@/components/create/StoryStep";
