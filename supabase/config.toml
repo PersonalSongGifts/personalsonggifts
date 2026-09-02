@@ -148,3 +148,6 @@ verify_jwt = false
 
 [functions.brevo-events]
 verify_jwt = false
+
+[functions.send-customer-offers]
+verify_jwt = false
