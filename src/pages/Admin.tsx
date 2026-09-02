@@ -455,17 +455,48 @@ export default function Admin() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const listOrders = async (status: string, page = 0, pageSize = 100, skipOrders = false) => {
-    return supabase.functions.invoke("admin-orders", {
-      method: "POST",
-      body: {
-        action: "list",
-        adminPassword: password,
-        status,
-        page,
-        pageSize,
-        skipOrders,
-      },
-    });
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            action: "list",
+            adminPassword: password,
+            status,
+            page,
+            pageSize,
+            skipOrders,
+          }),
+        },
+      );
+
+      const responseText = await response.text();
+      let data: Record<string, unknown> | null = null;
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText) as Record<string, unknown>;
+        } catch {
+          return { data: null, error: new Error(`Backend returned an invalid response (HTTP ${response.status})`) };
+        }
+      }
+
+      if (!response.ok) {
+        const message = typeof data?.error === "string" ? data.error : `HTTP ${response.status}`;
+        return { data: null, error: new Error(message) };
+      }
+
+      return { data, error: null };
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
