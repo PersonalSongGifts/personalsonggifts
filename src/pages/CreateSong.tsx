@@ -98,11 +98,13 @@ const CreateSong = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(() => {
     const occasion = searchParams.get("occasion");
+    // Tolerate any value in the URL: only preselect a known occasion, otherwise leave blank.
     return {
       ...initialFormData,
-      occasion: occasion || "",
+      occasion: occasion && occasionIds.includes(occasion) ? occasion : "",
     };
   });
+
   const [errors, setErrors] = useState<FormErrors>({});
   const [hasAttemptedContinue, setHasAttemptedContinue] = useState(false);
   const isAutoAdvancing = useRef(false);
