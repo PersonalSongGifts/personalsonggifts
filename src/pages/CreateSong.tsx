@@ -15,7 +15,7 @@ import { useUtmCapture, getStoredUtmParams } from "@/hooks/useUtmCapture";
 // Form step components
 import RecipientStep from "@/components/create/RecipientStep";
 import DetailsStep from "@/components/create/DetailsStep";
-import OccasionStep, { occasionIds } from "@/components/create/OccasionStep";
+import OccasionStep from "@/components/create/OccasionStep";
 import GenreStep from "@/components/create/GenreStep";
 import SingerVoiceStep from "@/components/create/SingerVoiceStep";
 import StoryStep from "@/components/create/StoryStep";
@@ -101,7 +101,7 @@ const CreateSong = () => {
     // Tolerate any value in the URL: only preselect a known occasion, otherwise leave blank.
     return {
       ...initialFormData,
-      occasion: occasion && occasionIds.includes(occasion) ? occasion : "",
+      occasion: occasion || "",
     };
   });
 
