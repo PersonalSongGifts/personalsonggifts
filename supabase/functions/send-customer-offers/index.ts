@@ -1,5 +1,4 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
-import { corsHeaders } from "npm:@supabase/supabase-js@2.93.1/cors";
 import { escapeHtml, inSendWindow } from "../_shared/lead-followup.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 
