@@ -114,6 +114,39 @@ const Footer = () => {
           </div>
         </div>
 
+        {/* Custom songs */}
+        <div className="mt-12 pt-8 border-t border-border">
+          <h4 className="font-semibold text-foreground mb-6">Custom songs</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+            {landingGroups.map((group) => (
+              <div key={group.kind}>
+                <p className="font-medium text-foreground mb-3 text-sm">{group.heading}</p>
+                <ul className="space-y-2">
+                  {landingPages
+                    .filter((p) => p.kind === group.kind)
+                    .map((p) => (
+                      <li key={p.slug}>
+                        <Link
+                          to={`/custom-song/${p.slug}`}
+                          className="text-muted-foreground hover:text-primary transition-colors text-sm"
+                        >
+                          {labelFor(p.slug)}
+                        </Link>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <Link
+            to="/custom-song"
+            className="inline-block mt-6 text-primary hover:underline text-sm font-medium"
+          >
+            All custom songs
+          </Link>
+        </div>
+
+
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-muted-foreground text-sm">
