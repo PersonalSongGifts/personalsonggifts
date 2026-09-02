@@ -15,7 +15,7 @@ import { useUtmCapture, getStoredUtmParams } from "@/hooks/useUtmCapture";
 // Form step components
 import RecipientStep from "@/components/create/RecipientStep";
 import DetailsStep from "@/components/create/DetailsStep";
-import OccasionStep from "@/components/create/OccasionStep";
+import OccasionStep, { occasionIds } from "@/components/create/OccasionStep";
 import GenreStep from "@/components/create/GenreStep";
 import SingerVoiceStep from "@/components/create/SingerVoiceStep";
 import StoryStep from "@/components/create/StoryStep";
@@ -98,11 +98,13 @@ const CreateSong = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(() => {
     const occasion = searchParams.get("occasion");
+    // Tolerate any value in the URL: only preselect a known occasion, otherwise leave blank.
     return {
       ...initialFormData,
-      occasion: occasion || "",
+      occasion: occasion && occasionIds.includes(occasion) ? occasion : "",
     };
   });
+
   const [errors, setErrors] = useState<FormErrors>({});
   const [hasAttemptedContinue, setHasAttemptedContinue] = useState(false);
   const isAutoAdvancing = useRef(false);

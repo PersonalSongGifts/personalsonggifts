@@ -6,6 +6,7 @@
 
 - [Home](/): Overview, samples, how it works, and customer reviews.
 - [Create Your Song](/create): Step-by-step form to order a custom song (recipient, occasion, story, music style).
+- [Custom Songs](/custom-song): Browse personalized custom songs by occasion, by who it's for, and by country.
 - [Privacy Policy](/privacy): How we handle your information.
 - [Terms of Service](/terms): Terms governing use of the service.
 

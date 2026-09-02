@@ -26,6 +26,9 @@ const occasions = [
   { id: "custom", label: "Custom" },
 ];
 
+export const occasionIds = occasions.map((o) => o.id);
+
+
 const OccasionStep = ({ formData, updateFormData, errors, onAutoAdvance }: OccasionStepProps) => {
   return (
     <div className="space-y-6">

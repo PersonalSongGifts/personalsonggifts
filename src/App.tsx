@@ -26,7 +26,10 @@ const SongRevision = lazy(() => import("./pages/SongRevision"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
+const CustomSongHub = lazy(() => import("./pages/CustomSongHub"));
+const CustomSongLanding = lazy(() => import("./pages/CustomSongLanding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+
 
 const queryClient = new QueryClient();
 
@@ -219,7 +222,10 @@ const App = () => (
               </>
             }
           />
+          <Route path="/custom-song" element={<CustomSongHub />} />
+          <Route path="/custom-song/:slug" element={<CustomSongLanding />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
           <Route
             path="*"
             element={
