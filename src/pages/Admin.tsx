@@ -496,8 +496,19 @@ export default function Admin() {
         // Continue anyway - the health endpoint might not be deployed yet
       }
 
-      // Step 2: Try actual login (fetch page 0 only)
-const { data, error } = await listOrders("all", 0, 100);
+      // Step 2: Try actual login (fetch page 0 only), retrying transient network failures
+      let data: any = null;
+      let error: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await listOrders("all", 0, 100);
+        data = res.data;
+        error = res.error;
+        if (!error) break;
+        const msg = error.message || String(error);
+        const transient = msg.includes("Failed to send") || msg.includes("fetch") || msg.includes("network");
+        if (!transient) break;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+      }
 
       if (error) {
         const errorMessage = error.message || String(error);
@@ -509,10 +520,11 @@ const { data, error } = await listOrders("all", 0, 100);
         }
         
         if (errorMessage.includes("Failed to send") || errorMessage.includes("fetch")) {
-          toast({ title: "Backend Unavailable", description: "Could not reach backend functions. They may be deploying. Try again in 2-3 minutes.", variant: "destructive" });
+          toast({ title: "Connection problem", description: "Could not reach the backend after 3 tries. Check your network / ad-blocker or VPN, then try again.", variant: "destructive" });
           setLoading(false);
           return;
         }
+
         
         throw error;
       }
