@@ -133,6 +133,7 @@ export interface FollowupEmailArgs {
   url: string;
   unsubscribeUrl: string;
   email: string;
+  revisionUrl?: string | null;
 }
 
 export interface FollowupEmail {
@@ -159,7 +160,7 @@ ${bodyParagraphs}
 }
 
 export function buildFollowupEmail2(args: FollowupEmailArgs): FollowupEmail {
-  const { firstName, recipientName, quote, url, unsubscribeUrl } = args;
+  const { firstName, recipientName, quote, url, unsubscribeUrl, revisionUrl } = args;
   const fn = escapeHtml(firstName);
   const rn = escapeHtml(recipientName);
 
@@ -171,6 +172,10 @@ export function buildFollowupEmail2(args: FollowupEmailArgs): FollowupEmail {
 We put that in the song. It's finished — and ${recipientName} still hasn't heard it.`
     : `You wrote some really personal things for ${recipientName}'s song, and they're all in there. The song is finished — and ${recipientName} still hasn't heard it.`;
 
+  const revisionText = revisionUrl
+    ? `Not the right sound? Change the style for free: ${revisionUrl} — or just reply and tell me what to change. A real person reads these.`
+    : "If something felt off about the preview, just reply and tell me what to change. A real person reads these.";
+
   const textContent = `Hi ${firstName},
 
 ${openingText}
@@ -178,9 +183,9 @@ ${openingText}
 Your ${followupDiscountPhrase()} is still on this link:
 ${url}
 
-If something felt off about the preview, just reply and tell me what to change. A real person reads these.
+${revisionText}
 
-— Sara at Personal Song Gifts
+— Sara at Personal Song Gifts`
 
 ---
 Personal Song Gifts
@@ -194,13 +199,17 @@ To unsubscribe: ${unsubscribeUrl}`;
 <p ${P}>We put that in the song. It's finished — and ${rn} still hasn't heard it.</p>`
     : `<p ${P}>You wrote some really personal things for ${rn}'s song, and they're all in there. The song is finished — and ${rn} still hasn't heard it.</p>`;
 
+  const revisionHtml = revisionUrl
+    ? `<p ${P}>Not the right sound? Change the style for free: <a href="${revisionUrl}" style="color:#1E3A5F;">${revisionUrl}</a> — or just reply and tell me what to change. A real person reads these.</p>`
+    : `<p ${P}>If something felt off about the preview, just reply and tell me what to change. A real person reads these.</p>`;
+
   const htmlContent = wrapHtml(
     `<p ${P}>Hi ${fn},</p>
 ${openingHtml}
 <p ${P}>Your ${followupDiscountPhrase()} is still on this link:</p>
 <p ${P_LINK}><a href="${url}" style="color:#1E3A5F;">${url}</a></p>
-<p ${P}>If something felt off about the preview, just reply and tell me what to change. A real person reads these.</p>
-<p ${P_SIGN}>— Sara at Personal Song Gifts</p>`,
+${revisionHtml}
+<p ${P_SIGN}>— Sara at Personal Song Gifts</p>`, 
     unsubscribeUrl,
   );
 
@@ -208,9 +217,13 @@ ${openingHtml}
 }
 
 export function buildFollowupEmail3(args: FollowupEmailArgs): FollowupEmail {
-  const { firstName, recipientName, url, unsubscribeUrl } = args;
+  const { firstName, recipientName, url, unsubscribeUrl, revisionUrl } = args;
   const fn = escapeHtml(firstName);
   const rn = escapeHtml(recipientName);
+
+  const revisionText = revisionUrl
+    ? `And if the style was never quite right, you can change it for free: ${revisionUrl}`
+    : "";
 
   const textContent = `Hi ${firstName},
 
@@ -218,6 +231,7 @@ This is the last email we'll send about ${recipientName}'s song — we don't bel
 
 The song stays saved on your private link, and the ${followupDiscountPhrase().split(" (")[0]} stays with it:
 ${url}
+${revisionText ? `\n${revisionText}` : ""}
 
 If you ever want it — next birthday, next anniversary, or just a random Tuesday — it'll be here.
 
@@ -231,11 +245,16 @@ Personal Song Gifts
 
 To unsubscribe: ${unsubscribeUrl}`;
 
+  const revisionHtml = revisionUrl
+    ? `<p ${P}>And if the style was never quite right, you can change it for free: <a href="${revisionUrl}" style="color:#1E3A5F;">${revisionUrl}</a></p>`
+    : "";
+
   const htmlContent = wrapHtml(
     `<p ${P}>Hi ${fn},</p>
 <p ${P}>This is the last email we'll send about ${rn}'s song — we don't believe in pestering people.</p>
 <p ${P}>The song stays saved on your private link, and the ${followupDiscountPhrase().split(" (")[0]} stays with it:</p>
 <p ${P_LINK}><a href="${url}" style="color:#1E3A5F;">${url}</a></p>
+${revisionHtml}
 <p ${P}>If you ever want it — next birthday, next anniversary, or just a random Tuesday — it'll be here.</p>
 <p ${P}>Thanks for letting us write about someone you love.</p>
 <p ${P_SIGN}>— Sara at Personal Song Gifts</p>`,
