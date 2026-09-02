@@ -208,7 +208,7 @@ async function sendOffer(supabase: ReturnType<typeof createClient>, kind: OfferK
       headers: {
         "Message-ID": `<${order.id}.${kind}.${Date.now()}@personalsonggifts.com>`,
         "X-Entity-Ref-ID": order.id,
-        "List-Unsubscribe": `<mailto:${SENDER_EMAIL}?subject=Unsubscribe>, <${SITE_URL.replace("www.", "")}/functions/v1/unsubscribe-email?email=${encodeURIComponent(order.customer_email)}>` ,
+        "List-Unsubscribe": `<mailto:${SENDER_EMAIL}?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(order.customer_email)}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
     }),
