@@ -74,7 +74,7 @@ const RealReactions = () => {
                       autoPlay
                       loop
                       playsInline
-                      preload="metadata"
+                      preload="none"
                     />
                     <span className="absolute top-2 right-2 inline-flex items-center justify-center h-8 w-8 rounded-full bg-black/55 text-white backdrop-blur-sm transition-opacity group-hover:opacity-100">
                       {isMuted ? (

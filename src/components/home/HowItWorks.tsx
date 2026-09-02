@@ -26,7 +26,7 @@ const HowItWorks = () => {
       <div className="container mx-auto px-4">
         <div className="text-center mb-8 md:mb-12">
           <h2 className="font-display text-foreground mb-3 md:mb-4">
-            How It Works
+            How your personalized song is made
           </h2>
           <p className="text-body text-muted-foreground max-w-2xl mx-auto">
             Creating a meaningful gift has never been simpler

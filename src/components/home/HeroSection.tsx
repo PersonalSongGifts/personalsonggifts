@@ -80,7 +80,7 @@ const HeroSection = () => {
                 loop
                 muted
                 playsInline
-                preload="metadata"
+                preload="none"
                 poster={heroVideoPoster}
                 onCanPlay={() => setVideoReady(true)}
                 onError={() => setVideoFailed(true)}
@@ -116,7 +116,7 @@ const HeroSection = () => {
         </div>
 
         <h1 className="font-display text-foreground mb-4 md:mb-6 animate-fade-in text-3xl md:text-4xl lg:text-5xl">
-          Turn Your Story Into a Song They'll Never Forget
+          A Custom Song Made From Your Story — the Gift They'll Never Forget
         </h1>
         
         <p className="text-body-lg text-muted-foreground mb-6 md:mb-10 max-w-2xl mx-auto animate-fade-in-up text-base md:text-lg">
