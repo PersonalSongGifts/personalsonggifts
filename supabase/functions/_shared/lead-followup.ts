@@ -185,7 +185,7 @@ ${url}
 
 ${revisionText}
 
-— Sara at Personal Song Gifts`
+— Sara at Personal Song Gifts
 
 ---
 Personal Song Gifts
