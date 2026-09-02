@@ -152,7 +152,7 @@ const SamplePlayer = () => {
       <div className="container mx-auto px-4">
         <div className="text-center mb-8 md:mb-12">
           <h2 className="font-display text-foreground mb-4">
-            Hear What's Possible
+            Hear what a custom song sounds like
           </h2>
           <p className="text-body text-muted-foreground max-w-2xl mx-auto">
             Every song is unique, crafted from real stories shared by people just like you.

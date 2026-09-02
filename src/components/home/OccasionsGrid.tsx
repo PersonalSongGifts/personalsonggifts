@@ -43,7 +43,7 @@ const OccasionsGrid = () => {
       <div className="container mx-auto px-4">
         <div className="text-center mb-8 md:mb-12">
           <h2 className="font-display text-foreground mb-3 md:mb-4">
-            Every Occasion Deserves a Song
+            A custom song for every occasion
           </h2>
           <p className="text-body text-muted-foreground max-w-2xl mx-auto">
             Choose your occasion and we'll help you create something unforgettable
