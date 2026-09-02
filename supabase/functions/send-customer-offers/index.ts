@@ -2,6 +2,11 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { escapeHtml, inSendWindow } from "../_shared/lead-followup.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 const SENDER_EMAIL = "support@personalsonggifts.com";
 const SENDER_NAME = "Personal Song Gifts";
 const SITE_URL = "https://www.personalsonggifts.com";
