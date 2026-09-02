@@ -2055,7 +2055,7 @@ To unsubscribe: ${unsubLink}`;
         // Query eligible leads
         const { data: eligibleLeads } = await supabase
           .from("leads")
-          .select("id, email, customer_name, recipient_name, occasion, preview_token, full_song_url, captured_at, recipient_type, genre, singer_preference, special_qualities, favorite_memory, special_message, preview_played_at")
+          .select("id, email, customer_name, recipient_name, occasion, preview_token, full_song_url, captured_at, recipient_type, genre, singer_preference, special_qualities, favorite_memory, special_message, preview_played_at, revision_token, revision_count, max_revisions")
           .gt("preview_play_count", 0)
           .not("preview_played_at", "is", null)
           .neq("status", "converted")
@@ -2140,6 +2140,16 @@ To unsubscribe: ${unsubLink}`;
             // Build email
             const firstName = lead.customer_name.split(" ")[0];
             const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}?followup=true`;
+            const revisionUrl = lead.revision_token
+              && (lead.revision_count ?? 0) < (lead.max_revisions ?? 1)
+              ? `https://www.personalsonggifts.com/song/revision/${lead.revision_token}`
+              : null;
+            const revisionTextBlock = revisionUrl
+              ? `\nNot the right sound? Change the style for free: ${revisionUrl}`
+              : "";
+            const revisionHtmlBlock = revisionUrl
+              ? `<p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">Not the right sound? Change the style for free: <a href="${revisionUrl}" style="color:#1E3A5F;">${revisionUrl}</a></p>`
+              : "";
             const playedAgoDays = lead.preview_played_at ? Math.floor((Date.now() - new Date(lead.preview_played_at).getTime()) / 86400000) : 0;
             const listenedPhrase = playedAgoDays > 7 ? "a little while back" : "the other day";
 
@@ -2150,6 +2160,7 @@ You listened to ${lead.recipient_name}'s song ${listenedPhrase} — we hope it p
 We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.
 
 ${previewUrl}
+${revisionTextBlock}
 
 The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.
 
@@ -2172,6 +2183,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">You listened to ${lead.recipient_name}'s song ${listenedPhrase} — we hope it put a smile on your face.</p>
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">We wanted to reach out because we'd love for ${lead.recipient_name} to actually hear it. So we're taking $10 off — no code needed, it's already applied to the link below.</p>
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 24px 0;"><a href="${previewUrl}" style="color:#1E3A5F;">${previewUrl}</a></p>
+${revisionHtmlBlock}
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">The full song is about 3 minutes and includes everything you shared with us about ${lead.recipient_name}. They get to keep it and download it forever.</p>
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 16px 0;">If you have any questions just reply to this email — a real person will get back to you.</p>
 <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 40px 0;">— The Personal Song Gifts team</p>
@@ -2279,7 +2291,7 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
           let query = supabase
             .from("leads")
-            .select("id, email, customer_name, recipient_name, occasion, preview_token, captured_at, special_qualities, favorite_memory, follow_up_sent_at, follow_up_2_sent_at, timezone")
+            .select("id, email, customer_name, recipient_name, occasion, preview_token, captured_at, special_qualities, favorite_memory, follow_up_sent_at, follow_up_2_sent_at, timezone, revision_token, revision_count, max_revisions")
             .not(prevColumn, "is", null)
             .is(stageColumn, null)
             .is("followup_completed_at", null)
@@ -2360,6 +2372,10 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
 
             const firstName2 = (lead.customer_name || "").split(" ")[0] || "there";
             const unsubscribeUrl = `https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}`;
+            const revisionUrl = lead.revision_token
+              && (lead.revision_count ?? 0) < (lead.max_revisions ?? 1)
+              ? `https://www.personalsonggifts.com/song/revision/${lead.revision_token}`
+              : null;
             const quote = stage === 2
               ? (sanitizeQuote(lead.special_qualities) ?? sanitizeQuote(lead.favorite_memory))
               : null;
@@ -2369,18 +2385,20 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
                   firstName: firstName2,
                   recipientName: lead.recipient_name,
                   quote,
-                  url: previewUrl(lead.preview_token),
-                  unsubscribeUrl,
-                  email: lead.email,
-                })
-              : buildFollowupEmail3({
-                  firstName: firstName2,
-                  recipientName: lead.recipient_name,
-                  quote: null,
-                  url: previewUrl(lead.preview_token),
-                  unsubscribeUrl,
-                  email: lead.email,
-                });
+                   url: previewUrl(lead.preview_token),
+                   unsubscribeUrl,
+                   email: lead.email,
+                   revisionUrl,
+                 })
+               : buildFollowupEmail3({
+                   firstName: firstName2,
+                   recipientName: lead.recipient_name,
+                   quote: null,
+                   url: previewUrl(lead.preview_token),
+                   unsubscribeUrl,
+                   email: lead.email,
+                   revisionUrl,
+                 });
 
             try {
               const res = await fetch("https://api.brevo.com/v3/smtp/email", {

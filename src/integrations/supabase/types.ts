@@ -420,6 +420,7 @@ export type Database = {
           bonus_email_sent_at: string | null
           bonus_first_played_at: string | null
           bonus_notified_at: string | null
+          bonus_offer_email_sent_at: string | null
           bonus_play_count: number | null
           bonus_preview_url: string | null
           bonus_price_cents: number | null
@@ -443,6 +444,7 @@ export type Database = {
           delivery_status: string | null
           device_type: string | null
           dismissed_at: string | null
+          download_offer_email_sent_at: string | null
           download_price_cents: number | null
           download_unlock_payment_intent_id: string | null
           download_unlock_session_id: string | null
@@ -561,6 +563,7 @@ export type Database = {
           bonus_email_sent_at?: string | null
           bonus_first_played_at?: string | null
           bonus_notified_at?: string | null
+          bonus_offer_email_sent_at?: string | null
           bonus_play_count?: number | null
           bonus_preview_url?: string | null
           bonus_price_cents?: number | null
@@ -584,6 +587,7 @@ export type Database = {
           delivery_status?: string | null
           device_type?: string | null
           dismissed_at?: string | null
+          download_offer_email_sent_at?: string | null
           download_price_cents?: number | null
           download_unlock_payment_intent_id?: string | null
           download_unlock_session_id?: string | null
@@ -702,6 +706,7 @@ export type Database = {
           bonus_email_sent_at?: string | null
           bonus_first_played_at?: string | null
           bonus_notified_at?: string | null
+          bonus_offer_email_sent_at?: string | null
           bonus_play_count?: number | null
           bonus_preview_url?: string | null
           bonus_price_cents?: number | null
@@ -725,6 +730,7 @@ export type Database = {
           delivery_status?: string | null
           device_type?: string | null
           dismissed_at?: string | null
+          download_offer_email_sent_at?: string | null
           download_price_cents?: number | null
           download_unlock_payment_intent_id?: string | null
           download_unlock_session_id?: string | null
@@ -1175,6 +1181,7 @@ export type Database = {
           bonus_email_sent_at: string | null
           bonus_first_played_at: string | null
           bonus_notified_at: string | null
+          bonus_offer_email_sent_at: string | null
           bonus_play_count: number | null
           bonus_preview_url: string | null
           bonus_price_cents: number | null
@@ -1198,6 +1205,7 @@ export type Database = {
           delivery_status: string | null
           device_type: string | null
           dismissed_at: string | null
+          download_offer_email_sent_at: string | null
           download_price_cents: number | null
           download_unlock_payment_intent_id: string | null
           download_unlock_session_id: string | null

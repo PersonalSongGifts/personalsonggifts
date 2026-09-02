@@ -1,0 +1,1 @@
+revoke execute on function public.find_orders_by_short_id(text, text, text[], boolean, integer) from anon, authenticated;

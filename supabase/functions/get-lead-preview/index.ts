@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
 
     const { data: lead, error } = await supabase
       .from("leads")
-      .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at, order_id, bonus_song_url")
+      .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at, order_id, bonus_song_url, revision_token, revision_count, max_revisions, revision_status")
       .eq("preview_token", previewToken)
       .single();
 
@@ -162,11 +162,14 @@ Deno.serve(async (req) => {
       previewUrl: lead.preview_song_url,
       coverImageUrl: lead.cover_image_url,
       songTitle: lead.song_title,
-      // Do not expose the bonus asset itself before purchase. The client only
-      // needs to know whether the package can be fulfilled immediately.
-      memoryPackageAvailable: !!lead.bonus_song_url,
+       // Do not expose the bonus asset itself before purchase. The client only
+       // needs to know whether the package can be fulfilled immediately.
+       memoryPackageAvailable: !!lead.bonus_song_url,
+       revisionToken: lead.revision_token ?? null,
+       revisionsLeft: Math.max(0, (lead.max_revisions ?? 1) - (lead.revision_count ?? 0)),
+       revisionPending: lead.revision_status === "processing",
 
-      // New generic fields (preferred)
+       // New generic fields (preferred)
       targetedPromoSlug,
       targetedPromoEligible,
       targetedPromoExpired,

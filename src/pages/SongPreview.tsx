@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,9 @@ interface PreviewData {
   sitewidePromoLeadPriceCents?: number | null;
   sitewidePromoEndsAt?: string | null;
   memoryPackageAvailable?: boolean;
+  revisionToken?: string | null;
+  revisionsLeft?: number;
+  revisionPending?: boolean;
   // Back-compat (older server response)
   flash20Eligible?: boolean;
   flash20Expired?: boolean;
@@ -35,6 +38,7 @@ interface PreviewData {
 
 export default function SongPreview() {
   const { token } = useParams<{ token: string }>();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isFollowup = searchParams.get("followup") === "true";
   const isVday10 = searchParams.get("vday10") === "true";
@@ -614,6 +618,26 @@ export default function SongPreview() {
               </Button>
             </CardContent>
           </Card>
+
+          {previewData.revisionToken && (previewData.revisionPending || (previewData.revisionsLeft ?? 0) > 0) && (
+            <div className="mx-auto max-w-md text-center text-sm text-muted-foreground">
+              {previewData.revisionPending ? (
+                <p>We&apos;re remaking this song in a new style — we&apos;ll email you when it&apos;s ready.</p>
+              ) : (
+                <>
+                  <p>Not the right sound?</p>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto px-0 text-sm font-normal"
+                    onClick={() => navigate(`/song/revision/${previewData.revisionToken}`)}
+                  >
+                    Try another style — free
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Promo Badge — only render when a real promo (flash or Valentine's/vday10) is active */}
           {(flashShowPrice || isVday10 || isFollowup) && (
