@@ -10,7 +10,20 @@ import {
   inSendWindow,
   buildFollowupEmail2,
   buildFollowupEmail3,
+  leadRevisionLinkActive,
+  DEFAULT_LEAD_REVISION_EXPIRY_DAYS,
 } from "../_shared/lead-followup.ts";
+
+/** Reads admin_settings.lead_revision_link_expiry_days (default 365). */
+async function getLeadRevisionExpiryDays(supabase: any): Promise<number> {
+  const { data } = await supabase
+    .from("admin_settings")
+    .select("value")
+    .eq("key", "lead_revision_link_expiry_days")
+    .maybeSingle();
+  const parsed = data ? parseInt(data.value, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_LEAD_REVISION_EXPIRY_DAYS;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2142,6 +2155,7 @@ To unsubscribe: ${unsubLink}`;
             const previewUrl = `https://personalsonggifts.lovable.app/preview/${lead.preview_token}?followup=true`;
             const revisionUrl = lead.revision_token
               && (lead.revision_count ?? 0) < (lead.max_revisions ?? 1)
+              && leadRevisionLinkActive(lead.captured_at, await getLeadRevisionExpiryDays(supabase))
               ? `https://www.personalsonggifts.com/song/revision/${lead.revision_token}`
               : null;
             const revisionTextBlock = revisionUrl
@@ -2374,6 +2388,7 @@ ${revisionHtmlBlock}
             const unsubscribeUrl = `https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.email)}`;
             const revisionUrl = lead.revision_token
               && (lead.revision_count ?? 0) < (lead.max_revisions ?? 1)
+              && leadRevisionLinkActive(lead.captured_at, await getLeadRevisionExpiryDays(supabase))
               ? `https://www.personalsonggifts.com/song/revision/${lead.revision_token}`
               : null;
             const quote = stage === 2

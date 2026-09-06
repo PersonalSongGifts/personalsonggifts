@@ -206,13 +206,14 @@ async function handleOrderRequest(supabase: ReturnType<typeof createClient>, ord
 }
 
 async function handleLeadRequest(supabase: ReturnType<typeof createClient>, lead: any): Promise<Response> {
-  // Expiry: 90 days from capture (same default as orders)
+  // Leads get their own, longer window (win-back emails link out to ~183 days).
   const { data: expirySetting } = await supabase
     .from("admin_settings")
     .select("value")
-    .eq("key", "revision_link_expiry_days")
+    .eq("key", "lead_revision_link_expiry_days")
     .maybeSingle();
-  const expiryDays = expirySetting ? parseInt((expirySetting as any).value, 10) : 90;
+  const parsedExpiry = expirySetting ? parseInt((expirySetting as any).value, 10) : NaN;
+  const expiryDays = Number.isFinite(parsedExpiry) && parsedExpiry > 0 ? parsedExpiry : 365;
   const expiryDate = new Date(new Date(lead.captured_at).getTime() + expiryDays * 24 * 60 * 60 * 1000);
   if (new Date() > expiryDate) {
     return new Response(
