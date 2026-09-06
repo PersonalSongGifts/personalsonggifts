@@ -87,6 +87,25 @@ export function sanitizeQuote(raw: string | null | undefined): string | null {
   return s;
 }
 
+/** Default expiry window (days) for a lead's self-service revision link. */
+export const DEFAULT_LEAD_REVISION_EXPIRY_DAYS = 365;
+
+/**
+ * True when a lead's revision link is still inside its expiry window.
+ * Mirrors get-revision-page's lead branch (admin_settings.lead_revision_link_expiry_days).
+ */
+export function leadRevisionLinkActive(
+  capturedAt: string | null | undefined,
+  expiryDays: number = DEFAULT_LEAD_REVISION_EXPIRY_DAYS,
+  now: Date = new Date(),
+): boolean {
+  if (!capturedAt) return false;
+  const captured = new Date(capturedAt).getTime();
+  if (!Number.isFinite(captured)) return false;
+  const days = Number.isFinite(expiryDays) && expiryDays > 0 ? expiryDays : DEFAULT_LEAD_REVISION_EXPIRY_DAYS;
+  return now.getTime() <= captured + days * 24 * 60 * 60 * 1000;
+}
+
 export function previewUrl(token: string): string {
   return `https://www.personalsonggifts.com/preview/${token}?followup=true`;
 }
