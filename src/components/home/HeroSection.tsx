@@ -5,6 +5,7 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/amplitudeTrack";
 import asSeenOnImage from "@/assets/as-seen-on.webp";
+import TrustStrip from "@/components/home/TrustStrip";
 
 // Still frame extracted from hero-video.mp4 — shown instantly while the
 // video downloads, and remains as a fallback if playback fails.
@@ -153,10 +154,10 @@ const HeroSection = () => {
           />
         </div>
 
-        {/* Trust indicator */}
-        <p className="mt-4 md:mt-6 text-muted-foreground text-xs md:text-sm animate-fade-in">
-          ★★★★★ Trusted by families who've created 500,000+ songs
-        </p>
+        {/* Trust indicators — rating + songs created */}
+        <div className="mt-5 md:mt-7 flex justify-center animate-fade-in">
+          <TrustStrip />
+        </div>
       </div>
     </section>
   );

@@ -56,6 +56,10 @@
     --gold: 38 70% 50%;
     --gold-muted: 38 40% 70%;
 
+    /* Trust rating (green squares) */
+    --trust: 161 100% 36%;
+    --trust-foreground: 0 0% 100%;
+
     /* Sidebar - adapted for warm theme */
     --sidebar-background: 30 40% 97%;
     --sidebar-foreground: 220 15% 25%;

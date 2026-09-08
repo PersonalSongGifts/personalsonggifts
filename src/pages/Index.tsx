@@ -1,7 +1,7 @@
 import Layout from "@/components/layout/Layout";
 import HeroSection from "@/components/home/HeroSection";
 import SamplePlayer from "@/components/home/SamplePlayer";
-import TrustStrip from "@/components/home/TrustStrip";
+
 import HowItWorks from "@/components/home/HowItWorks";
 import OccasionsGrid from "@/components/home/OccasionsGrid";
 import Testimonials from "@/components/home/Testimonials";
@@ -20,7 +20,6 @@ const Index = () => {
         <HeroSection />
         <SamplePlayer />
         <Testimonials />
-        <TrustStrip />
         <HowItWorks />
         <OccasionsGrid />
         <FAQSection />
