@@ -158,10 +158,6 @@ const HeroSection = () => {
         <div className="mt-5 md:mt-7 flex justify-center animate-fade-in">
           <TrustStrip />
         </div>
-
-        <p className="mt-3 md:mt-4 text-muted-foreground text-xs md:text-sm animate-fade-in">
-          Trusted by families who've created 500,000+ songs
-        </p>
       </div>
     </section>
   );
