@@ -1,34 +1,41 @@
-import { Star, Users } from "lucide-react";
+import { Star, Music2 } from "lucide-react";
 
+/**
+ * Compact trust row shown above the fold, directly under the "As Seen On" logos.
+ * Rating uses green squares with white stars.
+ */
 const TrustStrip = () => {
   return (
-    <section className="py-6 md:py-8 border-y border-border bg-card">
-      <div className="container mx-auto px-4">
-        {/* Stats row - centered */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-12 md:gap-16">
-          {/* Rating */}
-          <div className="flex items-center gap-3">
-            <div className="flex text-gold">
-              {[...Array(5)].map((_, i) => (
-                <Star key={i} className="h-5 w-5 md:h-6 md:w-6 fill-current" />
-              ))}
-            </div>
-            <span className="text-foreground font-semibold text-lg md:text-xl">4.9</span>
-            <span className="text-muted-foreground text-base md:text-lg">Rating</span>
+    <div className="w-full">
+      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-soft sm:max-w-none sm:w-auto sm:flex-row sm:justify-center sm:gap-6 sm:px-6">
+        {/* Rating */}
+        <div className="flex items-center gap-2">
+          <div className="flex gap-[3px]">
+            {[...Array(5)].map((_, i) => (
+              <span
+                key={i}
+                className="flex h-6 w-6 items-center justify-center rounded-[3px] bg-trust md:h-7 md:w-7"
+              >
+                <Star className="h-4 w-4 fill-trust-foreground text-trust-foreground md:h-[1.15rem] md:w-[1.15rem]" />
+              </span>
+            ))}
           </div>
+          <span className="text-lg font-semibold text-foreground md:text-xl">4.9</span>
+          <span className="text-sm text-muted-foreground md:text-base">Rating</span>
+        </div>
 
-          {/* Divider */}
-          <div className="hidden sm:block w-px h-10 bg-border" />
+        {/* Divider */}
+        <div className="hidden h-8 w-px bg-border sm:block" />
+        <div className="h-px w-24 bg-border sm:hidden" />
 
-          {/* Families served */}
-          <div className="flex items-center gap-3">
-            <Users className="h-5 w-5 md:h-6 md:w-6 text-primary" />
-            <span className="text-foreground font-semibold text-lg md:text-xl">500,000+</span>
-            <span className="text-muted-foreground text-base md:text-lg">Songs Created</span>
-          </div>
+        {/* Songs created */}
+        <div className="flex items-center gap-2">
+          <Music2 className="h-5 w-5 text-primary" />
+          <span className="text-lg font-semibold text-foreground md:text-xl">500,000+</span>
+          <span className="text-sm text-muted-foreground md:text-base">Songs Created</span>
         </div>
       </div>
-    </section>
+    </div>
   );
 };
 

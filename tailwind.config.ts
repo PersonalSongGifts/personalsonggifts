@@ -68,6 +68,10 @@ export default {
           dark: "hsl(var(--navy-dark))",
         },
         taupe: "hsl(var(--taupe))",
+        trust: {
+          DEFAULT: "hsl(var(--trust))",
+          foreground: "hsl(var(--trust-foreground))",
+        },
         gold: {
           DEFAULT: "hsl(var(--gold))",
           muted: "hsl(var(--gold-muted))",
