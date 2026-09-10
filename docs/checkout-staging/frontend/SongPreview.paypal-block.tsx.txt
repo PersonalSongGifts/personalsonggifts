@@ -1,0 +1,101 @@
+STAGED DRAFT — INERT (.txt so nothing can import it).
+Target at launch: src/pages/SongPreview.tsx
+
+Requirements honoured:
+ - Mutual loading lock with the existing card button (neither can fire while the
+   other is in flight).
+ - Same displayed amount and same package selection as the card path — the
+   amount shown is the one the server already returns for this preview; the
+   button never computes a price.
+ - Renders only when the server reports paypalEnabled (get-lead-preview), so a
+   disabled launch flag means the button does not exist.
+
+--- additions to PreviewData ---------------------------------------------------
+
+  paypalEnabled?: boolean;
+
+--- state ---------------------------------------------------------------------
+
+  const [payingWithPayPal, setPayingWithPayPal] = useState(false);
+  const busy = purchasing || payingWithPayPal;   // mutual lock
+
+--- handler -------------------------------------------------------------------
+
+  const handlePayPalPurchase = async () => {
+    if (!token || busy) return;
+    setPayingWithPayPal(true);
+    try {
+      const eligibleSlug = previewData?.targetedPromoEligible
+        ? previewData?.targetedPromoSlug ?? null
+        : (previewData?.flash20Eligible ? "flash20" : null);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-paypal-lead-order`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            previewToken: token,
+            applyFollowupDiscount: isFollowup,
+            applyVday10Discount: isVday10,
+            addons: { forever_memory: packageSelected },
+            promoSlug: eligibleSlug ?? (promoParam && promoParam !== "flash20" ? promoParam : undefined),
+          }),
+        }
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.error === "paypal_unavailable") {
+          toast({
+            title: "PayPal isn't available right now",
+            description: "You can complete your purchase with a card instead.",
+          });
+          setPayingWithPayPal(false);
+          return;
+        }
+        if (data.error === "package_not_ready") {
+          setPackageSelected(false);
+          toast({
+            title: "The package is still getting ready",
+            description: "Your full song is ready now. The extra version appears on your song page once it finishes.",
+          });
+          setPayingWithPayPal(false);
+          return;
+        }
+        throw new Error(data.error || "Could not start PayPal");
+      }
+
+      window.location.href = `https://www.paypal.com/checkoutnow?token=${data.orderID}`;
+    } catch (e) {
+      console.error("PayPal checkout error:", e);
+      toast({
+        title: "Couldn't reach PayPal",
+        description: "Please try again, or pay with a card.",
+        variant: "destructive",
+      });
+      setPayingWithPayPal(false);
+    }
+  };
+
+--- markup (directly below the existing purchase button, same card) ------------
+
+  {previewData?.paypalEnabled && (
+    <Button
+      type="button"
+      variant="outline"
+      size="lg"
+      className="w-full"
+      onClick={handlePayPalPurchase}
+      disabled={busy}
+    >
+      {payingWithPayPal
+        ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Connecting to PayPal...</>
+        : `Pay with PayPal — ${displayedTotal}`}
+    </Button>
+  )}
+
+Note: `displayedTotal` is the exact same formatted string the card button shows,
+including the package when selected. Do not derive a second amount.
+
+Also: the existing card button must switch its `disabled` to `busy`.

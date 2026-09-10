@@ -1,0 +1,73 @@
+STAGED DRAFT — INERT (.txt).
+Target at launch: src/pages/PaymentSuccess.tsx — ADDITIVE branch only.
+Existing `paypalToken` and `source === "lead"` branches stay exactly as they are.
+
+Behaviour:
+ - Runs only for source=lead-paypal, using ?attempt= and ?rs= from the return URL.
+ - The song unlocks because the server finalised a verified payment; the page
+   only reports it. No upsell/generation flow is triggered here.
+ - `pending` is shown as "we're confirming", never as "you were not charged".
+ - `declined` is the only state that states no payment was taken.
+
+--- read params ---------------------------------------------------------------
+
+  const leadPaypalAttemptId = searchParams.get("attempt");
+  const leadPaypalReturnSecret = searchParams.get("rs");
+  const isLeadPaypal = source === "lead-paypal" && !!leadPaypalAttemptId && !!leadPaypalReturnSecret;
+
+--- effect (placed alongside the existing branches; must run BEFORE the generic
+    paypalToken branch so it is not double-handled) ---------------------------
+
+  useEffect(() => {
+    if (!isLeadPaypal) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/capture-paypal-lead-payment`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              attemptId: leadPaypalAttemptId,
+              returnSecret: leadPaypalReturnSecret,
+            }),
+          }
+        );
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.state === "finalized" && data.shortId) {
+          // Strip the secret from the address bar before navigating on.
+          window.history.replaceState({}, "", "/payment-success?source=lead-paypal");
+          setLeadPaypalState({ kind: "done", shortId: data.shortId });
+          return;
+        }
+        if (data.state === "declined") {
+          setLeadPaypalState({ kind: "declined", title: data.title, body: data.body });
+          return;
+        }
+        // pending / incident: honest "we're confirming" copy from the server.
+        setLeadPaypalState({ kind: "pending", title: data.title, body: data.body });
+      } catch {
+        if (cancelled) return;
+        setLeadPaypalState({
+          kind: "pending",
+          title: "We're confirming your payment",
+          body: "We're checking with the payment provider. If it went through, your song unlocks automatically and you'll get an email — you don't need to pay again.",
+        });
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isLeadPaypal, leadPaypalAttemptId, leadPaypalReturnSecret]);
+
+--- rendering -----------------------------------------------------------------
+
+  kind === "done"     → existing success layout, link to /song/{shortId}
+  kind === "pending"  → neutral "confirming" panel + "reply to your email" line.
+                        No "not charged" wording. No retry-payment button.
+  kind === "declined" → "No payment was taken" + link back to /preview/{token}
+                        (token is not in the return URL, so link to the song
+                        preview via the email instead — see README §Blockers).
