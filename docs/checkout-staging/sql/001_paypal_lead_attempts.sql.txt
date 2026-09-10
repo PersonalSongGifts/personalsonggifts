@@ -1,0 +1,271 @@
+-- STAGED DRAFT — INERT. Not a migration. Extension is .sql.txt on purpose so
+-- no tooling can pick it up. Nothing here has been applied to any database.
+--
+-- Purpose: durable payment-attempt ledger for the existing-song (lead preview)
+-- PayPal rail, plus one atomic finalizer that converges every rail onto a
+-- single canonical order per lead.
+--
+-- Review points are called out inline as REVIEW:.
+
+-- ============================================================ 1. attempts
+
+create table if not exists public.paypal_lead_attempts (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  lead_id uuid not null references public.leads(id),
+  preview_token text not null,
+
+  -- Immutable server quote, written BEFORE the approval URL is handed back.
+  base_cents integer not null check (base_cents >= 0),
+  package_cents integer not null default 0 check (package_cents >= 0),
+  total_cents integer not null check (total_cents > 0),
+  currency text not null default 'USD' check (currency = 'USD'),
+  has_forever_memory boolean not null default false,
+  asset_snapshot jsonb not null,
+  offer_flags jsonb not null default '{}'::jsonb,
+
+  -- Provider binding.
+  provider text not null default 'paypal' check (provider = 'paypal'),
+  provider_order_id text,
+  provider_capture_id text,
+
+  -- Scoped return secret: hash only, never the secret itself.
+  return_secret_hash text not null,
+  return_secret_used_at timestamptz,
+
+  status text not null default 'quoted'
+    check (status in ('quoted','approval_pending','captured','finalized','duplicate','failed','incident')),
+  captured_amount_cents integer,
+  captured_currency text,
+  finalized_order_id uuid references public.orders(id),
+  last_error text,
+  incident_reason text,
+  attempt_count integer not null default 0
+);
+
+-- REVIEW: uniqueness of the provider order id is the primary duplicate guard.
+create unique index if not exists paypal_lead_attempts_provider_order_key
+  on public.paypal_lead_attempts (provider_order_id)
+  where provider_order_id is not null;
+
+create index if not exists paypal_lead_attempts_lead_idx
+  on public.paypal_lead_attempts (lead_id, created_at desc);
+
+create index if not exists paypal_lead_attempts_open_idx
+  on public.paypal_lead_attempts (status, created_at)
+  where status in ('quoted','approval_pending','captured');
+
+-- Service-role only. No anon, no authenticated: this table is written solely
+-- by edge functions and read solely by admin/CS code running as service role.
+grant all on public.paypal_lead_attempts to service_role;
+alter table public.paypal_lead_attempts enable row level security;
+
+create policy "service role manages paypal lead attempts"
+  on public.paypal_lead_attempts
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+-- Deliberately NO policy for anon/authenticated: reads and writes from the
+-- Data API are denied outright.
+
+-- ================================================ 2. order key uniqueness
+
+-- The canonical order for a PayPal lead purchase carries
+-- notes = 'paypal_lead:<provider_order_id>'. Existing partial unique indexes
+-- cover 'stripe_session:%', 'lead_session:%' and 'paypal_order:%' only, so this
+-- prefix is unenforced without the index below.
+create unique index if not exists idx_orders_paypal_lead_unique
+  on public.orders (notes)
+  where notes like 'paypal_lead:%';
+
+-- ================================================ 3. duplicate/incident log
+
+-- Distinct, human-resolvable records. No automatic refund, no automatic
+-- cancellation is performed anywhere in this design.
+create table if not exists public.payment_incidents (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  kind text not null check (kind in (
+    'duplicate_payment','amount_mismatch','currency_mismatch','payee_mismatch',
+    'status_unexpected','missing_paid_asset','finalize_failed','uncertain_capture'
+  )),
+  provider text not null,
+  provider_order_id text,
+  provider_capture_id text,
+  lead_id uuid,
+  order_id uuid,
+  attempt_id uuid,
+  amount_cents integer,
+  currency text,
+  detail text,
+  resolved_at timestamptz,
+  resolved_by text,
+  resolution_note text
+);
+
+grant all on public.payment_incidents to service_role;
+alter table public.payment_incidents enable row level security;
+
+create policy "service role manages payment incidents"
+  on public.payment_incidents
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+create index if not exists payment_incidents_open_idx
+  on public.payment_incidents (created_at desc)
+  where resolved_at is null;
+
+-- ================================================ 4. atomic finalizer
+
+-- One transaction. Locks the lead row, so concurrent Stripe and PayPal
+-- finalisation serialise and exactly one canonical order survives.
+--
+-- Contract (returns jsonb):
+--   { outcome: 'finalized',  order_id, created: true }
+--   { outcome: 'already',    order_id, created: false }        -- same provider key
+--   { outcome: 'duplicate',  order_id, incident_id }           -- lead already converted elsewhere
+--   { outcome: 'incident',   incident_id, reason }             -- cannot fulfil; nothing unlocked
+--
+-- The caller NEVER unlocks anything on 'incident'.
+create or replace function public.finalize_lead_payment(
+  p_provider            text,
+  p_provider_order_id   text,
+  p_provider_capture_id text,
+  p_attempt_id          uuid,
+  p_lead_id             uuid,
+  p_base_cents          integer,
+  p_package_cents       integer,
+  p_captured_cents      integer,
+  p_currency            text,
+  p_notes_key           text
+) returns jsonb
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+declare
+  v_lead        public.leads;
+  v_existing_id uuid;
+  v_order_id    uuid;
+  v_incident_id uuid;
+  v_now         timestamptz := now();
+  v_pkg         boolean := coalesce(p_package_cents, 0) > 0;
+begin
+  if p_currency is distinct from 'USD' then
+    insert into public.payment_incidents (kind, provider, provider_order_id, provider_capture_id, lead_id, attempt_id, amount_cents, currency, detail)
+    values ('currency_mismatch', p_provider, p_provider_order_id, p_provider_capture_id, p_lead_id, p_attempt_id, p_captured_cents, p_currency, 'non-USD capture reached finalizer')
+    returning id into v_incident_id;
+    return jsonb_build_object('outcome','incident','incident_id',v_incident_id,'reason','currency_mismatch');
+  end if;
+
+  -- Same provider payment already finalised? Idempotent no-op.
+  select id into v_existing_id from public.orders where notes = p_notes_key limit 1;
+  if v_existing_id is not null then
+    return jsonb_build_object('outcome','already','order_id',v_existing_id,'created',false);
+  end if;
+
+  -- Serialise every rail on the lead row.
+  select * into v_lead from public.leads where id = p_lead_id for update;
+  if not found then
+    insert into public.payment_incidents (kind, provider, provider_order_id, provider_capture_id, lead_id, attempt_id, amount_cents, currency, detail)
+    values ('finalize_failed', p_provider, p_provider_order_id, p_provider_capture_id, p_lead_id, p_attempt_id, p_captured_cents, p_currency, 'lead row not found')
+    returning id into v_incident_id;
+    return jsonb_build_object('outcome','incident','incident_id',v_incident_id,'reason','lead_missing');
+  end if;
+
+  -- Paid asset must exist. No automatic regeneration: raise an incident.
+  if coalesce(v_lead.full_song_url, '') = '' then
+    insert into public.payment_incidents (kind, provider, provider_order_id, provider_capture_id, lead_id, attempt_id, amount_cents, currency, detail)
+    values ('missing_paid_asset', p_provider, p_provider_order_id, p_provider_capture_id, p_lead_id, p_attempt_id, p_captured_cents, p_currency, 'lead has no full_song_url at finalize time')
+    returning id into v_incident_id;
+    return jsonb_build_object('outcome','incident','incident_id',v_incident_id,'reason','missing_paid_asset');
+  end if;
+
+  -- Lead already converted by another rail: single canonical order is kept and
+  -- this payment is recorded as a distinct duplicate for human resolution.
+  if v_lead.status = 'converted' or v_lead.order_id is not null then
+    insert into public.payment_incidents (kind, provider, provider_order_id, provider_capture_id, lead_id, order_id, attempt_id, amount_cents, currency, detail)
+    values ('duplicate_payment', p_provider, p_provider_order_id, p_provider_capture_id, p_lead_id, v_lead.order_id, p_attempt_id, p_captured_cents, p_currency, 'lead already converted; second settled payment recorded, no refund performed')
+    returning id into v_incident_id;
+
+    if p_attempt_id is not null then
+      update public.paypal_lead_attempts
+         set status = 'duplicate', updated_at = v_now, finalized_order_id = v_lead.order_id,
+             captured_amount_cents = p_captured_cents, captured_currency = p_currency,
+             provider_capture_id = coalesce(p_provider_capture_id, provider_capture_id),
+             incident_reason = 'duplicate_payment'
+       where id = p_attempt_id;
+    end if;
+
+    return jsonb_build_object('outcome','duplicate','order_id',v_lead.order_id,'incident_id',v_incident_id);
+  end if;
+
+  -- Create the single canonical order, carrying the existing assets over.
+  insert into public.orders (
+    pricing_tier, price, price_cents,
+    expected_delivery, customer_name, customer_email, customer_phone,
+    recipient_type, recipient_name, occasion, genre, singer_preference,
+    special_qualities, favorite_memory, special_message,
+    lyrics_language_code, inputs_hash, device_type, notes, status,
+    song_url, song_title, cover_image_url, automation_lyrics, automation_status,
+    bonus_song_url, bonus_preview_url, bonus_song_title, bonus_cover_image_url,
+    delivered_at, sent_at, delivery_status, source,
+    package_unlocked_at, package_price_cents, package_unlock_session_id,
+    lyrics_unlocked_at, lyrics_price_cents,
+    download_unlocked_at, download_price_cents,
+    bonus_unlocked_at, bonus_price_cents
+  ) values (
+    'standard', floor(p_base_cents / 100), p_base_cents,
+    v_now, v_lead.customer_name, v_lead.email, v_lead.phone,
+    v_lead.recipient_type, v_lead.recipient_name, v_lead.occasion, v_lead.genre, v_lead.singer_preference,
+    v_lead.special_qualities, v_lead.favorite_memory, v_lead.special_message,
+    coalesce(v_lead.lyrics_language_code, 'en'), v_lead.inputs_hash, 'Web', p_notes_key, 'delivered',
+    v_lead.full_song_url, v_lead.song_title, v_lead.cover_image_url, v_lead.automation_lyrics, 'completed',
+    v_lead.bonus_song_url, v_lead.bonus_preview_url, v_lead.bonus_song_title, v_lead.bonus_cover_image_url,
+    v_now, v_now, 'sent', 'lead',
+    case when v_pkg then v_now end, case when v_pkg then p_package_cents end,
+    case when v_pkg then p_notes_key end,
+    case when v_pkg then v_now end, case when v_pkg then 0 end,
+    case when v_pkg then v_now end, case when v_pkg then 0 end,
+    case when v_pkg then v_now end, case when v_pkg then 0 end
+  )
+  returning id into v_order_id;
+
+  -- REVIEW: this mirrors buildLeadAssetPatch() in _shared/lead-conversion.ts.
+  -- Before launch the two must be diffed field-by-field, or this insert should
+  -- instead be fed the same patch the TypeScript helper produces.
+
+  update public.leads
+     set status = 'converted', converted_at = v_now, order_id = v_order_id
+   where id = p_lead_id;
+
+  if p_attempt_id is not null then
+    update public.paypal_lead_attempts
+       set status = 'finalized', updated_at = v_now, finalized_order_id = v_order_id,
+           captured_amount_cents = p_captured_cents, captured_currency = p_currency,
+           provider_capture_id = coalesce(p_provider_capture_id, provider_capture_id)
+     where id = p_attempt_id;
+  end if;
+
+  return jsonb_build_object('outcome','finalized','order_id',v_order_id,'created',true);
+end;
+$$;
+
+-- Callable by edge functions only.
+revoke all on function public.finalize_lead_payment(text,text,text,uuid,uuid,integer,integer,integer,text,text) from public;
+revoke all on function public.finalize_lead_payment(text,text,text,uuid,uuid,integer,integer,integer,text,text) from anon;
+revoke all on function public.finalize_lead_payment(text,text,text,uuid,uuid,integer,integer,integer,text,text) from authenticated;
+grant execute on function public.finalize_lead_payment(text,text,text,uuid,uuid,integer,integer,integer,text,text) to service_role;
+
+-- ================================================ 5. launch flags (inert)
+
+-- insert into public.admin_settings (key, value, updated_at) values
+--   ('lead_paypal_creation_enabled', 'false', now()),
+--   ('lead_finalizer_v2_enabled',    'false', now())
+-- on conflict (key) do nothing;

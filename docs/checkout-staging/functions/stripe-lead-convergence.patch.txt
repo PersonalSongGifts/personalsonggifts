@@ -1,0 +1,56 @@
+STAGED DRAFT — INERT description of the additive, gated change needed so the
+Stripe lead rails also go through the shared finalizer. Nothing is patched here.
+
+Why it is required: convergence only holds if EVERY rail takes the same lead
+lock. Today two Stripe paths create a lead-conversion order independently:
+
+  1. supabase/functions/process-lead-payment/index.ts   (browser, success page)
+  2. supabase/functions/stripe-webhook/index.ts         (~line 776 and ~838,
+     keyed on notes = 'lead_session:<session id>')
+
+Both currently do check-then-insert on `notes` and then update the lead. The
+unique index idx_orders_lead_session_unique protects them from duplicating each
+OTHER, but nothing prevents a Stripe order and a PayPal order for the SAME lead,
+because neither takes a row lock on the lead.
+
+Additive gated change (per function, identical shape):
+
+  const { data: v2 } = await supabase.from("admin_settings")
+    .select("value").eq("key", "lead_finalizer_v2_enabled").maybeSingle();
+
+  if (v2?.value === "true") {
+    const { data: result } = await supabase.rpc("finalize_lead_payment", {
+      p_provider: "stripe",
+      p_provider_order_id: session.id,
+      p_provider_capture_id: paymentIntentId,
+      p_attempt_id: null,
+      p_lead_id: lead.id,
+      p_base_cents: checkoutAmounts.baseCents,
+      p_package_cents: checkoutAmounts.packageCents,
+      p_captured_cents: checkoutAmounts.totalCents,
+      p_currency: (session.currency ?? "usd").toUpperCase(),
+      p_notes_key: `lead_session:${session.id}`,
+    });
+    // map outcome exactly as the existing code maps its own results
+  } else {
+    // ... existing code path, byte-for-byte unchanged ...
+  }
+
+Properties:
+ - With the flag false (default) nothing about Stripe changes at all.
+ - With the flag true, Stripe and PayPal serialise on `leads` FOR UPDATE, so one
+   lead yields one canonical order and the losing settled payment is written to
+   payment_incidents as a distinct duplicate for human resolution.
+ - The RPC's order insert must be diffed against buildLeadAssetPatch() before the
+   flag is ever turned on (called out as a blocker in README).
+
+Historical Stripe sessions: sessions created BEFORE the flag flip still carry
+`lead_session:` notes and are finalised by whichever path handles them. Because
+the RPC's first action is an existence check on `notes`, a legacy order already
+created by the old path is returned as `already` rather than duplicated. No
+backfill of past orders into paypal_lead_attempts is proposed; that table only
+describes PayPal attempts from its creation onward.
+
+Ordering requirement for launch: enable lead_finalizer_v2_enabled and verify the
+Stripe rail on it BEFORE enabling lead_paypal_creation_enabled. Turning PayPal
+on first would leave a real (if narrow) cross-rail duplicate-order window.
