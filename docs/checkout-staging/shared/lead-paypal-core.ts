@@ -237,7 +237,6 @@ export type CaptureOutcome =
 export function classifyCaptureFailure(httpStatus: number | null, rawBody: string | null): CaptureOutcome {
   const body = (rawBody || "").toUpperCase();
   if (body.includes("ORDER_ALREADY_CAPTURED")) return "already_captured";
-  if (body.includes("INSTRUMENT_DECLINED") || body.includes("PAYER_ACTION_REQUIRED") && false) return "declined";
   if (body.includes("INSTRUMENT_DECLINED")) return "declined";
   if (body.includes("RESOURCE_NOT_FOUND") || body.includes("INVALID_RESOURCE_ID")) return "order_not_found";
   if (body.includes("ORDER_NOT_APPROVED") || body.includes("PAYER_ACTION_REQUIRED")) return "not_approved";
