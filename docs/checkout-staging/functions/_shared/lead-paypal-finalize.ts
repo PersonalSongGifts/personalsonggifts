@@ -10,6 +10,7 @@ import {
   buildPayPalRequestId,
   classifyCaptureFailure,
   extractCaptureFacts,
+  parseAmountToCents,
   PAYPAL_LEAD_NOTES_PREFIX,
   returnSecretMatches,
   verifyCapture,
@@ -122,7 +123,7 @@ export async function finalizeLeadPayPalAttempt(
       provider_capture_id: facts.captureId,
       lead_id: attempt.lead_id,
       attempt_id: attempt.id,
-      amount_cents: facts.amountValue ? undefined : undefined,
+      amount_cents: parseAmountToCents(facts.amountValue),
       currency: facts.currencyCode,
       detail: `${verdict.reason}: ${verdict.detail}`,
     }).select("id").maybeSingle();
