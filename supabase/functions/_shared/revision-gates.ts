@@ -63,3 +63,72 @@ export function buildPrevSlotPatch(lead: {
     prev_cover_image_url: lead.cover_image_url || null,
   };
 }
+
+export type TriggerPreflight =
+  | { action: "proceed"; classification: "fresh" | "revision_repair" }
+  | { action: "refuse"; classification: "terminal_current_audio"; reason: string };
+
+/**
+ * Decided BEFORE any status mutation, so a refusal never resets the record's retry
+ * history or parks it in "pending" for the recovery loop to churn on.
+ *
+ * - terminal_current_audio: the record already has its CURRENT deliverable audio and no
+ *   revision is in flight — regenerating is not allowed and retrying is pointless. Refuse.
+ *   (Refusing is not the same as declaring the record complete; the caller records a
+ *   review state and leaves the existing status/asset facts alone.)
+ * - revision_repair: an accepted/processing revision whose current preview is missing while
+ *   a stale full song lingers — this MUST be allowed to regenerate.
+ */
+export function classifyTriggerPreflight(
+  entityType: "lead" | "order",
+  entity: {
+    revision_status?: string | null;
+    preview_song_url?: string | null;
+    full_song_url?: string | null;
+    song_url?: string | null;
+  },
+  opts: { forceRun?: boolean; skipLyrics?: boolean } = {},
+): TriggerPreflight {
+  if (opts.forceRun || opts.skipLyrics) return { action: "proceed", classification: "fresh" };
+
+  const revisionInFlight = isRevisionInFlight(entity.revision_status);
+
+  if (entityType === "lead") {
+    if (revisionInFlight) {
+      return entity.preview_song_url
+        ? {
+          action: "refuse",
+          classification: "terminal_current_audio",
+          reason: "Revision in flight but the current preview already exists — nothing to regenerate",
+        }
+        : { action: "proceed", classification: "revision_repair" };
+    }
+    if (entity.preview_song_url) {
+      return {
+        action: "refuse",
+        classification: "terminal_current_audio",
+        reason: "Lead already has its current preview audio and no revision is in flight",
+      };
+    }
+    return { action: "proceed", classification: "fresh" };
+  }
+
+  // Orders: the current deliverable is song_url.
+  if (revisionInFlight) {
+    return entity.song_url
+      ? {
+        action: "refuse",
+        classification: "terminal_current_audio",
+        reason: "Revision in flight but the current song already exists — nothing to regenerate",
+      }
+      : { action: "proceed", classification: "revision_repair" };
+  }
+  if (entity.song_url) {
+    return {
+      action: "refuse",
+      classification: "terminal_current_audio",
+      reason: "Order already has its current song and no revision is in flight",
+    };
+  }
+  return { action: "proceed", classification: "fresh" };
+}

@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
+import { classifyTriggerPreflight } from "../_shared/revision-gates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -195,16 +196,37 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Mark as pending
-    console.log(`[TRIGGER] Marking ${entityType} ${entityId} as pending`);
+    // ---- Safety preflight: decided BEFORE any status mutation ----
+    // Refusals must never park the record in "pending" nor wipe its retry history,
+    // otherwise the recovery loop churns forever (old audio -> lyrics 409 -> 500).
+    const preflight = classifyTriggerPreflight(entityType, entity, { forceRun, skipLyrics });
+    if (preflight.action === "refuse") {
+      console.log(`[TRIGGER] Preflight refused ${entityType} ${entityId}: ${preflight.classification} - ${preflight.reason}`);
+      await supabase
+        .from(tableName)
+        .update({
+          automation_status: "needs_review",
+          automation_last_error: `[TRIGGER] Preflight refused (${preflight.classification}): ${preflight.reason}`.slice(0, 500),
+        })
+        .eq("id", entityId);
+      return new Response(
+        JSON.stringify({ error: preflight.reason, classification: preflight.classification, needsReview: true }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    console.log(`[TRIGGER] Preflight ok for ${entityType} ${entityId}: ${preflight.classification}`);
+
+    // Mark as pending. Retry history is preserved (only an explicit force clears it), so
+    // bounded-retry accounting stays intact across attempts.
+    const priorRetryCount = entity.automation_retry_count || 0;
+    console.log(`[TRIGGER] Marking ${entityType} ${entityId} as pending (retry_count kept at ${priorRetryCount})`);
     await supabase
       .from(tableName)
       .update({
         automation_status: "pending",
-        automation_retry_count: 0,
         automation_last_error: null,
         automation_started_at: new Date().toISOString(),
-        ...(forceRun ? { short_retry_count: 0 } : {}),
+        ...(forceRun ? { automation_retry_count: 0, short_retry_count: 0 } : {}),
       })
       .eq("id", entityId);
 
@@ -244,19 +266,25 @@ Deno.serve(async (req) => {
         console.error(`[TRIGGER] Lyrics generation failed: ${lyricsResponse.status}`, error);
         // A 409 is a hard refusal (locked/guarded), not a transient failure. Leaving the
         // record in "pending" makes the recovery loop reset it silently forever, so record
-        // the reason and surface it for review instead.
-        if (lyricsResponse.status === 409) {
-          await supabase
-            .from(tableName)
-            .update({
-              automation_status: "needs_review",
-              automation_last_error: `[TRIGGER] Lyrics step refused (409): ${error}`.slice(0, 500),
-              automation_task_id: null,
-            })
-            .eq("id", entityId);
+        // the reason, keep the bounded retry history, and surface it for review instead.
+        // This is an honest failure state - it never claims the record is complete.
+        const attempted = priorRetryCount + 1;
+        const { error: statusWriteError } = await supabase
+          .from(tableName)
+          .update({
+            automation_status: lyricsResponse.status === 409
+              ? "needs_review"
+              : (attempted >= MAX_RETRIES ? "permanently_failed" : "failed"),
+            automation_retry_count: attempted,
+            automation_last_error: `[TRIGGER] Lyrics step failed (${lyricsResponse.status}) attempt ${attempted}/${MAX_RETRIES}: ${error}`.slice(0, 500),
+            automation_task_id: null,
+          })
+          .eq("id", entityId);
+        if (statusWriteError) {
+          console.error(`[TRIGGER] Failed to record lyrics failure state for ${entityType} ${entityId}`, statusWriteError);
         }
         return new Response(
-          JSON.stringify({ error: "Lyrics generation failed", details: error }),
+          JSON.stringify({ error: "Lyrics generation failed", details: error, attempt: attempted }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
