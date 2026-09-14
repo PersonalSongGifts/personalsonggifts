@@ -32,12 +32,14 @@ ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS bound_revision_request_id uuid REFERENCES public.revision_requests(id),
   ADD COLUMN IF NOT EXISTS bound_revision_at timestamptz,
   ADD COLUMN IF NOT EXISTS bound_revision_task_id text,
+  ADD COLUMN IF NOT EXISTS bound_revision_bonus_task_id text,
   ADD COLUMN IF NOT EXISTS bound_revision_generation_id uuid;
 
 ALTER TABLE public.orders
   ADD COLUMN IF NOT EXISTS bound_revision_request_id uuid REFERENCES public.revision_requests(id),
   ADD COLUMN IF NOT EXISTS bound_revision_at timestamptz,
   ADD COLUMN IF NOT EXISTS bound_revision_task_id text,
+  ADD COLUMN IF NOT EXISTS bound_revision_bonus_task_id text,
   ADD COLUMN IF NOT EXISTS bound_revision_generation_id uuid;
 
 -- Additive backfill so revisions already in flight keep working after deploy.
@@ -245,7 +247,9 @@ BEGIN
            pending_revision = true,
            bound_revision_request_id = p_request_id,
            bound_revision_at = now(),
-           bound_revision_task_id = NULL
+            bound_revision_task_id = NULL,
+            bound_revision_bonus_task_id = NULL,
+            bound_revision_generation_id = NULL
      WHERE id = p_entity_id
     RETURNING revision_count INTO v_count;
   ELSE
@@ -256,7 +260,9 @@ BEGIN
            pending_revision = true,
            bound_revision_request_id = p_request_id,
            bound_revision_at = now(),
-           bound_revision_task_id = NULL
+            bound_revision_task_id = NULL,
+            bound_revision_bonus_task_id = NULL,
+            bound_revision_generation_id = NULL
      WHERE id = p_entity_id
     RETURNING revision_count INTO v_count;
   END IF;
@@ -417,7 +423,8 @@ CREATE OR REPLACE FUNCTION public.attach_revision_task(
   p_entity_id uuid,
   p_request_id uuid,
   p_generation_id uuid,
-  p_task_id text
+  p_task_id text,
+  p_lane text DEFAULT 'primary'
 )
 RETURNS text
 LANGUAGE plpgsql
@@ -429,11 +436,16 @@ DECLARE
   v_gen uuid;
   v_task text;
 BEGIN
+  IF p_lane NOT IN ('primary', 'bonus') THEN
+    RETURN 'identity_mismatch';
+  END IF;
   IF p_entity_type = 'lead' THEN
-    SELECT bound_revision_request_id, bound_revision_generation_id, bound_revision_task_id
+    SELECT bound_revision_request_id, bound_revision_generation_id,
+           CASE WHEN p_lane = 'bonus' THEN bound_revision_bonus_task_id ELSE bound_revision_task_id END
       INTO v_bound, v_gen, v_task FROM public.leads WHERE id = p_entity_id FOR UPDATE;
   ELSIF p_entity_type = 'order' THEN
-    SELECT bound_revision_request_id, bound_revision_generation_id, bound_revision_task_id
+    SELECT bound_revision_request_id, bound_revision_generation_id,
+           CASE WHEN p_lane = 'bonus' THEN bound_revision_bonus_task_id ELSE bound_revision_task_id END
       INTO v_bound, v_gen, v_task FROM public.orders WHERE id = p_entity_id FOR UPDATE;
   ELSE
     RETURN 'no_revision';
@@ -455,22 +467,31 @@ BEGIN
   END IF;
 
   IF p_entity_type = 'lead' THEN
-    UPDATE public.leads SET bound_revision_task_id = p_task_id WHERE id = p_entity_id;
+    IF p_lane = 'bonus' THEN
+      UPDATE public.leads SET bound_revision_bonus_task_id = p_task_id WHERE id = p_entity_id;
+    ELSE
+      UPDATE public.leads SET bound_revision_task_id = p_task_id WHERE id = p_entity_id;
+    END IF;
   ELSE
-    UPDATE public.orders SET bound_revision_task_id = p_task_id WHERE id = p_entity_id;
+    IF p_lane = 'bonus' THEN
+      UPDATE public.orders SET bound_revision_bonus_task_id = p_task_id WHERE id = p_entity_id;
+    ELSE
+      UPDATE public.orders SET bound_revision_task_id = p_task_id WHERE id = p_entity_id;
+    END IF;
   END IF;
   RETURN 'attached';
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.attach_revision_task(text, uuid, uuid, uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.attach_revision_task(text, uuid, uuid, uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION public.attach_revision_task(text, uuid, uuid, uuid, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.attach_revision_task(text, uuid, uuid, uuid, text, text) TO service_role;
 
 -- READ ONLY. A callback may only ever verify.
 CREATE OR REPLACE FUNCTION public.verify_revision_task(
   p_entity_type text,
   p_entity_id uuid,
-  p_task_id text
+  p_task_id text,
+  p_lane text DEFAULT 'primary'
 )
 RETURNS TABLE (result text, request_id uuid, generation_id uuid, bound_task_id text)
 LANGUAGE plpgsql
@@ -483,11 +504,17 @@ DECLARE
   v_gen uuid;
   v_task text;
 BEGIN
+  IF p_lane NOT IN ('primary', 'bonus') THEN
+    RETURN QUERY SELECT 'no_revision'::text, NULL::uuid, NULL::uuid, NULL::text;
+    RETURN;
+  END IF;
   IF p_entity_type = 'lead' THEN
-    SELECT bound_revision_request_id, bound_revision_generation_id, bound_revision_task_id
+    SELECT bound_revision_request_id, bound_revision_generation_id,
+           CASE WHEN p_lane = 'bonus' THEN bound_revision_bonus_task_id ELSE bound_revision_task_id END
       INTO v_bound, v_gen, v_task FROM public.leads WHERE id = p_entity_id;
   ELSIF p_entity_type = 'order' THEN
-    SELECT bound_revision_request_id, bound_revision_generation_id, bound_revision_task_id
+    SELECT bound_revision_request_id, bound_revision_generation_id,
+           CASE WHEN p_lane = 'bonus' THEN bound_revision_bonus_task_id ELSE bound_revision_task_id END
       INTO v_bound, v_gen, v_task FROM public.orders WHERE id = p_entity_id;
   ELSE
     RETURN QUERY SELECT 'no_revision'::text, NULL::uuid, NULL::uuid, NULL::text;
@@ -507,8 +534,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.verify_revision_task(text, uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.verify_revision_task(text, uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION public.verify_revision_task(text, uuid, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.verify_revision_task(text, uuid, text, text) TO service_role;
 
 -- Removed: bind_revision_task(text, uuid, text). It allowed the callback itself
 -- to create a binding. Dropped defensively in case an earlier review copy of

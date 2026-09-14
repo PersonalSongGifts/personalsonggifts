@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { getLanguageLabel } from "../_shared/language-utils.ts";
 import { applyAudioStyleBrief, isEmptyBrief } from "../_shared/revision-brief.ts";
 import { attachRevisionTask, fetchBoundBriefForGeneration, mustAbortForUnboundBrief, reserveRevisionGeneration } from "../_shared/revision-binding.ts";
+import { buildAudioPronunciationDirection, parsePronunciation } from "../_shared/pronunciation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,6 +37,7 @@ function phoneticizeForSuno(lyrics: string): string {
 interface EntityData {
   id: string;
   recipient_name: string;
+  recipient_name_pronunciation?: string | null;
   genre: string;
   singer_preference: string;
   automation_manual_override_at?: string | null;
@@ -50,6 +52,7 @@ function normalizeEntityData(entity: Record<string, unknown>): EntityData {
   return {
     id: entity.id as string,
     recipient_name: entity.recipient_name as string,
+    recipient_name_pronunciation: entity.recipient_name_pronunciation as string | null,
     genre: entity.genre as string,
     singer_preference: entity.singer_preference as string,
     automation_manual_override_at: entity.automation_manual_override_at as string | null,
@@ -314,6 +317,22 @@ Deno.serve(async (req) => {
       console.log(`[AUDIO] Revision style direction applied (revision ${briefResult.revisionRequestId})`);
     }
 
+    // Performance-only pronunciation direction. Lyrics and title retain the
+    // customer's displayed spelling; prose is never sent as a literal name.
+    const pronunciationDirection = buildAudioPronunciationDirection(
+      parsePronunciation(entity.recipient_name, entity.recipient_name_pronunciation),
+    );
+    if (pronunciationDirection) {
+      const pronounced = applyAudioStyleBrief(styleString, { style_notes: pronunciationDirection, tempo: null, anything_else: null }, STYLE_CAP);
+      if (pronounced.dropped.length > 0) {
+        return new Response(
+          JSON.stringify({ error: "pronunciation_direction_does_not_fit" }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      styleString = pronounced.style;
+    }
+
 
     // Update entity with style selection and reset timer for accurate STUCK detection
     // (Skipped in bonusOnly mode — the primary song is already delivered and we
@@ -469,6 +488,7 @@ Deno.serve(async (req) => {
         requestId: revisionRequestId,
         generationId: revisionGenerationId,
         taskId: taskId!,
+              lane: "primary",
       });
       if (identity !== "attached") {
         // The provider already has the job, so we do not pretend otherwise — but the
@@ -552,6 +572,18 @@ Deno.serve(async (req) => {
         if (bonusApplied.dropped.length > 0) {
           console.error(`[AUDIO] Bonus style budget ${STYLE_CAP} exceeded — dropped: ${bonusApplied.dropped.join(", ")}`);
         }
+        if (pronunciationDirection) {
+          const pronouncedBonus = applyAudioStyleBrief(bonusStylePrompt, { style_notes: pronunciationDirection, tempo: null, anything_else: null }, STYLE_CAP);
+          if (pronouncedBonus.dropped.length > 0) {
+            bonusResult = { error: "pronunciation direction does not fit provider style budget" };
+            console.error(`[AUDIO] Bonus skipped: pronunciation direction does not fit style budget`);
+            return new Response(
+              JSON.stringify({ success: true, entityType, entityId, taskId, model, language: languageCode, styleUsed: selectedStyle.label, callbackUrl, bonus: bonusResult }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+          bonusStylePrompt = pronouncedBonus.style;
+        }
 
         console.log(`[AUDIO] Firing bonus acoustic track for ${entityType} ${entityId}`);
         console.log(`[AUDIO] Bonus style: ${bonusStylePrompt.substring(0, 60)}...`);
@@ -579,7 +611,7 @@ Deno.serve(async (req) => {
             const bonusTaskId = bonusData.data.taskId;
             console.log(`[AUDIO] ✅ Bonus task created: ${bonusTaskId}`);
             
-            await supabase
+            const { error: bonusTaskWriteError } = await supabase
               .from(tableName)
               .update({
                 bonus_automation_task_id: bonusTaskId,
@@ -589,6 +621,19 @@ Deno.serve(async (req) => {
                 bonus_song_title: bonusSongTitle,
               })
               .eq("id", entityId);
+            if (bonusTaskWriteError) {
+              bonusResult = { error: `bonus task persistence failed: ${bonusTaskWriteError.message}` };
+            } else if (revisionRequestId && revisionGenerationId) {
+              const bonusIdentity = await attachRevisionTask(supabase as never, entityType as "lead" | "order", entityId, {
+                requestId: revisionRequestId,
+                generationId: revisionGenerationId,
+                taskId: bonusTaskId,
+                lane: "bonus",
+              });
+              if (bonusIdentity !== "attached") {
+                bonusResult = { error: `bonus revision task identity not attached (${bonusIdentity})` };
+              }
+            }
             
             bonusResult = { taskId: bonusTaskId };
           } else {
