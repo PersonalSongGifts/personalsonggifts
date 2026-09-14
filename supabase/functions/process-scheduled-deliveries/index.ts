@@ -1311,6 +1311,15 @@ Deno.serve(async (req) => {
               continue;
             }
 
+            // Explicit generation readiness. Also honours per-record incident holds
+            // (a future next_attempt_at) without touching any global switch.
+            const readiness = leadPreviewSendReadiness(lead, Date.now());
+            if (!readiness.ready) {
+              console.log(`[PREVIEW] Lead ${lead.id} not ready to send: ${readiness.reason}`);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: `Not ready: ${readiness.reason}` });
+              continue;
+            }
+
             // Purchase guard: only auto-convert if this exact lead already became an order after capture
             const { data: candidateOrders } = await supabase
               .from("orders")
