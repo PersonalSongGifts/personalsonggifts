@@ -555,7 +555,7 @@ Remember:
 
     if (wordCount < LYRICS_MIN_WORDS) {
       console.log(`[LYRICS] ⚠️ Lyrics too short (${wordCount} words), requesting extension`);
-      const extensionPrompt = `The following song lyrics are too short (${wordCount} words). A 3-minute song needs at least 250 words. Add one more verse and extend the bridge to bring the total above 250 words (never exceed 380). Keep the same style, tone, and theme. Output the COMPLETE extended lyrics with all sections:\n\n${finalLyrics}`;
+      const extensionPrompt = `The following song lyrics are too short (${wordCount} words). A 3-minute song needs at least 250 words. Add one more verse and extend the bridge to bring the total above 250 words (never exceed 380). Keep the same style, tone, and theme.${revisionBriefBlock}\n\nOutput the COMPLETE extended lyrics with all sections:\n\n${finalLyrics}`;
       const extensionResult = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, extensionPrompt);
       if (!extensionResult.error && extensionResult.lyrics) {
         const extWordCount = countWords(extensionResult.lyrics);
