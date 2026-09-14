@@ -738,11 +738,37 @@ async function handleLeadRevision(
     automation_lyrics: lead.automation_lyrics || null,
     cover_image_url: lead.cover_image_url || null,
     song_title: lead.song_title || null,
+    preview_token: lead.preview_token || null,
     bonus_song_url: lead.bonus_song_url || null,
     bonus_preview_url: lead.bonus_preview_url || null,
     bonus_song_title: lead.bonus_song_title || null,
     bonus_cover_image_url: lead.bonus_cover_image_url || null,
+    bonus_style_prompt: lead.bonus_style_prompt || null,
+    // Creative inputs as they stood before this revision, so the pre-edit brief is recoverable
+    inputs: {
+      recipient_name: lead.recipient_name ?? null,
+      recipient_name_pronunciation: lead.recipient_name_pronunciation ?? null,
+      recipient_type: lead.recipient_type ?? null,
+      occasion: lead.occasion ?? null,
+      genre: lead.genre ?? null,
+      singer_preference: lead.singer_preference ?? null,
+      special_qualities: lead.special_qualities ?? null,
+      favorite_memory: lead.favorite_memory ?? null,
+      special_message: lead.special_message ?? null,
+      lyrics_language_code: lead.lyrics_language_code ?? null,
+    },
   };
+
+  // Single-slot prev_* backup: only write it when there is something current to back up.
+  // On an already-broken row (preview already cleared by an earlier failed revision) the
+  // existing prev_* values are the last good copy and must survive.
+  const prevSlotPatch = lead.preview_song_url
+    ? {
+      prev_song_url: lead.preview_song_url,
+      prev_automation_lyrics: lead.automation_lyrics || null,
+      prev_cover_image_url: lead.cover_image_url || null,
+    }
+    : {};
 
   // Apply field updates to lead + backup current preview + clear automation
   const leadUpdate: Record<string, any> = {
@@ -755,10 +781,9 @@ async function handleLeadRevision(
     // Immutable append-only archive (never overwritten)
     song_history: [...existingHistory, historyEntry],
 
-    // Snapshot current preview to prev_* slots (single-slot backup)
-    prev_song_url: lead.preview_song_url || null,
-    prev_automation_lyrics: lead.automation_lyrics || null,
-    prev_cover_image_url: lead.cover_image_url || null,
+    ...prevSlotPatch,
+
+
 
 
     // Clear automation so it regenerates
