@@ -1156,10 +1156,15 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
         console.log(`[CALLBACK] Regular lead, scheduling preview for ${autoSendTime}`);
       }
 
-      // A revision that is still in flight must be explicitly completed here, or the
-      // readiness guard keeps the repaired lead stranded forever. And a revised song is
-      // NOT auto-released by email: it needs a human to verify the output first.
+      // A revision that is still in flight is explicitly completed here, or the readiness
+      // guard keeps the repaired lead stranded forever. A revised preview IS delivered
+      // automatically (ordinary customer revisions must not wait on a human), exactly
+      // once: `preview_sent_at` was cleared at submission and the scheduler claims the
+      // send atomically before emailing. Both scheduler timers are set consistently so
+      // there is no hidden second path — the previous code cleared only
+      // `preview_scheduled_at` while a stale `target_send_at` still released the email.
       const completingRevision = (entity.revision_status as string | null) === "processing";
+      const revisedSendAt = new Date().toISOString();
 
       console.log(`[CALLBACK] Updating lead ${entityId} with final song data`);
       const { data: primaryWritten, error: primaryWriteErr } = await supabase
