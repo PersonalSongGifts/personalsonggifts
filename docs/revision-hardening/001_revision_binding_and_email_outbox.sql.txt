@@ -667,7 +667,7 @@ BEGIN
   IF v_row.state = 'failed' AND v_row.attempt_count < v_row.max_attempts THEN
     UPDATE public.email_outbox
        SET state = 'claimed',
-           attempt_count = attempt_count + 1,
+           attempt_count = public.email_outbox.attempt_count + 1,
            claimed_at = now(),
            lease_expires_at = now() + make_interval(secs => coalesce(p_lease_seconds, 600)),
            failed_at = NULL,
@@ -694,7 +694,7 @@ BEGIN
       -- this retry is deduplicated instead of delivering a second copy.
       UPDATE public.email_outbox
          SET state = 'claimed',
-             attempt_count = attempt_count + 1,
+             attempt_count = public.email_outbox.attempt_count + 1,
              claimed_at = now(),
              lease_expires_at = now() + make_interval(secs => coalesce(p_lease_seconds, 600)),
              attempt_lease = gen_random_uuid(),
@@ -759,11 +759,11 @@ BEGIN
          accepted_at = CASE WHEN p_state = 'accepted' THEN now() ELSE accepted_at END,
          ambiguous_at = CASE WHEN p_state = 'ambiguous' THEN now() ELSE ambiguous_at END,
          failed_at = CASE WHEN p_state = 'failed' THEN now() ELSE failed_at END,
-         provider_message_id = coalesce(p_provider_message_id, provider_message_id),
+         provider_message_id = coalesce(p_provider_message_id, public.email_outbox.provider_message_id),
          last_error = p_error,
          updated_at = now()
    WHERE id = p_outbox_id
-     AND state = 'claimed'
+     AND public.email_outbox.state = 'claimed'
      AND attempt_lease = p_lease_token
   RETURNING * INTO v_row;
 
