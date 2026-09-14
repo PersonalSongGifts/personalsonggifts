@@ -622,18 +622,20 @@ export default function SongPreview() {
           {previewData.revisionToken && (previewData.revisionPending || (previewData.revisionsLeft ?? 0) > 0) && (
             <div className="mx-auto max-w-md text-center text-sm text-muted-foreground">
               {previewData.revisionPending ? (
-                <p>We&apos;re remaking this song in a new style — we&apos;ll email you when it&apos;s ready.</p>
+                <p>We&apos;re recording your song again with your changes. We&apos;ll email you the new version when it&apos;s ready — usually within a few hours.</p>
               ) : (
                 <>
-                  <p>Not the right sound?</p>
                   <Button
                     type="button"
                     variant="link"
                     className="h-auto px-0 text-sm font-normal"
                     onClick={() => navigate(`/song/revision/${previewData.revisionToken}`)}
                   >
-                    Try another style — free
+                    Request changes (pronunciation, details or style) — free
                   </Button>
+                  <p className="mt-1">
+                    We record a brand-new version with your changes, so the melody and vocals will be different from this one.
+                  </p>
                 </>
               )}
             </div>

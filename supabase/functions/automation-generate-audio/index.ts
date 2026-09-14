@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { getLanguageLabel } from "../_shared/language-utils.ts";
+import { buildAudioStyleSuffix, fetchLatestRevisionBrief } from "../_shared/revision-brief.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -270,6 +271,15 @@ Deno.serve(async (req) => {
     if (languageCode !== "en") {
       styleString += `. Vocals in ${languageLabel}. Clear diction.`;
       console.log(`[AUDIO] Added language diction note for ${languageLabel}`);
+    }
+
+    // Customer change-request style/tempo direction. Bounded and sanitized; previously
+    // tempo was stored but never reached the recording at all.
+    const audioBrief = await fetchLatestRevisionBrief(supabase, entityType as "lead" | "order", entityId);
+    const audioBriefSuffix = buildAudioStyleSuffix(audioBrief);
+    if (audioBriefSuffix) {
+      styleString += audioBriefSuffix;
+      console.log(`[AUDIO] Revision style direction applied: ${audioBriefSuffix}`);
     }
 
     // Update entity with style selection and reset timer for accurate STUCK detection

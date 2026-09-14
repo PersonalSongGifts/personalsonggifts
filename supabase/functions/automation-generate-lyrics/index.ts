@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { logActivity } from "../_shared/activity-log.ts";
+import { buildLyricsBriefBlock, fetchLatestRevisionBrief } from "../_shared/revision-brief.ts";
 import {
   getLanguageLabel,
   buildLanguagePromptBlock,
@@ -322,6 +323,15 @@ This spelling is intentional for correct pronunciation and must be followed.`
     // Add language-specific prompt block
     const languagePromptBlock = buildLanguagePromptBlock(languageCode);
 
+    // Customer change-request block (style notes / tempo / anything else).
+    // Read from revision_requests so BOTH leads and orders propagate — leads have
+    // no `notes` column, so previously these fields never reached generation.
+    const revisionBrief = await fetchLatestRevisionBrief(supabase, entityType as "lead" | "order", entityId);
+    const revisionBriefBlock = buildLyricsBriefBlock(revisionBrief);
+    if (revisionBriefBlock) {
+      console.log(`[LYRICS] Revision brief applied for ${entityType} ${entityId}: tempo=${revisionBrief.tempo ?? "-"}, style_notes=${revisionBrief.style_notes ? "yes" : "-"}, anything_else=${revisionBrief.anything_else ? "yes" : "-"}`);
+    }
+
     // Build sender context block if available
     const senderCtx = [entity.sender_context, entity.notes].filter(Boolean).join("\n\n");
     const senderContextBlock = senderCtx
@@ -360,6 +370,7 @@ FavoriteMemory: "${entity.favorite_memory}"
 SpecialMessage: "${entity.special_message || ""}"
 ${pronunciationInstruction}
 ${senderContextBlock}
+${revisionBriefBlock}
 ${languagePromptBlock}
 ${contentFilterRecoveryBlock}
 

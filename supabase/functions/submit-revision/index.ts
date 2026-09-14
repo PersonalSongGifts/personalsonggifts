@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { backupSongFile } from "../_shared/song-backup.ts";
 import { buildPrevSlotPatch, hasRevisionRemaining } from "../_shared/revision-gates.ts";
+import { DEFAULT_LEAD_REVISION_EXPIRY_DAYS, leadRevisionLinkActive } from "../_shared/lead-followup.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -652,6 +653,47 @@ async function handleLeadRevision(
     );
   }
 
+  // Converted / paid leads must go through the order revision flow — never invalidate
+  // assets a customer has already paid for from the free lead path.
+  if (lead.order_id || String(lead.status ?? "").toLowerCase() === "converted") {
+    return new Response(
+      JSON.stringify({ error: "This song has been purchased — please use the link in your delivery email or contact support@personalsonggifts.com." }),
+      { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Server-side expiry (the page also gates this; the handler must not trust the client).
+  const { data: leadExpirySetting } = await supabase
+    .from("admin_settings")
+    .select("value")
+    .eq("key", "lead_revision_link_expiry_days")
+    .maybeSingle();
+  const leadExpiryDays = leadExpirySetting ? parseInt(leadExpirySetting.value, 10) : DEFAULT_LEAD_REVISION_EXPIRY_DAYS;
+  if (!leadRevisionLinkActive(lead.captured_at, leadExpiryDays)) {
+    return new Response(
+      JSON.stringify({ error: "This revision link has expired" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Server-side length validation (previously only the order path enforced this)
+  for (const f of ["style_notes", "anything_else"]) {
+    if (!validateLength(fields[f], 500)) {
+      return new Response(
+        JSON.stringify({ error: `${f.replace(/_/g, " ")} must be 500 characters or less` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+  for (const f of ["recipient_name", "customer_name", "delivery_email", "recipient_type", "occasion", "genre", "singer_preference", "language", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "tempo", "sender_context"]) {
+    if (!validateLength(fields[f], 250)) {
+      return new Response(
+        JSON.stringify({ error: `${f.replace(/_/g, " ")} must be 250 characters or less` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+
   // Cooldown
   if (lead.revision_requested_at) {
     const cooldownEnd = new Date(new Date(lead.revision_requested_at).getTime() + 60 * 60 * 1000);
@@ -705,7 +747,19 @@ async function handleLeadRevision(
     }
   }
 
-  const changesSummary = summaryParts.length > 0 ? summaryParts.join("; ") : "No changes detected";
+  // A request that changes nothing must NOT consume the single free revision and must
+  // not invalidate a working song.
+  if (fieldsChanged.length === 0) {
+    return new Response(
+      JSON.stringify({
+        error: "no_changes",
+        message: "Nothing was changed, so we kept your current song. Edit a detail (pronunciation, story, style or tempo) and submit again.",
+      }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const changesSummary = summaryParts.join("; ");
 
   // Insert revision_request with lead_id
   const revisionData: Record<string, any> = {
@@ -721,7 +775,21 @@ async function handleLeadRevision(
   for (const f of EDITABLE_FIELDS) {
     if (fields[f] !== undefined) revisionData[f] = fields[f];
   }
-  await supabase.from("revision_requests").insert(revisionData);
+  // Fail closed: without a stored request the generator has no brief to read, so we must
+  // not invalidate anything. The request row is written FIRST and rolled back to
+  // "rejected" if the atomic claim below is lost to a concurrent submission.
+  const { data: insertedRevision, error: revisionInsertError } = await supabase
+    .from("revision_requests")
+    .insert(revisionData)
+    .select("id")
+    .maybeSingle();
+  if (revisionInsertError || !insertedRevision?.id) {
+    console.error("[LEAD-REVISION] revision_requests insert failed, aborting:", revisionInsertError?.message);
+    return new Response(
+      JSON.stringify({ error: "Could not save your request. Please try again or contact support@personalsonggifts.com." }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 
   // Durable, append-only snapshot of EVERY current asset before we invalidate the
   // pointers. prev_* is a single slot and only covers the preview, so the old full
@@ -820,14 +888,34 @@ async function handleLeadRevision(
     }
   }
 
-  // Fail closed: if the snapshot + invalidation write fails we must NOT trigger
-  // generation, otherwise the record loses its assets with nothing recorded.
-  const { error: leadUpdateError } = await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
+  // Atomic, duplicate-safe claim: the allowance reservation is guarded by the revision
+  // count we read, so two simultaneous submissions can never both consume the allowance
+  // or both invalidate the assets. Fail closed — if the snapshot + invalidation write
+  // does not land we must NOT trigger generation.
+  const claimQuery = supabase
+    .from("leads")
+    .update(leadUpdate)
+    .eq("id", lead.id)
+    .not("revision_status", "eq", "processing");
+  const { data: claimedLead, error: leadUpdateError } = await (lead.revision_count === null || lead.revision_count === undefined
+    ? claimQuery.is("revision_count", null)
+    : claimQuery.eq("revision_count", lead.revision_count)
+  ).select("id");
+
   if (leadUpdateError) {
     console.error("[LEAD-REVISION] lead update failed, aborting:", leadUpdateError.message);
+    await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: "lead update failed" }).eq("id", insertedRevision.id);
     return new Response(
       JSON.stringify({ error: "Could not save your request. Please try again or contact support@personalsonggifts.com." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+  if (!claimedLead || claimedLead.length === 0) {
+    console.log(`[LEAD-REVISION] Concurrent submission lost the claim for lead ${lead.id} — no allowance consumed`);
+    await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: "superseded by concurrent submission" }).eq("id", insertedRevision.id);
+    return new Response(
+      JSON.stringify({ error: "Your request is already being processed. We're remaking the song now." }),
+      { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 

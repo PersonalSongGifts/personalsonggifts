@@ -158,3 +158,58 @@ export function classifyTriggerPreflight(
   }
   return { action: "proceed", classification: "fresh" };
 }
+
+// ---------------------------------------------------------------------------
+// Explicit generation readiness for the transactional preview send.
+//
+// Replaces the previous ambiguity where the callback only cleared
+// `preview_scheduled_at` and claimed the send was "held", while the scheduler
+// also reads `target_send_at` — so a revised preview went out anyway.
+// Readiness is now stated explicitly and the same predicate is used by the
+// scheduler before it claims a send.
+// ---------------------------------------------------------------------------
+
+export interface LeadPreviewSendCandidate {
+  automation_status?: string | null;
+  preview_song_url?: string | null;
+  full_song_url?: string | null;
+  preview_token?: string | null;
+  preview_sent_at?: string | null;
+  dismissed_at?: string | null;
+  status?: string | null;
+  /** Incident cohort hold — a future date parks the record without pausing anything global. */
+  next_attempt_at?: string | null;
+}
+
+export type PreviewSendBlockReason =
+  | "already_sent"
+  | "dismissed"
+  | "converted"
+  | "missing_preview_audio"
+  | "missing_full_audio"
+  | "missing_preview_token"
+  | "generation_incomplete"
+  | "held";
+
+export function leadPreviewSendReadiness(
+  lead: LeadPreviewSendCandidate,
+  nowMs: number = Date.now(),
+): { ready: boolean; reason: PreviewSendBlockReason | null } {
+  if (lead.preview_sent_at) return { ready: false, reason: "already_sent" };
+  if (lead.dismissed_at) return { ready: false, reason: "dismissed" };
+  if (String(lead.status ?? "").toLowerCase() === "converted") return { ready: false, reason: "converted" };
+  if (lead.next_attempt_at && new Date(lead.next_attempt_at).getTime() > nowMs) {
+    return { ready: false, reason: "held" };
+  }
+  // A revision still generating has automation_status pending/lyrics_generating/
+  // audio_generating/failed — never "completed" — so this single check covers
+  // in-flight revisions without stranding records whose revision_status was left
+  // at "processing" by an older code path even though the audio finished.
+  if (String(lead.automation_status ?? "").toLowerCase() !== "completed") {
+    return { ready: false, reason: "generation_incomplete" };
+  }
+  if (!lead.preview_song_url) return { ready: false, reason: "missing_preview_audio" };
+  if (!lead.full_song_url) return { ready: false, reason: "missing_full_audio" };
+  if (!lead.preview_token) return { ready: false, reason: "missing_preview_token" };
+  return { ready: true, reason: null };
+}

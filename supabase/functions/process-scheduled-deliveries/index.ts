@@ -15,6 +15,7 @@ import {
   leadPreviewReadyForMarketing,
 
 } from "../_shared/lead-followup.ts";
+import { leadPreviewSendReadiness } from "../_shared/revision-gates.ts";
 
 /** Reads admin_settings.lead_revision_link_expiry_days (default 365). */
 async function getLeadRevisionExpiryDays(supabase: any): Promise<number> {
@@ -1311,6 +1312,15 @@ Deno.serve(async (req) => {
               continue;
             }
 
+            // Explicit generation readiness. Also honours per-record incident holds
+            // (a future next_attempt_at) without touching any global switch.
+            const readiness = leadPreviewSendReadiness(lead, Date.now());
+            if (!readiness.ready) {
+              console.log(`[PREVIEW] Lead ${lead.id} not ready to send: ${readiness.reason}`);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: `Not ready: ${readiness.reason}` });
+              continue;
+            }
+
             // Purchase guard: only auto-convert if this exact lead already became an order after capture
             const { data: candidateOrders } = await supabase
               .from("orders")
@@ -1371,6 +1381,33 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
+            // Atomic once-only claim BEFORE sending: two concurrent scheduler passes
+            // cannot both win this update, so the customer can never get two copies.
+            // If the send then fails we roll the claim back, so no false sent timestamp
+            // is left behind and the next pass retries exactly once.
+            const { data: claimed, error: claimErr } = await supabase
+              .from("leads")
+              .update({
+                status: "preview_sent",
+                preview_sent_at: now,
+                sent_at: now,
+                preview_scheduled_at: null,
+              })
+              .eq("id", lead.id)
+              .is("preview_sent_at", null)
+              .select("id");
+
+            if (claimErr) {
+              console.error(`[PREVIEW] Claim write failed for lead ${lead.id}:`, claimErr.message);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: `Claim failed: ${claimErr.message}` });
+              continue;
+            }
+            if (!claimed || claimed.length === 0) {
+              console.log(`[PREVIEW] Lead ${lead.id} already claimed by a concurrent run — skipping`);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: "Already claimed" });
+              continue;
+            }
+
             const emailResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
               method: "POST",
               headers: {
@@ -1413,21 +1450,21 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
             if (!emailResponse.ok) {
               const errorText = await emailResponse.text();
               console.error(`[PREVIEW] Email failed for lead ${lead.id}:`, errorText);
+              // Release the claim so the record is retried, never left falsely "sent".
+              const { error: releaseErr } = await supabase
+                .from("leads")
+                .update({
+                  status: lead.status,
+                  preview_sent_at: null,
+                  sent_at: lead.sent_at ?? null,
+                })
+                .eq("id", lead.id);
+              if (releaseErr) {
+                console.error(`[PREVIEW] Claim release failed for lead ${lead.id}:`, releaseErr.message);
+              }
               leadPreviewResults.push({ leadId: lead.id, success: false, error: errorText });
               continue;
             }
-
-            // Mark as sent
-            await supabase
-              .from("leads")
-              .update({
-                status: "preview_sent",
-                preview_sent_at: now,
-                sent_at: now,
-                preview_scheduled_at: null,
-              })
-              .eq("id", lead.id)
-              .is("preview_sent_at", null);
 
             console.log(`[PREVIEW] ✅ Lead ${lead.id} preview sent`);
             leadPreviewResults.push({ leadId: lead.id, success: true });
