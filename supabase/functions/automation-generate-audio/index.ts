@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { getLanguageLabel } from "../_shared/language-utils.ts";
-import { applyAudioStyleBrief, fetchBoundRevisionBrief, isEmptyBrief, mustAbortForUnknownBrief } from "../_shared/revision-brief.ts";
+import { applyAudioStyleBrief, isEmptyBrief } from "../_shared/revision-brief.ts";
+import { fetchBoundBriefForGeneration, mustAbortForUnboundBrief } from "../_shared/revision-binding.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -279,8 +280,8 @@ Deno.serve(async (req) => {
     // base style + language note + requested direction together, and anything
     // that does not fit is logged and recorded — never silently truncated.
     const STYLE_CAP = model === "V3_5" || model === "V4" ? 200 : 1000;
-    const briefResult = await fetchBoundRevisionBrief(supabase, entityType as "lead" | "order", entityId);
-    if (mustAbortForUnknownBrief(briefResult, entity)) {
+    const briefResult = await fetchBoundBriefForGeneration(supabase as never, entityType as "lead" | "order", { id: entityId, revision_status: (entity as Record<string, unknown>).revision_status as string | null, bound_revision_request_id: (entity as Record<string, unknown>).bound_revision_request_id as string | null });
+    if (mustAbortForUnboundBrief(briefResult)) {
       console.error(`[AUDIO] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
       if (!bonusOnly) {
         await supabase
