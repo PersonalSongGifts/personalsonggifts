@@ -139,9 +139,24 @@ describe("leadPreviewSendReadiness", () => {
       .toBe("generation_incomplete");
   });
 
-  it("still releases a record whose revision_status was left at processing by old code", () => {
-    // The stuck-flag cohort: audio finished, revision_status never updated.
-    expect(leadPreviewSendReadiness({ ...readyLead, revision_status: "processing" } as Parameters<typeof leadPreviewSendReadiness>[0]).ready).toBe(true);
+  it("does NOT release an open revision whose audio is the OLD song", () => {
+    // "completed + URLs present" is not proof: these assets can be the previous
+    // song while the requested revision is still in flight.
+    expect(
+      leadPreviewSendReadiness(
+        { ...readyLead, revision_status: "processing", revision_requested_at: "2026-09-08T16:48:00Z", generated_at: "2026-04-01T00:00:00Z" },
+        Date.parse("2026-09-14T00:00:00Z"),
+      ),
+    ).toEqual({ ready: false, reason: "revision_in_flight" });
+  });
+
+  it("releases only when the generation is bound to the revision (generated after it was requested)", () => {
+    expect(
+      leadPreviewSendReadiness(
+        { ...readyLead, revision_status: "processing", revision_requested_at: "2026-09-08T16:48:00Z", generated_at: "2026-09-14T19:03:42Z" },
+        Date.parse("2026-09-14T20:00:00Z"),
+      ),
+    ).toEqual({ ready: true, reason: null });
   });
 
   it("respects the incident cohort hold without any global pause", () => {
