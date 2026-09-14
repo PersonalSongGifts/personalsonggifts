@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildAudioStyleSuffix,
+  applyAudioStyleBrief,
   buildLyricsBriefBlock,
   isEmptyBrief,
   normalizeRevisionBrief,
-  fetchLatestRevisionBrief,
+  fetchBoundRevisionBrief,
+  mustAbortForUnknownBrief,
   BRIEF_LIMITS,
 } from "../../supabase/functions/_shared/revision-brief.ts";
 import { leadPreviewSendReadiness } from "../../supabase/functions/_shared/revision-gates.ts";
