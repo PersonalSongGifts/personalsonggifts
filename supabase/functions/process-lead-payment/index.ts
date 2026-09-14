@@ -350,6 +350,33 @@ Deno.serve(async (req) => {
       console.error("Failed to sync to Google Sheets:", e);
     }
 
+    // A revision in flight means the lead's current audio is stale/absent. The payment is
+    // KEPT and the order is created, but fulfilment is held so we never deliver old assets.
+    const revisionInFlight = ["processing", "pending"].includes(String(lead.revision_status || ""));
+    const usableSongUrl = lead.full_song_url && lead.preview_song_url ? lead.full_song_url : null;
+
+    if (revisionInFlight || !usableSongUrl) {
+      await supabase
+        .from("orders")
+        .update({
+          delivery_status: "on_hold",
+          delivery_last_error: revisionInFlight
+            ? "Delivery held: revision in progress at time of payment (do not send old song)"
+            : "Delivery held: no usable current song asset at time of payment",
+        })
+        .eq("id", newOrder.id);
+      console.log(`[LEAD-PAYMENT] Payment kept, delivery HELD for order ${newOrder.id} (revisionInFlight=${revisionInFlight})`);
+      await logActivity(
+        supabase,
+        "order",
+        newOrder.id,
+        "delivery_held",
+        "system",
+        revisionInFlight
+          ? "Paid during an in-progress revision; delivery held pending the revised song"
+          : "Paid but no usable current song asset; delivery held",
+      );
+    } else {
     // Send full song delivery email immediately
     try {
       const deliveryResponse = await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
@@ -364,7 +391,7 @@ Deno.serve(async (req) => {
           customerName: lead.customer_name,
           recipientName: lead.recipient_name,
           occasion: lead.occasion,
-          songUrl: lead.full_song_url,
+          songUrl: usableSongUrl,
           revisionToken: newOrder.revision_token,
         }),
       });
@@ -380,6 +407,8 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error("Failed to send delivery email:", e);
     }
+    }
+
 
     return new Response(
       JSON.stringify({
