@@ -65,9 +65,9 @@ export function parsePronunciation(displayName: string, raw: string | null | und
     }
   }
 
-  // Unparseable prose: keep it as an instruction, bounded, but flagged so we
-  // never treat it as a spelling.
-  return { displayName, phonetic: text.slice(0, MAX_PHONETIC), parsedFromProse: true };
+  // Unparseable prose (including nickname/full-name explanations) is NOT a
+  // phonetic spelling. Dropping it is safer than sending a sentence as a name.
+  return { displayName, phonetic: null, parsedFromProse: true };
 }
 
 /**
@@ -78,9 +78,15 @@ export function parsePronunciation(displayName: string, raw: string | null | und
 export function buildPronunciationBlock(hint: PronunciationHint): string {
   if (!hint.phonetic) return "";
   return `\n\n# NAME PRONUNCIATION
-- Write the name as "${hint.displayName}" everywhere it appears. Never change this spelling.
-- It is pronounced "${hint.phonetic}". Choose phrasing and rhymes that fit that pronunciation.
-- Do not put the pronunciation spelling, or this instruction, into the lyrics or the title.`;
+- Write the recipient's name as "${hint.displayName}" everywhere in the lyrics and title. Never replace that spelling.
+- When the written name "${hint.displayName}" is sung, pronounce it as "${hint.phonetic}".
+- The phonetic hint is performance guidance only; do not print the hint or this instruction as lyric text.`;
+}
+
+/** Performance-only direction for the audio model; lyrics remain display-spelled. */
+export function buildAudioPronunciationDirection(hint: PronunciationHint): string {
+  if (!hint.phonetic) return "";
+  return `Pronounce the written name ${hint.displayName} as ${hint.phonetic}; keep the lyric spelling ${hint.displayName}`;
 }
 
 /**

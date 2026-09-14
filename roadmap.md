@@ -1,19 +1,17 @@
 # Roadmap
 
 ## In progress
-- Ronald's lead `c98bfc06-3c4c-47df-9407-5221e7353179`: rewrite audio task
-  `574818377b78c68349ca6b24953e1ce9` submitted 2026-09-14 18:15:19 UTC (by this
-  agent, before the build authorization arrived). Bonus track already finished.
-  Awaiting the provider callback — do NOT resubmit. No preview email may go out
-  until the output is verified by a human.
+- [ ] Fence every callback mutation to its current task and accepted revision identity; DB errors return 500 and zero-row writes stop downstream work.
+- [ ] Preserve typed pronunciation from the revision form through lyrics and both audio renditions without changing display spelling.
+- [ ] Complete evidence-only preview-email reconciliation and expose honest delivery state on the preview page.
+- [ ] Add and run isolated migration fixtures covering rollback, NULLs, concurrency, allowances, task identity, and expired leases.
+- [ ] Verify the existing Stripe and PayPal checkout paths without adding a new PayPal feature.
 
-## Awaiting owner decision
+## Safety holds
 - 30 other stuck previews (revision in progress, no live preview) are on a
   reversible hold: `leads.next_attempt_at = 2027-01-01T00:00:00Z`. Clearing that
   column per record releases them to the queue. No paid batch without approval.
-- Remaining hardening not yet built: stale-callback rejection keyed to the current
-  task id, blocking checkout of a lead's old assets while a revision is in flight,
-  bounded retry/attention state for revisions that never start.
+- Ronald's recovered record must not be regenerated.
 
 ## Staged, not launched — `docs/checkout-staging/`
 PayPal on the existing-song preview checkout. Complete reviewable draft source +
