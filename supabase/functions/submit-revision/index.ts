@@ -652,6 +652,47 @@ async function handleLeadRevision(
     );
   }
 
+  // Converted / paid leads must go through the order revision flow — never invalidate
+  // assets a customer has already paid for from the free lead path.
+  if (lead.order_id || String(lead.status ?? "").toLowerCase() === "converted") {
+    return new Response(
+      JSON.stringify({ error: "This song has been purchased — please use the link in your delivery email or contact support@personalsonggifts.com." }),
+      { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Server-side expiry (the page also gates this; the handler must not trust the client).
+  const { data: leadExpirySetting } = await supabase
+    .from("admin_settings")
+    .select("value")
+    .eq("key", "lead_revision_link_expiry_days")
+    .maybeSingle();
+  const leadExpiryDays = leadExpirySetting ? parseInt(leadExpirySetting.value, 10) : DEFAULT_LEAD_REVISION_EXPIRY_DAYS;
+  if (!leadRevisionLinkActive(lead.captured_at, leadExpiryDays)) {
+    return new Response(
+      JSON.stringify({ error: "This revision link has expired" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Server-side length validation (previously only the order path enforced this)
+  for (const f of ["style_notes", "anything_else"]) {
+    if (!validateLength(fields[f], 500)) {
+      return new Response(
+        JSON.stringify({ error: `${f.replace(/_/g, " ")} must be 500 characters or less` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+  for (const f of ["recipient_name", "customer_name", "delivery_email", "recipient_type", "occasion", "genre", "singer_preference", "language", "recipient_name_pronunciation", "special_qualities", "favorite_memory", "special_message", "tempo", "sender_context"]) {
+    if (!validateLength(fields[f], 250)) {
+      return new Response(
+        JSON.stringify({ error: `${f.replace(/_/g, " ")} must be 250 characters or less` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+
   // Cooldown
   if (lead.revision_requested_at) {
     const cooldownEnd = new Date(new Date(lead.revision_requested_at).getTime() + 60 * 60 * 1000);
