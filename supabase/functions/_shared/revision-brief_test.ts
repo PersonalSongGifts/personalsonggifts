@@ -104,7 +104,7 @@ Deno.test("brief text is sanitized and bounded", () => {
 });
 
 Deno.test("style budget covers base + suffix and reports what did not fit", () => {
-  const base = "x".repeat(170);
+  const base = "x".repeat(180);
   const res = applyAudioStyleBrief(base, { tempo: "slower", style_notes: "warm strings", anything_else: null }, 200);
   // Tempo has priority and fits (185 chars); the free-text notes do not, and are
   // reported instead of being truncated mid-sentence.
