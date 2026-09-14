@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadAssetPatch } from "../_shared/lead-conversion.ts";
 import { hasReadyLeadBonus, resolveLeadCheckoutAmounts } from "../_shared/lead-checkout.ts";
+import { shouldHoldLeadFulfillment } from "../_shared/revision-gates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -350,6 +351,34 @@ Deno.serve(async (req) => {
       console.error("Failed to sync to Google Sheets:", e);
     }
 
+    // A revision in flight means the lead's current audio is stale/absent. The payment is
+    // KEPT and the order is created, but fulfilment is held so we never deliver old assets.
+    const fulfillmentHold = shouldHoldLeadFulfillment(lead as Record<string, string | null>);
+    const revisionInFlight = fulfillmentHold.reason === "revision_in_progress";
+    const usableSongUrl = fulfillmentHold.hold ? null : (lead.full_song_url as string);
+
+    if (fulfillmentHold.hold) {
+      await supabase
+        .from("orders")
+        .update({
+          delivery_status: "on_hold",
+          delivery_last_error: revisionInFlight
+            ? "Delivery held: revision in progress at time of payment (do not send old song)"
+            : "Delivery held: no usable current song asset at time of payment",
+        })
+        .eq("id", newOrder.id);
+      console.log(`[LEAD-PAYMENT] Payment kept, delivery HELD for order ${newOrder.id} (revisionInFlight=${revisionInFlight})`);
+      await logActivity(
+        supabase,
+        "order",
+        newOrder.id,
+        "delivery_held",
+        "system",
+        revisionInFlight
+          ? "Paid during an in-progress revision; delivery held pending the revised song"
+          : "Paid but no usable current song asset; delivery held",
+      );
+    } else {
     // Send full song delivery email immediately
     try {
       const deliveryResponse = await fetch(`${supabaseUrl}/functions/v1/send-song-delivery`, {
@@ -364,7 +393,7 @@ Deno.serve(async (req) => {
           customerName: lead.customer_name,
           recipientName: lead.recipient_name,
           occasion: lead.occasion,
-          songUrl: lead.full_song_url,
+          songUrl: usableSongUrl,
           revisionToken: newOrder.revision_token,
         }),
       });
@@ -380,6 +409,8 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error("Failed to send delivery email:", e);
     }
+    }
+
 
     return new Response(
       JSON.stringify({

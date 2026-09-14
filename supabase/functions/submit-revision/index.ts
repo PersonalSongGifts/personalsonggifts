@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { backupSongFile } from "../_shared/song-backup.ts";
+import { buildPrevSlotPatch, hasRevisionRemaining } from "../_shared/revision-gates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,7 +143,7 @@ Deno.serve(async (req) => {
 
     // Check revisions left (post-delivery only)
     const isPreDelivery = !order.sent_at;
-    if (!isPreDelivery && (order.revision_count || 0) >= (order.max_revisions || 1)) {
+    if (!isPreDelivery && !hasRevisionRemaining(order.revision_count as number, order.max_revisions as number)) {
       return new Response(
         JSON.stringify({ error: "No revisions remaining" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -614,7 +615,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         form_type: isPreDelivery ? "pre_delivery_update" : "post_delivery_redo",
-        revisions_remaining: Math.max(0, (order.max_revisions || 1) - ((order.revision_count || 0) + (isEditingPending ? 0 : 1))),
+        revisions_remaining: Math.max(0, (order.max_revisions ?? 1) - ((order.revision_count || 0) + (isEditingPending ? 0 : 1))),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -644,7 +645,7 @@ async function handleLeadRevision(
   }
 
   // Out of revisions
-  if ((lead.revision_count || 0) >= (lead.max_revisions || 1)) {
+  if (!hasRevisionRemaining(lead.revision_count as number, lead.max_revisions as number)) {
     return new Response(
       JSON.stringify({ error: "No revisions remaining" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -738,11 +739,31 @@ async function handleLeadRevision(
     automation_lyrics: lead.automation_lyrics || null,
     cover_image_url: lead.cover_image_url || null,
     song_title: lead.song_title || null,
+    preview_token: lead.preview_token || null,
     bonus_song_url: lead.bonus_song_url || null,
     bonus_preview_url: lead.bonus_preview_url || null,
     bonus_song_title: lead.bonus_song_title || null,
     bonus_cover_image_url: lead.bonus_cover_image_url || null,
+    bonus_style_prompt: lead.bonus_style_prompt || null,
+    // Creative inputs as they stood before this revision, so the pre-edit brief is recoverable
+    inputs: {
+      recipient_name: lead.recipient_name ?? null,
+      recipient_name_pronunciation: lead.recipient_name_pronunciation ?? null,
+      recipient_type: lead.recipient_type ?? null,
+      occasion: lead.occasion ?? null,
+      genre: lead.genre ?? null,
+      singer_preference: lead.singer_preference ?? null,
+      special_qualities: lead.special_qualities ?? null,
+      favorite_memory: lead.favorite_memory ?? null,
+      special_message: lead.special_message ?? null,
+      lyrics_language_code: lead.lyrics_language_code ?? null,
+    },
   };
+
+  // Single-slot prev_* backup: only write it when there is something current to back up.
+  // On an already-broken row (preview already cleared by an earlier failed revision) the
+  // existing prev_* values are the last good copy and must survive.
+  const prevSlotPatch = buildPrevSlotPatch(lead as Record<string, string | null>);
 
   // Apply field updates to lead + backup current preview + clear automation
   const leadUpdate: Record<string, any> = {
@@ -755,10 +776,9 @@ async function handleLeadRevision(
     // Immutable append-only archive (never overwritten)
     song_history: [...existingHistory, historyEntry],
 
-    // Snapshot current preview to prev_* slots (single-slot backup)
-    prev_song_url: lead.preview_song_url || null,
-    prev_automation_lyrics: lead.automation_lyrics || null,
-    prev_cover_image_url: lead.cover_image_url || null,
+    ...prevSlotPatch,
+
+
 
 
     // Clear automation so it regenerates
@@ -859,7 +879,7 @@ async function handleLeadRevision(
     JSON.stringify({
       success: true,
       form_type: "lead_revision",
-      revisions_remaining: Math.max(0, (lead.max_revisions || 1) - ((lead.revision_count || 0) + 1)),
+      revisions_remaining: Math.max(0, (lead.max_revisions ?? 1) - ((lead.revision_count || 0) + 1)),
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );

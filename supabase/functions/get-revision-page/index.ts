@@ -142,7 +142,7 @@ async function handleOrderRequest(supabase: ReturnType<typeof createClient>, ord
           status: "pending_revision",
           message: `You already submitted a revision request on ${requestedDate}. Our team is reviewing it. If you need to update your request, you can make changes below.`,
           form_type: formType,
-          revisions_remaining: Math.max(0, (order.max_revisions || 1) - (order.revision_count || 0)),
+          revisions_remaining: Math.max(0, (order.max_revisions ?? 1) - (order.revision_count || 0)),
           existing_revision: pendingRevision,
           order: buildOrderData(order),
         }),
@@ -170,7 +170,7 @@ async function handleOrderRequest(supabase: ReturnType<typeof createClient>, ord
     }
 
     // Used all revisions (post-delivery only)
-    if (order.sent_at && (order.revision_count || 0) >= (order.max_revisions || 1)) {
+    if (order.sent_at && (order.revision_count || 0) >= (order.max_revisions ?? 1)) {
       return new Response(
         JSON.stringify({
           status: "no_revisions_left",
@@ -186,7 +186,7 @@ async function handleOrderRequest(supabase: ReturnType<typeof createClient>, ord
         JSON.stringify({
           status: "form",
           form_type: "post_delivery_redo",
-          revisions_remaining: Math.max(0, (order.max_revisions || 1) - (order.revision_count || 0)),
+          revisions_remaining: Math.max(0, (order.max_revisions ?? 1) - (order.revision_count || 0)),
           order: buildOrderData(order),
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -198,7 +198,7 @@ async function handleOrderRequest(supabase: ReturnType<typeof createClient>, ord
       JSON.stringify({
         status: "form",
         form_type: "pre_delivery_update",
-        revisions_remaining: Math.max(0, (order.max_revisions || 1) - (order.revision_count || 0)),
+        revisions_remaining: Math.max(0, (order.max_revisions ?? 1) - (order.revision_count || 0)),
         order: buildOrderData(order),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -241,7 +241,7 @@ async function handleLeadRequest(supabase: ReturnType<typeof createClient>, lead
   }
 
   // Used all revisions
-  if ((lead.revision_count || 0) >= (lead.max_revisions || 1)) {
+  if ((lead.revision_count || 0) >= (lead.max_revisions ?? 1)) {
     return new Response(
       JSON.stringify({
         status: "no_revisions_left",
@@ -255,7 +255,7 @@ async function handleLeadRequest(supabase: ReturnType<typeof createClient>, lead
     JSON.stringify({
       status: "form",
       form_type: "lead_revision",
-      revisions_remaining: Math.max(0, (lead.max_revisions || 1) - (lead.revision_count || 0)),
+      revisions_remaining: Math.max(0, (lead.max_revisions ?? 1) - (lead.revision_count || 0)),
       order: buildLeadData(lead),
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

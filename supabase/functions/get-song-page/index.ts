@@ -215,7 +215,7 @@ Deno.serve(async (req) => {
 
     if (selfServiceEnabled && order.revision_token) {
       const isPreDelivery = !order.sent_at;
-      const hasRevisionsLeft = (order.revision_count || 0) < (order.max_revisions || 1);
+      const hasRevisionsLeft = (order.revision_count || 0) < (order.max_revisions ?? 1);
       revisionAvailable = isPreDelivery || hasRevisionsLeft;
       // Don't show if already pending or processing
       if (order.revision_status === "pending" || order.revision_status === "processing") {
