@@ -1,7 +1,14 @@
 # Roadmap
 
 ## In progress
+- [x] LIVE FIX: `get-lead-preview` no longer selects the unapplied-migration column
+  `bound_revision_request_id` (PostgreSQL 42703 broke every preview link); DB errors
+  now return 500 instead of a false 404. Deployed alone.
+- [ ] Audit the other functions that reference unapplied migration columns/RPCs
+  (`submit-revision`, `automation-generate-*`, `automation-suno-callback`,
+  `process-scheduled-deliveries`) — they must not be deployed before the migration.
 - [ ] Fence every callback mutation to its current task and accepted revision identity; DB errors return 500 and zero-row writes stop downstream work.
+
 - [ ] Preserve typed pronunciation from the revision form through lyrics and both audio renditions without changing display spelling.
 - [ ] Complete evidence-only preview-email reconciliation and expose honest delivery state on the preview page.
 - [ ] Add and run isolated migration fixtures covering rollback, NULLs, concurrency, allowances, task identity, and expired leases.
