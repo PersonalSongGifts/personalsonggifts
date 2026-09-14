@@ -1449,21 +1449,21 @@ To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encode
             if (!emailResponse.ok) {
               const errorText = await emailResponse.text();
               console.error(`[PREVIEW] Email failed for lead ${lead.id}:`, errorText);
+              // Release the claim so the record is retried, never left falsely "sent".
+              const { error: releaseErr } = await supabase
+                .from("leads")
+                .update({
+                  status: lead.status,
+                  preview_sent_at: null,
+                  sent_at: lead.sent_at ?? null,
+                })
+                .eq("id", lead.id);
+              if (releaseErr) {
+                console.error(`[PREVIEW] Claim release failed for lead ${lead.id}:`, releaseErr.message);
+              }
               leadPreviewResults.push({ leadId: lead.id, success: false, error: errorText });
               continue;
             }
-
-            // Mark as sent
-            await supabase
-              .from("leads")
-              .update({
-                status: "preview_sent",
-                preview_sent_at: now,
-                sent_at: now,
-                preview_scheduled_at: null,
-              })
-              .eq("id", lead.id)
-              .is("preview_sent_at", null);
 
             console.log(`[PREVIEW] ✅ Lead ${lead.id} preview sent`);
             leadPreviewResults.push({ leadId: lead.id, success: true });
