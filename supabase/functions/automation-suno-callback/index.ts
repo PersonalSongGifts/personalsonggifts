@@ -934,7 +934,7 @@ Deno.serve(async (req) => {
     // ======= BONUS CALLBACK: Save bonus track data =======
     if (isBonusCallback) {
       console.log(`[CALLBACK] Saving bonus track for ${entityType} ${entityId}`);
-      await supabase
+      const { data: bonusWritten, error: bonusWriteErr } = await supabase
         .from(tableName)
         .update({
           bonus_song_url: fullUrlData.publicUrl,
@@ -944,7 +944,20 @@ Deno.serve(async (req) => {
           bonus_automation_status: "completed",
           bonus_automation_last_error: null,
         })
-        .eq("id", entityId);
+        .eq("id", entityId)
+        // Final-write task match: never let a superseded bonus task overwrite the current one.
+        .eq("bonus_automation_task_id", taskId)
+        .select("id");
+
+      if (bonusWriteErr) {
+        console.error(`[CALLBACK] Bonus final write failed for ${entityId}:`, bonusWriteErr.message);
+        return new Response("Write failed", { status: 500, headers: corsHeaders });
+      }
+      if (!bonusWritten || bonusWritten.length === 0) {
+        console.log(`[CALLBACK] Stale bonus callback for ${entityType} ${entityId} (taskId ${taskId} no longer current) — no rows written, suppressing downstream`);
+        return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+      }
+
 
       console.log(`[CALLBACK] ✅ Bonus track saved for ${entityType} ${entityId}`);
       await logActivity(supabase, entityType, entityId, "bonus_audio_generated", "system", `Bonus acoustic track generated, ${audioBytes!.length} bytes`);
@@ -1114,8 +1127,13 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
         console.log(`[CALLBACK] Regular lead, scheduling preview for ${autoSendTime}`);
       }
 
+      // A revision that is still in flight must be explicitly completed here, or the
+      // readiness guard keeps the repaired lead stranded forever. And a revised song is
+      // NOT auto-released by email: it needs a human to verify the output first.
+      const completingRevision = (entity.revision_status as string | null) === "processing";
+
       console.log(`[CALLBACK] Updating lead ${entityId} with final song data`);
-      await supabase
+      const { data: primaryWritten, error: primaryWriteErr } = await supabase
         .from("leads")
         .update({
           full_song_url: fullUrlData.publicUrl,
@@ -1124,14 +1142,32 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
           cover_image_url: coverImageUrl,
           preview_token: previewToken,
           status: "song_ready",
-          preview_scheduled_at: autoSendTime,
+          preview_scheduled_at: completingRevision ? null : autoSendTime,
           automation_status: "completed",
           automation_last_error: null,
           generated_at: new Date().toISOString(),
           automation_audio_url_source: usedSource,
           content_filter_strikes: 0,
+          ...(completingRevision ? { revision_status: "completed" } : {}),
         })
-        .eq("id", entityId);
+        .eq("id", entityId)
+        // Final-write task match: a callback from a superseded task must never land.
+        .eq("automation_task_id", taskId)
+        .select("id");
+
+      if (primaryWriteErr) {
+        console.error(`[CALLBACK] Lead final write failed for ${entityId}:`, primaryWriteErr.message);
+        return new Response("Write failed", { status: 500, headers: corsHeaders });
+      }
+      if (!primaryWritten || primaryWritten.length === 0) {
+        console.log(`[CALLBACK] Stale primary callback for lead ${entityId} (taskId ${taskId} no longer current) — no rows written, suppressing downstream`);
+        return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+      }
+      if (completingRevision) {
+        console.log(`[CALLBACK] Revision completed for lead ${entityId}; preview NOT auto-scheduled (manual release required)`);
+        await logActivity(supabase, "lead", entityId, "revision_regenerated", "system", "Revised preview generated; preview send held for manual verification", { taskId });
+      }
+
 
       const { data: verifyLead } = await supabase.from("leads").select("preview_song_url, full_song_url").eq("id", entityId).single();
       if (!verifyLead?.preview_song_url && !verifyLead?.full_song_url) {
