@@ -6,8 +6,15 @@
 // into `notes` and only ever read by the lyrics prompt — the audio style prompt
 // ignored tempo entirely.
 //
-// Everything here is pure except `fetchLatestRevisionBrief`, which does a single
-// read of the most recent approved/pending revision request for the entity.
+// Binding rules (review blockers 2 and 3):
+//  - ONLY requests in status "approved" are readable. A request is promoted to
+//    "approved" by submit-revision *after* it wins the atomic claim, and any
+//    previously approved request is demoted to "superseded" in the same step, so
+//    at most one approved request exists per record. A submission that loses a
+//    concurrent race is never approved and can therefore never be read here.
+//  - Lookup failures are reported, never swallowed. Callers must fail closed for
+//    a record that is mid-revision instead of spending on a generation that
+//    ignores the customer's instructions.
 
 export interface RevisionBrief {
   style_notes: string | null;
@@ -15,13 +22,22 @@ export interface RevisionBrief {
   anything_else: string | null;
 }
 
+export interface RevisionBriefResult {
+  /** false = the lookup itself failed; the brief is UNKNOWN, not empty. */
+  ok: boolean;
+  brief: RevisionBrief;
+  /** id of the bound approved request, when one exists. */
+  revisionRequestId: string | null;
+  error: string | null;
+}
+
 export const BRIEF_LIMITS = {
   style_notes: 500,
   tempo: 60,
   anything_else: 500,
-  /** Suno's style field is short; keep the appended direction tight. */
-  audio_style_suffix: 200,
 } as const;
+
+export const EMPTY_BRIEF: RevisionBrief = { style_notes: null, tempo: null, anything_else: null };
 
 function clean(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
@@ -63,27 +79,48 @@ so do not attempt to reproduce any previous melody.
 ${lines.join("\n")}`;
 }
 
+export interface AudioStyleResult {
+  style: string;
+  /** Brief parts that did NOT fit the provider's style budget — never silently dropped. */
+  dropped: string[];
+}
+
 /**
- * Audio-stage suffix appended to the Suno style prompt so tempo/style requests
- * actually influence the recording instead of being dropped.
+ * Appends the requested tempo/style direction to an existing provider style
+ * string while respecting the model's TOTAL style budget (base style + language
+ * note + suffix). Tempo has priority over free-text style notes. Anything that
+ * does not fit is reported in `dropped` so the caller can log it instead of
+ * silently truncating the customer's request mid-sentence.
  */
-export function buildAudioStyleSuffix(brief: RevisionBrief): string {
-  const parts: string[] = [];
-  if (brief.tempo) parts.push(`tempo: ${brief.tempo}`);
-  if (brief.style_notes) parts.push(brief.style_notes);
-  if (!parts.length) return "";
-  return `. ${parts.join(". ")}`.slice(0, BRIEF_LIMITS.audio_style_suffix);
+export function applyAudioStyleBrief(
+  baseStyle: string,
+  brief: RevisionBrief,
+  maxTotalChars: number,
+): AudioStyleResult {
+  const parts: Array<{ key: string; text: string }> = [];
+  if (brief.tempo) parts.push({ key: "tempo", text: `tempo: ${brief.tempo}` });
+  if (brief.style_notes) parts.push({ key: "style_notes", text: brief.style_notes });
+
+  let style = baseStyle.slice(0, maxTotalChars);
+  const dropped: string[] = [];
+  for (const part of parts) {
+    const candidate = `${style}. ${part.text}`;
+    if (candidate.length <= maxTotalChars) {
+      style = candidate;
+    } else {
+      dropped.push(part.key);
+    }
+  }
+  return { style, dropped };
 }
 
 interface MinimalDb {
   from: (table: string) => {
     select: (cols: string) => {
       eq: (col: string, val: unknown) => {
-        in: (col: string, vals: string[]) => {
+        eq: (col: string, val: unknown) => {
           order: (col: string, opts: { ascending: boolean }) => {
-            limit: (n: number) => {
-              maybeSingle: () => Promise<{ data: Record<string, unknown> | null }>;
-            };
+            limit: (n: number) => Promise<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>;
           };
         };
       };
@@ -91,23 +128,53 @@ interface MinimalDb {
   };
 }
 
-/** Latest approved/pending revision request for a lead or order. Never throws. */
-export async function fetchLatestRevisionBrief(
+/**
+ * The single APPROVED revision request bound to this record, or an explicit
+ * failure. Never throws, never silently downgrades an error to "no brief".
+ */
+export async function fetchBoundRevisionBrief(
   db: MinimalDb,
   entityType: "lead" | "order",
   entityId: string,
-): Promise<RevisionBrief> {
+): Promise<RevisionBriefResult> {
   try {
-    const { data } = await db
+    const { data, error } = await db
       .from("revision_requests")
-      .select("style_notes, tempo, anything_else, submitted_at")
+      .select("id, style_notes, tempo, anything_else, submitted_at")
       .eq(entityType === "order" ? "order_id" : "lead_id", entityId)
-      .in("status", ["approved", "pending"])
+      .eq("status", "approved")
       .order("submitted_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return normalizeRevisionBrief(data);
-  } catch (_e) {
-    return normalizeRevisionBrief(null);
+      .limit(1);
+    if (error) {
+      return { ok: false, brief: EMPTY_BRIEF, revisionRequestId: null, error: error.message };
+    }
+    const row = (data || [])[0] ?? null;
+    return {
+      ok: true,
+      brief: normalizeRevisionBrief(row),
+      revisionRequestId: (row?.id as string | undefined) ?? null,
+      error: null,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      brief: EMPTY_BRIEF,
+      revisionRequestId: null,
+      error: e instanceof Error ? e.message : "unknown lookup failure",
+    };
   }
+}
+
+/**
+ * Fail-closed decision: a record whose revision is in flight MUST NOT be
+ * generated while its brief is unknown, otherwise we spend money producing a
+ * song that ignores the change the customer asked for.
+ */
+export function mustAbortForUnknownBrief(
+  result: RevisionBriefResult,
+  entity: { revision_status?: string | null },
+): boolean {
+  if (result.ok) return false;
+  const s = String(entity.revision_status ?? "").toLowerCase();
+  return s === "processing" || s === "pending";
 }
