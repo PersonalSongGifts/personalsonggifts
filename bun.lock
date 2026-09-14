@@ -61,6 +61,7 @@
         "zod": "^3.25.76",
       },
       "devDependencies": {
+        "@electric-sql/pglite": "0.5.8",
         "@eslint/js": "^9.32.0",
         "@tailwindcss/typography": "^0.5.16",
         "@testing-library/jest-dom": "^6.6.0",
@@ -150,6 +151,8 @@
     "@amplitude/unified": ["@amplitude/unified@1.0.19", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@amplitude/unified/-/unified-1.0.19.tgz", { "dependencies": { "@amplitude/analytics-browser": "2.41.0", "@amplitude/analytics-core": "2.47.0", "@amplitude/engagement-browser": "^1.0.3", "@amplitude/plugin-experiment-browser": "1.0.0-beta.25", "@amplitude/plugin-session-replay-browser": "1.27.10" } }, "sha512-tDGO+j1hpQyPyn0sUj62n+5XIgAVoEdZgWnPZqH22jOkZN6ZPtheowBWilR3v0M0QUVbN9wQBtbOSrjrS9cpxw=="],
 
     "@babel/runtime": ["@babel/runtime@7.28.2", "", {}, "sha512-KHp2IflsnGywDjBWDkR9iEqiWSpc8GIi0lgTT3mOElT0PP1tG26P4tmFI2YvAdzgq9RGyoHZQEIEdZy6Ec5xCA=="],
+
+    "@electric-sql/pglite": ["@electric-sql/pglite@0.5.8", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@electric-sql/pglite/-/pglite-0.5.8.tgz", {}, "sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q=="],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.25.0", "", { "os": "aix", "cpu": "ppc64" }, "sha512-O7vun9Sf8DFjH2UtqK8Ku3LkquL9SZL8OLY1T5NZkA34+wG3OQF7cl4Ql8vdNzM6fzBbYfLaiRLIOZ+2FOCgBQ=="],
 
