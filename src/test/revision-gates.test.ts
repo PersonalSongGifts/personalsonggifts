@@ -74,3 +74,41 @@ describe("prev_* single-slot backup", () => {
     expect(buildPrevSlotPatch({ preview_song_url: null, automation_lyrics: "l" })).toEqual({});
   });
 });
+
+describe("classifyTriggerPreflight", () => {
+  it("refuses a lead that already has its current preview (terminal, no retry)", () => {
+    const r = classifyTriggerPreflight("lead", { preview_song_url: "p.mp3", full_song_url: "f.mp3", revision_status: null });
+    expect(r.action).toBe("refuse");
+    expect(r.classification).toBe("terminal_current_audio");
+  });
+
+  it("allows an accepted revision whose preview is missing but stale full audio lingers", () => {
+    const r = classifyTriggerPreflight("lead", { preview_song_url: null, full_song_url: "old-full.mp3", revision_status: "processing" });
+    expect(r).toEqual({ action: "proceed", classification: "revision_repair" });
+  });
+
+  it("refuses when a revision is in flight but the current preview already exists", () => {
+    const r = classifyTriggerPreflight("lead", { preview_song_url: "new.mp3", revision_status: "processing" });
+    expect(r.action).toBe("refuse");
+  });
+
+  it("proceeds for a fresh lead with no audio at all", () => {
+    expect(classifyTriggerPreflight("lead", {})).toEqual({ action: "proceed", classification: "fresh" });
+  });
+
+  it("refuses an order that already has its current song", () => {
+    expect(classifyTriggerPreflight("order", { song_url: "s.mp3" }).action).toBe("refuse");
+  });
+
+  it("allows an order mid-revision with no current song", () => {
+    expect(classifyTriggerPreflight("order", { song_url: null, revision_status: "processing" })).toEqual({
+      action: "proceed",
+      classification: "revision_repair",
+    });
+  });
+
+  it("never refuses when force or skipLyrics is set", () => {
+    expect(classifyTriggerPreflight("lead", { preview_song_url: "p.mp3" }, { forceRun: true }).action).toBe("proceed");
+    expect(classifyTriggerPreflight("order", { song_url: "s.mp3" }, { skipLyrics: true }).action).toBe("proceed");
+  });
+});
