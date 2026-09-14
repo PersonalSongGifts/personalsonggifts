@@ -575,6 +575,8 @@ Rules for condensing:
 - Cut list-like pile-ups of details; keep the 3-4 strongest, most specific ones.
 - Keep the recipient's name and any pronunciation exactly as written.
 - Do NOT add anything new. Do NOT change the language.
+- Keep any customer change request below satisfied.
+${revisionBriefBlock}
 
 Output ONLY the complete condensed lyrics:\n\n${finalLyrics}`;
       const condenseResult = await generateLyrics(LOVABLE_API_KEY, SYSTEM_PROMPT, condensePrompt);
