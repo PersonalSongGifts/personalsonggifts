@@ -1090,23 +1090,8 @@ Deno.serve(async (req) => {
       // Timestamp comparison is not identity: only the task attached to the accepted
       // revision request may finalise it, so an older task can never overwrite a newer
       // revision, and an unattached task is refused rather than adopted.
-      let verification: TaskVerification | null = null;
-      if (completingRevision) {
-        verification = await verifyRevisionTask(supabase as never, "lead", entityId, taskId);
-        if (verification.result === "other_task") {
-          console.log(`[CALLBACK] Ignoring callback from task ${taskId}: a different task owns this revision`);
-          return new Response("Superseded revision task", { status: 200, headers: corsHeaders });
-        }
-        if (verification.result !== "verified") {
-          console.error(`[CALLBACK] Revision task identity for lead ${entityId} is ${verification.result} (${verification.error ?? "no detail"}) — refusing to finalise`);
-          return new Response("Revision identity unverified", { status: 500, headers: corsHeaders });
-        }
-      }
-
       console.log(`[CALLBACK] Updating lead ${entityId} with final song data`);
-      let primaryQuery = supabase
-        .from("leads")
-        .update({
+      const primaryWrite = await mutateCallbackRow(supabase, "leads", entityId, {
           full_song_url: fullUrlData.publicUrl,
           preview_song_url: previewUrlData?.publicUrl || fullUrlData.publicUrl,
           song_title: title,
@@ -1123,20 +1108,8 @@ Deno.serve(async (req) => {
           automation_audio_url_source: usedSource,
           content_filter_strikes: 0,
           ...(completingRevision ? { revision_status: "completed" } : {}),
-        })
-        .eq("id", entityId);
-      // Final-write identity match: task AND (for a revision) the bound request and
-      // generation, evaluated at the write itself rather than at the earlier precheck.
-      for (const [column, value] of Object.entries(revisionFinalWriteFence({ taskId, verification }))) {
-        primaryQuery = primaryQuery.eq(column, value);
-      }
-      const { data: primaryWritten, error: primaryWriteErr } = await primaryQuery.select("id");
-
-      if (primaryWriteErr) {
-        console.error(`[CALLBACK] Lead final write failed for ${entityId}:`, primaryWriteErr.message);
-        return new Response("Write failed", { status: 500, headers: corsHeaders });
-      }
-      if (!primaryWritten || primaryWritten.length === 0) {
+        }, callbackIdentity);
+      if (primaryWrite === "stale") {
         console.log(`[CALLBACK] Stale primary callback for lead ${entityId} (taskId ${taskId} no longer current) — no rows written, suppressing downstream`);
         return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
       }
@@ -1146,13 +1119,15 @@ Deno.serve(async (req) => {
       }
 
 
-      const { data: verifyLead } = await supabase.from("leads").select("preview_song_url, full_song_url").eq("id", entityId).single();
+      const { data: verifyLead, error: verifyLeadError } = await supabase.from("leads").select("preview_song_url, full_song_url").eq("id", entityId).single();
+      if (verifyLeadError) return new Response("Verification read failed", { status: 500, headers: corsHeaders });
       if (!verifyLead?.preview_song_url && !verifyLead?.full_song_url) {
         console.error(`[CALLBACK] ⚠️ VERIFICATION FAILED: Lead ${entityId} song URLs not persisted!`);
-        await supabase.from("leads").update({
+        const failed = await mutateCallbackRow(supabase, "leads", entityId, {
           automation_status: "failed",
           automation_last_error: "Post-update verification failed: song URL not persisted",
-        }).eq("id", entityId);
+        }, callbackIdentity);
+        if (failed === "stale") return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
         return new Response("Verification failed", { status: 500, headers: corsHeaders });
       }
 
@@ -1176,30 +1151,15 @@ Deno.serve(async (req) => {
       }
       if (bonusStuckTooLong) {
         console.log(`[CALLBACK] Bonus stuck >30min for order ${entityId}, delivering primary anyway`);
-        await supabase.from("orders").update({
+        const bonusTimeoutWrite = await mutateCallbackRow(supabase, "orders", entityId, {
           bonus_automation_status: "failed",
           bonus_automation_last_error: "Bonus generation exceeded 30-minute failsafe, primary delivered without bonus",
-        }).eq("id", entityId);
+        }, callbackIdentity);
+        if (bonusTimeoutWrite === "stale") return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
       }
 
-      // Same immutable identity rule on the paid path: verify, never claim.
       const completingOrderRevision = revisionInFlight(entity.revision_status as string | null);
-      let orderVerification: TaskVerification | null = null;
-      if (completingOrderRevision) {
-        orderVerification = await verifyRevisionTask(supabase as never, "order", entityId, taskId);
-        if (orderVerification.result === "other_task") {
-          console.log(`[CALLBACK] Ignoring callback from task ${taskId}: a different task owns this order revision`);
-          return new Response("Superseded revision task", { status: 200, headers: corsHeaders });
-        }
-        if (orderVerification.result !== "verified") {
-          console.error(`[CALLBACK] Revision task identity for order ${entityId} is ${orderVerification.result} (${orderVerification.error ?? "no detail"}) — refusing to finalise`);
-          return new Response("Revision identity unverified", { status: 500, headers: corsHeaders });
-        }
-      }
-
-      let orderQuery = supabase
-        .from("orders")
-        .update({
+      const orderWrite = await mutateCallbackRow(supabase, "orders", entityId, {
           song_url: fullUrlData.publicUrl,
           song_title: title,
           cover_image_url: coverImageUrl,
@@ -1211,28 +1171,21 @@ Deno.serve(async (req) => {
           automation_audio_url_source: usedSource,
           content_filter_strikes: 0,
           ...(completingOrderRevision ? { revision_status: "completed", pending_revision: false } : {}),
-        })
-        .eq("id", entityId);
-      for (const [column, value] of Object.entries(revisionFinalWriteFence({ taskId, verification: orderVerification }))) {
-        orderQuery = orderQuery.eq(column, value);
-      }
-      const { data: orderWritten, error: orderWriteErr } = await orderQuery.select("id");
-      if (orderWriteErr) {
-        console.error(`[CALLBACK] Order final write failed for ${entityId}:`, orderWriteErr.message);
-        return new Response("Write failed", { status: 500, headers: corsHeaders });
-      }
-      if (stopDownstream(orderWritten as { length: number } | null)) {
+        }, callbackIdentity);
+      if (orderWrite === "stale") {
         console.log(`[CALLBACK] Stale primary callback for order ${entityId} (task ${taskId} no longer current) — no rows written, suppressing downstream`);
         return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
       }
 
-      const { data: verifyOrder } = await supabase.from("orders").select("song_url").eq("id", entityId).single();
+      const { data: verifyOrder, error: verifyOrderError } = await supabase.from("orders").select("song_url").eq("id", entityId).single();
+      if (verifyOrderError) return new Response("Verification read failed", { status: 500, headers: corsHeaders });
       if (!verifyOrder?.song_url) {
         console.error(`[CALLBACK] ⚠️ VERIFICATION FAILED: Order ${entityId} song_url not persisted!`);
-        await supabase.from("orders").update({
+        const failed = await mutateCallbackRow(supabase, "orders", entityId, {
           automation_status: "failed",
           automation_last_error: "Post-update verification failed: song_url not persisted",
-        }).eq("id", entityId);
+        }, callbackIdentity);
+        if (failed === "stale") return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
         return new Response("Verification failed", { status: 500, headers: corsHeaders });
       }
 
