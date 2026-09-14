@@ -3,6 +3,7 @@ import {
   buildPrevSlotPatch,
   classifyTriggerPreflight,
   hasRevisionRemaining,
+  shouldAllowRevisionFinalization,
   isRevisionInFlight,
   isStaleConditionalWrite,
   revisionAllowanceRemaining,
@@ -111,5 +112,35 @@ describe("classifyTriggerPreflight", () => {
   it("never refuses when force or skipLyrics is set", () => {
     expect(classifyTriggerPreflight("lead", { preview_song_url: "p.mp3" }, { forceRun: true }).action).toBe("proceed");
     expect(classifyTriggerPreflight("order", { song_url: "s.mp3" }, { skipLyrics: true }).action).toBe("proceed");
+  });
+});
+
+describe("shouldAllowRevisionFinalization", () => {
+  it("allows a lead mid-revision with no current preview even though it was sent before", () => {
+    expect(shouldAllowRevisionFinalization("lead", {
+      revision_status: "processing",
+      preview_song_url: null,
+      preview_sent_at: null,
+    })).toBe(true);
+  });
+
+  it("blocks when the current preview already exists (nothing to finalize)", () => {
+    expect(shouldAllowRevisionFinalization("lead", {
+      revision_status: "processing",
+      preview_song_url: "new-preview.mp3",
+    })).toBe(false);
+  });
+
+  it("blocks when no revision is in flight", () => {
+    expect(shouldAllowRevisionFinalization("lead", { revision_status: null, preview_song_url: null })).toBe(false);
+    expect(shouldAllowRevisionFinalization("lead", { revision_status: "completed", preview_song_url: null })).toBe(false);
+  });
+
+  it("never changes order behaviour", () => {
+    expect(shouldAllowRevisionFinalization("order", { revision_status: "processing", preview_song_url: null })).toBe(false);
+  });
+
+  it("also allows a pending revision awaiting repair", () => {
+    expect(shouldAllowRevisionFinalization("lead", { revision_status: "pending", preview_song_url: null })).toBe(true);
   });
 });
