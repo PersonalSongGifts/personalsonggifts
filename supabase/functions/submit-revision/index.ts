@@ -888,14 +888,34 @@ async function handleLeadRevision(
     }
   }
 
-  // Fail closed: if the snapshot + invalidation write fails we must NOT trigger
-  // generation, otherwise the record loses its assets with nothing recorded.
-  const { error: leadUpdateError } = await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
+  // Atomic, duplicate-safe claim: the allowance reservation is guarded by the revision
+  // count we read, so two simultaneous submissions can never both consume the allowance
+  // or both invalidate the assets. Fail closed — if the snapshot + invalidation write
+  // does not land we must NOT trigger generation.
+  const claimQuery = supabase
+    .from("leads")
+    .update(leadUpdate)
+    .eq("id", lead.id)
+    .not("revision_status", "eq", "processing");
+  const { data: claimedLead, error: leadUpdateError } = await (lead.revision_count === null || lead.revision_count === undefined
+    ? claimQuery.is("revision_count", null)
+    : claimQuery.eq("revision_count", lead.revision_count)
+  ).select("id");
+
   if (leadUpdateError) {
     console.error("[LEAD-REVISION] lead update failed, aborting:", leadUpdateError.message);
+    await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: "lead update failed" }).eq("id", insertedRevision.id);
     return new Response(
       JSON.stringify({ error: "Could not save your request. Please try again or contact support@personalsonggifts.com." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+  if (!claimedLead || claimedLead.length === 0) {
+    console.log(`[LEAD-REVISION] Concurrent submission lost the claim for lead ${lead.id} — no allowance consumed`);
+    await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: "superseded by concurrent submission" }).eq("id", insertedRevision.id);
+    return new Response(
+      JSON.stringify({ error: "Your request is already being processed. We're remaking the song now." }),
+      { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
