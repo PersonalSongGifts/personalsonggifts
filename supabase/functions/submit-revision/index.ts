@@ -762,9 +762,12 @@ async function handleLeadRevision(
   const changesSummary = summaryParts.join("; ");
 
   // Insert revision_request with lead_id
+  // Inserted as "pending": ONLY the submission that wins the atomic claim below is
+  // promoted to "approved", and generation reads approved rows exclusively. A loser
+  // in a concurrent race therefore can never be picked up as the bound brief.
   const revisionData: Record<string, any> = {
     lead_id: lead.id,
-    status: "approved",
+    status: "pending",
     is_pre_delivery: true,
     changes_summary: changesSummary,
     original_values: originalValues,
