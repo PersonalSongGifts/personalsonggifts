@@ -256,26 +256,165 @@ export async function reconcileClaim(
   }
 }
 
-/** Immutable callback identity: only the task bound to the accepted request may finalise it. */
-export async function bindRevisionTask(
+// ---------------------------------------------------------------------------
+// Immutable callback identity.
+//
+// The old `bindRevisionTask(entity, task)` carried no request or generation
+// identity AND was called by the callback itself. If the binding had since been
+// rotated to a NEW request while an OLD task was still in flight, that old task
+// found an empty `bound_revision_task_id` and bound itself to the new request.
+//
+// Now identity is captured BEFORE anything is submitted to the provider:
+//   1. reserveRevisionGeneration(request, generation)  — pre-submission
+//   2. attachRevisionTask(request, generation, task)   — first task wins
+//   3. verifyRevisionTask(task)                        — READ ONLY, callbacks
+// ---------------------------------------------------------------------------
+
+function firstRow(data: unknown): Record<string, unknown> | null {
+  const value = Array.isArray(data) ? data[0] : data;
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+/** Reserve ONE immutable generation identity for the accepted request. Pre-submission. */
+export async function reserveRevisionGeneration(
+  db: RpcDb,
+  entityType: "lead" | "order",
+  entityId: string,
+  requestId: string,
+  generationId: string,
+): Promise<{ result: "reserved" | "other_generation" | "not_bound" | "no_revision" | "error"; generationId: string | null; error: string | null }> {
+  try {
+    const { data, error } = await db.rpc("reserve_revision_generation", {
+      p_entity_type: entityType,
+      p_entity_id: entityId,
+      p_request_id: requestId,
+      p_generation_id: generationId,
+    });
+    if (error) return { result: "error", generationId: null, error: error.message };
+    const row = firstRow(data);
+    const result = String(row?.result ?? "");
+    if (result === "reserved" || result === "other_generation" || result === "not_bound" || result === "no_revision") {
+      return { result, generationId: (row?.generation_id as string | null) ?? null, error: null };
+    }
+    return { result: "error", generationId: null, error: "unexpected reserve result" };
+  } catch (e) {
+    return { result: "error", generationId: null, error: e instanceof Error ? e.message : "reserve threw" };
+  }
+}
+
+/** Record the FIRST provider task for a reserved (request, generation) pair. */
+export async function attachRevisionTask(
+  db: RpcDb,
+  entityType: "lead" | "order",
+  entityId: string,
+  params: { requestId: string; generationId: string; taskId: string },
+): Promise<"attached" | "other_task" | "identity_mismatch" | "no_revision" | "error"> {
+  try {
+    const { data, error } = await db.rpc("attach_revision_task", {
+      p_entity_type: entityType,
+      p_entity_id: entityId,
+      p_request_id: params.requestId,
+      p_generation_id: params.generationId,
+      p_task_id: params.taskId,
+    });
+    if (error) return "error";
+    const value = Array.isArray(data) ? data[0] : data;
+    const result = typeof value === "string"
+      ? value
+      : String((value as Record<string, unknown> | null)?.attach_revision_task ?? "");
+    return result === "attached" || result === "other_task" || result === "identity_mismatch" || result === "no_revision"
+      ? result
+      : "error";
+  } catch {
+    return "error";
+  }
+}
+
+export interface TaskVerification {
+  result: "verified" | "other_task" | "unattached" | "no_revision" | "error";
+  requestId: string | null;
+  generationId: string | null;
+  boundTaskId: string | null;
+  error: string | null;
+}
+
+/**
+ * READ ONLY verification for callbacks. `unattached` is NOT permission to adopt
+ * the revision — a callback that cannot verify must not finalise anything.
+ */
+export async function verifyRevisionTask(
   db: RpcDb,
   entityType: "lead" | "order",
   entityId: string,
   taskId: string,
-): Promise<"bound" | "other_task" | "no_revision" | "error"> {
+): Promise<TaskVerification> {
   try {
-    const { data, error } = await db.rpc("bind_revision_task", {
+    const { data, error } = await db.rpc("verify_revision_task", {
       p_entity_type: entityType,
       p_entity_id: entityId,
       p_task_id: taskId,
     });
-    if (error) return "error";
-    const value = Array.isArray(data) ? data[0] : data;
-    const result = typeof value === "string" ? value : String((value as Record<string, unknown> | null)?.bind_revision_task ?? "");
-    return result === "bound" || result === "other_task" || result === "no_revision" ? result : "error";
-  } catch {
-    return "error";
+    if (error) return { result: "error", requestId: null, generationId: null, boundTaskId: null, error: error.message };
+    const row = firstRow(data);
+    const result = String(row?.result ?? "");
+    if (result === "verified" || result === "other_task" || result === "unattached" || result === "no_revision") {
+      return {
+        result,
+        requestId: (row?.request_id as string | null) ?? null,
+        generationId: (row?.generation_id as string | null) ?? null,
+        boundTaskId: (row?.bound_task_id as string | null) ?? null,
+        error: null,
+      };
+    }
+    return { result: "error", requestId: null, generationId: null, boundTaskId: null, error: "unexpected verify result" };
+  } catch (e) {
+    return { result: "error", requestId: null, generationId: null, boundTaskId: null, error: e instanceof Error ? e.message : "verify threw" };
   }
+}
+
+/**
+ * Equality filters every FINAL write must carry, for success AND failure paths.
+ * A precheck is not enough: the row can be rebound between the check and the
+ * write, so the write itself must match task + request + generation.
+ */
+export function revisionFinalWriteFence(params: {
+  taskId: string;
+  verification?: TaskVerification | null;
+}): Record<string, string> {
+  const fence: Record<string, string> = { automation_task_id: params.taskId };
+  const v = params.verification;
+  if (v && v.result === "verified") {
+    if (v.requestId) fence.bound_revision_request_id = v.requestId;
+    if (v.generationId) fence.bound_revision_generation_id = v.generationId;
+  }
+  return fence;
+}
+
+/**
+ * A final write that matched no rows means this callback is stale. Everything
+ * downstream — status, emails, bonus handling — must stop.
+ */
+export function stopDownstream(rows: { length: number } | null | undefined): boolean {
+  return !rows || rows.length === 0;
+}
+
+/**
+ * Migration-first rollout window.
+ *
+ * Between applying the migration and deploying the new submit handler, an old
+ * copy of submit code could still accept a request that the new generators would
+ * refuse (no binding). The quiescence control is an `admin_settings` row,
+ * `revision_submissions_paused`; while it is on, submissions are refused with an
+ * honest message and no allowance is consumed. Absent row = open, so nothing has
+ * to be mutated in production for the current behaviour to continue.
+ */
+export function revisionSubmissionGate(settingValue: string | null | undefined): { paused: boolean; message: string } {
+  const paused = ["1", "true", "yes", "on"].includes(String(settingValue ?? "").trim().toLowerCase());
+  return {
+    paused,
+    message:
+      "Change requests are paused for a few minutes while we finish an update. Your song is safe and your free change is still available — please try again shortly.",
+  };
 }
 
 /** Bounded automatic recovery for a claimed revision that provably never started. */

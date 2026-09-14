@@ -171,7 +171,7 @@ export interface DeliverDeps {
 
 export interface DeliverOutcome {
   sent: boolean;
-  state: "skipped" | "accepted" | "ambiguous" | "failed" | "not_claimed";
+  state: "skipped" | "accepted" | "ambiguous" | "failed" | "not_claimed" | "unresolved";
   reason: string | null;
   claim?: OutboxClaim;
 }
@@ -191,6 +191,17 @@ export async function deliverLeadPreview(deps: DeliverDeps, leadId: string): Pro
     generationKey,
   });
 
+  // A crashed attempt whose provider dedupe window has passed is UNRESOLVED: the
+  // provider may or may not have accepted it, so we neither resend nor pretend it
+  // was delivered. Recorded honestly; no human approval step.
+  if (claim.unresolved) {
+    await deps.note(
+      leadId,
+      `preview email unresolved (attempt started ${claim.firstAttemptAt ?? "unknown"}; provider dedupe window elapsed) — not resent automatically`,
+    );
+    return { sent: false, state: "unresolved", reason: "provider_dedupe_window_elapsed", claim };
+  }
+
   // No claim = someone else owns this attempt, or we could not record ownership.
   // Either way we do NOT send.
   if (!claim.claimed) {
@@ -207,10 +218,28 @@ export async function deliverLeadPreview(deps: DeliverDeps, leadId: string): Pro
   }
   const classified = classifySendOutcome(outcome);
 
-  const settled = await settleEmailSend(deps.db, claim.outboxId!, classified.state, {
+  // Settlement is fenced to the lease we hold, and the result is enforced.
+  const settled = await settleEmailSend(deps.db, claim.outboxId!, claim.leaseToken, classified.state, {
     providerMessageId: classified.providerMessageId,
     error: classified.error,
   });
+
+  if (settled.ok && settled.staleLease) {
+    // Our lease was taken over while we were talking to the provider: another
+    // worker owns this attempt. Record what the provider told us and touch
+    // nothing on the record — the owner settles it.
+    await deps.note(
+      leadId,
+      `preview email attempt superseded by a newer worker (provider said ${classified.state}); record left untouched`,
+    );
+    return {
+      sent: classified.state === "accepted",
+      state: classified.state === "accepted" ? "accepted" : "not_claimed",
+      reason: "stale_lease",
+      claim,
+    };
+  }
+
   if (!settled.ok || !settled.settled) {
     // The settle result is checked: if we could not record the outcome, say so
     // rather than reporting a delivery we cannot account for.
@@ -226,6 +255,12 @@ export async function deliverLeadPreview(deps: DeliverDeps, leadId: string): Pro
       await deps.note(leadId, `preview email accepted but record update failed: ${marked.error}`);
     } else if (!marked.fenced) {
       await deps.note(leadId, "preview email accepted for a generation that has since changed; record left untouched");
+    }
+    if (claim.providerKeyReused) {
+      await deps.note(
+        leadId,
+        "preview email retried with the same provider idempotency key; provider deduplication prevents a second copy",
+      );
     }
     return { sent: true, state: "accepted", reason: null, claim };
   }

@@ -14,10 +14,15 @@
 --   2. `release_revision_binding` — bounded automatic recovery: gives the
 --      allowance back and reopens the record when a claimed revision provably
 --      never started. No human release gate.
---   3. `bind_revision_task` — immutable callback identity: the provider task id
---      that fulfils the accepted request is recorded once, so an older task can
---      never finalise a newer revision (timestamp comparison is not identity).
---   4. `email_outbox` + claim/settle/expire RPCs — real delivery states.
+--   3. `reserve_revision_generation` / `attach_revision_task` /
+--      `verify_revision_task` — immutable callback identity. The generation
+--      identity is reserved BEFORE anything is submitted to the provider, the
+--      first task for that reserved generation is attached once, and the
+--      callback only ever VERIFIES (it can never assign a binding, which is how
+--      an old task could previously bind a NEW request).
+--   4. `email_outbox` + claim/settle RPCs — real delivery states, lease-fenced
+--      settlement, and a provider idempotency key that is NOT rotated when a
+--      worker crashed inside the provider's dedupe window.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -26,12 +31,14 @@
 ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS bound_revision_request_id uuid REFERENCES public.revision_requests(id),
   ADD COLUMN IF NOT EXISTS bound_revision_at timestamptz,
-  ADD COLUMN IF NOT EXISTS bound_revision_task_id text;
+  ADD COLUMN IF NOT EXISTS bound_revision_task_id text,
+  ADD COLUMN IF NOT EXISTS bound_revision_generation_id uuid;
 
 ALTER TABLE public.orders
   ADD COLUMN IF NOT EXISTS bound_revision_request_id uuid REFERENCES public.revision_requests(id),
   ADD COLUMN IF NOT EXISTS bound_revision_at timestamptz,
-  ADD COLUMN IF NOT EXISTS bound_revision_task_id text;
+  ADD COLUMN IF NOT EXISTS bound_revision_task_id text,
+  ADD COLUMN IF NOT EXISTS bound_revision_generation_id uuid;
 
 -- Additive backfill so revisions already in flight keep working after deploy.
 UPDATE public.leads l
@@ -330,15 +337,86 @@ REVOKE ALL ON FUNCTION public.release_revision_binding(text, uuid, uuid, text) F
 GRANT EXECUTE ON FUNCTION public.release_revision_binding(text, uuid, uuid, text) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- 5. Immutable callback identity: the FIRST provider task submitted for the
---    accepted request wins, and only that task may finalise the revision.
---    Returns 'bound' (this task owns the revision), 'other_task' (a different
---    task already owns it — the caller must ignore the callback) or
---    'no_revision'.
+-- 5. Immutable callback identity, in three parts.
+--
+--    The previous `bind_revision_task(entity, task)` took no request or
+--    generation identity, and the CALLBACK itself called it. On a record whose
+--    binding had been rotated to a NEW request while an OLD task was still in
+--    flight, the old task found `bound_revision_task_id IS NULL` and bound
+--    itself to the new request — exactly the defect being fixed.
+--
+--    Now:
+--      a. `reserve_revision_generation` runs BEFORE anything is submitted to the
+--         provider. It requires the caller to name the request it believes is
+--         bound, and mints/keeps ONE immutable generation id for that request.
+--      b. `attach_revision_task` records the first provider task for that
+--         (request, generation) pair. A task for any other pair is refused.
+--      c. `verify_revision_task` is READ-ONLY. Callbacks use only this: they can
+--         verify that they own the revision, never claim it.
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.bind_revision_task(
+CREATE OR REPLACE FUNCTION public.reserve_revision_generation(
   p_entity_type text,
   p_entity_id uuid,
+  p_request_id uuid,
+  p_generation_id uuid
+)
+RETURNS TABLE (result text, generation_id uuid)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_bound uuid;
+  v_gen uuid;
+BEGIN
+  IF p_entity_type = 'lead' THEN
+    SELECT bound_revision_request_id, bound_revision_generation_id INTO v_bound, v_gen
+      FROM public.leads WHERE id = p_entity_id FOR UPDATE;
+  ELSIF p_entity_type = 'order' THEN
+    SELECT bound_revision_request_id, bound_revision_generation_id INTO v_bound, v_gen
+      FROM public.orders WHERE id = p_entity_id FOR UPDATE;
+  ELSE
+    RETURN QUERY SELECT 'no_revision'::text, NULL::uuid;
+    RETURN;
+  END IF;
+
+  IF v_bound IS NULL THEN
+    RETURN QUERY SELECT 'no_revision'::text, NULL::uuid;
+    RETURN;
+  END IF;
+
+  IF v_bound <> p_request_id THEN
+    -- The caller is generating for a request that is no longer the accepted one.
+    RETURN QUERY SELECT 'not_bound'::text, v_gen;
+    RETURN;
+  END IF;
+
+  IF v_gen IS NOT NULL THEN
+    IF v_gen = p_generation_id THEN
+      RETURN QUERY SELECT 'reserved'::text, v_gen;
+    ELSE
+      RETURN QUERY SELECT 'other_generation'::text, v_gen;
+    END IF;
+    RETURN;
+  END IF;
+
+  IF p_entity_type = 'lead' THEN
+    UPDATE public.leads SET bound_revision_generation_id = p_generation_id WHERE id = p_entity_id;
+  ELSE
+    UPDATE public.orders SET bound_revision_generation_id = p_generation_id WHERE id = p_entity_id;
+  END IF;
+  RETURN QUERY SELECT 'reserved'::text, p_generation_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.reserve_revision_generation(text, uuid, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.reserve_revision_generation(text, uuid, uuid, uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.attach_revision_task(
+  p_entity_type text,
+  p_entity_id uuid,
+  p_request_id uuid,
+  p_generation_id uuid,
   p_task_id text
 )
 RETURNS text
@@ -348,14 +426,15 @@ SET search_path TO 'public'
 AS $$
 DECLARE
   v_bound uuid;
+  v_gen uuid;
   v_task text;
 BEGIN
   IF p_entity_type = 'lead' THEN
-    SELECT bound_revision_request_id, bound_revision_task_id INTO v_bound, v_task
-      FROM public.leads WHERE id = p_entity_id FOR UPDATE;
+    SELECT bound_revision_request_id, bound_revision_generation_id, bound_revision_task_id
+      INTO v_bound, v_gen, v_task FROM public.leads WHERE id = p_entity_id FOR UPDATE;
   ELSIF p_entity_type = 'order' THEN
-    SELECT bound_revision_request_id, bound_revision_task_id INTO v_bound, v_task
-      FROM public.orders WHERE id = p_entity_id FOR UPDATE;
+    SELECT bound_revision_request_id, bound_revision_generation_id, bound_revision_task_id
+      INTO v_bound, v_gen, v_task FROM public.orders WHERE id = p_entity_id FOR UPDATE;
   ELSE
     RETURN 'no_revision';
   END IF;
@@ -363,35 +442,107 @@ BEGIN
   IF v_bound IS NULL THEN
     RETURN 'no_revision';
   END IF;
+  IF v_bound <> p_request_id OR v_gen IS NULL OR v_gen <> p_generation_id THEN
+    -- Never let a task from another request/generation take ownership.
+    RETURN 'identity_mismatch';
+  END IF;
 
-  IF v_task IS NULL THEN
-    IF p_entity_type = 'lead' THEN
-      UPDATE public.leads SET bound_revision_task_id = p_task_id WHERE id = p_entity_id;
-    ELSE
-      UPDATE public.orders SET bound_revision_task_id = p_task_id WHERE id = p_entity_id;
+  IF v_task IS NOT NULL THEN
+    IF v_task = p_task_id THEN
+      RETURN 'attached';
     END IF;
-    RETURN 'bound';
+    RETURN 'other_task';
   END IF;
 
-  IF v_task = p_task_id THEN
-    RETURN 'bound';
+  IF p_entity_type = 'lead' THEN
+    UPDATE public.leads SET bound_revision_task_id = p_task_id WHERE id = p_entity_id;
+  ELSE
+    UPDATE public.orders SET bound_revision_task_id = p_task_id WHERE id = p_entity_id;
   END IF;
-
-  RETURN 'other_task';
+  RETURN 'attached';
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.bind_revision_task(text, uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.bind_revision_task(text, uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION public.attach_revision_task(text, uuid, uuid, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.attach_revision_task(text, uuid, uuid, uuid, text) TO service_role;
+
+-- READ ONLY. A callback may only ever verify.
+CREATE OR REPLACE FUNCTION public.verify_revision_task(
+  p_entity_type text,
+  p_entity_id uuid,
+  p_task_id text
+)
+RETURNS TABLE (result text, request_id uuid, generation_id uuid, bound_task_id text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_bound uuid;
+  v_gen uuid;
+  v_task text;
+BEGIN
+  IF p_entity_type = 'lead' THEN
+    SELECT bound_revision_request_id, bound_revision_generation_id, bound_revision_task_id
+      INTO v_bound, v_gen, v_task FROM public.leads WHERE id = p_entity_id;
+  ELSIF p_entity_type = 'order' THEN
+    SELECT bound_revision_request_id, bound_revision_generation_id, bound_revision_task_id
+      INTO v_bound, v_gen, v_task FROM public.orders WHERE id = p_entity_id;
+  ELSE
+    RETURN QUERY SELECT 'no_revision'::text, NULL::uuid, NULL::uuid, NULL::text;
+    RETURN;
+  END IF;
+
+  IF v_bound IS NULL THEN
+    RETURN QUERY SELECT 'no_revision'::text, NULL::uuid, v_gen, v_task;
+  ELSIF v_task IS NULL THEN
+    -- An accepted revision with no attached task: the callback must NOT adopt it.
+    RETURN QUERY SELECT 'unattached'::text, v_bound, v_gen, NULL::text;
+  ELSIF v_task = p_task_id THEN
+    RETURN QUERY SELECT 'verified'::text, v_bound, v_gen, v_task;
+  ELSE
+    RETURN QUERY SELECT 'other_task'::text, v_bound, v_gen, v_task;
+  END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.verify_revision_task(text, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.verify_revision_task(text, uuid, text) TO service_role;
+
+-- Removed: bind_revision_task(text, uuid, text). It allowed the callback itself
+-- to create a binding. Dropped defensively in case an earlier review copy of
+-- this file was ever applied to a non-production database.
+DROP FUNCTION IF EXISTS public.bind_revision_task(text, uuid, text);
 
 -- ---------------------------------------------------------------------------
 -- 6. Email outbox: real delivery states, service-role only.
 --    claimed / accepted / ambiguous / failed  (see _shared/email-outbox.ts)
+--
+--    Fixed here: the previous claim rotated `provider_idempotency_key` whenever a
+--    claim's lease expired. A crashed worker (provider ACCEPTED, then the process
+--    died before settling) therefore got a brand-new key on the next pass, which
+--    defeats the provider's deduplication and sends the customer a second copy.
+--
+--    Now:
+--      * `failed` (a DEFINITE provider rejection — nothing was accepted) gets a
+--        fresh key, because the old key may still be inside the provider's TTL
+--        and would wrongly reject a legitimate retry;
+--      * an EXPIRED CLAIM whose key is still inside the provider TTL keeps the
+--        SAME key, so a duplicate hit is deduplicated by the provider
+--        (`duplicate_parameter` = evidence it was already accepted);
+--      * an EXPIRED CLAIM whose key is PAST the TTL is unresolvable: it is
+--        settled as `ambiguous` and NOT re-sent. No false delivery, and no human
+--        approval step.
+--    Settlement is fenced to the attempt that owns the lease.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.email_outbox (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   idempotency_key text NOT NULL,
   provider_idempotency_key uuid,
+  provider_key_issued_at timestamptz NOT NULL DEFAULT now(),
+  provider_ttl_seconds integer NOT NULL DEFAULT 1800,
+  attempt_lease uuid NOT NULL DEFAULT gen_random_uuid(),
   entity_type text NOT NULL,
   entity_id uuid NOT NULL,
   purpose text NOT NULL,
@@ -399,6 +550,7 @@ CREATE TABLE IF NOT EXISTS public.email_outbox (
   state text NOT NULL DEFAULT 'claimed',
   attempt_count integer NOT NULL DEFAULT 1,
   max_attempts integer NOT NULL DEFAULT 3,
+  first_attempt_at timestamptz NOT NULL DEFAULT now(),
   claimed_at timestamptz NOT NULL DEFAULT now(),
   lease_expires_at timestamptz NOT NULL DEFAULT now() + interval '10 minutes',
   accepted_at timestamptz,
@@ -410,6 +562,13 @@ CREATE TABLE IF NOT EXISTS public.email_outbox (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Additive for an earlier review copy of this file.
+ALTER TABLE public.email_outbox
+  ADD COLUMN IF NOT EXISTS provider_key_issued_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS provider_ttl_seconds integer NOT NULL DEFAULT 1800,
+  ADD COLUMN IF NOT EXISTS attempt_lease uuid NOT NULL DEFAULT gen_random_uuid(),
+  ADD COLUMN IF NOT EXISTS first_attempt_at timestamptz NOT NULL DEFAULT now();
+
 CREATE UNIQUE INDEX IF NOT EXISTS email_outbox_idempotency_key_uidx
   ON public.email_outbox (idempotency_key);
 CREATE INDEX IF NOT EXISTS email_outbox_state_idx
@@ -419,8 +578,6 @@ GRANT ALL ON public.email_outbox TO service_role;
 ALTER TABLE public.email_outbox ENABLE ROW LEVEL SECURITY;
 -- Deliberately no anon/authenticated policies: internal delivery bookkeeping.
 
--- Claim. A CRASHED claim (lease expired) is reclaimable; an ACCEPTED or
--- AMBIGUOUS attempt is never reclaimed automatically.
 CREATE OR REPLACE FUNCTION public.claim_email_send(
   p_idempotency_key text,
   p_entity_type text,
@@ -430,66 +587,129 @@ CREATE OR REPLACE FUNCTION public.claim_email_send(
   p_recipients jsonb DEFAULT NULL,
   p_max_attempts integer DEFAULT 3,
   p_lease_seconds integer DEFAULT 600,
-  p_provider_idempotency_key uuid DEFAULT NULL
+  p_provider_ttl_seconds integer DEFAULT 1800
 )
-RETURNS TABLE (outbox_id uuid, state text, attempt_count integer, claimed boolean, provider_key uuid)
+RETURNS TABLE (
+  outbox_id uuid,
+  state text,
+  attempt_count integer,
+  claimed boolean,
+  provider_key uuid,
+  provider_key_reused boolean,
+  lease_token uuid,
+  first_attempt_at timestamptz,
+  unresolved boolean
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
   v_row public.email_outbox;
+  v_within_ttl boolean;
 BEGIN
   INSERT INTO public.email_outbox (
-    idempotency_key, provider_idempotency_key, entity_type, entity_id, purpose,
-    generation_key, recipients, max_attempts, lease_expires_at
+    idempotency_key, provider_idempotency_key, provider_key_issued_at, provider_ttl_seconds,
+    entity_type, entity_id, purpose, generation_key, recipients, max_attempts, lease_expires_at
   )
   VALUES (
-    p_idempotency_key, coalesce(p_provider_idempotency_key, gen_random_uuid()), p_entity_type, p_entity_id, p_purpose,
-    p_generation_key, p_recipients, coalesce(p_max_attempts, 3), now() + make_interval(secs => coalesce(p_lease_seconds, 600))
+    p_idempotency_key, gen_random_uuid(), now(), coalesce(p_provider_ttl_seconds, 1800),
+    p_entity_type, p_entity_id, p_purpose, p_generation_key, p_recipients,
+    coalesce(p_max_attempts, 3), now() + make_interval(secs => coalesce(p_lease_seconds, 600))
   )
   ON CONFLICT (idempotency_key) DO NOTHING
   RETURNING * INTO v_row;
 
   IF v_row.id IS NOT NULL THEN
-    RETURN QUERY SELECT v_row.id, v_row.state, v_row.attempt_count, true, v_row.provider_idempotency_key;
+    RETURN QUERY SELECT v_row.id, v_row.state, v_row.attempt_count, true,
+                        v_row.provider_idempotency_key, false, v_row.attempt_lease,
+                        v_row.first_attempt_at, false;
     RETURN;
   END IF;
 
   SELECT * INTO v_row FROM public.email_outbox WHERE idempotency_key = p_idempotency_key FOR UPDATE;
 
-  IF (v_row.state = 'failed' OR (v_row.state = 'claimed' AND v_row.lease_expires_at < now()))
-     AND v_row.attempt_count < v_row.max_attempts THEN
+  -- A DEFINITE failure: the provider rejected, nothing was accepted. Retry with a
+  -- FRESH key (the old one may still be inside the provider TTL).
+  IF v_row.state = 'failed' AND v_row.attempt_count < v_row.max_attempts THEN
     UPDATE public.email_outbox
        SET state = 'claimed',
            attempt_count = attempt_count + 1,
            claimed_at = now(),
            lease_expires_at = now() + make_interval(secs => coalesce(p_lease_seconds, 600)),
            failed_at = NULL,
-           -- New provider key: the previous attempt's Brevo key may still be
-           -- inside its 30-minute TTL, which would reject a legitimate retry.
            provider_idempotency_key = gen_random_uuid(),
+           provider_key_issued_at = now(),
+           attempt_lease = gen_random_uuid(),
            updated_at = now()
      WHERE id = v_row.id
     RETURNING * INTO v_row;
-    RETURN QUERY SELECT v_row.id, v_row.state, v_row.attempt_count, true, v_row.provider_idempotency_key;
+    RETURN QUERY SELECT v_row.id, v_row.state, v_row.attempt_count, true,
+                        v_row.provider_idempotency_key, false, v_row.attempt_lease,
+                        v_row.first_attempt_at, false;
     RETURN;
   END IF;
 
-  RETURN QUERY SELECT v_row.id, v_row.state, v_row.attempt_count, false, v_row.provider_idempotency_key;
+  -- An EXPIRED CLAIM: the worker died and we do NOT know whether the provider
+  -- accepted the message.
+  IF v_row.state = 'claimed' AND v_row.lease_expires_at < now() THEN
+    v_within_ttl := v_row.provider_key_issued_at
+                    > now() - make_interval(secs => coalesce(v_row.provider_ttl_seconds, 1800));
+
+    IF v_within_ttl AND v_row.attempt_count < v_row.max_attempts THEN
+      -- Same logical provider key: if the first attempt did reach the provider,
+      -- this retry is deduplicated instead of delivering a second copy.
+      UPDATE public.email_outbox
+         SET state = 'claimed',
+             attempt_count = attempt_count + 1,
+             claimed_at = now(),
+             lease_expires_at = now() + make_interval(secs => coalesce(p_lease_seconds, 600)),
+             attempt_lease = gen_random_uuid(),
+             updated_at = now()
+       WHERE id = v_row.id
+      RETURNING * INTO v_row;
+      RETURN QUERY SELECT v_row.id, v_row.state, v_row.attempt_count, true,
+                          v_row.provider_idempotency_key, true, v_row.attempt_lease,
+                          v_row.first_attempt_at, false;
+      RETURN;
+    END IF;
+
+    -- Past the provider's dedupe window (or out of attempts): unresolvable.
+    UPDATE public.email_outbox
+       SET state = 'ambiguous',
+           ambiguous_at = now(),
+           last_error = coalesce(v_row.last_error,
+             'claim lease expired outside the provider dedupe window; delivery unresolved'),
+           updated_at = now()
+     WHERE id = v_row.id
+    RETURNING * INTO v_row;
+    RETURN QUERY SELECT v_row.id, v_row.state, v_row.attempt_count, false,
+                        v_row.provider_idempotency_key, false, NULL::uuid,
+                        v_row.first_attempt_at, true;
+    RETURN;
+  END IF;
+
+  RETURN QUERY SELECT v_row.id, v_row.state, v_row.attempt_count, false,
+                      v_row.provider_idempotency_key, false, NULL::uuid,
+                      v_row.first_attempt_at, (v_row.state = 'ambiguous');
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.claim_email_send(text, text, uuid, text, text, jsonb, integer, integer, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.claim_email_send(text, text, uuid, text, text, jsonb, integer, integer, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.claim_email_send(text, text, uuid, text, text, jsonb, integer, integer, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.claim_email_send(text, text, uuid, text, text, jsonb, integer, integer, integer) TO service_role;
+-- Retire the previous signature so no caller can reach the rotating-key version.
+DROP FUNCTION IF EXISTS public.claim_email_send(text, text, uuid, text, text, jsonb, integer, integer, uuid);
 
+-- Settlement is FENCED to the attempt that owns the lease: a stale worker waking
+-- up after its lease was taken over cannot overwrite the current attempt.
 CREATE OR REPLACE FUNCTION public.settle_email_send(
   p_outbox_id uuid,
+  p_lease_token uuid,
   p_state text,
   p_provider_message_id text DEFAULT NULL,
   p_error text DEFAULT NULL
 )
-RETURNS TABLE (settled boolean, state text)
+RETURNS TABLE (settled boolean, state text, stale_lease boolean)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
@@ -511,17 +731,20 @@ BEGIN
          updated_at = now()
    WHERE id = p_outbox_id
      AND state = 'claimed'
+     AND attempt_lease = p_lease_token
   RETURNING * INTO v_row;
 
   IF v_row.id IS NULL THEN
     SELECT * INTO v_row FROM public.email_outbox WHERE id = p_outbox_id;
-    RETURN QUERY SELECT false, v_row.state;
+    RETURN QUERY SELECT false, v_row.state,
+                        (v_row.id IS NOT NULL AND v_row.attempt_lease <> p_lease_token);
     RETURN;
   END IF;
 
-  RETURN QUERY SELECT true, v_row.state;
+  RETURN QUERY SELECT true, v_row.state, false;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.settle_email_send(uuid, text, text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.settle_email_send(uuid, text, text, text) TO service_role;
+REVOKE ALL ON FUNCTION public.settle_email_send(uuid, uuid, text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.settle_email_send(uuid, uuid, text, text, text) TO service_role;
+DROP FUNCTION IF EXISTS public.settle_email_send(uuid, text, text, text);

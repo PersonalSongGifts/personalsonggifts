@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { getLanguageLabel } from "../_shared/language-utils.ts";
 import { applyAudioStyleBrief, isEmptyBrief } from "../_shared/revision-brief.ts";
-import { bindRevisionTask, fetchBoundBriefForGeneration, mustAbortForUnboundBrief } from "../_shared/revision-binding.ts";
+import { attachRevisionTask, fetchBoundBriefForGeneration, mustAbortForUnboundBrief, reserveRevisionGeneration } from "../_shared/revision-binding.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -280,7 +280,7 @@ Deno.serve(async (req) => {
     // base style + language note + requested direction together, and anything
     // that does not fit is logged and recorded — never silently truncated.
     const STYLE_CAP = model === "V3_5" || model === "V4" ? 200 : 1000;
-    const briefResult = await fetchBoundBriefForGeneration(supabase as never, entityType as "lead" | "order", { id: entityId, revision_status: (entity as Record<string, unknown>).revision_status as string | null, bound_revision_request_id: (entity as Record<string, unknown>).bound_revision_request_id as string | null });
+    const briefResult = await fetchBoundBriefForGeneration(supabase as never, entityType as "lead" | "order", { id: entityId, revision_status: (entity as unknown as Record<string, unknown>).revision_status as string | null, bound_revision_request_id: (entity as unknown as Record<string, unknown>).bound_revision_request_id as string | null });
     if (mustAbortForUnboundBrief(briefResult)) {
       console.error(`[AUDIO] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
       if (!bonusOnly) {
@@ -345,6 +345,44 @@ Deno.serve(async (req) => {
     const songTitle = entity.song_title || `Song for ${entity.recipient_name}`;
 
     let taskId: string | null = null;
+    // Generation identity is captured BEFORE we submit anything to the provider,
+    // so the callback can only ever verify an identity that already existed. An
+    // old task can therefore never attach itself to a newer accepted request.
+    let revisionGenerationId: string | null = null;
+    const revisionRequestId = briefResult.revisionRequestId;
+    if (!bonusOnly && revisionRequestId) {
+      const candidateGenerationId = crypto.randomUUID();
+      const reserved = await reserveRevisionGeneration(
+        supabase as never,
+        entityType as "lead" | "order",
+        entityId,
+        revisionRequestId,
+        candidateGenerationId,
+      );
+      if (reserved.result === "reserved") {
+        revisionGenerationId = reserved.generationId ?? candidateGenerationId;
+      } else if (reserved.result === "other_generation") {
+        // Another generation already owns this accepted request: do not spend again.
+        console.log(`[AUDIO] Generation ${reserved.generationId} already owns revision ${revisionRequestId} for ${entityId} — refusing duplicate submission`);
+        return new Response(
+          JSON.stringify({ error: "revision_generation_already_reserved", generationId: reserved.generationId }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      } else {
+        console.error(`[AUDIO] Refusing to submit: could not reserve revision identity for ${entityId} (${reserved.result}: ${reserved.error ?? "no detail"})`);
+        await supabase
+          .from(tableName)
+          .update({
+            automation_status: "needs_review",
+            automation_last_error: `revision identity not reservable (${reserved.result}), refusing to generate`,
+          })
+          .eq("id", entityId);
+        return new Response(
+          JSON.stringify({ error: "revision_identity_unreservable", detail: reserved.result }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
     if (bonusOnly) {
       console.log(`[AUDIO] bonusOnly=true — skipping primary Suno call, firing bonus block only`);
     } else {
@@ -422,11 +460,28 @@ Deno.serve(async (req) => {
       .update({ automation_task_id: taskId })
       .eq("id", entityId);
 
-    // Immutable revision identity: the FIRST task submitted for the accepted
-    // request owns the revision, so a later/older callback cannot finalise it.
-    const identity = await bindRevisionTask(supabase as never, entityType as "lead" | "order", entityId, taskId);
-    if (identity === "error") {
-      console.error(`[AUDIO] Could not bind task ${taskId} to the accepted revision for ${entityId}`);
+    // Attach this task to the identity reserved BEFORE submission. The first task
+    // for that (request, generation) pair wins; a task belonging to any other pair
+    // is refused, so an old task can never take over a newer accepted request.
+    let identity = "no_revision";
+    if (revisionRequestId && revisionGenerationId) {
+      identity = await attachRevisionTask(supabase as never, entityType as "lead" | "order", entityId, {
+        requestId: revisionRequestId,
+        generationId: revisionGenerationId,
+        taskId: taskId!,
+      });
+      if (identity !== "attached") {
+        // The provider already has the job, so we do not pretend otherwise — but the
+        // callback will refuse to finalise an unverifiable identity, and that is
+        // recorded here rather than discovered silently later.
+        console.error(`[AUDIO] Task ${taskId} could not be attached to revision ${revisionRequestId} for ${entityId}: ${identity}`);
+        await supabase
+          .from(tableName)
+          .update({
+            automation_last_error: `revision task identity not attached (${identity}); callback will not finalise this task`,
+          })
+          .eq("id", entityId);
+      }
     }
 
     console.log(`[AUDIO] TaskId saved to ${entityType} ${entityId} (revision identity: ${identity})`);

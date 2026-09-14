@@ -3,6 +3,7 @@ import { backupSongFile } from "../_shared/song-backup.ts";
 import { submitRevisionRequest } from "../_shared/revision-orchestration.ts";
 import { buildPrevSlotPatch, hasRevisionRemaining } from "../_shared/revision-gates.ts";
 import { DEFAULT_LEAD_REVISION_EXPIRY_DAYS, leadRevisionLinkActive } from "../_shared/lead-followup.ts";
+import { revisionSubmissionGate } from "../_shared/revision-binding.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,6 +70,24 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "Revisions are not currently available" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Migration-first rollout quiescence. During the deployment window the new
+    // generators require a binding that old submit code cannot create, so change
+    // requests are paused for a few minutes rather than accepted into a state that
+    // would strand them. Nothing is mutated, no allowance is consumed, and the free
+    // change stays available.
+    const { data: pauseSetting } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("key", "revision_submissions_paused")
+      .maybeSingle();
+    const gate = revisionSubmissionGate(pauseSetting?.value ?? null);
+    if (gate.paused) {
+      return new Response(
+        JSON.stringify({ error: "revisions_paused", message: gate.message }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
