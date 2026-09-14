@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { backupSongFile } from "../_shared/song-backup.ts";
 import { buildPrevSlotPatch, hasRevisionRemaining } from "../_shared/revision-gates.ts";
+import { DEFAULT_LEAD_REVISION_EXPIRY_DAYS, leadRevisionLinkActive } from "../_shared/lead-followup.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
