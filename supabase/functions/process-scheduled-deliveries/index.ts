@@ -15,6 +15,7 @@ import {
   leadPreviewReadyForMarketing,
 
 } from "../_shared/lead-followup.ts";
+import { deliverLeadPreview } from "../_shared/revision-orchestration.ts";
 import { leadPreviewSendReadiness } from "../_shared/revision-gates.ts";
 
 /** Reads admin_settings.lead_revision_link_expiry_days (default 365). */
@@ -1381,87 +1382,38 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-            // Re-read the row immediately before claiming. The batch object can be
-            // seconds-to-minutes stale: a new revision, a purchase or a hold may have
-            // landed since, and readiness must be judged against the CURRENT
-            // generation (same task + same generated_at) we are about to email about.
-            const { data: fresh, error: freshErr } = await supabase
-              .from("leads")
-              .select("id, status, automation_status, automation_task_id, generated_at, preview_song_url, full_song_url, preview_token, preview_sent_at, sent_at, dismissed_at, converted_at, order_id, next_attempt_at, revision_status, revision_requested_at")
-              .eq("id", lead.id)
-              .maybeSingle();
-            if (freshErr || !fresh) {
-              leadPreviewResults.push({ leadId: lead.id, success: false, error: `Re-read failed: ${freshErr?.message ?? "row missing"}` });
-              continue;
-            }
-            const freshReadiness = leadPreviewSendReadiness(fresh, Date.now());
-            if (!freshReadiness.ready) {
-              console.log(`[PREVIEW] Lead ${lead.id} no longer ready at dispatch: ${freshReadiness.reason}`);
-              leadPreviewResults.push({ leadId: lead.id, success: false, error: `Not ready at dispatch: ${freshReadiness.reason}` });
-              continue;
-            }
-            if (fresh.automation_task_id !== lead.automation_task_id || fresh.preview_song_url !== lead.preview_song_url) {
-              console.log(`[PREVIEW] Lead ${lead.id} generation changed since batch read — skipping this pass`);
-              leadPreviewResults.push({ leadId: lead.id, success: false, error: "Generation changed since batch read" });
-              continue;
-            }
-
-            // Lease-style claim BEFORE sending. `preview_sent_at` doubles as the lease
-            // token: it is written with this pass's timestamp, and every later
-            // transition is fenced on that exact value, so a release can never
-            // overwrite a newer revision's or purchase's state.
-            //
-            // NOTE (honest limitation): Brevo is a plain HTTP call with no
-            // transactional handshake, so this is NOT exactly-once delivery. It is
-            // at-most-once for definite failures (non-OK response ⇒ nothing sent ⇒
-            // fenced release) and "ambiguous, left claimed + flagged" for network
-            // errors where the send may have happened. Nothing here silently retries
-            // an uncertain send.
-            const leaseStamp = now;
-            const { data: claimed, error: claimErr } = await supabase
-              .from("leads")
-              .update({
-                status: "preview_sent",
-                preview_sent_at: leaseStamp,
-                sent_at: leaseStamp,
-                preview_scheduled_at: null,
-                target_send_at: null,
-              })
-              .eq("id", lead.id)
-              .is("preview_sent_at", null)
-              .select("id");
-
-            if (claimErr) {
-              console.error(`[PREVIEW] Claim write failed for lead ${lead.id}:`, claimErr.message);
-              leadPreviewResults.push({ leadId: lead.id, success: false, error: `Claim failed: ${claimErr.message}` });
-              continue;
-            }
-            if (!claimed || claimed.length === 0) {
-              console.log(`[PREVIEW] Lead ${lead.id} already claimed by a concurrent run — skipping`);
-              leadPreviewResults.push({ leadId: lead.id, success: false, error: "Already claimed" });
-              continue;
-            }
-
-            // Stable per-generation Message-ID: a retry of the SAME generation carries
-            // the same id, so the provider/mailbox can collapse duplicates.
-            const messageId = `<${lead.id}.${fresh.generated_at ?? fresh.automation_task_id ?? "gen"}@personalsonggifts.com>`;
-
-            let emailResponse: Response;
-            try {
-              emailResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
-                method: "POST",
-                headers: {
-                  "Accept": "application/json",
-                  "Content-Type": "application/json",
-                  "api-key": brevoApiKey,
+            // Outbox-backed delivery. `preview_sent_at` is NO LONGER a claim
+            // token: ownership lives in email_outbox (claimed / accepted /
+            // ambiguous / failed, with a lease so a crashed pass is reclaimable),
+            // and the record is only stamped after Brevo ACCEPTS the message.
+            const delivery = await deliverLeadPreview(
+              {
+                db: supabase as never,
+                reloadRecord: async (id) => {
+                  const { data } = await supabase
+                    .from("leads")
+                    .select("id, status, automation_status, automation_task_id, generated_at, preview_song_url, full_song_url, preview_token, preview_sent_at, sent_at, dismissed_at, converted_at, order_id, next_attempt_at, revision_status, revision_requested_at")
+                    .eq("id", id)
+                    .maybeSingle();
+                  return (data as Record<string, unknown> | null) ?? null;
                 },
-                body: JSON.stringify({
-                  sender: { name: senderName, email: senderEmail },
-                  replyTo: { email: senderEmail, name: senderName },
-                  to: [{ email: lead.lead_email_override || lead.email, name: lead.customer_name }],
-                  subject: `Your song for ${lead.recipient_name} is ready`,
-                  htmlContent: emailHtml,
-                  textContent: `Hi ${lead.customer_name},
+                readiness: (record) => leadPreviewSendReadiness(record as never, Date.now()),
+                send: async (_record, providerIdempotencyKey) => {
+                  try {
+                    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+                      method: "POST",
+                      headers: {
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "api-key": brevoApiKey,
+                      },
+                      body: JSON.stringify({
+                        sender: { name: senderName, email: senderEmail },
+                        replyTo: { email: senderEmail, name: senderName },
+                        to: [{ email: lead.lead_email_override || lead.email, name: lead.customer_name }],
+                        subject: `Your song for ${lead.recipient_name} is ready`,
+                        htmlContent: emailHtml,
+                        textContent: `Hi ${lead.customer_name},
 
 Your personalized ${lead.occasion} song for ${lead.recipient_name} is ready.
 
@@ -1477,53 +1429,66 @@ Personal Song Gifts · 2108 N ST STE N, Sacramento, CA 95816
 
 To unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURIComponent(lead.lead_email_override || lead.email)}
 `,
-                  headers: {
-                    "Message-ID": messageId,
-                    "X-Entity-Ref-ID": lead.id,
-                    "Precedence": "transactional",
-                    "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.lead_email_override || lead.email)}>`,
-                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                        headers: {
+                          // Brevo's documented duplicate-send guard: a UUID key with a
+                          // 30-minute TTL. A reused key inside that window is rejected
+                          // with `duplicate_parameter` and NOT re-sent, which is exactly
+                          // the evidence we use to settle an ambiguous attempt.
+                          ...(providerIdempotencyKey ? { idempotencyKey: providerIdempotencyKey } : {}),
+                          "Message-ID": `<${lead.id}.${lead.generated_at ?? lead.automation_task_id ?? "gen"}@personalsonggifts.com>`,
+                          "X-Entity-Ref-ID": lead.id,
+                          "Precedence": "transactional",
+                          "List-Unsubscribe": `<mailto:support@personalsonggifts.com?subject=Unsubscribe>, <https://kjyhxodusvodkknmgmra.supabase.co/functions/v1/unsubscribe-email?email=${encodeURIComponent(lead.lead_email_override || lead.email)}>`,
+                          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                        },
+                      }),
+                    });
+                    const body = await response.text();
+                    return { kind: "response" as const, ok: response.ok, status: response.status, body };
+                  } catch (sendError) {
+                    return {
+                      kind: "threw" as const,
+                      message: sendError instanceof Error ? sendError.message : "network error",
+                    };
                   }
-                }),
-              });
-            } catch (sendError) {
-              // AMBIGUOUS: the request may have reached Brevo. Keep the lease (never
-              // double-send) and record the uncertainty for reconciliation instead of
-              // pretending either outcome.
-              const msg = sendError instanceof Error ? sendError.message : "network error";
-              console.error(`[PREVIEW] Ambiguous send for lead ${lead.id} (lease retained):`, msg);
-              await supabase
-                .from("leads")
-                .update({ automation_last_error: `preview email ambiguous (lease ${leaseStamp}): ${msg}` })
-                .eq("id", lead.id)
-                .eq("preview_sent_at", leaseStamp);
-              leadPreviewResults.push({ leadId: lead.id, success: false, error: `Ambiguous send, needs reconciliation: ${msg}` });
-              continue;
-            }
+                },
+                // Fenced to the generation this email was about, so a newer revision
+                // or purchase can never be stamped with a stale delivery marker.
+                markAttempted: async (id, _providerMessageId, expectedGenerationKey) => {
+                  const stamp = new Date().toISOString();
+                  const query = supabase
+                    .from("leads")
+                    .update({
+                      status: "preview_sent",
+                      preview_sent_at: stamp,
+                      sent_at: stamp,
+                      preview_scheduled_at: null,
+                      target_send_at: null,
+                    })
+                    .eq("id", id);
+                  const { data, error } = await (expectedGenerationKey
+                    ? query.eq("generated_at", expectedGenerationKey)
+                    : query
+                  ).select("id");
+                  return { error: error?.message ?? null, fenced: !!data && data.length > 0 };
+                },
+                note: async (id, message) => {
+                  await supabase
+                    .from("leads")
+                    .update({ automation_last_error: message.slice(0, 500) })
+                    .eq("id", id);
+                },
+              },
+              lead.id,
+            );
 
-            if (!emailResponse.ok) {
-              const errorText = await emailResponse.text();
-              console.error(`[PREVIEW] Email failed for lead ${lead.id}:`, errorText);
-              // Definite rejection: nothing was delivered. Release the lease, FENCED on
-              // our own lease token so we cannot clobber a newer revision/purchase.
-              const { error: releaseErr } = await supabase
-                .from("leads")
-                .update({
-                  status: fresh.status,
-                  preview_sent_at: null,
-                  sent_at: fresh.sent_at ?? null,
-                })
-                .eq("id", lead.id)
-                .eq("preview_sent_at", leaseStamp);
-              if (releaseErr) {
-                console.error(`[PREVIEW] Lease release failed for lead ${lead.id}:`, releaseErr.message);
-              }
-              leadPreviewResults.push({ leadId: lead.id, success: false, error: errorText });
-              continue;
+            if (delivery.state === "accepted") {
+              console.log(`[PREVIEW] ✅ Lead ${lead.id} preview accepted by provider`);
+              leadPreviewResults.push({ leadId: lead.id, success: true });
+            } else {
+              console.log(`[PREVIEW] Lead ${lead.id} not sent (${delivery.state}): ${delivery.reason}`);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: `${delivery.state}: ${delivery.reason ?? ""}` });
             }
-
-            console.log(`[PREVIEW] ✅ Lead ${lead.id} preview sent`);
-            leadPreviewResults.push({ leadId: lead.id, success: true });
           } catch (leadError) {
             console.error(`[PREVIEW] Error for lead ${lead.id}:`, leadError);
             leadPreviewResults.push({
@@ -2476,7 +2441,7 @@ ${revisionHtmlBlock}
             const { data: purchasedOrders } = await supabase
               .from("orders")
               .select("id")
-              .ilike("customer_email", lead.email.replace(/[\\%_]/g, (m) => "\\" + m))
+              .ilike("customer_email", lead.email.replace(/[\\%_]/g, (m: string) => "\\" + m))
               .neq("status", "cancelled")
               .gte("created_at", lead.captured_at)
               .limit(1);

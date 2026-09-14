@@ -25,6 +25,7 @@ import {
 
 export type ClaimResult =
   | "claimed"
+  | "request_not_pending"
   | "not_eligible"
   | "no_allowance"
   | "purchased"
@@ -60,6 +61,10 @@ export const CLAIM_RESPONSES: Record<Exclude<ClaimResult, "claimed">, { status: 
     status: 409,
     message: "This song has just been purchased, so we've kept it exactly as it is. Contact support@personalsonggifts.com to request a change.",
   },
+  request_not_pending: {
+    status: 409,
+    message: "Your change request is already being made. We'll email you when the new version is ready.",
+  },
   already_bound: {
     status: 409,
     message: "Your change request is already being made. We'll email you when the new version is ready.",
@@ -81,6 +86,8 @@ export async function claimRevisionBinding(
     entityId: string;
     requestId: string;
     expectedRevisionCount: number | null;
+    /** Customer edits + generation-reset snapshot, applied inside the same transaction. */
+    entityUpdates?: Record<string, unknown>;
   },
 ): Promise<ClaimOutcome> {
   try {
@@ -89,6 +96,7 @@ export async function claimRevisionBinding(
       p_entity_id: params.entityId,
       p_request_id: params.requestId,
       p_expected_revision_count: params.expectedRevisionCount ?? 0,
+      p_entity_updates: params.entityUpdates ?? {},
     });
     if (error) {
       return { result: "error", boundRequestId: null, revisionCount: null, error: error.message };
@@ -186,9 +194,15 @@ export async function fetchBoundBriefForGeneration(
   }
 }
 
+/**
+ * Every state in which a change request is OPEN. "approved" was missing, which
+ * meant an approved-but-unbound record was treated as having no revision at all
+ * and generated with no notes.
+ */
+export const IN_FLIGHT_REVISION_STATES = ["processing", "pending", "approved", "in_progress"] as const;
+
 export function revisionInFlight(status: unknown): boolean {
-  const s = String(status ?? "").toLowerCase();
-  return s === "processing" || s === "pending";
+  return (IN_FLIGHT_REVISION_STATES as readonly string[]).includes(String(status ?? "").toLowerCase());
 }
 
 /**
@@ -212,6 +226,80 @@ export function mergeSenderContext(existing: string | null | undefined, fromRequ
   if (base.toLowerCase().includes(extra.toLowerCase())) return base;
   const merged = base ? `${base}\nFrom the sender: ${extra}` : `From the sender: ${extra}`;
   return merged.slice(0, max);
+}
+
+/**
+ * Reconcile an ambiguous claim (RPC accepted the work but the response never
+ * arrived, or the connection dropped). The claim itself is idempotent: reading
+ * the request back tells us whether it was in fact bound, so we never reject a
+ * request the database accepted and never consume the allowance twice.
+ */
+export async function reconcileClaim(
+  db: BriefRowDb,
+  entityType: "lead" | "order",
+  entityId: string,
+  requestId: string,
+): Promise<{ bound: boolean; error: string | null }> {
+  try {
+    const { data, error } = await db
+      .from("revision_requests")
+      .select("id, status, lead_id, order_id")
+      .eq("id", requestId)
+      .maybeSingle();
+    if (error) return { bound: false, error: error.message };
+    if (!data) return { bound: false, error: "request row missing" };
+    const ownerCol = entityType === "order" ? "order_id" : "lead_id";
+    if (data[ownerCol] !== entityId) return { bound: false, error: "request belongs to another record" };
+    return { bound: String(data.status ?? "") === "approved", error: null };
+  } catch (e) {
+    return { bound: false, error: e instanceof Error ? e.message : "reconcile threw" };
+  }
+}
+
+/** Immutable callback identity: only the task bound to the accepted request may finalise it. */
+export async function bindRevisionTask(
+  db: RpcDb,
+  entityType: "lead" | "order",
+  entityId: string,
+  taskId: string,
+): Promise<"bound" | "other_task" | "no_revision" | "error"> {
+  try {
+    const { data, error } = await db.rpc("bind_revision_task", {
+      p_entity_type: entityType,
+      p_entity_id: entityId,
+      p_task_id: taskId,
+    });
+    if (error) return "error";
+    const value = Array.isArray(data) ? data[0] : data;
+    const result = typeof value === "string" ? value : String((value as Record<string, unknown> | null)?.bind_revision_task ?? "");
+    return result === "bound" || result === "other_task" || result === "no_revision" ? result : "error";
+  } catch {
+    return "error";
+  }
+}
+
+/** Bounded automatic recovery for a claimed revision that provably never started. */
+export async function releaseRevisionBinding(
+  db: RpcDb,
+  entityType: "lead" | "order",
+  entityId: string,
+  requestId: string,
+  reason: string,
+): Promise<"released" | "task_in_flight" | "not_bound" | "error"> {
+  try {
+    const { data, error } = await db.rpc("release_revision_binding", {
+      p_entity_type: entityType,
+      p_entity_id: entityId,
+      p_request_id: requestId,
+      p_reason: reason,
+    });
+    if (error) return "error";
+    const value = Array.isArray(data) ? data[0] : data;
+    const result = typeof value === "string" ? value : String((value as Record<string, unknown> | null)?.release_revision_binding ?? "");
+    return result === "released" || result === "task_in_flight" || result === "not_bound" ? result : "error";
+  } catch {
+    return "error";
+  }
 }
 
 export type { RevisionBrief, RevisionBriefResult };
