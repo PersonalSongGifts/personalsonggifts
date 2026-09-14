@@ -775,7 +775,21 @@ async function handleLeadRevision(
   for (const f of EDITABLE_FIELDS) {
     if (fields[f] !== undefined) revisionData[f] = fields[f];
   }
-  await supabase.from("revision_requests").insert(revisionData);
+  // Fail closed: without a stored request the generator has no brief to read, so we must
+  // not invalidate anything. The request row is written FIRST and rolled back to
+  // "rejected" if the atomic claim below is lost to a concurrent submission.
+  const { data: insertedRevision, error: revisionInsertError } = await supabase
+    .from("revision_requests")
+    .insert(revisionData)
+    .select("id")
+    .maybeSingle();
+  if (revisionInsertError || !insertedRevision?.id) {
+    console.error("[LEAD-REVISION] revision_requests insert failed, aborting:", revisionInsertError?.message);
+    return new Response(
+      JSON.stringify({ error: "Could not save your request. Please try again or contact support@personalsonggifts.com." }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 
   // Durable, append-only snapshot of EVERY current asset before we invalidate the
   // pointers. prev_* is a single slot and only covers the preview, so the old full
