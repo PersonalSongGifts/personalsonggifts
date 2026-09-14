@@ -482,6 +482,14 @@ Deno.serve(async (req) => {
           bonusSongTitle = `${entity.song_title || `Song for ${entity.recipient_name}`} (Acoustic)`;
         }
         
+        // The bonus rendition must honour the same requested tempo/style direction
+        // (its lyrics already carry the pronunciation via phoneticizeForSuno).
+        const bonusApplied = applyAudioStyleBrief(bonusStylePrompt, audioBrief, STYLE_CAP);
+        bonusStylePrompt = bonusApplied.style;
+        if (bonusApplied.dropped.length > 0) {
+          console.error(`[AUDIO] Bonus style budget ${STYLE_CAP} exceeded — dropped: ${bonusApplied.dropped.join(", ")}`);
+        }
+
         console.log(`[AUDIO] Firing bonus acoustic track for ${entityType} ${entityId}`);
         console.log(`[AUDIO] Bonus style: ${bonusStylePrompt.substring(0, 60)}...`);
         
