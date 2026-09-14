@@ -15,6 +15,7 @@ import {
   leadPreviewReadyForMarketing,
 
 } from "../_shared/lead-followup.ts";
+import { leadPreviewSendReadiness } from "../_shared/revision-gates.ts";
 
 /** Reads admin_settings.lead_revision_link_expiry_days (default 365). */
 async function getLeadRevisionExpiryDays(supabase: any): Promise<number> {
