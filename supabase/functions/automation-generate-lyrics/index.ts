@@ -462,6 +462,8 @@ SpecialMessage: "${entity.special_message || ""}"
 ${pronunciationInstruction}
 ${senderContextBlock}
 ${retryLanguageBlock}
+${revisionBriefBlock}
+
 
 Remember:
 - Use structure: Intro – Verse 1 – Chorus – Verse 2 – Chorus – Bridge – Final Chorus – Outro.
