@@ -20,17 +20,28 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+    // IMPORTANT: select only columns that exist in the live schema. The revision
+    // binding columns live in an UNAPPLIED migration, so referencing them here
+    // made every preview fail with PostgreSQL 42703 (missing column).
     const { data: lead, error } = await supabase
       .from("leads")
-      .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at, order_id, bonus_song_url, revision_token, revision_count, max_revisions, revision_status, revision_requested_at, generated_at, prev_song_url, full_song_url, bound_revision_request_id")
+      .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at, order_id, bonus_song_url, revision_token, revision_count, max_revisions, revision_status, revision_requested_at, generated_at, prev_song_url, full_song_url")
       .eq("preview_token", previewToken)
-      .single();
+      .maybeSingle();
 
-    if (error || !lead) {
-      console.error("Lead not found:", error);
+    // A database/schema failure is NOT a missing token: report it honestly as 500
+    // so a broken query can never look like "this preview does not exist".
+    if (error) {
+      console.error("Lead preview query failed:", error.code, error.message);
+      return new Response(JSON.stringify({ error: "Preview temporarily unavailable", retryable: true }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (!lead) {
       return new Response(JSON.stringify({ error: "Preview not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
 
     if (lead.status === "converted") {
       return new Response(JSON.stringify({
