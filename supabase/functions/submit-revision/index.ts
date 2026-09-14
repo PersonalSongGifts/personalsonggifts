@@ -747,7 +747,19 @@ async function handleLeadRevision(
     }
   }
 
-  const changesSummary = summaryParts.length > 0 ? summaryParts.join("; ") : "No changes detected";
+  // A request that changes nothing must NOT consume the single free revision and must
+  // not invalidate a working song.
+  if (fieldsChanged.length === 0) {
+    return new Response(
+      JSON.stringify({
+        error: "no_changes",
+        message: "Nothing was changed, so we kept your current song. Edit a detail (pronunciation, story, style or tempo) and submit again.",
+      }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const changesSummary = summaryParts.join("; ");
 
   // Insert revision_request with lead_id
   const revisionData: Record<string, any> = {
