@@ -179,6 +179,10 @@ export interface LeadPreviewSendCandidate {
   status?: string | null;
   /** Incident cohort hold — a future date parks the record without pausing anything global. */
   next_attempt_at?: string | null;
+  /** Generation/revision binding inputs. */
+  revision_status?: string | null;
+  revision_requested_at?: string | null;
+  generated_at?: string | null;
 }
 
 export type PreviewSendBlockReason =
@@ -189,6 +193,7 @@ export type PreviewSendBlockReason =
   | "missing_full_audio"
   | "missing_preview_token"
   | "generation_incomplete"
+  | "revision_in_flight"
   | "held";
 
 export function leadPreviewSendReadiness(
