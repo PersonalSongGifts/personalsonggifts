@@ -248,29 +248,30 @@ BEGIN
     UPDATE public.leads
        SET revision_status = 'processing',
            revision_requested_at = now(),
-           revision_count = coalesce(revision_count, 0) + 1,
+           revision_count = coalesce(public.leads.revision_count, 0) + 1,
            pending_revision = true,
            bound_revision_request_id = p_request_id,
            bound_revision_at = now(),
             bound_revision_task_id = NULL,
             bound_revision_bonus_task_id = NULL,
             bound_revision_generation_id = NULL
-     WHERE id = p_entity_id
-    RETURNING revision_count INTO v_count;
+     WHERE public.leads.id = p_entity_id
+    RETURNING public.leads.revision_count INTO v_count;
   ELSE
     UPDATE public.orders
        SET revision_status = 'processing',
            revision_requested_at = now(),
-           revision_count = coalesce(revision_count, 0) + 1,
+           revision_count = coalesce(public.orders.revision_count, 0) + 1,
            pending_revision = true,
            bound_revision_request_id = p_request_id,
            bound_revision_at = now(),
             bound_revision_task_id = NULL,
             bound_revision_bonus_task_id = NULL,
             bound_revision_generation_id = NULL
-     WHERE id = p_entity_id
-    RETURNING revision_count INTO v_count;
+     WHERE public.orders.id = p_entity_id
+    RETURNING public.orders.revision_count INTO v_count;
   END IF;
+
 
   RETURN QUERY SELECT 'claimed'::text, p_request_id, v_count;
 END;
