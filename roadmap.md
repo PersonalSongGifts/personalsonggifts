@@ -38,3 +38,7 @@ Blockers before launch (details in `docs/checkout-staging/README.md`):
 ## Owned elsewhere
 - Cancellation / promo-flag roundtrip fix (item A) — parent implementing locally,
   intentionally not duplicated here.
+
+## SQL harness (added)
+- `node docs/revision-hardening/sql-tests/run-sql-tests.mjs` — runs the exact unapplied migration against PGlite + synthetic fixture (40 assertions). Single-session: not concurrency proof; real-Postgres validation stays the deploy gate.
+- Fixed reviewer-reported PL/pgSQL output-variable shadowing (`revision_count`, `attempt_count`, `state`, `provider_message_id`) by schema-qualifying table references.

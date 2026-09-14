@@ -1,9 +1,11 @@
 -- ============================================================================
 -- REVIEWABLE, NOT APPLIED. Additive only.
--- SQL validation against a real Postgres remains a DEPLOYMENT GATE: no local
--- disposable Postgres is available in this sandbox (initdb refuses to run as
--- root, `su`/`useradd` absent) and no syntax experiments were run against
--- production.
+-- SQL is exercised in an isolated in-process PostgreSQL engine (PGlite) by
+-- docs/revision-hardening/sql-tests/run-sql-tests.mjs over a synthetic fixture
+-- (40 assertions passing). PGlite is single-session, so multi-session row-lock
+-- concurrency is NOT proven there; validation on a real Postgres server remains
+-- a DEPLOYMENT GATE. No syntax experiments were run against production.
+
 --
 -- Rollout order is documented in docs/revision-hardening/ROLLOUT.md.
 --
@@ -161,14 +163,18 @@ BEGIN
 
   -- LOCK ORDER: entity first, always. (Previously the request row was locked
   -- first, which risks cross-request deadlocks under concurrency.)
+  -- NOTE: every table column below is schema-qualified. The RETURNS TABLE
+  -- output columns (result, bound_request_id, revision_count) otherwise shadow
+  -- same-named table columns and PL/pgSQL raises "column reference ... is
+  -- ambiguous".
   IF v_table = 'leads' THEN
-    SELECT revision_status, revision_count, max_revisions, order_id, status, bound_revision_request_id
+    SELECT l.revision_status, l.revision_count, l.max_revisions, l.order_id, l.status, l.bound_revision_request_id
       INTO v_status, v_count, v_max, v_order_id, v_entity_status, v_bound
-      FROM public.leads WHERE id = p_entity_id FOR UPDATE;
+      FROM public.leads l WHERE l.id = p_entity_id FOR UPDATE;
   ELSE
-    SELECT revision_status, revision_count, max_revisions, NULL::uuid, status, bound_revision_request_id
+    SELECT o.revision_status, o.revision_count, o.max_revisions, NULL::uuid, o.status, o.bound_revision_request_id
       INTO v_status, v_count, v_max, v_order_id, v_entity_status, v_bound
-      FROM public.orders WHERE id = p_entity_id FOR UPDATE;
+      FROM public.orders o WHERE o.id = p_entity_id FOR UPDATE;
   END IF;
 
   IF NOT FOUND THEN
@@ -176,10 +182,11 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT status,
-         CASE WHEN v_owner_col = 'lead_id' THEN lead_id ELSE order_id END
+  SELECT rr.status,
+         CASE WHEN v_owner_col = 'lead_id' THEN rr.lead_id ELSE rr.order_id END
     INTO v_req_status, v_req_owner
-    FROM public.revision_requests WHERE id = p_request_id FOR UPDATE;
+    FROM public.revision_requests rr WHERE rr.id = p_request_id FOR UPDATE;
+
 
   IF v_req_status IS NULL OR v_req_owner IS DISTINCT FROM p_entity_id THEN
     RETURN QUERY SELECT 'missing_request'::text, NULL::uuid, v_count;
@@ -243,29 +250,30 @@ BEGIN
     UPDATE public.leads
        SET revision_status = 'processing',
            revision_requested_at = now(),
-           revision_count = coalesce(revision_count, 0) + 1,
+           revision_count = coalesce(public.leads.revision_count, 0) + 1,
            pending_revision = true,
            bound_revision_request_id = p_request_id,
            bound_revision_at = now(),
             bound_revision_task_id = NULL,
             bound_revision_bonus_task_id = NULL,
             bound_revision_generation_id = NULL
-     WHERE id = p_entity_id
-    RETURNING revision_count INTO v_count;
+     WHERE public.leads.id = p_entity_id
+    RETURNING public.leads.revision_count INTO v_count;
   ELSE
     UPDATE public.orders
        SET revision_status = 'processing',
            revision_requested_at = now(),
-           revision_count = coalesce(revision_count, 0) + 1,
+           revision_count = coalesce(public.orders.revision_count, 0) + 1,
            pending_revision = true,
            bound_revision_request_id = p_request_id,
            bound_revision_at = now(),
             bound_revision_task_id = NULL,
             bound_revision_bonus_task_id = NULL,
             bound_revision_generation_id = NULL
-     WHERE id = p_entity_id
-    RETURNING revision_count INTO v_count;
+     WHERE public.orders.id = p_entity_id
+    RETURNING public.orders.revision_count INTO v_count;
   END IF;
+
 
   RETURN QUERY SELECT 'claimed'::text, p_request_id, v_count;
 END;
@@ -661,7 +669,7 @@ BEGIN
   IF v_row.state = 'failed' AND v_row.attempt_count < v_row.max_attempts THEN
     UPDATE public.email_outbox
        SET state = 'claimed',
-           attempt_count = attempt_count + 1,
+           attempt_count = public.email_outbox.attempt_count + 1,
            claimed_at = now(),
            lease_expires_at = now() + make_interval(secs => coalesce(p_lease_seconds, 600)),
            failed_at = NULL,
@@ -688,7 +696,7 @@ BEGIN
       -- this retry is deduplicated instead of delivering a second copy.
       UPDATE public.email_outbox
          SET state = 'claimed',
-             attempt_count = attempt_count + 1,
+             attempt_count = public.email_outbox.attempt_count + 1,
              claimed_at = now(),
              lease_expires_at = now() + make_interval(secs => coalesce(p_lease_seconds, 600)),
              attempt_lease = gen_random_uuid(),
@@ -753,11 +761,11 @@ BEGIN
          accepted_at = CASE WHEN p_state = 'accepted' THEN now() ELSE accepted_at END,
          ambiguous_at = CASE WHEN p_state = 'ambiguous' THEN now() ELSE ambiguous_at END,
          failed_at = CASE WHEN p_state = 'failed' THEN now() ELSE failed_at END,
-         provider_message_id = coalesce(p_provider_message_id, provider_message_id),
+         provider_message_id = coalesce(p_provider_message_id, public.email_outbox.provider_message_id),
          last_error = p_error,
          updated_at = now()
    WHERE id = p_outbox_id
-     AND state = 'claimed'
+     AND public.email_outbox.state = 'claimed'
      AND attempt_lease = p_lease_token
   RETURNING * INTO v_row;
 
