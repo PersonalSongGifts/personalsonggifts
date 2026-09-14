@@ -1177,6 +1177,9 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
           preview_token: previewToken,
           status: "song_ready",
           preview_scheduled_at: completingRevision ? null : autoSendTime,
+          // Revised previews: deliver on the next scheduler pass. Both timers are written
+          // together so neither path can release (or strand) the email on its own.
+          ...(completingRevision ? { target_send_at: revisedSendAt } : {}),
           automation_status: "completed",
           automation_last_error: null,
           generated_at: new Date().toISOString(),
@@ -1198,8 +1201,8 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
         return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
       }
       if (completingRevision) {
-        console.log(`[CALLBACK] Revision completed for lead ${entityId}; preview NOT auto-scheduled (manual release required)`);
-        await logActivity(supabase, "lead", entityId, "revision_regenerated", "system", "Revised preview generated; preview send held for manual verification", { taskId });
+        console.log(`[CALLBACK] Revision completed for lead ${entityId}; revised preview queued for automatic once-only delivery at ${revisedSendAt}`);
+        await logActivity(supabase, "lead", entityId, "revision_regenerated", "system", "Revised preview generated; queued for automatic delivery (once-only)", { taskId });
       }
 
 
