@@ -1380,6 +1380,33 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
+            // Atomic once-only claim BEFORE sending: two concurrent scheduler passes
+            // cannot both win this update, so the customer can never get two copies.
+            // If the send then fails we roll the claim back, so no false sent timestamp
+            // is left behind and the next pass retries exactly once.
+            const { data: claimed, error: claimErr } = await supabase
+              .from("leads")
+              .update({
+                status: "preview_sent",
+                preview_sent_at: now,
+                sent_at: now,
+                preview_scheduled_at: null,
+              })
+              .eq("id", lead.id)
+              .is("preview_sent_at", null)
+              .select("id");
+
+            if (claimErr) {
+              console.error(`[PREVIEW] Claim write failed for lead ${lead.id}:`, claimErr.message);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: `Claim failed: ${claimErr.message}` });
+              continue;
+            }
+            if (!claimed || claimed.length === 0) {
+              console.log(`[PREVIEW] Lead ${lead.id} already claimed by a concurrent run — skipping`);
+              leadPreviewResults.push({ leadId: lead.id, success: false, error: "Already claimed" });
+              continue;
+            }
+
             const emailResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
               method: "POST",
               headers: {
