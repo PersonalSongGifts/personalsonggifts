@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPrevSlotPatch,
+  classifyTriggerPreflight,
   hasRevisionRemaining,
   isRevisionInFlight,
   isStaleConditionalWrite,
