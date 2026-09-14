@@ -161,14 +161,18 @@ BEGIN
 
   -- LOCK ORDER: entity first, always. (Previously the request row was locked
   -- first, which risks cross-request deadlocks under concurrency.)
+  -- NOTE: every table column below is schema-qualified. The RETURNS TABLE
+  -- output columns (result, bound_request_id, revision_count) otherwise shadow
+  -- same-named table columns and PL/pgSQL raises "column reference ... is
+  -- ambiguous".
   IF v_table = 'leads' THEN
-    SELECT revision_status, revision_count, max_revisions, order_id, status, bound_revision_request_id
+    SELECT l.revision_status, l.revision_count, l.max_revisions, l.order_id, l.status, l.bound_revision_request_id
       INTO v_status, v_count, v_max, v_order_id, v_entity_status, v_bound
-      FROM public.leads WHERE id = p_entity_id FOR UPDATE;
+      FROM public.leads l WHERE l.id = p_entity_id FOR UPDATE;
   ELSE
-    SELECT revision_status, revision_count, max_revisions, NULL::uuid, status, bound_revision_request_id
+    SELECT o.revision_status, o.revision_count, o.max_revisions, NULL::uuid, o.status, o.bound_revision_request_id
       INTO v_status, v_count, v_max, v_order_id, v_entity_status, v_bound
-      FROM public.orders WHERE id = p_entity_id FOR UPDATE;
+      FROM public.orders o WHERE o.id = p_entity_id FOR UPDATE;
   END IF;
 
   IF NOT FOUND THEN
@@ -176,10 +180,11 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT status,
-         CASE WHEN v_owner_col = 'lead_id' THEN lead_id ELSE order_id END
+  SELECT rr.status,
+         CASE WHEN v_owner_col = 'lead_id' THEN rr.lead_id ELSE rr.order_id END
     INTO v_req_status, v_req_owner
-    FROM public.revision_requests WHERE id = p_request_id FOR UPDATE;
+    FROM public.revision_requests rr WHERE rr.id = p_request_id FOR UPDATE;
+
 
   IF v_req_status IS NULL OR v_req_owner IS DISTINCT FROM p_entity_id THEN
     RETURN QUERY SELECT 'missing_request'::text, NULL::uuid, v_count;
