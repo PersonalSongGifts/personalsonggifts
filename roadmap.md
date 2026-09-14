@@ -1,7 +1,19 @@
 # Roadmap
 
 ## In progress
-- (none)
+- Ronald's lead `c98bfc06-3c4c-47df-9407-5221e7353179`: rewrite audio task
+  `574818377b78c68349ca6b24953e1ce9` submitted 2026-09-14 18:15:19 UTC (by this
+  agent, before the build authorization arrived). Bonus track already finished.
+  Awaiting the provider callback — do NOT resubmit. No preview email may go out
+  until the output is verified by a human.
+
+## Awaiting owner decision
+- 30 other stuck previews (revision in progress, no live preview) are on a
+  reversible hold: `leads.next_attempt_at = 2027-01-01T00:00:00Z`. Clearing that
+  column per record releases them to the queue. No paid batch without approval.
+- Remaining hardening not yet built: stale-callback rejection keyed to the current
+  task id, blocking checkout of a lead's old assets while a revision is in flight,
+  bounded retry/attention state for revisions that never start.
 
 ## Staged, not launched — `docs/checkout-staging/`
 PayPal on the existing-song preview checkout. Complete reviewable draft source +

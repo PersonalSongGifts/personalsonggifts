@@ -106,6 +106,33 @@ export function leadRevisionLinkActive(
   return now.getTime() <= captured + days * 24 * 60 * 60 * 1000;
 }
 
+/**
+ * Shape needed to decide whether a lead's preview may be marketed.
+ */
+export interface LeadMarketingReadiness {
+  preview_song_url?: string | null;
+  full_song_url?: string | null;
+  revision_status?: string | null;
+}
+
+/**
+ * True when the lead currently has a usable, live preview to market.
+ *
+ * A revision reset clears preview_song_url/lyrics but LEAVES the previous
+ * full_song_url in place, so "has a song file" is not a readiness test: it
+ * happily sends marketing mail pointing at a broken preview page while the
+ * customer is waiting on a rewrite. Both assets must exist and no revision
+ * may be in flight.
+ */
+export function leadPreviewReadyForMarketing(lead: LeadMarketingReadiness): boolean {
+  const revisionState = (lead.revision_status || "").toLowerCase();
+  if (revisionState === "processing" || revisionState === "pending") return false;
+  if (!lead.preview_song_url) return false;
+  if (!lead.full_song_url) return false;
+  return true;
+}
+
+
 export function previewUrl(token: string): string {
   return `https://www.personalsonggifts.com/preview/${token}?followup=true`;
 }

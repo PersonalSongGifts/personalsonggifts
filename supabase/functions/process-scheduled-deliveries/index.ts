@@ -12,6 +12,8 @@ import {
   buildFollowupEmail3,
   leadRevisionLinkActive,
   DEFAULT_LEAD_REVISION_EXPIRY_DAYS,
+  leadPreviewReadyForMarketing,
+
 } from "../_shared/lead-followup.ts";
 
 /** Reads admin_settings.lead_revision_link_expiry_days (default 365). */
@@ -2077,6 +2079,12 @@ To unsubscribe: ${unsubLink}`;
           .is("dismissed_at", null)
           .not("preview_token", "is", null)
           .not("full_song_url", "is", null)
+          // Readiness guard: never market a preview that is mid-revision or has no live
+          // preview file (the old full_song_url can linger after a revision reset).
+          .not("preview_song_url", "is", null)
+          .or('revision_status.is.null,revision_status.not.in.("processing","pending")')
+
+
           .gte("captured_at", sixMonthsAgoIso)
           .lte("preview_sent_at", twentyFourHoursAgo)
           .order("preview_played_at", { ascending: true })
@@ -2136,7 +2144,20 @@ To unsubscribe: ${unsubLink}`;
               continue;
             }
 
+            // Fresh readiness re-check immediately before the claim: a revision may have
+            // been submitted since the batch query ran.
+            const { data: freshLead, error: freshLeadErr } = await supabase
+              .from("leads")
+              .select("preview_song_url, full_song_url, revision_status")
+              .eq("id", lead.id)
+              .maybeSingle();
+            if (freshLeadErr || !freshLead || !leadPreviewReadyForMarketing(freshLead)) {
+              console.log(`[FOLLOWUP] Lead ${lead.id} preview not ready (revision in flight or missing preview), skipping`);
+              continue;
+            }
+
             // Atomic claim: set follow_up_sent_at BEFORE sending
+
             const { data: claimed } = await supabase
               .from("leads")
               .update({ follow_up_sent_at: new Date().toISOString() })
@@ -2313,6 +2334,11 @@ ${revisionHtmlBlock}
             .neq("status", "converted")
             .not("preview_token", "is", null)
             .not("full_song_url", "is", null)
+            // Readiness guard: skip leads waiting on a revision or with no live preview file.
+            .not("preview_song_url", "is", null)
+            .or('revision_status.is.null,revision_status.not.in.("processing","pending")')
+
+
             .gte("captured_at", sixMonthsAgoIso)
             .lte(prevColumn, cutoffIso)
             .order(prevColumn, { ascending: true })
@@ -2370,7 +2396,20 @@ ${revisionHtmlBlock}
               continue;
             }
 
+            // Fresh readiness re-check immediately before the claim: a revision may have
+            // been submitted since the batch query ran.
+            const { data: freshStageLead, error: freshStageErr } = await supabase
+              .from("leads")
+              .select("preview_song_url, full_song_url, revision_status")
+              .eq("id", lead.id)
+              .maybeSingle();
+            if (freshStageErr || !freshStageLead || !leadPreviewReadyForMarketing(freshStageLead)) {
+              console.log(`${tag} Lead ${lead.id} preview not ready (revision in flight or missing preview), skipping`);
+              continue;
+            }
+
             // Atomic claim before sending
+
             const claimStamp = new Date().toISOString();
             const { data: stageClaimed } = await supabase
               .from("leads")

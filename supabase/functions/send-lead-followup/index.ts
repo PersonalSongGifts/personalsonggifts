@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
 import { logActivity } from "../_shared/activity-log.ts";
+import { leadPreviewReadyForMarketing } from "../_shared/lead-followup.ts";
+
 import { getActivePromoForBanner, renderPromoBannerHtml, renderPromoBannerText, PromoBannerData } from "../_shared/email-promo-banner.ts";
 
 const corsHeaders = {
@@ -231,6 +233,17 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Readiness guard: never market a preview that is mid-revision or missing its
+    // current files (a revision reset leaves the OLD full_song_url behind).
+    if (!leadPreviewReadyForMarketing(lead)) {
+      console.log(`Lead ${lead.id} preview not ready (revision_status=${lead.revision_status}, preview=${!!lead.preview_song_url}) — refusing follow-up`);
+      return new Response(
+        JSON.stringify({ error: "Preview is not ready (revision in progress or no current preview) — follow-up refused" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
 
     // Check if follow-up already sent (unless resend=true)
     if (lead.follow_up_sent_at && !resend) {

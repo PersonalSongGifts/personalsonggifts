@@ -722,6 +722,28 @@ async function handleLeadRevision(
   }
   await supabase.from("revision_requests").insert(revisionData);
 
+  // Durable, append-only snapshot of EVERY current asset before we invalidate the
+  // pointers. prev_* is a single slot and only covers the preview, so the old full
+  // song / bonus / cover would otherwise be unrecoverable. Storage objects are never
+  // touched here — only the pointers move, so legacy stable paths stay intact.
+  const existingHistory = Array.isArray((lead as Record<string, unknown>).song_history)
+    ? ((lead as Record<string, unknown>).song_history as unknown[])
+    : [];
+  const historyEntry = {
+    archived_at: new Date().toISOString(),
+    reason: "lead_revision",
+    revision_count_before: lead.revision_count || 0,
+    preview_song_url: lead.preview_song_url || null,
+    full_song_url: lead.full_song_url || null,
+    automation_lyrics: lead.automation_lyrics || null,
+    cover_image_url: lead.cover_image_url || null,
+    song_title: lead.song_title || null,
+    bonus_song_url: lead.bonus_song_url || null,
+    bonus_preview_url: lead.bonus_preview_url || null,
+    bonus_song_title: lead.bonus_song_title || null,
+    bonus_cover_image_url: lead.bonus_cover_image_url || null,
+  };
+
   // Apply field updates to lead + backup current preview + clear automation
   const leadUpdate: Record<string, any> = {
     revision_status: "processing",
@@ -730,10 +752,14 @@ async function handleLeadRevision(
     revision_count: (lead.revision_count || 0) + 1,
     pending_revision: false,
 
+    // Immutable append-only archive (never overwritten)
+    song_history: [...existingHistory, historyEntry],
+
     // Snapshot current preview to prev_* slots (single-slot backup)
     prev_song_url: lead.preview_song_url || null,
     prev_automation_lyrics: lead.automation_lyrics || null,
     prev_cover_image_url: lead.cover_image_url || null,
+
 
     // Clear automation so it regenerates
     automation_status: null,
@@ -774,11 +800,21 @@ async function handleLeadRevision(
     }
   }
 
-  await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
+  // Fail closed: if the snapshot + invalidation write fails we must NOT trigger
+  // generation, otherwise the record loses its assets with nothing recorded.
+  const { error: leadUpdateError } = await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
+  if (leadUpdateError) {
+    console.error("[LEAD-REVISION] lead update failed, aborting:", leadUpdateError.message);
+    return new Response(
+      JSON.stringify({ error: "Could not save your request. Please try again or contact support@personalsonggifts.com." }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 
-  // Trigger automation
+  // Trigger automation — record an honest attention state when the call does not
+  // actually start (previously any failure was swallowed and the record went silent).
   try {
-    await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+    const triggerRes = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -786,9 +822,26 @@ async function handleLeadRevision(
       },
       body: JSON.stringify({ leadId: lead.id, forceRun: true }),
     });
+    if (!triggerRes.ok) {
+      const detail = await triggerRes.text();
+      console.error(`[LEAD-REVISION] trigger returned ${triggerRes.status}:`, detail);
+      await supabase
+        .from("leads")
+        .update({
+          automation_last_error: `[LEAD-REVISION] trigger ${triggerRes.status}: ${detail}`.slice(0, 500),
+        })
+        .eq("id", lead.id);
+    }
   } catch (e) {
     console.error("[LEAD-REVISION] trigger error:", e);
+    await supabase
+      .from("leads")
+      .update({
+        automation_last_error: `[LEAD-REVISION] trigger threw: ${e instanceof Error ? e.message : "unknown"}`.slice(0, 500),
+      })
+      .eq("id", lead.id);
   }
+
 
   // Activity log
   try {
