@@ -333,7 +333,7 @@ This spelling is intentional for correct pronunciation and must be followed.`
     if (mustAbortForUnknownBrief(briefResult, entity)) {
       console.error(`[LYRICS] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
       await supabase
-        .from(table)
+        .from(tableName)
         .update({
           automation_status: "needs_review",
           automation_last_error: `revision brief unreadable, refusing to generate: ${briefResult.error}`,
