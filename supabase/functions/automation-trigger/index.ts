@@ -266,19 +266,25 @@ Deno.serve(async (req) => {
         console.error(`[TRIGGER] Lyrics generation failed: ${lyricsResponse.status}`, error);
         // A 409 is a hard refusal (locked/guarded), not a transient failure. Leaving the
         // record in "pending" makes the recovery loop reset it silently forever, so record
-        // the reason and surface it for review instead.
-        if (lyricsResponse.status === 409) {
-          await supabase
-            .from(tableName)
-            .update({
-              automation_status: "needs_review",
-              automation_last_error: `[TRIGGER] Lyrics step refused (409): ${error}`.slice(0, 500),
-              automation_task_id: null,
-            })
-            .eq("id", entityId);
+        // the reason, keep the bounded retry history, and surface it for review instead.
+        // This is an honest failure state - it never claims the record is complete.
+        const attempted = priorRetryCount + 1;
+        const { error: statusWriteError } = await supabase
+          .from(tableName)
+          .update({
+            automation_status: lyricsResponse.status === 409
+              ? "needs_review"
+              : (attempted >= MAX_RETRIES ? "permanently_failed" : "failed"),
+            automation_retry_count: attempted,
+            automation_last_error: `[TRIGGER] Lyrics step failed (${lyricsResponse.status}) attempt ${attempted}/${MAX_RETRIES}: ${error}`.slice(0, 500),
+            automation_task_id: null,
+          })
+          .eq("id", entityId);
+        if (statusWriteError) {
+          console.error(`[TRIGGER] Failed to record lyrics failure state for ${entityType} ${entityId}`, statusWriteError);
         }
         return new Response(
-          JSON.stringify({ error: "Lyrics generation failed", details: error }),
+          JSON.stringify({ error: "Lyrics generation failed", details: error, attempt: attempted }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
