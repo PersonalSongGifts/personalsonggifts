@@ -242,11 +242,25 @@ Deno.serve(async (req) => {
       if (!lyricsResponse.ok) {
         const error = await lyricsResponse.text();
         console.error(`[TRIGGER] Lyrics generation failed: ${lyricsResponse.status}`, error);
+        // A 409 is a hard refusal (locked/guarded), not a transient failure. Leaving the
+        // record in "pending" makes the recovery loop reset it silently forever, so record
+        // the reason and surface it for review instead.
+        if (lyricsResponse.status === 409) {
+          await supabase
+            .from(tableName)
+            .update({
+              automation_status: "needs_review",
+              automation_last_error: `[TRIGGER] Lyrics step refused (409): ${error}`.slice(0, 500),
+              automation_task_id: null,
+            })
+            .eq("id", entityId);
+        }
         return new Response(
           JSON.stringify({ error: "Lyrics generation failed", details: error }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+
 
       const lyricsResult = await lyricsResponse.json();
       lyricsTitle = lyricsResult.title;

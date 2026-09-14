@@ -279,9 +279,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Guard: never regenerate lyrics when audio already exists — would create a mismatch
-    const audioUrl = rawEntity.song_url || rawEntity.full_song_url;
+    // Guard: never regenerate lyrics when audio already exists — would create a mismatch.
+    // Exception: a lead whose revision is in flight still holds its OLD full_song_url while
+    // preview_song_url has been cleared. In that case the *current* asset is the preview, so
+    // the old file must not lock the rewrite out (otherwise the revision can never complete).
+    const leadRevisionInFlight =
+      entityType === "lead" && rawEntity.revision_status === "processing";
+    const audioUrl = leadRevisionInFlight
+      ? rawEntity.preview_song_url
+      : (rawEntity.song_url || rawEntity.full_song_url);
     if (audioUrl && !force) {
+
       console.log(`[LYRICS] Audio already exists for ${entityType} ${entityId}, skipping to preserve pairing`);
       return new Response(
         JSON.stringify({ error: "Audio already generated, lyrics locked" }),
