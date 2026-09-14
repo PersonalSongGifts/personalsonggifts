@@ -273,6 +273,15 @@ Deno.serve(async (req) => {
       console.log(`[AUDIO] Added language diction note for ${languageLabel}`);
     }
 
+    // Customer change-request style/tempo direction. Bounded and sanitized; previously
+    // tempo was stored but never reached the recording at all.
+    const audioBrief = await fetchLatestRevisionBrief(supabase, entityType as "lead" | "order", entityId);
+    const audioBriefSuffix = buildAudioStyleSuffix(audioBrief);
+    if (audioBriefSuffix) {
+      styleString += audioBriefSuffix;
+      console.log(`[AUDIO] Revision style direction applied: ${audioBriefSuffix}`);
+    }
+
     // Update entity with style selection and reset timer for accurate STUCK detection
     // (Skipped in bonusOnly mode — the primary song is already delivered and we
     // must not overwrite its automation_status.)
