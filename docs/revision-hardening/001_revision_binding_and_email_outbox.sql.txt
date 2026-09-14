@@ -1,9 +1,11 @@
 -- ============================================================================
 -- REVIEWABLE, NOT APPLIED. Additive only.
--- SQL validation against a real Postgres remains a DEPLOYMENT GATE: no local
--- disposable Postgres is available in this sandbox (initdb refuses to run as
--- root, `su`/`useradd` absent) and no syntax experiments were run against
--- production.
+-- SQL is exercised in an isolated in-process PostgreSQL engine (PGlite) by
+-- docs/revision-hardening/sql-tests/run-sql-tests.mjs over a synthetic fixture
+-- (40 assertions passing). PGlite is single-session, so multi-session row-lock
+-- concurrency is NOT proven there; validation on a real Postgres server remains
+-- a DEPLOYMENT GATE. No syntax experiments were run against production.
+
 --
 -- Rollout order is documented in docs/revision-hardening/ROLLOUT.md.
 --
