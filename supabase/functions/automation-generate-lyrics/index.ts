@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { logActivity } from "../_shared/activity-log.ts";
-import { buildLyricsBriefBlock, fetchBoundRevisionBrief, mustAbortForUnknownBrief } from "../_shared/revision-brief.ts";
+import { buildLyricsBriefBlock, } from "../_shared/revision-brief.ts";
+import { fetchBoundBriefForGeneration, mustAbortForUnboundBrief } from "../_shared/revision-binding.ts";
 import {
   getLanguageLabel,
   buildLanguagePromptBlock,
@@ -329,8 +330,8 @@ This spelling is intentional for correct pronunciation and must be followed.`
     // Only the single APPROVED request bound to this record is readable, and a
     // failed lookup FAILS CLOSED for a record whose revision is in flight rather
     // than spending on a song that ignores the customer's instructions.
-    const briefResult = await fetchBoundRevisionBrief(supabase, entityType as "lead" | "order", entityId);
-    if (mustAbortForUnknownBrief(briefResult, entity)) {
+    const briefResult = await fetchBoundBriefForGeneration(supabase as never, entityType as "lead" | "order", { id: entityId, revision_status: (entity as Record<string, unknown>).revision_status as string | null, bound_revision_request_id: (entity as Record<string, unknown>).bound_revision_request_id as string | null });
+    if (mustAbortForUnboundBrief(briefResult)) {
       console.error(`[LYRICS] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
       await supabase
         .from(tableName)
