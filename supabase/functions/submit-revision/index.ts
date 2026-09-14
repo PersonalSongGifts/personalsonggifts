@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
 
     // Check revisions left (post-delivery only)
     const isPreDelivery = !order.sent_at;
-    if (!isPreDelivery && (order.revision_count || 0) >= (order.max_revisions || 1)) {
+    if (!isPreDelivery && (order.revision_count || 0) >= (order.max_revisions ?? 1)) {
       return new Response(
         JSON.stringify({ error: "No revisions remaining" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -614,7 +614,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         form_type: isPreDelivery ? "pre_delivery_update" : "post_delivery_redo",
-        revisions_remaining: Math.max(0, (order.max_revisions || 1) - ((order.revision_count || 0) + (isEditingPending ? 0 : 1))),
+        revisions_remaining: Math.max(0, (order.max_revisions ?? 1) - ((order.revision_count || 0) + (isEditingPending ? 0 : 1))),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -644,7 +644,7 @@ async function handleLeadRevision(
   }
 
   // Out of revisions
-  if ((lead.revision_count || 0) >= (lead.max_revisions || 1)) {
+  if ((lead.revision_count || 0) >= (lead.max_revisions ?? 1)) {
     return new Response(
       JSON.stringify({ error: "No revisions remaining" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -859,7 +859,7 @@ async function handleLeadRevision(
     JSON.stringify({
       success: true,
       form_type: "lead_revision",
-      revisions_remaining: Math.max(0, (lead.max_revisions || 1) - ((lead.revision_count || 0) + 1)),
+      revisions_remaining: Math.max(0, (lead.max_revisions ?? 1) - ((lead.revision_count || 0) + 1)),
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );

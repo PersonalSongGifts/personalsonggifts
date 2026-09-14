@@ -526,7 +526,24 @@ Deno.serve(async (req) => {
           baseUpdate.automation_status = "failed";
         }
 
-        await supabase.from(tableName).update(baseUpdate).eq("id", entityId);
+        // Failure paths need the same task match: a superseded task must not mark the
+        // current generation failed or wipe its lyrics.
+        const failureMatchColumn = isBonusCallback ? "bonus_automation_task_id" : "automation_task_id";
+        const { data: filterWritten, error: filterWriteErr } = await supabase
+          .from(tableName)
+          .update(baseUpdate)
+          .eq("id", entityId)
+          .eq(failureMatchColumn, taskId)
+          .select("id");
+        if (filterWriteErr) {
+          console.error(`[CALLBACK] Content-filter write failed for ${entityId}:`, filterWriteErr.message);
+          return new Response("Write failed", { status: 500, headers: corsHeaders });
+        }
+        if (!filterWritten || filterWritten.length === 0) {
+          console.log(`[CALLBACK] Stale content-filter callback for ${entityId} (taskId ${taskId} not current) — suppressing downstream`);
+          return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+        }
+
 
         // Log every strike for visibility
         await supabase.from("order_activity_log").insert({
