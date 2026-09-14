@@ -51,3 +51,20 @@ experiments.
   creation only, and fulfilment holds live in the payment handlers.
 - Emails: at-most-once for definite failures; an unconfirmed send is recorded
   as ambiguous, never auto-resent, and shown honestly to the customer.
+
+## Rollout quiescence window (migration-first)
+
+New generators require a binding that old submit code cannot create, so pause new
+change requests for the few minutes between the migration and the deploy — nothing
+is mutated and no allowance is consumed:
+
+1. `admin_settings.revision_submissions_paused = 'true'` (submit-revision returns 503
+   with plain customer copy; the free change stays available).
+2. Apply `001_revision_binding_and_email_outbox.sql.txt` (DEPLOYMENT GATE: must first
+   be run against a real disposable Postgres — never against production as an experiment).
+3. Deploy in this order: `_shared` consumers — `automation-generate-audio`,
+   `automation-suno-callback`, `process-scheduled-deliveries`, `submit-revision`.
+4. Set `revision_submissions_paused = 'false'`.
+
+Rollback: set the pause flag back to `'true'`, redeploy the functions from baseline
+`40f6413`, and leave the additive columns/RPCs in place (they are inert to old code).

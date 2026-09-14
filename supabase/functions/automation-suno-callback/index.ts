@@ -2,13 +2,41 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import MP3Tag from "npm:mp3tag.js@3.11.0";
 import { logActivity } from "../_shared/activity-log.ts";
 import { shouldAllowRevisionFinalization } from "../_shared/revision-gates.ts";
-import { bindRevisionTask, revisionInFlight } from "../_shared/revision-binding.ts";
+import {
+  revisionFinalWriteFence,
+  revisionInFlight,
+  stopDownstream,
+  verifyRevisionTask,
+  type TaskVerification,
+} from "../_shared/revision-binding.ts";
 
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+/**
+ * Every FINAL write from a callback — success AND failure — must match the task
+ * that owns the row at the moment of the write, not at an earlier precheck. A
+ * write that matches no rows means this callback is stale: the caller must stop
+ * and touch nothing downstream (no status change, no email, no bonus handling).
+ */
+async function fencedWrite(
+  supabase: { from: (t: string) => any },
+  table: string,
+  entityId: string,
+  patch: Record<string, unknown>,
+  fence: Record<string, string>,
+): Promise<{ wrote: boolean; error: string | null }> {
+  let query = supabase.from(table).update(patch).eq("id", entityId);
+  for (const [column, value] of Object.entries(fence)) {
+    query = query.eq(column, value);
+  }
+  const { data, error } = await query.select("id");
+  if (error) return { wrote: false, error: error.message };
+  return { wrote: !stopDownstream(data as { length: number } | null), error: null };
+}
 
 // Generate a random preview token (16 characters)
 function generatePreviewToken(): string {
@@ -622,14 +650,15 @@ Deno.serve(async (req) => {
     if (!sunoData || !Array.isArray(sunoData) || sunoData.length === 0) {
       console.error("[CALLBACK] No audio data found in any source");
       
-      await supabase
-        .from(tableName)
-        .update({
-          automation_status: "failed",
-          automation_last_error: "[CALLBACK] No audio data returned from Suno - check record-info and callback payload formats",
-          automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
-        })
-        .eq("id", entityId);
+      const noDataWrite = await fencedWrite(supabase, tableName, entityId, {
+        automation_status: "failed",
+        automation_last_error: "[CALLBACK] No audio data returned from Suno - check record-info and callback payload formats",
+        automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+      }, { automation_task_id: taskId });
+      if (!noDataWrite.wrote) {
+        console.log(`[CALLBACK] Stale failure callback for ${entityType} ${entityId} (task ${taskId} not current) — nothing written`);
+        return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+      }
 
       return new Response("No audio data", { status: 200, headers: corsHeaders });
     }
@@ -681,14 +710,15 @@ Deno.serve(async (req) => {
     if (allAudioUrls.length === 0) {
       console.error("[CALLBACK] No audio URL found after all extraction attempts");
       
-      await supabase
-        .from(tableName)
-        .update({
-          automation_status: "failed",
-          automation_last_error: `[CALLBACK] No audio URL in Suno response. Raw payload stored for debugging.`,
-          automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
-        })
-        .eq("id", entityId);
+      const noUrlWrite = await fencedWrite(supabase, tableName, entityId, {
+        automation_status: "failed",
+        automation_last_error: `[CALLBACK] No audio URL in Suno response. Raw payload stored for debugging.`,
+        automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+      }, { automation_task_id: taskId });
+      if (!noUrlWrite.wrote) {
+        console.log(`[CALLBACK] Stale failure callback for ${entityType} ${entityId} (task ${taskId} not current) — nothing written`);
+        return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+      }
 
       return new Response("No audio URL", { status: 200, headers: corsHeaders });
     }
@@ -737,17 +767,19 @@ Deno.serve(async (req) => {
     
     if (!audioBytes) {
       console.error(`[CALLBACK] All ${allAudioUrls.length} audio URL(s) failed to produce a valid file`);
-      if (isBonusCallback) {
-        await supabase.from(tableName).update({
-          bonus_automation_status: "failed",
-          bonus_automation_last_error: `All ${allAudioUrls.length} audio URLs returned empty/invalid files.`,
-        }).eq("id", entityId);
-      } else {
-        await supabase.from(tableName).update({
-          automation_status: "failed",
-          automation_last_error: `[CALLBACK] All ${allAudioUrls.length} audio URLs returned empty/invalid files. URLs tried: ${allAudioUrls.map(u => u.source).join(', ')}. Will retry.`,
-          automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
-        }).eq("id", entityId);
+      const emptyWrite = isBonusCallback
+        ? await fencedWrite(supabase, tableName, entityId, {
+            bonus_automation_status: "failed",
+            bonus_automation_last_error: `All ${allAudioUrls.length} audio URLs returned empty/invalid files.`,
+          }, { bonus_automation_task_id: taskId })
+        : await fencedWrite(supabase, tableName, entityId, {
+            automation_status: "failed",
+            automation_last_error: `[CALLBACK] All ${allAudioUrls.length} audio URLs returned empty/invalid files. URLs tried: ${allAudioUrls.map(u => u.source).join(', ')}. Will retry.`,
+            automation_retry_count: ((entity.automation_retry_count as number) || 0) + 1,
+          }, { automation_task_id: taskId });
+      if (!emptyWrite.wrote) {
+        console.log(`[CALLBACK] Stale failure callback for ${entityType} ${entityId} (task ${taskId} not current) — nothing written`);
+        return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
       }
       return new Response("Audio file empty", { status: 200, headers: corsHeaders });
     }
@@ -775,17 +807,21 @@ Deno.serve(async (req) => {
     if (durationTooShort) {
       console.log(`[CALLBACK] ⚠️ Song too short (${estimatedDurationSec}s < ${isBonusCallback ? MIN_BONUS_DURATION_SEC : MIN_PRIMARY_DURATION_SEC}s)`);
       if (isBonusCallback) {
-        await supabase.from(tableName).update({
+        const shortBonusWrite = await fencedWrite(supabase, tableName, entityId, {
           bonus_automation_status: "failed",
           bonus_automation_last_error: `Bonus song too short (${estimatedDurationSec}s), expected ${MIN_BONUS_DURATION_SEC}s+.`,
-        }).eq("id", entityId);
+        }, { bonus_automation_task_id: taskId });
+        if (!shortBonusWrite.wrote) {
+          console.log(`[CALLBACK] Stale bonus short-song callback for ${entityType} ${entityId} (task ${taskId} not current) — nothing written`);
+          return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+        }
       } else {
         const currentShortRetry = (entity.short_retry_count as number) || 0;
         const MAX_SHORT_RETRIES = 2;
 
         if (currentShortRetry < MAX_SHORT_RETRIES) {
           console.log(`[CALLBACK] Auto-retrying short song (attempt ${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`);
-          await supabase.from(tableName).update({
+          const shortRetryWrite = await fencedWrite(supabase, tableName, entityId, {
             automation_status: "failed",
             automation_last_error: `Song too short (${estimatedDurationSec}s), auto-retrying with new lyrics (attempt ${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`,
             short_retry_count: currentShortRetry + 1,
@@ -799,7 +835,11 @@ Deno.serve(async (req) => {
             bonus_cover_image_url: null,
             bonus_song_title: null,
             bonus_style_prompt: null,
-          }).eq("id", entityId);
+          }, { automation_task_id: taskId });
+          if (!shortRetryWrite.wrote) {
+            console.log(`[CALLBACK] Stale short-song callback for ${entityType} ${entityId} (task ${taskId} not current) — nothing written`);
+            return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+          }
           await logActivity(supabase, entityType, entityId, "audio_too_short_retry", "system", `Audio ${estimatedDurationSec}s, auto-retrying with new lyrics (attempt ${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`);
         } else {
           // INVARIANT: Never write needs_review unless we've actually exhausted retries.
@@ -807,19 +847,27 @@ Deno.serve(async (req) => {
           // for manual review on the very first short song with short_retry_count=0).
           if (currentShortRetry < MAX_SHORT_RETRIES) {
             console.warn(`[CALLBACK] ⚠️ INVARIANT VIOLATION: about to write needs_review with short_retry_count=${currentShortRetry} < ${MAX_SHORT_RETRIES}. Forcing retry path instead.`);
-            await supabase.from(tableName).update({
+            const guardedWrite = await fencedWrite(supabase, tableName, entityId, {
               automation_status: "failed",
               automation_last_error: `Song too short (${estimatedDurationSec}s), invariant-guarded auto-retry (count=${currentShortRetry + 1}/${MAX_SHORT_RETRIES})`,
               short_retry_count: currentShortRetry + 1,
               automation_lyrics: null,
-            }).eq("id", entityId);
+            }, { automation_task_id: taskId });
+            if (!guardedWrite.wrote) {
+              console.log(`[CALLBACK] Stale short-song callback for ${entityType} ${entityId} (task ${taskId} not current) — nothing written`);
+              return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+            }
             await logActivity(supabase, entityType, entityId, "audio_too_short_retry", "system", `Invariant-guarded retry, count=${currentShortRetry + 1}`);
           } else {
             console.log(`[CALLBACK] Max short retries reached, flagging for manual review`);
-            await supabase.from(tableName).update({
+            const reviewWrite = await fencedWrite(supabase, tableName, entityId, {
               automation_status: "needs_review",
               automation_last_error: `Song too short (${estimatedDurationSec}s) after ${MAX_SHORT_RETRIES} auto-retries. Needs manual review.`,
-            }).eq("id", entityId);
+            }, { automation_task_id: taskId });
+            if (!reviewWrite.wrote) {
+              console.log(`[CALLBACK] Stale short-song callback for ${entityType} ${entityId} (task ${taskId} not current) — nothing written`);
+              return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+            }
             await logActivity(supabase, entityType, entityId, "audio_too_short", "system", `Audio ${estimatedDurationSec}s after ${MAX_SHORT_RETRIES} retries, flagged for review`);
           }
         }
@@ -1167,23 +1215,26 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
       const completingRevision = revisionInFlight(entity.revision_status);
       const revisedSendAt = new Date().toISOString();
 
-      // Immutable callback identity. Timestamp comparison is not identity: only the
-      // task that was BOUND to the accepted revision request may finalise it, so an
-      // older task can never overwrite a newer revision.
+      // Immutable callback identity. The callback only ever VERIFIES an identity that
+      // was reserved and attached before the provider was called — it never claims one.
+      // Timestamp comparison is not identity: only the task attached to the accepted
+      // revision request may finalise it, so an older task can never overwrite a newer
+      // revision, and an unattached task is refused rather than adopted.
+      let verification: TaskVerification | null = null;
       if (completingRevision) {
-        const identity = await bindRevisionTask(supabase as never, entityType as "lead" | "order", entityId, taskId);
-        if (identity === "other_task") {
+        verification = await verifyRevisionTask(supabase as never, "lead", entityId, taskId);
+        if (verification.result === "other_task") {
           console.log(`[CALLBACK] Ignoring callback from task ${taskId}: a different task owns this revision`);
           return new Response("Superseded revision task", { status: 200, headers: corsHeaders });
         }
-        if (identity === "error") {
-          console.error(`[CALLBACK] Could not verify revision task identity for ${entityId} — refusing to finalise`);
+        if (verification.result !== "verified") {
+          console.error(`[CALLBACK] Revision task identity for lead ${entityId} is ${verification.result} (${verification.error ?? "no detail"}) — refusing to finalise`);
           return new Response("Revision identity unverified", { status: 500, headers: corsHeaders });
         }
       }
 
       console.log(`[CALLBACK] Updating lead ${entityId} with final song data`);
-      const { data: primaryWritten, error: primaryWriteErr } = await supabase
+      let primaryQuery = supabase
         .from("leads")
         .update({
           full_song_url: fullUrlData.publicUrl,
@@ -1203,10 +1254,13 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
           content_filter_strikes: 0,
           ...(completingRevision ? { revision_status: "completed" } : {}),
         })
-        .eq("id", entityId)
-        // Final-write task match: a callback from a superseded task must never land.
-        .eq("automation_task_id", taskId)
-        .select("id");
+        .eq("id", entityId);
+      // Final-write identity match: task AND (for a revision) the bound request and
+      // generation, evaluated at the write itself rather than at the earlier precheck.
+      for (const [column, value] of Object.entries(revisionFinalWriteFence({ taskId, verification }))) {
+        primaryQuery = primaryQuery.eq(column, value);
+      }
+      const { data: primaryWritten, error: primaryWriteErr } = await primaryQuery.select("id");
 
       if (primaryWriteErr) {
         console.error(`[CALLBACK] Lead final write failed for ${entityId}:`, primaryWriteErr.message);
@@ -1258,7 +1312,22 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
         }).eq("id", entityId);
       }
 
-      await supabase
+      // Same immutable identity rule on the paid path: verify, never claim.
+      const completingOrderRevision = revisionInFlight(entity.revision_status as string | null);
+      let orderVerification: TaskVerification | null = null;
+      if (completingOrderRevision) {
+        orderVerification = await verifyRevisionTask(supabase as never, "order", entityId, taskId);
+        if (orderVerification.result === "other_task") {
+          console.log(`[CALLBACK] Ignoring callback from task ${taskId}: a different task owns this order revision`);
+          return new Response("Superseded revision task", { status: 200, headers: corsHeaders });
+        }
+        if (orderVerification.result !== "verified") {
+          console.error(`[CALLBACK] Revision task identity for order ${entityId} is ${orderVerification.result} (${orderVerification.error ?? "no detail"}) — refusing to finalise`);
+          return new Response("Revision identity unverified", { status: 500, headers: corsHeaders });
+        }
+      }
+
+      let orderQuery = supabase
         .from("orders")
         .update({
           song_url: fullUrlData.publicUrl,
@@ -1271,8 +1340,21 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
           delivery_status: shouldScheduleDelivery ? "scheduled" : null,
           automation_audio_url_source: usedSource,
           content_filter_strikes: 0,
+          ...(completingOrderRevision ? { revision_status: "completed", pending_revision: false } : {}),
         })
         .eq("id", entityId);
+      for (const [column, value] of Object.entries(revisionFinalWriteFence({ taskId, verification: orderVerification }))) {
+        orderQuery = orderQuery.eq(column, value);
+      }
+      const { data: orderWritten, error: orderWriteErr } = await orderQuery.select("id");
+      if (orderWriteErr) {
+        console.error(`[CALLBACK] Order final write failed for ${entityId}:`, orderWriteErr.message);
+        return new Response("Write failed", { status: 500, headers: corsHeaders });
+      }
+      if (stopDownstream(orderWritten as { length: number } | null)) {
+        console.log(`[CALLBACK] Stale primary callback for order ${entityId} (task ${taskId} no longer current) — no rows written, suppressing downstream`);
+        return new Response("Stale callback ignored", { status: 200, headers: corsHeaders });
+      }
 
       const { data: verifyOrder } = await supabase.from("orders").select("song_url").eq("id", entityId).single();
       if (!verifyOrder?.song_url) {
