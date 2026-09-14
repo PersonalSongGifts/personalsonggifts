@@ -326,11 +326,30 @@ This spelling is intentional for correct pronunciation and must be followed.`
     // Customer change-request block (style notes / tempo / anything else).
     // Read from revision_requests so BOTH leads and orders propagate — leads have
     // no `notes` column, so previously these fields never reached generation.
-    const revisionBrief = await fetchLatestRevisionBrief(supabase, entityType as "lead" | "order", entityId);
+    // Only the single APPROVED request bound to this record is readable, and a
+    // failed lookup FAILS CLOSED for a record whose revision is in flight rather
+    // than spending on a song that ignores the customer's instructions.
+    const briefResult = await fetchBoundRevisionBrief(supabase, entityType as "lead" | "order", entityId);
+    if (mustAbortForUnknownBrief(briefResult, entity)) {
+      console.error(`[LYRICS] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
+      await supabase
+        .from(table)
+        .update({
+          automation_status: "needs_review",
+          automation_last_error: `revision brief unreadable, refusing to generate: ${briefResult.error}`,
+        })
+        .eq("id", entityId);
+      return new Response(
+        JSON.stringify({ error: "revision_brief_unreadable", detail: briefResult.error }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const revisionBrief = briefResult.brief;
     const revisionBriefBlock = buildLyricsBriefBlock(revisionBrief);
     if (revisionBriefBlock) {
-      console.log(`[LYRICS] Revision brief applied for ${entityType} ${entityId}: tempo=${revisionBrief.tempo ?? "-"}, style_notes=${revisionBrief.style_notes ? "yes" : "-"}, anything_else=${revisionBrief.anything_else ? "yes" : "-"}`);
+      console.log(`[LYRICS] Revision brief ${briefResult.revisionRequestId} applied for ${entityType} ${entityId}: tempo=${revisionBrief.tempo ?? "-"}, style_notes=${revisionBrief.style_notes ? "yes" : "-"}, anything_else=${revisionBrief.anything_else ? "yes" : "-"}`);
     }
+
 
     // Build sender context block if available
     const senderCtx = [entity.sender_context, entity.notes].filter(Boolean).join("\n\n");
