@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { getLanguageLabel } from "../_shared/language-utils.ts";
 import { applyAudioStyleBrief, isEmptyBrief } from "../_shared/revision-brief.ts";
-import { fetchBoundBriefForGeneration, mustAbortForUnboundBrief } from "../_shared/revision-binding.ts";
+import { bindRevisionTask, fetchBoundBriefForGeneration, mustAbortForUnboundBrief } from "../_shared/revision-binding.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -422,7 +422,14 @@ Deno.serve(async (req) => {
       .update({ automation_task_id: taskId })
       .eq("id", entityId);
 
-    console.log(`[AUDIO] TaskId saved to ${entityType} ${entityId}`);
+    // Immutable revision identity: the FIRST task submitted for the accepted
+    // request owns the revision, so a later/older callback cannot finalise it.
+    const identity = await bindRevisionTask(supabase as never, entityType as "lead" | "order", entityId, taskId);
+    if (identity === "error") {
+      console.error(`[AUDIO] Could not bind task ${taskId} to the accepted revision for ${entityId}`);
+    }
+
+    console.log(`[AUDIO] TaskId saved to ${entityType} ${entityId} (revision identity: ${identity})`);
     console.log(`[AUDIO] Waiting for callback from Suno (1-3 minutes)`);
     }
 

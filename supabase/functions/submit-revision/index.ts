@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { backupSongFile } from "../_shared/song-backup.ts";
+import { submitRevisionRequest } from "../_shared/revision-orchestration.ts";
 import { buildPrevSlotPatch, hasRevisionRemaining } from "../_shared/revision-gates.ts";
 import { DEFAULT_LEAD_REVISION_EXPIRY_DAYS, leadRevisionLinkActive } from "../_shared/lead-followup.ts";
 
@@ -281,61 +282,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Insert or update revision request
-    if (isEditingPending) {
-      // Find existing pending revision
-      const { data: existing } = await supabase
-        .from("revision_requests")
-        .select("id")
-        .eq("order_id", order.id)
-        .eq("status", "pending")
-        .order("submitted_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existing) {
-        revisionData.submitted_at = new Date().toISOString();
-        const { error: updateError } = await supabase
-          .from("revision_requests")
-          .update(revisionData)
-          .eq("id", existing.id);
-
-        if (updateError) {
-          console.error("Update revision error:", updateError);
-          return new Response(
-            JSON.stringify({ error: "Failed to update revision request" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      } else {
-        // Shouldn't happen but fall through to insert
-        const { error: insertError } = await supabase
-          .from("revision_requests")
-          .insert(revisionData);
-
-        if (insertError) {
-          console.error("Insert revision error:", insertError);
-          return new Response(
-            JSON.stringify({ error: "Failed to create revision request" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      }
-    } else {
-      const { error: insertError } = await supabase
-        .from("revision_requests")
-        .insert(revisionData);
-
-      if (insertError) {
-        console.error("Insert revision error:", insertError);
-        return new Response(
-          JSON.stringify({ error: "Failed to create revision request" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
-
-    // === AUTO-APPROVE CHECK ===
+    // === AUTO-APPROVE SETTING (read before any write so the atomic path is chosen first) ===
     const { data: autoApproveSetting } = await supabase
       .from("admin_settings")
       .select("value")
@@ -343,97 +290,68 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     const autoApproveEnabled = autoApproveSetting?.value === "true";
+    const shouldAutoApprove = autoApproveEnabled && fieldsChanged.length > 0 && !isEditingPending;
 
-    const shouldAutoApprove = autoApproveEnabled && fieldsChanged.length > 0;
+    // A request that changes nothing must never consume the free change or destroy
+    // a working song — same rule as the lead path.
+    if (fieldsChanged.length === 0) {
+      return new Response(
+        JSON.stringify({
+          error: "no_changes",
+          message: "Nothing was changed, so your free change is still available. Please edit at least one detail.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const fieldMapping: Record<string, string> = {
+      recipient_name: "recipient_name",
+      customer_name: "customer_name",
+      delivery_email: "customer_email",
+      recipient_type: "recipient_type",
+      occasion: "occasion",
+      genre: "genre",
+      singer_preference: "singer_preference",
+      language: "lyrics_language_code",
+      recipient_name_pronunciation: "recipient_name_pronunciation",
+      special_qualities: "special_qualities",
+      favorite_memory: "favorite_memory",
+      special_message: "special_message",
+      sender_context: "sender_context",
+    };
+    const notesFields = ["style_notes", "tempo", "anything_else"];
+    const NON_REGEN_FIELDS = new Set(["customer_name", "delivery_email", "recipient_type"]);
+    const needsRegen = fieldsChanged.some((f) => !NON_REGEN_FIELDS.has(f));
 
     if (shouldAutoApprove) {
-      console.log("[SUBMIT-REVISION] Auto-approving revision for order:", order.id);
-
-      // Approve the revision request
-      const { data: insertedRevision } = await supabase
-        .from("revision_requests")
-        .select("id")
-        .eq("order_id", order.id)
-        .eq("status", "pending")
-        .order("submitted_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (insertedRevision) {
-        await supabase.from("revision_requests").update({
-          status: "approved",
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: "auto",
-        }).eq("id", insertedRevision.id);
-      }
-
-      // Apply field updates to order
-      const fieldMapping: Record<string, string> = {
-        recipient_name: "recipient_name",
-        customer_name: "customer_name",
-        delivery_email: "customer_email",
-        recipient_type: "recipient_type",
-        occasion: "occasion",
-        genre: "genre",
-        singer_preference: "singer_preference",
-        language: "lyrics_language_code",
-        recipient_name_pronunciation: "recipient_name_pronunciation",
-        special_qualities: "special_qualities",
-        favorite_memory: "favorite_memory",
-        special_message: "special_message",
-        style_notes: "notes",
-        tempo: "notes",
-        anything_else: "notes",
-        sender_context: "sender_context",
+      // ===== ATOMIC PAID PATH (same shared orchestration as leads) =====
+      const orderPatch: Record<string, any> = {
+        revision_reason: changesSummary,
+        unplayed_resend_sent_at: null,
       };
-
-      const autoOrderUpdate: Record<string, any> = {
-        revision_status: "approved",
-        pending_revision: false,
-      };
-
-      const notesFields = ["style_notes", "tempo", "anything_else"];
       for (const field of fieldsChanged) {
         if (notesFields.includes(field)) continue;
         const orderField = fieldMapping[field];
         if (orderField && fields[field] !== undefined && fields[field] !== null) {
-          autoOrderUpdate[orderField] = fields[field];
+          orderPatch[orderField] = fields[field];
         }
       }
-
-      // Notes fields
       const notesParts: string[] = [];
       for (const nf of notesFields) {
-        if (fieldsChanged.includes(nf) && fields[nf]) {
-          notesParts.push(`${nf}: ${fields[nf]}`);
-        }
+        if (fieldsChanged.includes(nf) && fields[nf]) notesParts.push(`${nf}: ${fields[nf]}`);
       }
-      if (notesParts.length > 0) {
-        autoOrderUpdate.notes = notesParts.join(" | ");
-      }
-
-      // Regenerate by default for ANY field change, except a small explicit
-      // blacklist of fields that don't affect the song (delivery/contact info
-      // and admin-only metadata). This prevents silent bugs when new editable
-      // fields are added — they'll trigger regen automatically.
-      const NON_REGEN_FIELDS = new Set([
-        "customer_name",   // sender's display name — doesn't affect song
-        "delivery_email",  // where to email — doesn't affect song
-        "recipient_type",  // relationship label — doesn't affect lyrics/audio
-      ]);
-      const needsRegen = fieldsChanged.some(f => !NON_REGEN_FIELDS.has(f));
+      if (notesParts.length > 0) orderPatch.notes = notesParts.join(" | ");
 
       if (needsRegen) {
-        // Snapshot current song to -prev.mp3 BEFORE clearing song_url so the
-        // admin "Restore Previous Version" button works after auto-approved
-        // customer revisions. Soft-fail: don't block the revision if backup fails.
-        try {
-          const { data: orderForBackup } = await supabase
-            .from("orders")
-            .select("song_url, automation_lyrics, cover_image_url, song_history")
-            .eq("id", order.id)
-            .maybeSingle();
-          if (orderForBackup?.song_url) {
+        // Durable backup BEFORE the pointers move. Fail closed: without a backup we
+        // do not invalidate a working song.
+        const { data: orderForBackup } = await supabase
+          .from("orders")
+          .select("song_url, automation_lyrics, cover_image_url, song_history")
+          .eq("id", order.id)
+          .maybeSingle();
+        if (orderForBackup?.song_url) {
+          try {
             const backup = await backupSongFile(
               supabaseUrl,
               supabaseServiceKey,
@@ -442,67 +360,103 @@ Deno.serve(async (req) => {
               order.id,
               orderForBackup as Record<string, unknown>,
             );
-            if (backup.backed_up) {
-              autoOrderUpdate.prev_song_url = backup.prev_song_url ?? null;
-              autoOrderUpdate.prev_automation_lyrics = backup.prev_automation_lyrics ?? null;
-              autoOrderUpdate.prev_cover_image_url = backup.prev_cover_image_url ?? null;
-              autoOrderUpdate.song_history = backup.song_history ?? [];
-            }
+            if (!backup.backed_up) throw new Error("backup returned not backed up");
+            orderPatch.prev_song_url = backup.prev_song_url ?? null;
+            orderPatch.prev_automation_lyrics = backup.prev_automation_lyrics ?? null;
+            orderPatch.prev_cover_image_url = backup.prev_cover_image_url ?? null;
+            orderPatch.song_history = backup.song_history ?? [];
+          } catch (backupErr) {
+            console.error("[SUBMIT-REVISION] Backup failed — refusing to invalidate the current song:", backupErr);
+            return new Response(
+              JSON.stringify({
+                error: "backup_failed",
+                message: "We couldn't safely save a copy of your current song, so we didn't start the change. Your free change is still available — please try again shortly.",
+              }),
+              { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
           }
-        } catch (backupErr) {
-          console.error("[SUBMIT-REVISION] Snapshot failed, proceeding without prev_*:", backupErr);
         }
 
-        // Clear automation for regeneration
-        autoOrderUpdate.automation_status = null;
-        autoOrderUpdate.automation_task_id = null;
-        autoOrderUpdate.automation_lyrics = null;
-        autoOrderUpdate.automation_started_at = null;
-        autoOrderUpdate.automation_retry_count = 0;
-        autoOrderUpdate.automation_last_error = null;
-        autoOrderUpdate.automation_raw_callback = null;
-        autoOrderUpdate.automation_style_id = null;
-        autoOrderUpdate.automation_audio_url_source = null;
-        autoOrderUpdate.generated_at = null;
-        autoOrderUpdate.inputs_hash = null;
-        autoOrderUpdate.next_attempt_at = null;
-        autoOrderUpdate.automation_manual_override_at = null;
-        autoOrderUpdate.lyrics_language_qa = null;
-        autoOrderUpdate.lyrics_raw_attempt_1 = null;
-        autoOrderUpdate.lyrics_raw_attempt_2 = null;
-        autoOrderUpdate.song_url = null;
-        autoOrderUpdate.song_title = null;
-        autoOrderUpdate.cover_image_url = null;
-        autoOrderUpdate.delivery_status = "pending";
-        autoOrderUpdate.sent_at = null;
-        autoOrderUpdate.unplayed_resend_sent_at = null;
+        orderPatch.automation_status = null;
+        orderPatch.automation_task_id = null;
+        orderPatch.automation_lyrics = null;
+        orderPatch.automation_started_at = null;
+        orderPatch.automation_retry_count = 0;
+        orderPatch.automation_last_error = null;
+        orderPatch.automation_raw_callback = null;
+        orderPatch.automation_style_id = null;
+        orderPatch.automation_audio_url_source = null;
+        orderPatch.generated_at = null;
+        orderPatch.inputs_hash = null;
+        orderPatch.next_attempt_at = null;
+        orderPatch.automation_manual_override_at = null;
+        orderPatch.lyrics_language_qa = null;
+        orderPatch.lyrics_raw_attempt_1 = null;
+        orderPatch.lyrics_raw_attempt_2 = null;
+        orderPatch.song_url = null;
+        orderPatch.song_title = null;
+        orderPatch.cover_image_url = null;
+        orderPatch.delivery_status = "pending";
+        orderPatch.sent_at = null;
+        orderPatch.unplayed_resend_sent_at = null;
 
         const regenNow = Date.now();
-        autoOrderUpdate.earliest_generate_at = new Date(regenNow + 1 * 60 * 1000).toISOString();
-        // Revisions: deliver as soon as regen completes (small buffer so the
-        // delivery cron picks it up shortly after the song is generated).
-        autoOrderUpdate.target_send_at = new Date(regenNow + 15 * 60 * 1000).toISOString();
+        orderPatch.earliest_generate_at = new Date(regenNow + 1 * 60 * 1000).toISOString();
+        orderPatch.target_send_at = new Date(regenNow + 15 * 60 * 1000).toISOString();
       }
 
-      await supabase.from("orders").update(autoOrderUpdate).eq("id", order.id);
+      const outcome = await submitRevisionRequest(
+        {
+          db: supabase as never,
+          insertRequest: async (row) => {
+            const { data, error } = await supabase.from("revision_requests").insert(row).select("id").maybeSingle();
+            if (error || !data?.id) {
+              console.error("[SUBMIT-REVISION] revision_requests insert failed, aborting:", error?.message);
+              return { id: null, error: error?.message ?? "insert returned no row" };
+            }
+            return { id: data.id as string, error: null };
+          },
+          rejectRequest: async (id, reason) => {
+            await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: reason.slice(0, 500) }).eq("id", id);
+          },
+          recordAttentionState: async (reason) => {
+            await supabase
+              .from("orders")
+              .update({ automation_last_error: `[SUBMIT-REVISION] ${reason}`.slice(0, 500) })
+              .eq("id", order.id);
+          },
+          triggerGeneration: async () => {
+            if (!needsRegen) return { started: true, error: null };
+            const triggerRes = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseServiceKey}` },
+              body: JSON.stringify({ orderId: order.id, forceRun: true }),
+            });
+            if (!triggerRes.ok) {
+              const detail = await triggerRes.text();
+              return { started: false, error: `trigger ${triggerRes.status}: ${detail}`.slice(0, 300) };
+            }
+            await triggerRes.text();
+            return { started: true, error: null };
+          },
+        },
+        {
+          entityType: "order",
+          entityId: order.id,
+          expectedRevisionCount: order.revision_count ?? null,
+          fieldsChanged,
+          requestRow: revisionData,
+          entityUpdates: orderPatch,
+        },
+      );
 
-      // Fire automation trigger if regeneration needed
-      if (needsRegen) {
-        try {
-          await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({ orderId: order.id, forceRun: true }),
-          });
-        } catch (triggerErr) {
-          console.error("[SUBMIT-REVISION] Auto-approve trigger error:", triggerErr);
-        }
+      if (outcome.status >= 400) {
+        return new Response(JSON.stringify(outcome.body), {
+          status: outcome.status,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
-      // Log activity
       try {
         await supabase.from("order_activity_log").insert({
           entity_type: "order",
@@ -513,27 +467,68 @@ Deno.serve(async (req) => {
           metadata: { fields_changed: fieldsChanged },
         });
       } catch (_) {}
-    }
+    } else {
+      // ===== MANUAL REVIEW QUEUE PATH (unchanged behaviour) =====
+      if (isEditingPending) {
+        const { data: existing } = await supabase
+          .from("revision_requests")
+          .select("id")
+          .eq("order_id", order.id)
+          .eq("status", "pending")
+          .order("submitted_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-    // Update order
-    const orderUpdate: Record<string, any> = {
-      revision_status: shouldAutoApprove ? "approved" : "pending",
-      revision_requested_at: new Date().toISOString(),
-      revision_reason: changesSummary,
-      unplayed_resend_sent_at: null,
-    };
+        if (existing) {
+          revisionData.submitted_at = new Date().toISOString();
+          const { error: updateError } = await supabase
+            .from("revision_requests")
+            .update(revisionData)
+            .eq("id", existing.id);
+          if (updateError) {
+            console.error("Update revision error:", updateError);
+            return new Response(
+              JSON.stringify({ error: "Failed to update revision request" }),
+              { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        } else {
+          const { error: insertError } = await supabase.from("revision_requests").insert(revisionData);
+          if (insertError) {
+            console.error("Insert revision error:", insertError);
+            return new Response(
+              JSON.stringify({ error: "Failed to create revision request" }),
+              { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+      } else {
+        const { error: insertError } = await supabase.from("revision_requests").insert(revisionData);
+        if (insertError) {
+          console.error("Insert revision error:", insertError);
+          return new Response(
+            JSON.stringify({ error: "Failed to create revision request" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
 
-    if (!isEditingPending) {
-      orderUpdate.revision_count = (order.revision_count || 0) + 1;
-    }
-
-    const { error: orderUpdateError } = await supabase
-      .from("orders")
-      .update(orderUpdate)
-      .eq("id", order.id);
-
-    if (orderUpdateError) {
-      console.error("Order update error:", orderUpdateError);
+      const orderUpdate: Record<string, any> = {
+        revision_status: "pending",
+        revision_requested_at: new Date().toISOString(),
+        revision_reason: changesSummary,
+        unplayed_resend_sent_at: null,
+      };
+      if (!isEditingPending) {
+        orderUpdate.revision_count = (order.revision_count || 0) + 1;
+      }
+      const { error: orderUpdateError } = await supabase
+        .from("orders")
+        .update(orderUpdate)
+        .eq("id", order.id);
+      if (orderUpdateError) {
+        console.error("Order update error:", orderUpdateError);
+      }
     }
 
     // Send confirmation email to customer (plain text for deliverability)
@@ -778,22 +773,6 @@ async function handleLeadRevision(
   for (const f of EDITABLE_FIELDS) {
     if (fields[f] !== undefined) revisionData[f] = fields[f];
   }
-  // Fail closed: without a stored request the generator has no brief to read, so we must
-  // not invalidate anything. The request row is written FIRST and rolled back to
-  // "rejected" if the atomic claim below is lost to a concurrent submission.
-  const { data: insertedRevision, error: revisionInsertError } = await supabase
-    .from("revision_requests")
-    .insert(revisionData)
-    .select("id")
-    .maybeSingle();
-  if (revisionInsertError || !insertedRevision?.id) {
-    console.error("[LEAD-REVISION] revision_requests insert failed, aborting:", revisionInsertError?.message);
-    return new Response(
-      JSON.stringify({ error: "Could not save your request. Please try again or contact support@personalsonggifts.com." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
   // Durable, append-only snapshot of EVERY current asset before we invalidate the
   // pointers. prev_* is a single slot and only covers the preview, so the old full
   // song / bonus / cover would otherwise be unrecoverable. Storage objects are never
@@ -837,12 +816,11 @@ async function handleLeadRevision(
   const prevSlotPatch = buildPrevSlotPatch(lead as Record<string, string | null>);
 
   // Apply field updates to lead + backup current preview + clear automation
+  // NOTE: revision_status / revision_requested_at / revision_count /
+  // pending_revision / bound_revision_request_id are set by
+  // claim_revision_binding inside the SAME transaction as this patch.
   const leadUpdate: Record<string, any> = {
-    revision_status: "processing",
-    revision_requested_at: new Date().toISOString(),
     revision_reason: changesSummary,
-    revision_count: (lead.revision_count || 0) + 1,
-    pending_revision: false,
 
     // Immutable append-only archive (never overwritten)
     song_history: [...existingHistory, historyEntry],
@@ -891,98 +869,60 @@ async function handleLeadRevision(
     }
   }
 
-  // Atomic, duplicate-safe claim, NULL-SAFE. `not(col, eq, x)` compiles to
-  // `col <> x`, which is UNKNOWN (and therefore excludes the row) when
-  // revision_status IS NULL — that falsely rejected every first-time requester.
-  // The eligibility predicate is expressed so NULL counts as eligible, and the
-  // purchased/converted guards are re-checked here at write time, not only on the
-  // earlier read.
-  const claimQuery = supabase
-    .from("leads")
-    .update(leadUpdate)
-    .eq("id", lead.id)
-    .or("revision_status.is.null,revision_status.neq.processing")
-    .is("order_id", null)
-    .neq("status", "converted");
-  const { data: claimedLead, error: leadUpdateError } = await (lead.revision_count === null || lead.revision_count === undefined
-    ? claimQuery.is("revision_count", null)
-    : claimQuery.eq("revision_count", lead.revision_count)
-  ).select("id");
-
-  if (leadUpdateError) {
-    console.error("[LEAD-REVISION] lead update failed, aborting:", leadUpdateError.message);
-    await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: "lead update failed" }).eq("id", insertedRevision.id);
-    return new Response(
-      JSON.stringify({ error: "Could not save your request. Please try again or contact support@personalsonggifts.com." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-  if (!claimedLead || claimedLead.length === 0) {
-    console.log(`[LEAD-REVISION] Claim not acquired for lead ${lead.id} (concurrent submission, or purchased/converted in flight) — no allowance consumed`);
-    await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: "claim not acquired (concurrent submission or purchase in flight)" }).eq("id", insertedRevision.id);
-    return new Response(
-      JSON.stringify({ error: "Your request is already being processed. We're remaking the song now." }),
-      { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
-  // Claim won: bind exactly ONE approved request to this generation. Any earlier
-  // approved request is superseded first so "the approved request" is unambiguous.
-  await supabase
-    .from("revision_requests")
-    .update({ status: "superseded" })
-    .eq("lead_id", lead.id)
-    .eq("status", "approved");
-  const { error: approveError } = await supabase
-    .from("revision_requests")
-    .update({ status: "approved", reviewed_at: new Date().toISOString(), reviewed_by: "auto" })
-    .eq("id", insertedRevision.id);
-  if (approveError) {
-    // Fail closed: without an approved brief the generator would produce a song
-    // that ignores the request. Leave the lead flagged for review, do not trigger.
-    console.error("[LEAD-REVISION] could not approve revision request, refusing to trigger:", approveError.message);
-    await supabase
-      .from("leads")
-      .update({ automation_status: "needs_review", automation_last_error: `revision approved-state write failed: ${approveError.message}` })
-      .eq("id", lead.id);
-    return new Response(
-      JSON.stringify({ error: "Could not save your request. Please contact support@personalsonggifts.com." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
-
-  // Trigger automation — record an honest attention state when the call does not
-  // actually start (previously any failure was swallowed and the record went silent).
-  try {
-    const triggerRes = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseServiceKey}`,
+  // Single shared orchestration for the lead and paid paths: insert the request
+  // as pending, then ONE atomic call that applies this patch, the allowance and
+  // the accepted-request binding together, then trigger generation with bounded
+  // automatic recovery when it does not start.
+  const outcome = await submitRevisionRequest(
+    {
+      db: supabase as never,
+      insertRequest: async (row) => {
+        const { data, error } = await supabase.from("revision_requests").insert(row).select("id").maybeSingle();
+        if (error || !data?.id) {
+          console.error("[LEAD-REVISION] revision_requests insert failed, aborting:", error?.message);
+          return { id: null, error: error?.message ?? "insert returned no row" };
+        }
+        return { id: data.id as string, error: null };
       },
-      body: JSON.stringify({ leadId: lead.id, forceRun: true }),
-    });
-    if (!triggerRes.ok) {
-      const detail = await triggerRes.text();
-      console.error(`[LEAD-REVISION] trigger returned ${triggerRes.status}:`, detail);
-      await supabase
-        .from("leads")
-        .update({
-          automation_last_error: `[LEAD-REVISION] trigger ${triggerRes.status}: ${detail}`.slice(0, 500),
-        })
-        .eq("id", lead.id);
-    }
-  } catch (e) {
-    console.error("[LEAD-REVISION] trigger error:", e);
-    await supabase
-      .from("leads")
-      .update({
-        automation_last_error: `[LEAD-REVISION] trigger threw: ${e instanceof Error ? e.message : "unknown"}`.slice(0, 500),
-      })
-      .eq("id", lead.id);
-  }
+      rejectRequest: async (id, reason) => {
+        await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: reason.slice(0, 500) }).eq("id", id);
+      },
+      recordAttentionState: async (reason) => {
+        await supabase
+          .from("leads")
+          .update({ automation_last_error: `[LEAD-REVISION] ${reason}`.slice(0, 500) })
+          .eq("id", lead.id);
+      },
+      triggerGeneration: async () => {
+        const triggerRes = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseServiceKey}` },
+          body: JSON.stringify({ leadId: lead.id, forceRun: true }),
+        });
+        if (!triggerRes.ok) {
+          const detail = await triggerRes.text();
+          return { started: false, error: `trigger ${triggerRes.status}: ${detail}`.slice(0, 300) };
+        }
+        await triggerRes.text();
+        return { started: true, error: null };
+      },
+    },
+    {
+      entityType: "lead",
+      entityId: lead.id,
+      expectedRevisionCount: lead.revision_count ?? null,
+      fieldsChanged,
+      requestRow: revisionData,
+      entityUpdates: leadUpdate,
+    },
+  );
 
+  if (outcome.status >= 400) {
+    return new Response(JSON.stringify(outcome.body), {
+      status: outcome.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   // Activity log
   try {

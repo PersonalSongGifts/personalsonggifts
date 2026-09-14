@@ -3,7 +3,7 @@
 //   deno test --allow-net supabase/functions/_shared/revision-orchestration_test.ts
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { submitRevisionRequest, deliverLeadPreview, purchaseGuard } from "./revision-orchestration.ts";
-import { fetchBoundBriefForGeneration, mergeSenderContext } from "./revision-binding.ts";
+import { fetchBoundBriefForGeneration, mergeSenderContext, mustAbortForUnboundBrief, revisionInFlight } from "./revision-binding.ts";
 import { buildPronunciationBlock, parsePronunciation, safeDisplayName } from "./pronunciation.ts";
 import { buildVersionView } from "./previous-version.ts";
 import { classifySendOutcome, customerFacingSendStatus, shouldAutoRetry } from "./email-outbox.ts";
@@ -85,7 +85,7 @@ function submitDeps(db: ReturnType<typeof makeDb>, overrides: Partial<{
       db,
       insertRequest: async () => ({ id: overrides.insertId === undefined ? "req-1" : overrides.insertId, error: null }),
       rejectRequest: async (id: string, reason: string) => { log.push(`reject:${id}:${reason}`); },
-      flagNeedsReview: async (reason: string) => { log.push(`needs_review:${reason}`); },
+      recordAttentionState: async (reason: string) => { log.push(`attention:${reason}`); },
       triggerGeneration: async () => ({
         started: overrides.triggerStarted ?? true,
         error: overrides.triggerError ?? null,
@@ -189,7 +189,7 @@ Deno.test("provider accepted-but-timeout on the trigger reports honestly, never 
   const res = await submitRevisionRequest(deps, baseInput);
   assertEquals(res.status, 202);
   assertEquals(res.body.started, false);
-  assert(log.some((l) => l.startsWith("needs_review:revision trigger did not start: fetch timeout")));
+  assert(log.some((l) => l.startsWith("attention:revision trigger did not start: fetch timeout")));
 });
 
 // --------------------------------------------------------------------------
@@ -335,7 +335,12 @@ function deliverDeps(db: ReturnType<typeof makeDb>, record: Record<string, unkno
       readiness: (r: Record<string, unknown>) =>
         r.preview_song_url ? { ready: true, reason: null } : { ready: false, reason: "generation_incomplete" },
       send: async () => sendOutcome,
-      markAttempted: async (id: string) => { marked.push(id); return { error: null }; },
+      markAttempted: async (id: string, _providerMessageId: string | null, expectedGenerationKey: string | null) => {
+        // Fenced: a stale generation key must never stamp "sent" on a newer row.
+        const fenced = expectedGenerationKey === ((record?.generated_at as string | null) ?? null);
+        if (fenced) marked.push(id);
+        return { error: null, fenced };
+      },
       note: async (_id: string, message: string) => { notes.push(message); },
     },
   };
@@ -361,7 +366,7 @@ Deno.test("thrown send is AMBIGUOUS: never marked sent, never auto-resent", asyn
   const res = await deliverLeadPreview(d.deps, "L1");
   assertEquals(res.state, "ambiguous");
   assertEquals(d.marked.length, 0);
-  assert(d.notes[0].includes("outcome unknown"));
+  assert(d.notes.some((n) => n.includes("outcome unknown")));
 
   // A later pass must not silently resend an ambiguous attempt.
   const again = deliverDeps(db, readyRecord, { kind: "response", ok: true, status: 200 });
@@ -405,4 +410,49 @@ Deno.test("a claim RPC failure means we do NOT send", async () => {
   assertEquals(res.state, "not_claimed");
   assertEquals(res.reason, "outbox unavailable");
   assertEquals(d.marked.length, 0);
+});
+
+// --------------------------------------------------------------------------
+// Regression: 'approved' MUST count as in flight. An approved-but-unbound
+// record previously returned ok:true and was generated with no notes.
+// --------------------------------------------------------------------------
+Deno.test("revisionInFlight covers every open state, including 'approved'", () => {
+  for (const state of ["processing", "pending", "approved", "in_progress", "APPROVED"]) {
+    assertEquals(revisionInFlight(state), true, `expected ${state} to be in flight`);
+  }
+  for (const state of [null, undefined, "", "completed", "rejected", "cancelled"]) {
+    assertEquals(revisionInFlight(state as string | null), false, `expected ${String(state)} to be settled`);
+  }
+});
+
+Deno.test("approved revision with NO bound request id fails closed on both paths", async () => {
+  for (const entityType of ["lead", "order"] as const) {
+    const result = await fetchBoundBriefForGeneration(
+      {
+        from: () => ({
+          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
+        }),
+      } as never,
+      entityType,
+      { id: "e1", revision_status: "approved", bound_revision_request_id: null },
+    );
+    assertEquals(result.ok, false);
+    assert(mustAbortForUnboundBrief(result));
+    void entityType;
+  }
+});
+
+Deno.test("markAttempted is fenced: a stale generation key never stamps 'sent'", async () => {
+  const db = makeDb({});
+  const staleRecord = { id: "L1", preview_song_url: "p.mp3", generated_at: "2026-09-14T19:03:42Z" };
+  const f = deliverDeps(db, staleRecord, { kind: "response", ok: true, status: 201, providerMessageId: "m1" });
+  // Simulate a newer generation landing between claim and stamp.
+  const original = f.deps.markAttempted;
+  f.deps.markAttempted = async (id: string, mid: string | null, _key: string | null) => original(id, mid, "different-generation");
+  const out = await deliverLeadPreview(f.deps as never, "L1");
+  // The provider accepted, so we do not pretend it failed — but nothing is
+  // stamped on the row, and the mismatch is recorded honestly.
+  assertEquals(out.state, "accepted");
+  assertEquals(f.marked.length, 0);
+  assert(f.notes.some((n) => n.includes("generation that has since changed")));
 });

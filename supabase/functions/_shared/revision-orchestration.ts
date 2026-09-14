@@ -6,7 +6,7 @@
 // longer a reason for missing tests. Each function below IS the code path that
 // runs in production.
 
-import { claimRevisionBinding, CLAIM_RESPONSES, type ClaimOutcome } from "./revision-binding.ts";
+import { claimRevisionBinding, reconcileClaim, releaseRevisionBinding, CLAIM_RESPONSES, type ClaimOutcome } from "./revision-binding.ts";
 import { claimEmailSend, classifySendOutcome, settleEmailSend, type OutboxClaim } from "./email-outbox.ts";
 import { assertPurchasableVersion, type VersionRecord } from "./previous-version.ts";
 
@@ -20,7 +20,8 @@ export interface SubmitDeps {
   };
   insertRequest: (row: Record<string, unknown>) => Promise<{ id: string | null; error: string | null }>;
   rejectRequest: (id: string, reason: string) => Promise<void>;
-  flagNeedsReview: (reason: string) => Promise<void>;
+  /** Records an honest error state; recovery stays automatic and bounded. */
+  recordAttentionState: (reason: string) => Promise<void>;
   triggerGeneration: (requestId: string) => Promise<{ started: boolean; error: string | null }>;
 }
 
@@ -30,6 +31,8 @@ export interface SubmitInput {
   expectedRevisionCount: number | null;
   fieldsChanged: string[];
   requestRow: Record<string, unknown>;
+  /** Customer edits + generation-reset snapshot, applied atomically with the binding. */
+  entityUpdates?: Record<string, unknown>;
 }
 
 export interface SubmitOutcome {
@@ -65,12 +68,23 @@ export async function submitRevisionRequest(deps: SubmitDeps, input: SubmitInput
     };
   }
 
-  const claim = await claimRevisionBinding(deps.db, {
+  let claim = await claimRevisionBinding(deps.db, {
     entityType: input.entityType,
     entityId: input.entityId,
     requestId: inserted.id,
     expectedRevisionCount: input.expectedRevisionCount,
+    entityUpdates: input.entityUpdates,
   });
+
+  // Accepted-but-timeout: the RPC may have committed before the response was
+  // lost. Read the request back rather than rejecting work the database accepted
+  // (which would also consume the allowance a second time on the customer's retry).
+  if (claim.result === "error") {
+    const reconciled = await reconcileClaim(deps.db as never, input.entityType, input.entityId, inserted.id);
+    if (reconciled.bound) {
+      claim = { result: "claimed", boundRequestId: inserted.id, revisionCount: claim.revisionCount, error: null };
+    }
+  }
 
   if (claim.result !== "claimed") {
     await deps.rejectRequest(inserted.id, `claim result: ${claim.result}${claim.error ? ` (${claim.error})` : ""}`);
@@ -78,11 +92,37 @@ export async function submitRevisionRequest(deps: SubmitDeps, input: SubmitInput
     return { status: response.status, body: { error: claim.result, message: response.message }, claim };
   }
 
-  const trigger = await deps.triggerGeneration(inserted.id);
+  // A thrown trigger is the same case as a returned failure: never let an
+  // exception escape and leave the record bound but silent.
+  let trigger: { started: boolean; error: string | null };
+  try {
+    trigger = await deps.triggerGeneration(inserted.id);
+  } catch (e) {
+    trigger = { started: false, error: e instanceof Error ? e.message : "trigger threw" };
+  }
+
   if (!trigger.started) {
-    // Bound but not started: honest attention state, allowance already consumed
-    // by the atomic claim, nothing lost or duplicated.
-    await deps.flagNeedsReview(`revision trigger did not start: ${trigger.error ?? "unknown"}`);
+    await deps.recordAttentionState(`revision trigger did not start: ${trigger.error ?? "unknown"}`);
+    // Bounded automatic recovery: if no provider task exists, hand the free
+    // change back and reopen the record — no human release gate. If a task does
+    // exist the work is running and we leave it alone.
+    const released = await releaseRevisionBinding(
+      deps.db,
+      input.entityType,
+      input.entityId,
+      inserted.id,
+      `trigger did not start: ${trigger.error ?? "unknown"}`,
+    );
+    if (released === "released") {
+      return {
+        status: 503,
+        body: {
+          error: "not_started",
+          message: "We couldn't start your new version just now and your free change is still available — please submit it again in a few minutes.",
+        },
+        claim,
+      };
+    }
     return {
       status: 202,
       body: {
@@ -113,11 +153,19 @@ export interface DeliverDeps {
   /** Re-read immediately before sending; batch snapshots are not trusted. */
   reloadRecord: (id: string) => Promise<Record<string, unknown> | null>;
   readiness: (record: Record<string, unknown>) => { ready: boolean; reason: string | null };
-  send: (record: Record<string, unknown>, idempotencyKey: string) => Promise<
-    { kind: "response"; ok: boolean; status: number; providerMessageId?: string | null } | { kind: "threw"; message: string }
+  send: (record: Record<string, unknown>, providerIdempotencyKey: string | null) => Promise<
+    { kind: "response"; ok: boolean; status: number; providerMessageId?: string | null; body?: string | null } | { kind: "threw"; message: string }
   >;
-  /** Only ever called after the provider ACCEPTS. */
-  markAttempted: (id: string, providerMessageId: string | null) => Promise<{ error: string | null }>;
+  /**
+   * Only ever called after the provider ACCEPTS, and FENCED to the generation the
+   * email was about: `expectedGenerationKey` must still match the row, otherwise a
+   * newer revision or purchase would be overwritten with a stale "sent" marker.
+   */
+  markAttempted: (
+    id: string,
+    providerMessageId: string | null,
+    expectedGenerationKey: string | null,
+  ) => Promise<{ error: string | null; fenced: boolean }>;
   note: (id: string, message: string) => Promise<void>;
 }
 
@@ -149,18 +197,36 @@ export async function deliverLeadPreview(deps: DeliverDeps, leadId: string): Pro
     return { sent: false, state: "not_claimed", reason: claim.error ?? claim.state ?? "already_claimed", claim };
   }
 
-  const key = `lead_preview:${leadId}:${generationKey ?? "no-generation"}`;
-  const outcome = await deps.send(fresh, key);
+  // Never let a thrown send escape: an exception here used to leave a claimed
+  // attempt with no settlement at all.
+  let outcome: Awaited<ReturnType<DeliverDeps["send"]>>;
+  try {
+    outcome = await deps.send(fresh, claim.providerKey);
+  } catch (e) {
+    outcome = { kind: "threw", message: e instanceof Error ? e.message : "send threw" };
+  }
   const classified = classifySendOutcome(outcome);
 
-  await settleEmailSend(deps.db, claim.outboxId!, classified.state, {
+  const settled = await settleEmailSend(deps.db, claim.outboxId!, classified.state, {
     providerMessageId: classified.providerMessageId,
     error: classified.error,
   });
+  if (!settled.ok || !settled.settled) {
+    // The settle result is checked: if we could not record the outcome, say so
+    // rather than reporting a delivery we cannot account for.
+    await deps.note(
+      leadId,
+      `preview email outcome ${classified.state} could not be recorded (${settled.error ?? settled.observedState ?? "not claimed"})`,
+    );
+  }
 
   if (classified.state === "accepted") {
-    const marked = await deps.markAttempted(leadId, classified.providerMessageId);
-    if (marked.error) await deps.note(leadId, `preview email accepted but record update failed: ${marked.error}`);
+    const marked = await deps.markAttempted(leadId, classified.providerMessageId, generationKey);
+    if (marked.error) {
+      await deps.note(leadId, `preview email accepted but record update failed: ${marked.error}`);
+    } else if (!marked.fenced) {
+      await deps.note(leadId, "preview email accepted for a generation that has since changed; record left untouched");
+    }
     return { sent: true, state: "accepted", reason: null, claim };
   }
 

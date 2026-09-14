@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import MP3Tag from "npm:mp3tag.js@3.11.0";
 import { logActivity } from "../_shared/activity-log.ts";
 import { shouldAllowRevisionFinalization } from "../_shared/revision-gates.ts";
+import { bindRevisionTask, revisionInFlight } from "../_shared/revision-binding.ts";
 
 
 const corsHeaders = {
@@ -1163,8 +1164,23 @@ Unsubscribe: https://personalsonggifts.lovable.app/unsubscribe?email=${encodeURI
       // send atomically before emailing. Both scheduler timers are set consistently so
       // there is no hidden second path — the previous code cleared only
       // `preview_scheduled_at` while a stale `target_send_at` still released the email.
-      const completingRevision = (entity.revision_status as string | null) === "processing";
+      const completingRevision = revisionInFlight(entity.revision_status);
       const revisedSendAt = new Date().toISOString();
+
+      // Immutable callback identity. Timestamp comparison is not identity: only the
+      // task that was BOUND to the accepted revision request may finalise it, so an
+      // older task can never overwrite a newer revision.
+      if (completingRevision) {
+        const identity = await bindRevisionTask(supabase as never, entityType as "lead" | "order", entityId, taskId);
+        if (identity === "other_task") {
+          console.log(`[CALLBACK] Ignoring callback from task ${taskId}: a different task owns this revision`);
+          return new Response("Superseded revision task", { status: 200, headers: corsHeaders });
+        }
+        if (identity === "error") {
+          console.error(`[CALLBACK] Could not verify revision task identity for ${entityId} — refusing to finalise`);
+          return new Response("Revision identity unverified", { status: 500, headers: corsHeaders });
+        }
+      }
 
       console.log(`[CALLBACK] Updating lead ${entityId} with final song data`);
       const { data: primaryWritten, error: primaryWriteErr } = await supabase

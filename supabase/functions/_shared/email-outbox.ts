@@ -21,6 +21,14 @@ export interface OutboxClaim {
   state: OutboxState | null;
   attemptCount: number;
   claimed: boolean;
+  /**
+   * UUID passed to Brevo as `headers.idempotencyKey`. Brevo documents a UUID key
+   * with a 30-minute TTL on POST /v3/smtp/email; a reused key inside that window
+   * is rejected with `duplicate_parameter` and NOT sent again. A retry after a
+   * definite failure therefore gets a FRESH key from the outbox, while a retry of
+   * the same in-flight attempt reuses this one.
+   */
+  providerKey: string | null;
   error: string | null;
 }
 
@@ -46,6 +54,8 @@ export async function claimEmailSend(
     generationKey: string | null;
     recipients?: unknown;
     maxAttempts?: number;
+    /** After this many seconds a crashed claim is reclaimable. */
+    leaseSeconds?: number;
   },
 ): Promise<OutboxClaim> {
   const key = buildIdempotencyKey(params);
@@ -58,18 +68,20 @@ export async function claimEmailSend(
       p_generation_key: params.generationKey,
       p_recipients: params.recipients ?? null,
       p_max_attempts: params.maxAttempts ?? 3,
+      p_lease_seconds: params.leaseSeconds ?? 600,
     });
     if (error) {
       // Fail closed: if we cannot claim, we do not send. Never send "just in case".
-      return { outboxId: null, state: null, attemptCount: 0, claimed: false, error: error.message };
+      return { outboxId: null, state: null, attemptCount: 0, claimed: false, providerKey: null, error: error.message };
     }
     const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
-    if (!row) return { outboxId: null, state: null, attemptCount: 0, claimed: false, error: "claim returned no row" };
+    if (!row) return { outboxId: null, state: null, attemptCount: 0, claimed: false, providerKey: null, error: "claim returned no row" };
     return {
       outboxId: (row.outbox_id as string | null) ?? null,
       state: (row.state as OutboxState | null) ?? null,
       attemptCount: Number(row.attempt_count ?? 0),
       claimed: row.claimed === true,
+      providerKey: (row.provider_key as string | null) ?? null,
       error: null,
     };
   } catch (e) {
@@ -78,6 +90,7 @@ export async function claimEmailSend(
       state: null,
       attemptCount: 0,
       claimed: false,
+      providerKey: null,
       error: e instanceof Error ? e.message : "claim threw",
     };
   }
@@ -88,17 +101,25 @@ export async function settleEmailSend(
   outboxId: string,
   state: Exclude<OutboxState, "claimed">,
   detail?: { providerMessageId?: string | null; error?: string | null },
-): Promise<{ ok: boolean; error: string | null }> {
+): Promise<{ ok: boolean; settled: boolean; observedState: OutboxState | null; error: string | null }> {
   try {
-    const { error } = await db.rpc("settle_email_send", {
+    const { data, error } = await db.rpc("settle_email_send", {
       p_outbox_id: outboxId,
       p_state: state,
       p_provider_message_id: detail?.providerMessageId ?? null,
       p_error: detail?.error ?? null,
     });
-    return { ok: !error, error: error?.message ?? null };
+    if (error) return { ok: false, settled: false, observedState: null, error: error.message };
+    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+    return {
+      ok: true,
+      // false = the row was not in `claimed` state, i.e. someone else settled it.
+      settled: row?.settled === true,
+      observedState: (row?.state as OutboxState | null) ?? null,
+      error: null,
+    };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "settle threw" };
+    return { ok: false, settled: false, observedState: null, error: e instanceof Error ? e.message : "settle threw" };
   }
 }
 
@@ -109,7 +130,7 @@ export async function settleEmailSend(
  *  - a definite non-2xx is FAILED and may be retried within max_attempts.
  */
 export function classifySendOutcome(outcome:
-  | { kind: "response"; ok: boolean; status: number; providerMessageId?: string | null }
+  | { kind: "response"; ok: boolean; status: number; providerMessageId?: string | null; body?: string | null }
   | { kind: "threw"; message: string },
 ): { state: Exclude<OutboxState, "claimed">; retryable: boolean; error: string | null; providerMessageId: string | null } {
   if (outcome.kind === "threw") {
@@ -117,6 +138,12 @@ export function classifySendOutcome(outcome:
   }
   if (outcome.ok) {
     return { state: "accepted", retryable: false, error: null, providerMessageId: outcome.providerMessageId ?? null };
+  }
+  // Brevo rejects a reused idempotency key within its 30-minute TTL with
+  // `duplicate_parameter`. That is EVIDENCE the message was already accepted, so
+  // it reconciles an ambiguous attempt instead of counting as a failure.
+  if (String(outcome.body ?? "").includes("duplicate_parameter")) {
+    return { state: "accepted", retryable: false, error: "provider reported duplicate (already accepted)", providerMessageId: null };
   }
   return { state: "failed", retryable: true, error: `provider status ${outcome.status}`, providerMessageId: null };
 }

@@ -1,3 +1,4 @@
+import { buildVersionView } from "../_shared/previous-version.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 
 const corsHeaders = {
@@ -21,7 +22,7 @@ Deno.serve(async (req) => {
 
     const { data: lead, error } = await supabase
       .from("leads")
-      .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at, order_id, bonus_song_url, revision_token, revision_count, max_revisions, revision_status")
+      .select("id, recipient_name, recipient_type, occasion, genre, preview_song_url, cover_image_url, song_title, status, preview_opened_at, order_id, bonus_song_url, revision_token, revision_count, max_revisions, revision_status, revision_requested_at, generated_at, prev_song_url, full_song_url, bound_revision_request_id")
       .eq("preview_token", previewToken)
       .single();
 
@@ -39,7 +40,12 @@ Deno.serve(async (req) => {
       }), { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    if (!lead.preview_song_url) {
+    // While a requested change is being made, whatever sits on the row is the
+    // PREVIOUS version. It stays playable, labelled as previous, and checkout is
+    // gated until the current accepted generation is ready.
+    const versions = buildVersionView(lead as Record<string, unknown>);
+
+    if (!versions.currentPreviewUrl && !versions.previousPreviewUrl) {
       return new Response(JSON.stringify({ error: "Preview not ready yet" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -159,7 +165,15 @@ Deno.serve(async (req) => {
       recipientType: lead.recipient_type,
       occasion: lead.occasion,
       genre: lead.genre,
-      previewUrl: lead.preview_song_url,
+      previewUrl: versions.currentPreviewUrl ?? versions.previousPreviewUrl,
+      // Explicit version state for the page: never present the previous song as
+      // the requested change, and never let it be purchased as the current one.
+      isPreviousVersion: !versions.currentPreviewUrl && !!versions.previousPreviewUrl,
+      previousVersionUrl: versions.previousPreviewUrl,
+      previousVersionLabel: versions.previousLabel,
+      canPurchase: versions.canPurchase,
+      purchaseBlockReason: versions.purchaseBlockReason,
+      versionNote: versions.customerNote,
       coverImageUrl: lead.cover_image_url,
       songTitle: lead.song_title,
        // Do not expose the bonus asset itself before purchase. The client only
@@ -167,7 +181,7 @@ Deno.serve(async (req) => {
        memoryPackageAvailable: !!lead.bonus_song_url,
        revisionToken: lead.revision_token ?? null,
        revisionsLeft: Math.max(0, (lead.max_revisions ?? 1) - (lead.revision_count ?? 0)),
-       revisionPending: lead.revision_status === "processing",
+       revisionPending: versions.revisionInFlight,
 
        // New generic fields (preferred)
       targetedPromoSlug,

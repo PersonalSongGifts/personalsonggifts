@@ -1,4 +1,5 @@
 import Stripe from "npm:stripe@18.5.0";
+import { assertPurchasableVersion } from "../_shared/previous-version.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import {
   buildLeadCheckoutAmounts,
@@ -49,7 +50,7 @@ Deno.serve(async (req) => {
     // Find lead by preview token
     const { data: lead, error: leadError } = await supabase
       .from("leads")
-      .select("id, email, customer_name, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, full_song_url, bonus_song_url")
+      .select("id, email, customer_name, recipient_name, recipient_type, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, full_song_url, bonus_song_url, preview_song_url, prev_song_url, revision_status, revision_requested_at, generated_at")
       .eq("preview_token", previewToken)
       .single();
 
@@ -65,6 +66,20 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "Already purchased" }),
         { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Never sell the version the customer just asked us to change. This guard is
+    // at CHECKOUT CREATION only: an already-accepted payment is never rejected and
+    // fulfilment is never dropped — payment webhooks keep their own hold logic.
+    const purchasable = assertPurchasableVersion(lead as Record<string, unknown>);
+    if (!purchasable.ok && purchasable.reason === "revision_in_flight") {
+      return new Response(
+        JSON.stringify({
+          error: "revision_in_flight",
+          message: "We're finishing the new version you asked for. You'll be able to buy it as soon as it's ready — we'll email you.",
+        }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

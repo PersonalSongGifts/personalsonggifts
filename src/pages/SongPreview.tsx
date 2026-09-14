@@ -29,6 +29,12 @@ interface PreviewData {
   revisionToken?: string | null;
   revisionsLeft?: number;
   revisionPending?: boolean;
+  /** True when the audio on this page is the version from BEFORE the change request. */
+  isPreviousVersion?: boolean;
+  previousVersionLabel?: string | null;
+  canPurchase?: boolean;
+  purchaseBlockReason?: string | null;
+  versionNote?: string | null;
   // Back-compat (older server response)
   flash20Eligible?: boolean;
   flash20Expired?: boolean;
@@ -458,6 +464,16 @@ export default function SongPreview() {
               <p className="text-muted-foreground">
                 {previewData.genre} • {previewData.occasion}
               </p>
+              {previewData.isPreviousVersion && (
+                <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                  <p className="font-medium text-foreground">
+                    {previewData.previousVersionLabel || "Previous version (before your change request)"}
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    {previewData.versionNote || "We're making your new version now. You can still play this one — the new one replaces it when it's ready."}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Playback Controls */}
@@ -607,15 +623,20 @@ export default function SongPreview() {
               <Button
                 className={`w-full ${isVday10 ? "bg-pink-600 hover:bg-pink-700" : ""}`}
                 size="lg"
-                disabled={purchasing}
+                disabled={purchasing || previewData.canPurchase === false}
                 onClick={handlePurchase}
               >
                 {purchasing
                   ? "Loading..."
-                  : packageSelected
-                    ? `Get Full Song + Package — ${formatUsd(displayedTotalCents)}`
-                    : `Get Full Song — ${formatUsd(displayedBaseCents)}`}
+                  : previewData.canPurchase === false
+                    ? "Available when your new version is ready"
+                    : packageSelected
+                      ? `Get Full Song + Package — ${formatUsd(displayedTotalCents)}`
+                      : `Get Full Song — ${formatUsd(displayedBaseCents)}`}
               </Button>
+              {previewData.canPurchase === false && previewData.versionNote && (
+                <p className="text-center text-sm text-muted-foreground">{previewData.versionNote}</p>
+              )}
             </CardContent>
           </Card>
 
