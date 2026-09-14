@@ -114,7 +114,7 @@ function deliverDeps(db: unknown, record: Record<string, unknown> | null) {
       db,
       reloadRecord: async () => record,
       readiness: () => ({ ready: true, reason: null }),
-      send: async (providerIdempotencyKey: string | null) => {
+      send: async (_record: Record<string, unknown>, providerIdempotencyKey: string | null) => {
         providerKeys.push(providerIdempotencyKey);
         return { kind: "response" as const, ok: true, status: 200, providerMessageId: "m1", body: "{}" };
       },
