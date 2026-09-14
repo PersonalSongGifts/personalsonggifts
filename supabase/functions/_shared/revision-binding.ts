@@ -307,7 +307,7 @@ export async function attachRevisionTask(
   db: RpcDb,
   entityType: "lead" | "order",
   entityId: string,
-  params: { requestId: string; generationId: string; taskId: string },
+  params: { requestId: string; generationId: string; taskId: string; lane?: "primary" | "bonus" },
 ): Promise<"attached" | "other_task" | "identity_mismatch" | "no_revision" | "error"> {
   try {
     const { data, error } = await db.rpc("attach_revision_task", {
@@ -316,6 +316,7 @@ export async function attachRevisionTask(
       p_request_id: params.requestId,
       p_generation_id: params.generationId,
       p_task_id: params.taskId,
+      p_lane: params.lane ?? "primary",
     });
     if (error) return "error";
     const value = Array.isArray(data) ? data[0] : data;
@@ -347,12 +348,14 @@ export async function verifyRevisionTask(
   entityType: "lead" | "order",
   entityId: string,
   taskId: string,
+  lane: "primary" | "bonus" = "primary",
 ): Promise<TaskVerification> {
   try {
     const { data, error } = await db.rpc("verify_revision_task", {
       p_entity_type: entityType,
       p_entity_id: entityId,
       p_task_id: taskId,
+      p_lane: lane,
     });
     if (error) return { result: "error", requestId: null, generationId: null, boundTaskId: null, error: error.message };
     const row = firstRow(data);
@@ -379,9 +382,12 @@ export async function verifyRevisionTask(
  */
 export function revisionFinalWriteFence(params: {
   taskId: string;
+  lane?: "primary" | "bonus";
   verification?: TaskVerification | null;
 }): Record<string, string> {
-  const fence: Record<string, string> = { automation_task_id: params.taskId };
+  const fence: Record<string, string> = {
+    [params.lane === "bonus" ? "bonus_automation_task_id" : "automation_task_id"]: params.taskId,
+  };
   const v = params.verification;
   if (v && v.result === "verified") {
     if (v.requestId) fence.bound_revision_request_id = v.requestId;

@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLyricsBriefBlock, } from "../_shared/revision-brief.ts";
 import { fetchBoundBriefForGeneration, mustAbortForUnboundBrief } from "../_shared/revision-binding.ts";
+import { buildPronunciationBlock, parsePronunciation, safeDisplayName } from "../_shared/pronunciation.ts";
 import {
   getLanguageLabel,
   buildLanguagePromptBlock,
@@ -311,15 +312,12 @@ Deno.serve(async (req) => {
       })
       .eq("id", entityId);
 
-    // Build user prompt with entity data
-    // If pronunciation override exists, use it ONLY (display name never enters the prompt)
-    const recipientNameForLyrics = entity.recipient_name_pronunciation || entity.recipient_name;
-    
-    const pronunciationInstruction = entity.recipient_name_pronunciation 
-      ? `\n\nIMPORTANT PRONUNCIATION:
-When singing the recipient's name, use exactly: "${entity.recipient_name_pronunciation}"
-This spelling is intentional for correct pronunciation and must be followed.`
-      : "";
+    // The customer-facing spelling is always the stored recipient name. The
+    // separate field is parsed into bounded performance guidance; prose and
+    // nicknames can never replace the name in lyrics or titles.
+    const recipientNameForLyrics = safeDisplayName(entity.recipient_name, entity.recipient_name_pronunciation);
+    const pronunciationHint = parsePronunciation(recipientNameForLyrics, entity.recipient_name_pronunciation);
+    const pronunciationInstruction = buildPronunciationBlock(pronunciationHint);
 
     // Add language-specific prompt block
     const languagePromptBlock = buildLanguagePromptBlock(languageCode);
@@ -333,13 +331,16 @@ This spelling is intentional for correct pronunciation and must be followed.`
     const briefResult = await fetchBoundBriefForGeneration(supabase as never, entityType as "lead" | "order", { id: entityId, revision_status: (entity as Record<string, unknown>).revision_status as string | null, bound_revision_request_id: (entity as Record<string, unknown>).bound_revision_request_id as string | null });
     if (mustAbortForUnboundBrief(briefResult)) {
       console.error(`[LYRICS] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
-      await supabase
+      const { error: briefStatusError } = await supabase
         .from(tableName)
         .update({
           automation_status: "needs_review",
           automation_last_error: `revision brief unreadable, refusing to generate: ${briefResult.error}`,
         })
         .eq("id", entityId);
+      if (briefStatusError) {
+        console.error(`[LYRICS] Could not record fail-closed status: ${briefStatusError.message}`);
+      }
       return new Response(
         JSON.stringify({ error: "revision_brief_unreadable", detail: briefResult.error }),
         { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -594,7 +595,7 @@ Output ONLY the complete condensed lyrics:\n\n${finalLyrics}`;
     }
 
     // Extract title from lyrics (look for first meaningful line after [Intro])
-    let songTitle = `Song for ${entity.recipient_name}`;
+    let songTitle = `Song for ${recipientNameForLyrics}`;
     const lines = finalLyrics.split('\n').filter((l: string) => l.trim() && !l.startsWith('['));
     if (lines.length > 0) {
       // Use first line of chorus or verse as title inspiration
