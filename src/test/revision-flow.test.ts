@@ -117,7 +117,7 @@ describe("leadPreviewSendReadiness", () => {
 
   it("still releases a record whose revision_status was left at processing by old code", () => {
     // The stuck-flag cohort: audio finished, revision_status never updated.
-    expect(leadPreviewSendReadiness({ ...readyLead, ...{ revision_status: "processing" } as never }).ready).toBe(true);
+    expect(leadPreviewSendReadiness({ ...readyLead, revision_status: "processing" } as Parameters<typeof leadPreviewSendReadiness>[0]).ready).toBe(true);
   });
 
   it("respects the incident cohort hold without any global pause", () => {
@@ -132,7 +132,7 @@ describe("leadPreviewSendReadiness", () => {
   it("never re-sends, never mails converted or dismissed leads", () => {
     expect(leadPreviewSendReadiness({ ...readyLead, preview_sent_at: "2026-09-01T00:00:00Z" }).reason).toBe("already_sent");
     expect(leadPreviewSendReadiness({ ...readyLead, status: "converted" }).reason).toBe("converted");
-    expect(leadPreviewSendReadiness({ ...readyLead, ...{ dismissed_at: "x" } as never }).reason).toBe("dismissed");
+    expect(leadPreviewSendReadiness({ ...readyLead, dismissed_at: "2026-09-01T00:00:00Z" }).reason).toBe("dismissed");
   });
 
   it("requires every asset the email links to", () => {
