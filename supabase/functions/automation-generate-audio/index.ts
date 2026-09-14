@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { getLanguageLabel } from "../_shared/language-utils.ts";
+import { buildAudioStyleSuffix, fetchLatestRevisionBrief } from "../_shared/revision-brief.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

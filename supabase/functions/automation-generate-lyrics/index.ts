@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { logActivity } from "../_shared/activity-log.ts";
+import { buildLyricsBriefBlock, fetchLatestRevisionBrief } from "../_shared/revision-brief.ts";
 import {
   getLanguageLabel,
   buildLanguagePromptBlock,
