@@ -104,10 +104,17 @@ Deno.test("brief text is sanitized and bounded", () => {
 });
 
 Deno.test("style budget covers base + suffix and reports what did not fit", () => {
-  const base = "x".repeat(190);
+  const base = "x".repeat(170);
   const res = applyAudioStyleBrief(base, { tempo: "slower", style_notes: "warm strings", anything_else: null }, 200);
-  assertEquals(res.style, `${base}. tempo: slower`.length <= 200 ? `${base}. tempo: slower` : base);
+  // Tempo has priority and fits (185 chars); the free-text notes do not, and are
+  // reported instead of being truncated mid-sentence.
+  assertEquals(res.style, `${base}. tempo: slower`);
   assertEquals(res.dropped, ["style_notes"]);
+
+  // Nothing fits at all: base is preserved, both parts reported.
+  const tight = applyAudioStyleBrief("y".repeat(200), { tempo: "slower", style_notes: "warm", anything_else: null }, 200);
+  assertEquals(tight.style.length, 200);
+  assertEquals(tight.dropped, ["tempo", "style_notes"]);
 
   const roomy = applyAudioStyleBrief("pop ballad", { tempo: "slower", style_notes: "warm strings", anything_else: null }, 1000);
   assertEquals(roomy.dropped, []);
