@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { leadMatchesOrder } from "../_shared/lead-order-matching.ts";
+import { classifyTriggerPreflight } from "../_shared/revision-gates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -195,16 +196,37 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Mark as pending
-    console.log(`[TRIGGER] Marking ${entityType} ${entityId} as pending`);
+    // ---- Safety preflight: decided BEFORE any status mutation ----
+    // Refusals must never park the record in "pending" nor wipe its retry history,
+    // otherwise the recovery loop churns forever (old audio -> lyrics 409 -> 500).
+    const preflight = classifyTriggerPreflight(entityType, entity, { forceRun, skipLyrics });
+    if (preflight.action === "refuse") {
+      console.log(`[TRIGGER] Preflight refused ${entityType} ${entityId}: ${preflight.classification} - ${preflight.reason}`);
+      await supabase
+        .from(tableName)
+        .update({
+          automation_status: "needs_review",
+          automation_last_error: `[TRIGGER] Preflight refused (${preflight.classification}): ${preflight.reason}`.slice(0, 500),
+        })
+        .eq("id", entityId);
+      return new Response(
+        JSON.stringify({ error: preflight.reason, classification: preflight.classification, needsReview: true }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    console.log(`[TRIGGER] Preflight ok for ${entityType} ${entityId}: ${preflight.classification}`);
+
+    // Mark as pending. Retry history is preserved (only an explicit force clears it), so
+    // bounded-retry accounting stays intact across attempts.
+    const priorRetryCount = entity.automation_retry_count || 0;
+    console.log(`[TRIGGER] Marking ${entityType} ${entityId} as pending (retry_count kept at ${priorRetryCount})`);
     await supabase
       .from(tableName)
       .update({
         automation_status: "pending",
-        automation_retry_count: 0,
         automation_last_error: null,
         automation_started_at: new Date().toISOString(),
-        ...(forceRun ? { short_retry_count: 0 } : {}),
+        ...(forceRun ? { automation_retry_count: 0, short_retry_count: 0 } : {}),
       })
       .eq("id", entityId);
 
