@@ -275,12 +275,44 @@ Deno.serve(async (req) => {
 
     // Customer change-request style/tempo direction. Bounded and sanitized; previously
     // tempo was stored but never reached the recording at all.
-    const audioBrief = await fetchLatestRevisionBrief(supabase, entityType as "lead" | "order", entityId);
-    const audioBriefSuffix = buildAudioStyleSuffix(audioBrief);
-    if (audioBriefSuffix) {
-      styleString += audioBriefSuffix;
-      console.log(`[AUDIO] Revision style direction applied: ${audioBriefSuffix}`);
+    // The provider caps the TOTAL style string, so the cap is applied to
+    // base style + language note + requested direction together, and anything
+    // that does not fit is logged and recorded — never silently truncated.
+    const STYLE_CAP = model === "V3_5" || model === "V4" ? 200 : 1000;
+    const briefResult = await fetchBoundRevisionBrief(supabase, entityType as "lead" | "order", entityId);
+    if (mustAbortForUnknownBrief(briefResult, entity)) {
+      console.error(`[AUDIO] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
+      if (!bonusOnly) {
+        await supabase
+          .from(tableName)
+          .update({
+            automation_status: "needs_review",
+            automation_last_error: `revision brief unreadable, refusing to generate: ${briefResult.error}`,
+          })
+          .eq("id", entityId);
+      }
+      return new Response(
+        JSON.stringify({ error: "revision_brief_unreadable", detail: briefResult.error }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
+    const audioBrief = briefResult.brief;
+    const styleApplied = applyAudioStyleBrief(styleString, audioBrief, STYLE_CAP);
+    styleString = styleApplied.style;
+    if (styleApplied.dropped.length > 0) {
+      console.error(`[AUDIO] Style budget ${STYLE_CAP} exceeded — requested direction NOT applied: ${styleApplied.dropped.join(", ")} (revision ${briefResult.revisionRequestId})`);
+      if (!bonusOnly) {
+        await supabase
+          .from(tableName)
+          .update({
+            automation_last_error: `style budget exceeded, dropped: ${styleApplied.dropped.join(",")}`,
+          })
+          .eq("id", entityId);
+      }
+    } else if (!isEmptyBrief(audioBrief)) {
+      console.log(`[AUDIO] Revision style direction applied (revision ${briefResult.revisionRequestId})`);
+    }
+
 
     // Update entity with style selection and reset timer for accurate STUCK detection
     // (Skipped in bonusOnly mode — the primary song is already delivered and we
