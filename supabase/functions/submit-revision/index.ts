@@ -762,9 +762,12 @@ async function handleLeadRevision(
   const changesSummary = summaryParts.join("; ");
 
   // Insert revision_request with lead_id
+  // Inserted as "pending": ONLY the submission that wins the atomic claim below is
+  // promoted to "approved", and generation reads approved rows exclusively. A loser
+  // in a concurrent race therefore can never be picked up as the bound brief.
   const revisionData: Record<string, any> = {
     lead_id: lead.id,
-    status: "approved",
+    status: "pending",
     is_pre_delivery: true,
     changes_summary: changesSummary,
     original_values: originalValues,
@@ -888,15 +891,19 @@ async function handleLeadRevision(
     }
   }
 
-  // Atomic, duplicate-safe claim: the allowance reservation is guarded by the revision
-  // count we read, so two simultaneous submissions can never both consume the allowance
-  // or both invalidate the assets. Fail closed — if the snapshot + invalidation write
-  // does not land we must NOT trigger generation.
+  // Atomic, duplicate-safe claim, NULL-SAFE. `not(col, eq, x)` compiles to
+  // `col <> x`, which is UNKNOWN (and therefore excludes the row) when
+  // revision_status IS NULL — that falsely rejected every first-time requester.
+  // The eligibility predicate is expressed so NULL counts as eligible, and the
+  // purchased/converted guards are re-checked here at write time, not only on the
+  // earlier read.
   const claimQuery = supabase
     .from("leads")
     .update(leadUpdate)
     .eq("id", lead.id)
-    .not("revision_status", "eq", "processing");
+    .or("revision_status.is.null,revision_status.neq.processing")
+    .is("order_id", null)
+    .neq("status", "converted");
   const { data: claimedLead, error: leadUpdateError } = await (lead.revision_count === null || lead.revision_count === undefined
     ? claimQuery.is("revision_count", null)
     : claimQuery.eq("revision_count", lead.revision_count)
@@ -911,13 +918,39 @@ async function handleLeadRevision(
     );
   }
   if (!claimedLead || claimedLead.length === 0) {
-    console.log(`[LEAD-REVISION] Concurrent submission lost the claim for lead ${lead.id} — no allowance consumed`);
-    await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: "superseded by concurrent submission" }).eq("id", insertedRevision.id);
+    console.log(`[LEAD-REVISION] Claim not acquired for lead ${lead.id} (concurrent submission, or purchased/converted in flight) — no allowance consumed`);
+    await supabase.from("revision_requests").update({ status: "rejected", rejection_reason: "claim not acquired (concurrent submission or purchase in flight)" }).eq("id", insertedRevision.id);
     return new Response(
       JSON.stringify({ error: "Your request is already being processed. We're remaking the song now." }),
       { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
+
+  // Claim won: bind exactly ONE approved request to this generation. Any earlier
+  // approved request is superseded first so "the approved request" is unambiguous.
+  await supabase
+    .from("revision_requests")
+    .update({ status: "superseded" })
+    .eq("lead_id", lead.id)
+    .eq("status", "approved");
+  const { error: approveError } = await supabase
+    .from("revision_requests")
+    .update({ status: "approved", reviewed_at: new Date().toISOString(), reviewed_by: "auto" })
+    .eq("id", insertedRevision.id);
+  if (approveError) {
+    // Fail closed: without an approved brief the generator would produce a song
+    // that ignores the request. Leave the lead flagged for review, do not trigger.
+    console.error("[LEAD-REVISION] could not approve revision request, refusing to trigger:", approveError.message);
+    await supabase
+      .from("leads")
+      .update({ automation_status: "needs_review", automation_last_error: `revision approved-state write failed: ${approveError.message}` })
+      .eq("id", lead.id);
+    return new Response(
+      JSON.stringify({ error: "Could not save your request. Please contact support@personalsonggifts.com." }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
 
   // Trigger automation — record an honest attention state when the call does not
   // actually start (previously any failure was swallowed and the record went silent).

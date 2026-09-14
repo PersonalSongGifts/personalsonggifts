@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { getLanguageLabel } from "../_shared/language-utils.ts";
-import { buildAudioStyleSuffix, fetchLatestRevisionBrief } from "../_shared/revision-brief.ts";
+import { applyAudioStyleBrief, fetchBoundRevisionBrief, isEmptyBrief, mustAbortForUnknownBrief } from "../_shared/revision-brief.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -275,12 +275,44 @@ Deno.serve(async (req) => {
 
     // Customer change-request style/tempo direction. Bounded and sanitized; previously
     // tempo was stored but never reached the recording at all.
-    const audioBrief = await fetchLatestRevisionBrief(supabase, entityType as "lead" | "order", entityId);
-    const audioBriefSuffix = buildAudioStyleSuffix(audioBrief);
-    if (audioBriefSuffix) {
-      styleString += audioBriefSuffix;
-      console.log(`[AUDIO] Revision style direction applied: ${audioBriefSuffix}`);
+    // The provider caps the TOTAL style string, so the cap is applied to
+    // base style + language note + requested direction together, and anything
+    // that does not fit is logged and recorded — never silently truncated.
+    const STYLE_CAP = model === "V3_5" || model === "V4" ? 200 : 1000;
+    const briefResult = await fetchBoundRevisionBrief(supabase, entityType as "lead" | "order", entityId);
+    if (mustAbortForUnknownBrief(briefResult, entity)) {
+      console.error(`[AUDIO] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
+      if (!bonusOnly) {
+        await supabase
+          .from(tableName)
+          .update({
+            automation_status: "needs_review",
+            automation_last_error: `revision brief unreadable, refusing to generate: ${briefResult.error}`,
+          })
+          .eq("id", entityId);
+      }
+      return new Response(
+        JSON.stringify({ error: "revision_brief_unreadable", detail: briefResult.error }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
+    const audioBrief = briefResult.brief;
+    const styleApplied = applyAudioStyleBrief(styleString, audioBrief, STYLE_CAP);
+    styleString = styleApplied.style;
+    if (styleApplied.dropped.length > 0) {
+      console.error(`[AUDIO] Style budget ${STYLE_CAP} exceeded — requested direction NOT applied: ${styleApplied.dropped.join(", ")} (revision ${briefResult.revisionRequestId})`);
+      if (!bonusOnly) {
+        await supabase
+          .from(tableName)
+          .update({
+            automation_last_error: `style budget exceeded, dropped: ${styleApplied.dropped.join(",")}`,
+          })
+          .eq("id", entityId);
+      }
+    } else if (!isEmptyBrief(audioBrief)) {
+      console.log(`[AUDIO] Revision style direction applied (revision ${briefResult.revisionRequestId})`);
+    }
+
 
     // Update entity with style selection and reset timer for accurate STUCK detection
     // (Skipped in bonusOnly mode — the primary song is already delivered and we
@@ -450,6 +482,14 @@ Deno.serve(async (req) => {
           bonusSongTitle = `${entity.song_title || `Song for ${entity.recipient_name}`} (Acoustic)`;
         }
         
+        // The bonus rendition must honour the same requested tempo/style direction
+        // (its lyrics already carry the pronunciation via phoneticizeForSuno).
+        const bonusApplied = applyAudioStyleBrief(bonusStylePrompt, audioBrief, STYLE_CAP);
+        bonusStylePrompt = bonusApplied.style;
+        if (bonusApplied.dropped.length > 0) {
+          console.error(`[AUDIO] Bonus style budget ${STYLE_CAP} exceeded — dropped: ${bonusApplied.dropped.join(", ")}`);
+        }
+
         console.log(`[AUDIO] Firing bonus acoustic track for ${entityType} ${entityId}`);
         console.log(`[AUDIO] Bonus style: ${bonusStylePrompt.substring(0, 60)}...`);
         

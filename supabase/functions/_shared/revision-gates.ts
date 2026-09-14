@@ -179,6 +179,10 @@ export interface LeadPreviewSendCandidate {
   status?: string | null;
   /** Incident cohort hold — a future date parks the record without pausing anything global. */
   next_attempt_at?: string | null;
+  /** Generation/revision binding inputs. */
+  revision_status?: string | null;
+  revision_requested_at?: string | null;
+  generated_at?: string | null;
 }
 
 export type PreviewSendBlockReason =
@@ -189,6 +193,7 @@ export type PreviewSendBlockReason =
   | "missing_full_audio"
   | "missing_preview_token"
   | "generation_incomplete"
+  | "revision_in_flight"
   | "held";
 
 export function leadPreviewSendReadiness(
@@ -201,15 +206,23 @@ export function leadPreviewSendReadiness(
   if (lead.next_attempt_at && new Date(lead.next_attempt_at).getTime() > nowMs) {
     return { ready: false, reason: "held" };
   }
-  // A revision still generating has automation_status pending/lyrics_generating/
-  // audio_generating/failed — never "completed" — so this single check covers
-  // in-flight revisions without stranding records whose revision_status was left
-  // at "processing" by an older code path even though the audio finished.
   if (String(lead.automation_status ?? "").toLowerCase() !== "completed") {
     return { ready: false, reason: "generation_incomplete" };
   }
   if (!lead.preview_song_url) return { ready: false, reason: "missing_preview_audio" };
   if (!lead.full_song_url) return { ready: false, reason: "missing_full_audio" };
   if (!lead.preview_token) return { ready: false, reason: "missing_preview_token" };
+  // Generation/revision BINDING. "completed + URLs present" is not enough: those can
+  // all belong to the PREVIOUS song while a requested revision is still in flight.
+  // When a revision is open, the completed generation must demonstrably be newer than
+  // the request (generated_at after revision_requested_at) before anything is sent.
+  const revState = String(lead.revision_status ?? "").toLowerCase();
+  if (revState === "processing" || revState === "pending") {
+    const generatedMs = lead.generated_at ? new Date(lead.generated_at).getTime() : NaN;
+    const requestedMs = lead.revision_requested_at ? new Date(lead.revision_requested_at).getTime() : NaN;
+    if (!Number.isFinite(generatedMs) || !Number.isFinite(requestedMs) || generatedMs <= requestedMs) {
+      return { ready: false, reason: "revision_in_flight" };
+    }
+  }
   return { ready: true, reason: null };
 }
