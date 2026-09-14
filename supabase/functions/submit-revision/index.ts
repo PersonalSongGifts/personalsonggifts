@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { backupSongFile } from "../_shared/song-backup.ts";
+import { buildPrevSlotPatch, hasRevisionRemaining } from "../_shared/revision-gates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,7 +143,7 @@ Deno.serve(async (req) => {
 
     // Check revisions left (post-delivery only)
     const isPreDelivery = !order.sent_at;
-    if (!isPreDelivery && (order.revision_count || 0) >= (order.max_revisions ?? 1)) {
+    if (!isPreDelivery && !hasRevisionRemaining(order.revision_count as number, order.max_revisions as number)) {
       return new Response(
         JSON.stringify({ error: "No revisions remaining" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -644,7 +645,7 @@ async function handleLeadRevision(
   }
 
   // Out of revisions
-  if ((lead.revision_count || 0) >= (lead.max_revisions ?? 1)) {
+  if (!hasRevisionRemaining(lead.revision_count as number, lead.max_revisions as number)) {
     return new Response(
       JSON.stringify({ error: "No revisions remaining" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -762,13 +763,7 @@ async function handleLeadRevision(
   // Single-slot prev_* backup: only write it when there is something current to back up.
   // On an already-broken row (preview already cleared by an earlier failed revision) the
   // existing prev_* values are the last good copy and must survive.
-  const prevSlotPatch = lead.preview_song_url
-    ? {
-      prev_song_url: lead.preview_song_url,
-      prev_automation_lyrics: lead.automation_lyrics || null,
-      prev_cover_image_url: lead.cover_image_url || null,
-    }
-    : {};
+  const prevSlotPatch = buildPrevSlotPatch(lead as Record<string, string | null>);
 
   // Apply field updates to lead + backup current preview + clear automation
   const leadUpdate: Record<string, any> = {

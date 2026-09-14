@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadAssetPatch } from "../_shared/lead-conversion.ts";
 import { hasReadyLeadBonus, resolveLeadCheckoutAmounts } from "../_shared/lead-checkout.ts";
+import { shouldHoldLeadFulfillment } from "../_shared/revision-gates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -352,10 +353,11 @@ Deno.serve(async (req) => {
 
     // A revision in flight means the lead's current audio is stale/absent. The payment is
     // KEPT and the order is created, but fulfilment is held so we never deliver old assets.
-    const revisionInFlight = ["processing", "pending"].includes(String(lead.revision_status || ""));
-    const usableSongUrl = lead.full_song_url && lead.preview_song_url ? lead.full_song_url : null;
+    const fulfillmentHold = shouldHoldLeadFulfillment(lead as Record<string, string | null>);
+    const revisionInFlight = fulfillmentHold.reason === "revision_in_progress";
+    const usableSongUrl = fulfillmentHold.hold ? null : (lead.full_song_url as string);
 
-    if (revisionInFlight || !usableSongUrl) {
+    if (fulfillmentHold.hold) {
       await supabase
         .from("orders")
         .update({
