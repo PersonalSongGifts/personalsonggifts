@@ -23,6 +23,32 @@ export function isRevisionInFlight(revisionStatus: string | null | undefined): b
   return s === "processing" || s === "pending";
 }
 
+/**
+ * The "already sent" callback guard must not strand an accepted revision.
+ *
+ * For leads, `sent_at` holds the ORIGINAL preview send timestamp and never clears, so the
+ * plain guard silently dropped the completion callback of every lead revision. Finalization
+ * is allowed only when ALL of these hold:
+ *   - it is a lead (orders keep the original guard untouched),
+ *   - a revision is genuinely in flight (processing/pending),
+ *   - the CURRENT deliverable (preview_song_url) is missing, i.e. nothing can be overwritten.
+ * Emails are unaffected: a revised preview is never auto-scheduled.
+ */
+export function shouldAllowRevisionFinalization(
+  entityType: "lead" | "order",
+  entity: {
+    revision_status?: string | null;
+    preview_song_url?: string | null;
+    preview_sent_at?: string | null;
+  },
+): boolean {
+  if (entityType !== "lead") return false;
+  if (!isRevisionInFlight(entity.revision_status)) return false;
+  if (entity.preview_song_url) return false;
+  return true;
+}
+
+
 /** Payment is always kept; this decides only whether fulfilment must be held back. */
 export function shouldHoldLeadFulfillment(lead: {
   revision_status?: string | null;

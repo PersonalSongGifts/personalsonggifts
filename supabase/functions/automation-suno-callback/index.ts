@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import MP3Tag from "npm:mp3tag.js@3.11.0";
 import { logActivity } from "../_shared/activity-log.ts";
+import { shouldAllowRevisionFinalization } from "../_shared/revision-gates.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -377,11 +379,21 @@ Deno.serve(async (req) => {
         return new Response("Already processed", { status: 200, headers: corsHeaders });
       }
 
-      // Guard 3: Already sent (never overwrite after delivery)
-      if (entity.sent_at || entity.preview_sent_at) {
-        console.log(`[CALLBACK] Entity ${entityId} already sent, ignoring callback (idempotent)`);
-        return new Response("Already sent", { status: 200, headers: corsHeaders });
+      // Guard 3: Already sent (never overwrite after delivery).
+      // For leads, `sent_at` records the ORIGINAL preview send — it stays set forever, so
+      // this guard used to drop the callback of every accepted revision and strand the
+      // record in audio_generating. An in-flight revision is an explicit re-generation of
+      // the CURRENT asset (already verified above to be missing), so it may finalize.
+      // The revised preview is still never auto-released by email (see primary write).
+      if (!shouldAllowRevisionFinalization(entityType, entity)) {
+        if (entity.sent_at || entity.preview_sent_at) {
+          console.log(`[CALLBACK] Entity ${entityId} already sent, ignoring callback (idempotent)`);
+          return new Response("Already sent", { status: 200, headers: corsHeaders });
+        }
+      } else {
+        console.log(`[CALLBACK] Lead ${entityId} has an in-flight revision with no current preview — allowing finalization despite prior send`);
       }
+
 
       // Guard 4: Manual override active (admin took over)
       if (entity.automation_manual_override_at) {
