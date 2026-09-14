@@ -121,10 +121,15 @@ check("customer edits apply atomically with the claim", r?.result === "claimed"
   && afterPatch?.recipient_name_pronunciation === "Di-on"
   && afterPatch?.preview_song_url === null, JSON.stringify({ r, afterPatch }));
 
+const injLead = await one(
+  `INSERT INTO public.leads (recipient_name, revision_count, max_revisions) VALUES ('Inj', 0, 1) RETURNING id`,
+);
+const injReq = await one(
+  `INSERT INTO public.revision_requests (lead_id, status) VALUES ($1, 'pending') RETURNING id`, [injLead.id]);
 let threw = null;
 try {
   await db.query(`SELECT * FROM public.claim_revision_binding('lead', $1, $2, 0, $3::jsonb)`, [
-    patchLead.id, patchReq.id, JSON.stringify({ "drop_me; --": 1 }),
+    injLead.id, injReq.id, JSON.stringify({ "drop_me; --": 1 }),
   ]);
 } catch (e) { threw = String(e?.message ?? e); }
 check("unknown patch column is rejected (no injection)", !!threw && /unknown column/i.test(threw), threw ?? "no error");
@@ -180,12 +185,18 @@ const wrongGen = (await one(`SELECT gen_random_uuid() AS id`)).id;
 r = await one(`SELECT * FROM public.reserve_revision_generation('lead', $1, $2, $3)`, [fresh.id, freshReq.id, wrongGen]);
 check("a different generation cannot steal the reservation", r?.result !== "reserved", JSON.stringify(r));
 
-r = await one(`SELECT * FROM public.attach_revision_task('lead', $1, $2, $3, 'task-A', 'primary')`, [fresh.id, freshReq.id, genId]);
-check("primary task attaches once", r?.result === "attached" || r?.result === "already_attached", JSON.stringify(r));
-r = await one(`SELECT * FROM public.attach_revision_task('lead', $1, $2, $3, 'task-B', 'primary')`, [fresh.id, freshReq.id, genId]);
-check("a second primary task cannot overwrite the binding", r?.result !== "attached" || r?.bound_task_id === "task-A", JSON.stringify(r));
-r = await one(`SELECT * FROM public.attach_revision_task('lead', $1, $2, $3, 'bonus-A', 'bonus')`, [fresh.id, freshReq.id, genId]);
-check("bonus lane has its own task identity", r?.result === "attached" || r?.result === "already_attached", JSON.stringify(r));
+const attach = async (task, lane) => (await one(
+  `SELECT public.attach_revision_task('lead', $1, $2, $3, $4, $5) AS out`,
+  [fresh.id, freshReq.id, genId, task, lane],
+)).out;
+let a = await attach("task-A", "primary");
+check("primary task attaches once", a === "attached", String(a));
+a = await attach("task-B", "primary");
+check("a second primary task cannot overwrite the binding", a !== "attached", String(a));
+a = await attach("task-A", "primary");
+check("re-attaching the same primary task is idempotent", a === "already_attached" || a === "attached", String(a));
+a = await attach("bonus-A", "bonus");
+check("bonus lane has its own task identity", a === "attached", String(a));
 
 r = await one(`SELECT * FROM public.verify_revision_task('lead', $1, 'task-A', 'primary')`, [fresh.id]);
 check("callback verifies the bound primary task", r?.result === "verified", JSON.stringify(r));
