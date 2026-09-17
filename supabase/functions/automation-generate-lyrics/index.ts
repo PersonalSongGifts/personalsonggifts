@@ -328,7 +328,10 @@ Deno.serve(async (req) => {
     // Only the single APPROVED request bound to this record is readable, and a
     // failed lookup FAILS CLOSED for a record whose revision is in flight rather
     // than spending on a song that ignores the customer's instructions.
-    const briefResult = await fetchBoundBriefForGeneration(supabase as never, entityType as "lead" | "order", { id: entityId, revision_status: (entity as Record<string, unknown>).revision_status as string | null, bound_revision_request_id: (entity as Record<string, unknown>).bound_revision_request_id as string | null });
+    // Binding fields MUST come from the raw row: normalizeEntityData exposes only
+    // the creative fields, so reading them from `entity` produced an empty brief
+    // and generated without the customer's requested changes.
+    const briefResult = await fetchBoundBriefForGeneration(supabase as never, entityType as "lead" | "order", { id: entityId, revision_status: (rawEntity as Record<string, unknown>).revision_status as string | null, bound_revision_request_id: (rawEntity as Record<string, unknown>).bound_revision_request_id as string | null });
     if (mustAbortForUnboundBrief(briefResult)) {
       console.error(`[LYRICS] Aborting: revision brief unreadable for ${entityType} ${entityId}: ${briefResult.error}`);
       const { error: briefStatusError } = await supabase
