@@ -1,6 +1,10 @@
 # Roadmap
 
 ## In progress
+- [x] APPLIED 2026-09-17: revision binding + email_outbox migration is now live
+  (drizzle/migrations/0000_revision_binding_and_email_outbox.sql). All 8 RPCs present,
+  bind_revision_task dropped, email_outbox RLS on with service-role grants only.
+  Change requests and preview emails work again; pause flag back to 'false'.
 - [x] LIVE FIX: `get-lead-preview` no longer selects the unapplied-migration column
   `bound_revision_request_id` (PostgreSQL 42703 broke every preview link); DB errors
   now return 500 instead of a false 404. Deployed alone.
