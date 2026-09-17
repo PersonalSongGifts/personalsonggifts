@@ -32,6 +32,84 @@ export type Database = {
         }
         Relationships: []
       }
+      email_outbox: {
+        Row: {
+          accepted_at: string | null
+          ambiguous_at: string | null
+          attempt_count: number
+          attempt_lease: string
+          claimed_at: string
+          entity_id: string
+          entity_type: string
+          failed_at: string | null
+          first_attempt_at: string
+          generation_key: string | null
+          id: string
+          idempotency_key: string
+          last_error: string | null
+          lease_expires_at: string
+          max_attempts: number
+          provider_idempotency_key: string | null
+          provider_key_issued_at: string
+          provider_message_id: string | null
+          provider_ttl_seconds: number
+          purpose: string
+          recipients: Json | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          ambiguous_at?: string | null
+          attempt_count?: number
+          attempt_lease?: string
+          claimed_at?: string
+          entity_id: string
+          entity_type: string
+          failed_at?: string | null
+          first_attempt_at?: string
+          generation_key?: string | null
+          id?: string
+          idempotency_key: string
+          last_error?: string | null
+          lease_expires_at?: string
+          max_attempts?: number
+          provider_idempotency_key?: string | null
+          provider_key_issued_at?: string
+          provider_message_id?: string | null
+          provider_ttl_seconds?: number
+          purpose: string
+          recipients?: Json | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          ambiguous_at?: string | null
+          attempt_count?: number
+          attempt_lease?: string
+          claimed_at?: string
+          entity_id?: string
+          entity_type?: string
+          failed_at?: string | null
+          first_attempt_at?: string
+          generation_key?: string | null
+          id?: string
+          idempotency_key?: string
+          last_error?: string | null
+          lease_expires_at?: string
+          max_attempts?: number
+          provider_idempotency_key?: string | null
+          provider_key_issued_at?: string
+          provider_message_id?: string | null
+          provider_ttl_seconds?: number
+          purpose?: string
+          recipients?: Json | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       email_suppressions: {
         Row: {
           created_at: string
@@ -69,6 +147,11 @@ export type Database = {
           bonus_song_title: string | null
           bonus_song_url: string | null
           bonus_style_prompt: string | null
+          bound_revision_at: string | null
+          bound_revision_bonus_task_id: string | null
+          bound_revision_generation_id: string | null
+          bound_revision_request_id: string | null
+          bound_revision_task_id: string | null
           captured_at: string
           content_filter_strikes: number
           converted_at: string | null
@@ -165,6 +248,11 @@ export type Database = {
           bonus_song_title?: string | null
           bonus_song_url?: string | null
           bonus_style_prompt?: string | null
+          bound_revision_at?: string | null
+          bound_revision_bonus_task_id?: string | null
+          bound_revision_generation_id?: string | null
+          bound_revision_request_id?: string | null
+          bound_revision_task_id?: string | null
           captured_at?: string
           content_filter_strikes?: number
           converted_at?: string | null
@@ -261,6 +349,11 @@ export type Database = {
           bonus_song_title?: string | null
           bonus_song_url?: string | null
           bonus_style_prompt?: string | null
+          bound_revision_at?: string | null
+          bound_revision_bonus_task_id?: string | null
+          bound_revision_generation_id?: string | null
+          bound_revision_request_id?: string | null
+          bound_revision_task_id?: string | null
           captured_at?: string
           content_filter_strikes?: number
           converted_at?: string | null
@@ -342,6 +435,13 @@ export type Database = {
             columns: ["automation_style_id"]
             isOneToOne: false
             referencedRelation: "song_styles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_bound_revision_request_id_fkey"
+            columns: ["bound_revision_request_id"]
+            isOneToOne: false
+            referencedRelation: "revision_requests"
             referencedColumns: ["id"]
           },
           {
@@ -430,6 +530,11 @@ export type Database = {
           bonus_unlock_payment_intent_id: string | null
           bonus_unlock_session_id: string | null
           bonus_unlocked_at: string | null
+          bound_revision_at: string | null
+          bound_revision_bonus_task_id: string | null
+          bound_revision_generation_id: string | null
+          bound_revision_request_id: string | null
+          bound_revision_task_id: string | null
           content_filter_strikes: number
           cover_image_url: string | null
           created_at: string
@@ -573,6 +678,11 @@ export type Database = {
           bonus_unlock_payment_intent_id?: string | null
           bonus_unlock_session_id?: string | null
           bonus_unlocked_at?: string | null
+          bound_revision_at?: string | null
+          bound_revision_bonus_task_id?: string | null
+          bound_revision_generation_id?: string | null
+          bound_revision_request_id?: string | null
+          bound_revision_task_id?: string | null
           content_filter_strikes?: number
           cover_image_url?: string | null
           created_at?: string
@@ -716,6 +826,11 @@ export type Database = {
           bonus_unlock_payment_intent_id?: string | null
           bonus_unlock_session_id?: string | null
           bonus_unlocked_at?: string | null
+          bound_revision_at?: string | null
+          bound_revision_bonus_task_id?: string | null
+          bound_revision_generation_id?: string | null
+          bound_revision_request_id?: string | null
+          bound_revision_task_id?: string | null
           content_filter_strikes?: number
           cover_image_url?: string | null
           created_at?: string
@@ -822,6 +937,13 @@ export type Database = {
             columns: ["automation_style_id"]
             isOneToOne: false
             referencedRelation: "song_styles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_bound_revision_request_id_fkey"
+            columns: ["bound_revision_request_id"]
+            isOneToOne: false
+            referencedRelation: "revision_requests"
             referencedColumns: ["id"]
           },
         ]
@@ -1127,6 +1249,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_entity_patch: {
+        Args: { p_id: string; p_patch: Json; p_table: string }
+        Returns: undefined
+      }
+      attach_revision_task: {
+        Args: {
+          p_entity_id: string
+          p_entity_type: string
+          p_generation_id: string
+          p_lane?: string
+          p_request_id: string
+          p_task_id: string
+        }
+        Returns: string
+      }
       calculate_lead_quality_score: {
         Args: {
           p_email: string
@@ -1139,6 +1276,44 @@ export type Database = {
       claim_album_cover_attempt: {
         Args: { p_max: number; p_order_id: string }
         Returns: number
+      }
+      claim_email_send: {
+        Args: {
+          p_entity_id: string
+          p_entity_type: string
+          p_generation_key?: string
+          p_idempotency_key: string
+          p_lease_seconds?: number
+          p_max_attempts?: number
+          p_provider_ttl_seconds?: number
+          p_purpose: string
+          p_recipients?: Json
+        }
+        Returns: {
+          attempt_count: number
+          claimed: boolean
+          first_attempt_at: string
+          lease_token: string
+          outbox_id: string
+          provider_key: string
+          provider_key_reused: boolean
+          state: string
+          unresolved: boolean
+        }[]
+      }
+      claim_revision_binding: {
+        Args: {
+          p_entity_id: string
+          p_entity_type: string
+          p_entity_updates?: Json
+          p_expected_revision_count: number
+          p_request_id: string
+        }
+        Returns: {
+          bound_request_id: string
+          result: string
+          revision_count: number
+        }[]
       }
       find_orders_by_short_id: {
         Args: {
@@ -1191,6 +1366,11 @@ export type Database = {
           bonus_unlock_payment_intent_id: string | null
           bonus_unlock_session_id: string | null
           bonus_unlocked_at: string | null
+          bound_revision_at: string | null
+          bound_revision_bonus_task_id: string | null
+          bound_revision_generation_id: string | null
+          bound_revision_request_id: string | null
+          bound_revision_task_id: string | null
           content_filter_strikes: number
           cover_image_url: string | null
           created_at: string
@@ -1297,6 +1477,55 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      release_revision_binding: {
+        Args: {
+          p_entity_id: string
+          p_entity_type: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
+      }
+      reserve_revision_generation: {
+        Args: {
+          p_entity_id: string
+          p_entity_type: string
+          p_generation_id: string
+          p_request_id: string
+        }
+        Returns: {
+          generation_id: string
+          result: string
+        }[]
+      }
+      settle_email_send: {
+        Args: {
+          p_error?: string
+          p_lease_token: string
+          p_outbox_id: string
+          p_provider_message_id?: string
+          p_state: string
+        }
+        Returns: {
+          settled: boolean
+          stale_lease: boolean
+          state: string
+        }[]
+      }
+      verify_revision_task: {
+        Args: {
+          p_entity_id: string
+          p_entity_type: string
+          p_lane?: string
+          p_task_id: string
+        }
+        Returns: {
+          bound_task_id: string
+          generation_id: string
+          request_id: string
+          result: string
+        }[]
       }
     }
     Enums: {

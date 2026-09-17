@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789682502692,
+      "tag": "0000_revision_binding_and_email_outbox",
+      "breakpoints": true
+    }
+  ]
+}
