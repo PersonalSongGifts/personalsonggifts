@@ -553,18 +553,16 @@ export default function SongPreview() {
           >
             <CardContent className="p-6 text-center space-y-4">
               <div>
-                {flashShowPrice && (
+                {pricing.targetedPriceActive && ladderBaseCents > displayedBaseCents && (
                   <p className="text-sm text-muted-foreground line-through">
-                    {formatUsd(effectiveDefaultCents)} USD
+                    {formatUsd(ladderBaseCents)} USD
                   </p>
                 )}
+                <h4 className="text-lg font-semibold">Full Song</h4>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
                   {formatUsd(displayedBaseCents)}
                   <span className="text-sm font-normal text-muted-foreground ml-1">USD</span>
                 </p>
-              </div>
-              <div>
-                <h4 className="font-semibold">Full Song</h4>
                 <p className="text-sm text-muted-foreground">Instant access</p>
               </div>
               <ul className="text-sm space-y-2 text-left">
