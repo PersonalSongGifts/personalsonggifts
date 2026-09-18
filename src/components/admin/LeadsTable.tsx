@@ -222,13 +222,27 @@ export function LeadsTable({
   const [editingLeadTitle, setEditingLeadTitle] = useState(false);
   const [editedLeadTitle, setEditedLeadTitle] = useState("");
   const [savingLeadTitle, setSavingLeadTitle] = useState(false);
-  // Auto-open lead from external navigation (e.g., Hot Leads card)
+  // Auto-open lead from external navigation (e.g., Hot Leads card).
+  // Deliberately keyed on the id only: depending on `leads` re-ran this (and
+  // its detail fetch) every time the array identity changed on refresh.
+  const leadsRef = useRef<Lead[]>(leads);
+  leadsRef.current = leads;
+  const autoOpenedLeadId = useRef<string | null>(null);
   useEffect(() => {
-    if (initialSelectedLeadId) {
-      const lead = leads.find((l) => l.id === initialSelectedLeadId);
-      if (lead) { setSelectedLead(lead); fetchLeadDetail(lead.id); }
+    if (!initialSelectedLeadId) {
+      autoOpenedLeadId.current = null;
+      return;
     }
-  }, [initialSelectedLeadId, leads]);
+    if (autoOpenedLeadId.current === initialSelectedLeadId) return;
+    const lead = leadsRef.current.find((l) => l.id === initialSelectedLeadId);
+    if (lead) {
+      autoOpenedLeadId.current = initialSelectedLeadId;
+      setSelectedLead(lead);
+      fetchLeadDetail(lead.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelectedLeadId]);
+
 
   // Fetch full lead detail (includes automation_lyrics) when a lead is selected
   const fetchLeadDetail = useCallback(async (leadId: string) => {
