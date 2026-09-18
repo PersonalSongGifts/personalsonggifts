@@ -381,47 +381,34 @@ export default function SongPreview() {
 
   if (!previewData) return null;
 
-  // Prefer generic targeted-promo fields; fall back to legacy flash20 fields for old API responses.
-  const flashEligible =
-    previewData.targetedPromoEligible === true || previewData.flash20Eligible === true;
-  const flashExpired =
-    previewData.targetedPromoExpired === true || previewData.flash20Expired === true;
-  const flashPriceCents =
+  // Pricing display is derived by the same shared ladder the server uses.
+  // The charged amount is still recomputed server-side from the preview token.
+  const pricing = computeOfferPricing({
+    targetedPromoEligible: previewData.targetedPromoEligible,
+    targetedPromoPriceCents:
+      previewData.targetedPromoPriceCents ?? previewData.flash20PriceCents ?? null,
+    sitewidePromoLeadPriceCents: previewData.sitewidePromoLeadPriceCents,
+    isFollowup,
+    packageSelected,
+  });
+  const displayedBaseCents = pricing.baseCents;
+  const displayedTotalCents = pricing.totalCents;
+
+  // Urgency messaging only when the promo itself allows a banner (show_banner=true).
+  const showUrgencyBanner = shouldShowUrgencyBanner(previewData);
+  const showExpiredNotice = shouldShowExpiredNotice(previewData);
+  const urgencyPriceCents =
     previewData.targetedPromoPriceCents ?? previewData.flash20PriceCents ?? null;
-  // If the server says eligible but somehow didn't include a price, treat as not-eligible
-  // rather than rendering a hardcoded fallback.
-  const flashShowPrice = flashEligible && typeof flashPriceCents === "number";
-
-  // Sitewide non-targeted promo (e.g., Early Mother's Day $29.99) — used as the default
-  // lead price when no targeted flash promo is in effect for this lead.
-  const sitewideLeadCents =
-    typeof previewData.sitewidePromoLeadPriceCents === "number"
-      ? previewData.sitewidePromoLeadPriceCents
-      : null;
-
-  // Compute the displayed default price (when no flash promo applies):
-  // pick the cheaper of the configured default ladder and any active sitewide promo.
-  const LEAD_BASE_CENTS = 2900;
-  const FOLLOWUP_DISCOUNT_CENTS = 1000;
-  const baseDefaultCents = isFollowup
-    ? LEAD_BASE_CENTS - FOLLOWUP_DISCOUNT_CENTS
-    : LEAD_BASE_CENTS;
-  const effectiveDefaultCents = sitewideLeadCents !== null
-    ? Math.min(baseDefaultCents, sitewideLeadCents)
-    : baseDefaultCents;
-  const formatUsd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-  const displayedBaseCents = flashShowPrice ? flashPriceCents! : effectiveDefaultCents;
-  const displayedTotalCents = displayedBaseCents + (packageSelected ? 2400 : 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
-      {/* Flash 20 urgency banner — only when this lead is eligible */}
-      {flashShowPrice && (
+      {/* Urgency banner — only for targeted promos configured with show_banner=true */}
+      {showUrgencyBanner && typeof urgencyPriceCents === "number" && (
         <div className="py-3 px-4 text-center font-bold text-sm md:text-base bg-primary text-primary-foreground">
-          🔥 72-hour flash sale — ${(flashPriceCents! / 100).toFixed(2)} ends soon
+          🔥 72-hour flash sale — {formatUsd(urgencyPriceCents)} ends soon
         </div>
       )}
-      {flashExpired && (
+      {showExpiredNotice && (
         <div className="py-3 px-4 text-center text-sm bg-muted text-muted-foreground">
           The flash sale has ended — your song is still available at standard pricing.
         </div>
