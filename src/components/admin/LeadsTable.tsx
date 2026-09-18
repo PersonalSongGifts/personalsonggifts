@@ -804,7 +804,7 @@ export function LeadsTable({
       "Follow-up Sent",
     ];
 
-    const rows = filteredLeads.map((lead) => [
+    const rows = rows_.map((lead) => [
       lead.customer_name,
       lead.email,
       lead.phone || "",
