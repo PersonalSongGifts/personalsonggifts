@@ -581,44 +581,70 @@ export default function SongPreview() {
               </ul>
 
               {previewData.memoryPackageAvailable && (
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={packageSelected}
-                  onClick={() => setPackageSelected((selected) => !selected)}
-                  className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                    packageSelected
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
+                <div
+                  className={`rounded-lg border p-4 text-left transition-colors ${
+                    packageSelected ? "border-primary bg-primary/5" : "border-border"
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <span
-                      aria-hidden="true"
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${
-                        packageSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground"
-                      }`}
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Optional add-on
+                  </p>
+                  {/* Only this control and its own label toggle the add-on — taps or
+                      scrolls anywhere else on the card never change the total. */}
+                  <label
+                    htmlFor="memory-package-toggle"
+                    className="mt-2 flex min-h-[44px] cursor-pointer items-center gap-3"
+                  >
+                    <input
+                      id="memory-package-toggle"
+                      type="checkbox"
+                      checked={packageSelected}
+                      onChange={(e) => setPackageSelected(e.target.checked)}
+                      className="h-6 w-6 shrink-0 cursor-pointer accent-primary"
+                    />
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
+                      <Gift className="h-4 w-4 text-primary" aria-hidden="true" />
+                      Forever Memory Package
+                      <span className="text-primary">— $24.00 extra</span>
+                    </span>
+                  </label>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Printable lyric keepsake, a custom cover you create from your photo, full lyrics, and an included second version of the song.
+                  </p>
+                  {packageSelected && (
+                    <button
+                      type="button"
+                      onClick={() => setPackageSelected(false)}
+                      className="mt-2 min-h-[44px] text-sm font-medium text-primary underline"
                     >
-                      {packageSelected && <Check className="h-3 w-3" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-3 font-semibold text-foreground">
-                        <span className="flex items-center gap-1.5"><Gift className="h-4 w-4 text-primary" />Forever Memory Package</span>
-                        <span className="shrink-0 text-primary">+$24.00</span>
-                      </span>
-                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                        Printable lyric keepsake, a custom cover you create from your photo, full lyrics, and an included second version of the song.
-                      </span>
-                    </span>
-                  </div>
-                </button>
+                      Remove add-on
+                    </button>
+                  )}
+                </div>
               )}
 
-              {packageSelected && (
-                <p className="text-sm font-medium text-foreground">
-                  Today&apos;s total: {formatUsd(displayedTotalCents)}
-                </p>
-              )}
+              {/* Always-visible line items so base price, add-on and total are unmistakable. */}
+              <dl className="rounded-lg border border-border p-4 text-left text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">Full song</dt>
+                  <dd className="font-medium text-foreground">{formatUsd(displayedBaseCents)}</dd>
+                </div>
+                {previewData.memoryPackageAvailable && (
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <dt className="text-muted-foreground">Forever Memory Package</dt>
+                    <dd className="font-medium text-foreground">
+                      {packageSelected ? `+${formatUsd(MEMORY_PACKAGE_CENTS)}` : "Not added"}
+                    </dd>
+                  </div>
+                )}
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                  <dt className="font-semibold text-foreground">Total today</dt>
+                  <dd className="text-base font-bold text-foreground">
+                    {formatUsd(displayedTotalCents)} <span className="text-xs font-normal text-muted-foreground">USD</span>
+                  </dd>
+                </div>
+              </dl>
+
 
               <Button
                 className={`w-full ${isVday10 ? "bg-pink-600 hover:bg-pink-700" : ""}`}
