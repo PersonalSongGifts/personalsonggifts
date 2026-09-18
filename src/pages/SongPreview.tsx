@@ -689,10 +689,10 @@ export default function SongPreview() {
           )}
 
           {/* Promo Badge — only render when a real promo (flash or Valentine's/vday10) is active */}
-          {(flashShowPrice || isVday10 || isFollowup) && (
+          {(showUrgencyBanner || isVday10 || isFollowup) && (
             <div className="text-center">
               <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
-                {flashShowPrice
+                {showUrgencyBanner
                   ? "⏳ 72-hour flash sale — act now"
                   : isVday10
                   ? isFollowup
