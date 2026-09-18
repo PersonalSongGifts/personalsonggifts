@@ -2271,10 +2271,25 @@ export default function Admin() {
               sort={leadSort} 
               onSortChange={setLeadSort}
               adminPassword={password}
-              onRefresh={fetchOrders}
+              onRefresh={() => void fetchOrders()}
               onNavigateToOrder={handleNavigateToOrder}
               initialSelectedLeadId={pendingLeadId}
+              searchQuery={leadSearch}
+              onSearchQueryChange={setLeadSearch}
+              searchResults={leadSearchResults}
+              searchLoading={leadSearchLoading}
+              searchError={leadSearchError}
+              searchTotal={leadSearchTotal}
+              minSearchLength={MIN_LEAD_SEARCH_LENGTH}
+              onRetrySearch={() => void runLeadSearch(leadSearch)}
+              totalLeadCount={totalLeadCount}
+              loadingMore={loadingMore}
+              listError={listError}
+              backgroundLoadError={backgroundLoadError}
+              onRetryLoad={retryBackgroundLoad}
+              onFetchAllLeads={fetchAllLeadsForExport}
             />
+
           </TabsContent>
 
           <TabsContent value="automation" className="space-y-6">
