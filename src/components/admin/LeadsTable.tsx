@@ -269,52 +269,28 @@ export function LeadsTable({
   const [currentPage, setCurrentPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  // Filter by status, quality, dismissed state, and search query
-  const filteredLeads = leads
-    .filter((lead) => {
-      // Dismissed filter
-      if (dismissedFilter === "active") return !lead.dismissed_at;
-      if (dismissedFilter === "dismissed") return !!lead.dismissed_at;
-      return true; // "all"
-    })
-    .filter((lead) => statusFilter === "all" || lead.status === statusFilter)
-    .filter((lead) => {
-      if (qualityFilter === "all") return true;
-      const score = lead.quality_score ?? 0;
-      if (qualityFilter === "high") return score >= 70;
-      if (qualityFilter === "medium") return score >= 40 && score < 70;
-      if (qualityFilter === "low") return score < 40;
-      return true;
-    })
-    .filter((lead) => {
-      if (!searchQuery.trim()) return true;
-      const rawSearch = searchQuery.trim();
-      const urlMatch = rawSearch.match(/\/(?:preview|song)\/([A-Za-z0-9_-]+)/);
-      const searchLower = (urlMatch ? urlMatch[1] : rawSearch).toLowerCase();
-      return (
-        lead.id.toLowerCase().includes(searchLower) ||
-        lead.customer_name.toLowerCase().includes(searchLower) ||
-        lead.email.toLowerCase().includes(searchLower) ||
-        lead.recipient_name.toLowerCase().includes(searchLower) ||
-        lead.genre.toLowerCase().includes(searchLower) ||
-        lead.special_qualities.toLowerCase().includes(searchLower) ||
-        lead.favorite_memory.toLowerCase().includes(searchLower) ||
-        (lead.special_message?.toLowerCase().includes(searchLower) ?? false) ||
-        (lead.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
-        lead.occasion.toLowerCase().includes(searchLower) ||
-        (lead.preview_song_url?.toLowerCase().includes(searchLower) ?? false) ||
-        (lead.preview_token?.toLowerCase().includes(searchLower) ?? false) ||
-        (lead.cover_image_url?.toLowerCase().includes(searchLower) ?? false)
-      );
-    })
-    .sort((a, b) => {
-      if (sort === "quality") {
-        return (b.quality_score ?? 0) - (a.quality_score ?? 0);
-      }
-      const dateA = new Date(a.captured_at).getTime();
-      const dateB = new Date(b.captured_at).getTime();
-      return sort === "latest" ? dateB - dateA : dateA - dateB;
-    });
+  // Text search is server-side; these filters only narrow the visible rows.
+  const serverSearchActive = isServerSearchActive(searchQuery, minSearchLength);
+  const baseRows: Lead[] = serverSearchActive ? (searchResults ?? []) : leads;
+  const filteredLeads = useMemo(
+    () => applyLeadFilters(baseRows, { statusFilter, qualityFilter, dismissedFilter, sort }),
+    [baseRows, statusFilter, qualityFilter, dismissedFilter, sort],
+  );
+
+  const viewState = resolveLeadsViewState({
+    serverSearchActive,
+    searchLoading,
+    searchError,
+    searchResultCount: searchResults === null ? null : searchResults.length,
+    loading,
+    listError,
+    visibleRowCount: filteredLeads.length,
+  });
+
+  // Reset to the first page whenever the underlying result set changes.
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchQuery, statusFilter, qualityFilter, dismissedFilter, sort]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
