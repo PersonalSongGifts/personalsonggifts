@@ -454,7 +454,38 @@ export default function Admin() {
   const [totalLeadCount, setTotalLeadCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const listOrders = async (status: string, page = 0, pageSize = 100, skipOrders = false) => {
+  // Hard per-request ceiling. Without this a hanging request left the admin on
+  // an indefinite spinner (see .lovable/plan.md).
+  const LIST_REQUEST_TIMEOUT_MS = 20000;
+
+  type ListParams = {
+    status?: string;
+    page?: number;
+    pageSize?: number;
+    skipOrders?: boolean;
+    /** Optional server-side lead search. Omitted => unchanged list behaviour. */
+    search?: string;
+    /** Caller-owned cancellation (stale search requests). */
+    signal?: AbortSignal;
+  };
+
+  const listOrders = async ({
+    status = "all",
+    page = 0,
+    pageSize = 100,
+    skipOrders = false,
+    search,
+    signal,
+  }: ListParams = {}) => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, LIST_REQUEST_TIMEOUT_MS);
+    const onExternalAbort = () => controller.abort();
+    signal?.addEventListener("abort", onExternalAbort);
+
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`,
@@ -471,7 +502,9 @@ export default function Admin() {
             page,
             pageSize,
             skipOrders,
+            ...(search ? { search } : {}),
           }),
+          signal: controller.signal,
         },
       );
 
@@ -481,21 +514,32 @@ export default function Admin() {
         try {
           data = JSON.parse(responseText) as Record<string, unknown>;
         } catch {
-          return { data: null, error: new Error(`Backend returned an invalid response (HTTP ${response.status})`) };
+          return { data: null, error: new Error(`Backend returned an invalid response (HTTP ${response.status})`), aborted: false };
         }
       }
 
       if (!response.ok) {
         const message = typeof data?.error === "string" ? data.error : `HTTP ${response.status}`;
-        return { data: null, error: new Error(message) };
+        return { data: null, error: new Error(message), aborted: false };
       }
 
-      return { data, error: null };
+      return { data, error: null, aborted: false };
     } catch (error) {
+      if (timedOut) {
+        return { data: null, error: new Error("The request timed out after 20 seconds."), aborted: false };
+      }
+      // Caller cancelled (superseded search) — not an error to surface.
+      if (signal?.aborted) {
+        return { data: null, error: null, aborted: true };
+      }
       return {
         data: null,
         error: error instanceof Error ? error : new Error(String(error)),
+        aborted: false,
       };
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onExternalAbort);
     }
   };
 
