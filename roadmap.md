@@ -1,6 +1,13 @@
 # Roadmap
 
 ## In progress
+- [x] 2026-09-18 preview offer clarity (pricing incident, lead d9bb7942): always-visible
+  Full song / Forever Memory Package / Total today line items, add-on labelled
+  "Optional add-on … $24.00 extra", real 48px checkbox + label are the only toggles
+  (card taps no longer select), "Remove add-on" action, urgency banner suppressed unless
+  the targeted promo has show_banner=true (`targetedPromoShowBanner` added to
+  get-lead-preview). Display only — no pricing/Stripe/PayPal/webhook logic changed.
+  Tests: src/lib/__tests__/previewOffer.test.ts (17). Not published.
 - [x] APPLIED 2026-09-17: revision binding + email_outbox migration is now live
   (drizzle/migrations/0000_revision_binding_and_email_outbox.sql). All 8 RPCs present,
   bind_revision_task dropped, email_outbox RLS on with service-role grants only.
