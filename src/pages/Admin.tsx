@@ -575,12 +575,12 @@ export default function Admin() {
       let data: any = null;
       let error: any = null;
       for (let attempt = 0; attempt < 3; attempt++) {
-        const res = await listOrders("all", 0, 100);
+        const res = await listOrders({ status: "all", page: 0, pageSize: 100 });
         data = res.data;
         error = res.error;
         if (!error) break;
         const msg = error.message || String(error);
-        const transient = msg.includes("Failed to send") || msg.includes("fetch") || msg.includes("network");
+        const transient = msg.includes("Failed to send") || msg.includes("fetch") || msg.includes("network") || msg.includes("timed out");
         if (!transient) break;
         if (attempt < 2) await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
       }
@@ -594,7 +594,7 @@ export default function Admin() {
           return;
         }
         
-        if (errorMessage.includes("Failed to send") || errorMessage.includes("fetch")) {
+        if (errorMessage.includes("Failed to send") || errorMessage.includes("fetch") || errorMessage.includes("timed out")) {
           toast({ title: "Connection problem", description: "Could not reach the backend after 3 tries. Check your network / ad-blocker or VPN, then try again.", variant: "destructive" });
           setLoading(false);
           return;
@@ -611,42 +611,10 @@ export default function Admin() {
       setTotalOrderCount(data.totalOrders || 0);
       setTotalLeadCount(data.totalLeads || 0);
 
-      // Auto-load remaining pages in background
-      const bgPageSize = 100;
-      const totalOrders = data.totalOrders || 0;
-      const totalLeads = data.totalLeads || 0;
-      const orderPages = Math.ceil(totalOrders / bgPageSize);
-      const leadPages = Math.ceil(totalLeads / bgPageSize);
-      const maxPages = Math.max(orderPages, leadPages);
-
-      if (maxPages > 1) {
-        setLoadingMore(true);
-        let accOrders = [...(data.orders || [])];
-        let accLeads = [...(data.leads || [])];
-
-        // Fetch remaining pages with bounded concurrency (max 5 at a time)
-        const results = await runPooled(
-          Array.from({ length: maxPages - 1 }, (_, i) =>
-            () => listOrders("all", i + 1, bgPageSize, i + 1 >= orderPages)
-          ),
-          5,
-        );
-
-        for (const result of results) {
-          if (result.status === "fulfilled" && result.value.data) {
-            const pd = result.value.data;
-            if (pd.orders?.length) accOrders = accOrders.concat(pd.orders);
-            if (pd.leads?.length) accLeads = accLeads.concat(pd.leads);
-          } else if (result.status === "rejected") {
-            console.error("Page fetch failed:", result.reason);
-          }
-        }
-        // Batch update: set state once after all pages loaded
-        setOrders([...accOrders]);
-        setAllOrders([...accOrders]);
-        setLeads([...accLeads]);
-        setLoadingMore(false);
-      }
+      // Remaining pages fill in progressively in the background. Deliberately
+      // NOT awaited: the first page is usable immediately and `loading` must
+      // not cover the whole 292-page fan-out.
+      void loadRemainingPages(data);
     } catch (err: unknown) {
       console.error("Admin login error:", err);
       const message = err instanceof Error ? err.message : typeof err === "string" ? err : "Request failed";
