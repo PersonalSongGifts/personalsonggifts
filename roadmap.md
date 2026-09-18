@@ -46,3 +46,13 @@ Blockers before launch (details in `docs/checkout-staging/README.md`):
 ## SQL harness (added)
 - `node docs/revision-hardening/sql-tests/run-sql-tests.mjs` — runs the exact unapplied migration against PGlite + synthetic fixture (40 assertions). Single-session: not concurrency proof; real-Postgres validation stays the deploy gate.
 - Fixed reviewer-reported PL/pgSQL output-variable shadowing (`revision_count`, `attempt_count`, `state`, `provider_message_id`) by schema-qualifying table references.
+
+## Admin > Leads reliability fix (source-only, not published)
+- [x] Server-side lead search in admin-orders (optional `search`, escaped wildcards, same 12 columns + id)
+- [x] 300ms debounce, abort + sequence guard for stale responses
+- [x] First page usable immediately; pages 1..n commit progressively, never re-enter full-list loading
+- [x] 20s per-request timeout, visible error + Retry (no infinite spinner)
+- [x] Server totals for counts; CSV exports the full dataset on demand or fails loudly
+- [x] Auto-open lead effect no longer refires on leads array identity change
+- [x] Tests: 27 new Vitest (search races, view state, paging, export), 11 Deno (search helpers)
+- [ ] Unverified: authenticated in-browser run of the leads table (needs the admin password)
