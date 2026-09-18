@@ -676,48 +676,38 @@ export default function Admin() {
    * Never touches `loading` — the first page already made the UI usable.
    */
   const loadRemainingPages = async (firstPage: Record<string, any>) => {
-    const orderPages = Math.ceil((firstPage.totalOrders || 0) / BG_PAGE_SIZE);
-    const leadPages = Math.ceil((firstPage.totalLeads || 0) / BG_PAGE_SIZE);
-    const maxPages = Math.max(orderPages, leadPages);
-    if (maxPages <= 1) {
-      setBackgroundLoadError(null);
-      return;
-    }
-
     backgroundLoadInFlight.current = true;
     setLoadingMore(true);
     setBackgroundLoadError(null);
-    let failures = 0;
 
     try {
-      await runPooled(
-        Array.from({ length: maxPages - 1 }, (_, i) => async () => {
-          const res = await listOrders({
-            status: "all",
-            page: i + 1,
-            pageSize: BG_PAGE_SIZE,
-            skipOrders: i + 1 >= orderPages,
-          });
+      const { pages, failures } = await streamRemainingPages<Order, Lead>({
+        totalOrders: firstPage.totalOrders || 0,
+        totalLeads: firstPage.totalLeads || 0,
+        pageSize: BG_PAGE_SIZE,
+        fetchPage: async ({ page, pageSize, skipOrders }) => {
+          const res = await listOrders({ status: "all", page, pageSize, skipOrders });
           if (res.error || !res.data) {
-            failures += 1;
-            return;
+            return { error: res.error ?? new Error("Empty response") };
           }
           const pd = res.data as Record<string, any>;
-          // Commit as we go. Functional updates avoid stale-closure clobbering
-          // when several pages resolve in the same tick.
-          if (pd.orders?.length) {
-            setOrders((prev) => prev.concat(pd.orders));
-            setAllOrders((prev) => prev.concat(pd.orders));
+          return { orders: (pd.orders || []) as Order[], leads: (pd.leads || []) as Lead[] };
+        },
+        // Commit as we go. Functional updates avoid stale-closure clobbering
+        // when several pages resolve in the same tick.
+        onPage: ({ orders: pageOrders, leads: pageLeads }) => {
+          if (pageOrders?.length) {
+            setOrders((prev) => prev.concat(pageOrders));
+            setAllOrders((prev) => prev.concat(pageOrders));
           }
-          if (pd.leads?.length) {
-            setLeads((prev) => prev.concat(pd.leads));
+          if (pageLeads?.length) {
+            setLeads((prev) => prev.concat(pageLeads));
           }
-        }),
-        5,
-      );
+        },
+      });
       if (failures > 0) {
         setBackgroundLoadError(
-          `${failures} of ${maxPages - 1} page${failures === 1 ? "" : "s"} failed to load. Totals and CSV export may be incomplete until you retry.`,
+          `${failures} of ${pages} page${failures === 1 ? "" : "s"} failed to load. Totals and CSV export may be incomplete until you retry.`,
         );
       }
     } finally {
