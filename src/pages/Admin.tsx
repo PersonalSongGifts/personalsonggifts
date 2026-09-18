@@ -1587,10 +1587,12 @@ export default function Admin() {
   // trigger false "overdue" warnings. Also refetch on window focus.
   useEffect(() => {
     if (!isAuthenticated) return;
+    // background: true => never re-enters the full-list loading state, so the
+    // leads table stays usable and a search is never interrupted.
     const interval = setInterval(() => {
-      fetchOrders();
+      void fetchOrders({ background: true });
     }, 30000);
-    const onFocus = () => fetchOrders();
+    const onFocus = () => { void fetchOrders({ background: true }); };
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(interval);
