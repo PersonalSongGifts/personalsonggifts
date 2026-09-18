@@ -649,71 +649,149 @@ export default function Admin() {
     }
   };
 
-  const fetchOrders = async () => {
+  const BG_PAGE_SIZE = 100;
+
+  /**
+   * Streams pages 1..n into state as each one lands, so the table fills in
+   * progressively instead of staying empty until the final page.
+   * Never touches `loading` — the first page already made the UI usable.
+   */
+  const loadRemainingPages = async (firstPage: Record<string, any>) => {
+    const orderPages = Math.ceil((firstPage.totalOrders || 0) / BG_PAGE_SIZE);
+    const leadPages = Math.ceil((firstPage.totalLeads || 0) / BG_PAGE_SIZE);
+    const maxPages = Math.max(orderPages, leadPages);
+    if (maxPages <= 1) {
+      setBackgroundLoadError(null);
+      return;
+    }
+
+    backgroundLoadInFlight.current = true;
+    setLoadingMore(true);
+    setBackgroundLoadError(null);
+    let failures = 0;
+
+    try {
+      await runPooled(
+        Array.from({ length: maxPages - 1 }, (_, i) => async () => {
+          const res = await listOrders({
+            status: "all",
+            page: i + 1,
+            pageSize: BG_PAGE_SIZE,
+            skipOrders: i + 1 >= orderPages,
+          });
+          if (res.error || !res.data) {
+            failures += 1;
+            return;
+          }
+          const pd = res.data as Record<string, any>;
+          // Commit as we go. Functional updates avoid stale-closure clobbering
+          // when several pages resolve in the same tick.
+          if (pd.orders?.length) {
+            setOrders((prev) => prev.concat(pd.orders));
+            setAllOrders((prev) => prev.concat(pd.orders));
+          }
+          if (pd.leads?.length) {
+            setLeads((prev) => prev.concat(pd.leads));
+          }
+        }),
+        5,
+      );
+      if (failures > 0) {
+        setBackgroundLoadError(
+          `${failures} of ${maxPages - 1} page${failures === 1 ? "" : "s"} failed to load. Totals and CSV export may be incomplete until you retry.`,
+        );
+      }
+    } finally {
+      setLoadingMore(false);
+      backgroundLoadInFlight.current = false;
+    }
+  };
+
+  const retryBackgroundLoad = () => {
+    if (backgroundLoadInFlight.current) return;
+    void fetchOrders();
+  };
+
+  /**
+   * @param background true for the 30s timer and window-focus refresh. Those
+   * must never re-enter the full-list loading state (that was the "falls back
+   * to Loading leads..." symptom).
+   */
+  const fetchOrders = async (opts: { background?: boolean } = {}) => {
     if (!password) {
       setIsAuthenticated(false);
       return;
     }
     // In-flight guard: prevents the 30s interval + focus listener from stacking waves
-    if (fetchInFlight.current) return;
+    if (fetchInFlight.current || backgroundLoadInFlight.current) return;
     fetchInFlight.current = true;
 
-    setLoading(true);
+    const background = opts.background === true;
+    if (!background) setLoading(true);
     try {
       // Fetch page 0 first for fast response
-      const { data, error } = await listOrders("all", 0, 100);
-      if (error) throw error;
+      const { data, error } = await listOrders({ status: "all", page: 0, pageSize: 100 });
+      if (error || !data) throw error ?? new Error("Empty response");
 
-      let accOrders = data.orders || [];
-      let accLeads = data.leads || [];
-      setOrders(accOrders);
-      setAllOrders(accOrders);
-      setLeads(accLeads);
-      setTotalOrderCount(data.totalOrders || 0);
-      setTotalLeadCount(data.totalLeads || 0);
+      const pageOne = data as Record<string, any>;
+      setOrders(pageOne.orders || []);
+      setAllOrders(pageOne.orders || []);
+      setLeads(pageOne.leads || []);
+      setTotalOrderCount(pageOne.totalOrders || 0);
+      setTotalLeadCount(pageOne.totalLeads || 0);
+      setListError(null);
 
-      // Load remaining pages in background
-      const bgPageSize = 100;
-      const orderPages = Math.ceil((data.totalOrders || 0) / bgPageSize);
-      const leadPages = Math.ceil((data.totalLeads || 0) / bgPageSize);
-      const maxPages = Math.max(orderPages, leadPages);
-
-      if (maxPages > 1) {
-        setLoadingMore(true);
-
-        // Fetch remaining pages with bounded concurrency (max 5 at a time)
-        const results = await runPooled(
-          Array.from({ length: maxPages - 1 }, (_, i) =>
-            () => listOrders("all", i + 1, bgPageSize, i + 1 >= orderPages)
-          ),
-          5,
-        );
-
-        for (const result of results) {
-          if (result.status === "fulfilled" && result.value.data) {
-            const pd = result.value.data;
-            if (pd.orders?.length) accOrders = accOrders.concat(pd.orders);
-            if (pd.leads?.length) accLeads = accLeads.concat(pd.leads);
-          } else if (result.status === "rejected") {
-            console.error("Page fetch failed:", result.reason);
-          }
-        }
-        // Batch update: set state once after all pages loaded
-        setOrders([...accOrders]);
-        setAllOrders([...accOrders]);
-        setLeads([...accLeads]);
-        setLoadingMore(false);
+      // Progressive background fill; not awaited so the table stays usable.
+      void loadRemainingPages(pageOne);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load leads and orders.";
+      setListError(message);
+      if (!background) {
+        toast({
+          title: "Couldn't load leads and orders",
+          description: message,
+          variant: "destructive",
+        });
       }
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to fetch orders.",
-        variant: "destructive",
-      });
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
       fetchInFlight.current = false;
     }
+  };
+
+  /**
+   * Fetches EVERY lead on demand (CSV export). Returns null when any page
+   * fails, so an export never silently covers only the loaded rows.
+   */
+  const fetchAllLeadsForExport = async (
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<Lead[] | null> => {
+    const first = await listOrders({ status: "all", page: 0, pageSize: BG_PAGE_SIZE, skipOrders: true });
+    if (first.error || !first.data) return null;
+    const firstData = first.data as Record<string, any>;
+    const total = firstData.totalLeads || 0;
+    const pages = Math.ceil(total / BG_PAGE_SIZE);
+    const collected: Lead[] = [...((firstData.leads || []) as Lead[])];
+    onProgress?.(collected.length, total);
+
+    if (pages > 1) {
+      let failed = false;
+      await runPooled(
+        Array.from({ length: pages - 1 }, (_, i) => async () => {
+          const res = await listOrders({ status: "all", page: i + 1, pageSize: BG_PAGE_SIZE, skipOrders: true });
+          if (res.error || !res.data) {
+            failed = true;
+            return;
+          }
+          const rows = ((res.data as Record<string, any>).leads || []) as Lead[];
+          collected.push(...rows);
+          onProgress?.(collected.length, total);
+        }),
+        5,
+      );
+      if (failed) return null;
+    }
+    return collected;
   };
 
   const updateOrder = async (orderId: string, updates: Record<string, unknown>) => {
