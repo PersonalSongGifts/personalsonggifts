@@ -204,6 +204,9 @@ Deno.serve(async (req) => {
       targetedPromoExpired,
       targetedPromoPriceCents,
       targetedPromoEndsAt,
+      // Presentation-only: suppress urgency banner when the promo has show_banner=false.
+      targetedPromoShowBanner,
+
 
       // Sitewide promo (applies as default lead price floor when no targeted promo is in effect)
       sitewidePromoSlug,
