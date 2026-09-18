@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { applyLeadFilters, isServerSearchActive, resolveLeadsViewState } from "@/components/admin/leadFilters";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -97,6 +98,22 @@ interface LeadsTableProps {
   onRefresh?: () => void;
   onNavigateToOrder?: (orderId: string) => void;
   initialSelectedLeadId?: string | null;
+  // Server-side search (owned by Admin so it survives dialogs and refreshes)
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  searchResults: Lead[] | null;
+  searchLoading: boolean;
+  searchError: string | null;
+  searchTotal: number;
+  minSearchLength: number;
+  onRetrySearch: () => void;
+  // Totals come from the server, never from the loaded array length
+  totalLeadCount: number;
+  loadingMore: boolean;
+  listError: string | null;
+  backgroundLoadError: string | null;
+  onRetryLoad: () => void;
+  onFetchAllLeads: (onProgress?: (loaded: number, total: number) => void) => Promise<Lead[] | null>;
 }
 
 const statusColors: Record<string, string> = {
@@ -127,7 +144,30 @@ function getQualityBadge(score: number | null | undefined) {
   return { label: `${score}`, className: "bg-red-100 text-red-700", icon: AlertTriangle };
 }
 
-export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, onRefresh, onNavigateToOrder, initialSelectedLeadId }: LeadsTableProps) {
+export function LeadsTable({
+  leads,
+  loading,
+  sort,
+  onSortChange,
+  adminPassword,
+  onRefresh,
+  onNavigateToOrder,
+  initialSelectedLeadId,
+  searchQuery,
+  onSearchQueryChange,
+  searchResults,
+  searchLoading,
+  searchError,
+  searchTotal,
+  minSearchLength,
+  onRetrySearch,
+  totalLeadCount,
+  loadingMore,
+  listError,
+  backgroundLoadError,
+  onRetryLoad,
+  onFetchAllLeads,
+}: LeadsTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState("all");
   const [dismissedFilter, setDismissedFilter] = useState<"active" | "dismissed" | "all">("active");
@@ -136,7 +176,8 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     ? `$${(promo.leadPriceCents / 100).toFixed(2)}`
     : "$39.99";
   const followupButtonLabel = `Send ${followupPriceLabel} Follow-up`;
-  const [searchQuery, setSearchQuery] = useState("");
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -182,13 +223,27 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [editingLeadTitle, setEditingLeadTitle] = useState(false);
   const [editedLeadTitle, setEditedLeadTitle] = useState("");
   const [savingLeadTitle, setSavingLeadTitle] = useState(false);
-  // Auto-open lead from external navigation (e.g., Hot Leads card)
+  // Auto-open lead from external navigation (e.g., Hot Leads card).
+  // Deliberately keyed on the id only: depending on `leads` re-ran this (and
+  // its detail fetch) every time the array identity changed on refresh.
+  const leadsRef = useRef<Lead[]>(leads);
+  leadsRef.current = leads;
+  const autoOpenedLeadId = useRef<string | null>(null);
   useEffect(() => {
-    if (initialSelectedLeadId) {
-      const lead = leads.find((l) => l.id === initialSelectedLeadId);
-      if (lead) { setSelectedLead(lead); fetchLeadDetail(lead.id); }
+    if (!initialSelectedLeadId) {
+      autoOpenedLeadId.current = null;
+      return;
     }
-  }, [initialSelectedLeadId, leads]);
+    if (autoOpenedLeadId.current === initialSelectedLeadId) return;
+    const lead = leadsRef.current.find((l) => l.id === initialSelectedLeadId);
+    if (lead) {
+      autoOpenedLeadId.current = initialSelectedLeadId;
+      setSelectedLead(lead);
+      fetchLeadDetail(lead.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelectedLeadId]);
+
 
   // Fetch full lead detail (includes automation_lyrics) when a lead is selected
   const fetchLeadDetail = useCallback(async (leadId: string) => {
@@ -215,52 +270,28 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
   const [currentPage, setCurrentPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  // Filter by status, quality, dismissed state, and search query
-  const filteredLeads = leads
-    .filter((lead) => {
-      // Dismissed filter
-      if (dismissedFilter === "active") return !lead.dismissed_at;
-      if (dismissedFilter === "dismissed") return !!lead.dismissed_at;
-      return true; // "all"
-    })
-    .filter((lead) => statusFilter === "all" || lead.status === statusFilter)
-    .filter((lead) => {
-      if (qualityFilter === "all") return true;
-      const score = lead.quality_score ?? 0;
-      if (qualityFilter === "high") return score >= 70;
-      if (qualityFilter === "medium") return score >= 40 && score < 70;
-      if (qualityFilter === "low") return score < 40;
-      return true;
-    })
-    .filter((lead) => {
-      if (!searchQuery.trim()) return true;
-      const rawSearch = searchQuery.trim();
-      const urlMatch = rawSearch.match(/\/(?:preview|song)\/([A-Za-z0-9_-]+)/);
-      const searchLower = (urlMatch ? urlMatch[1] : rawSearch).toLowerCase();
-      return (
-        lead.id.toLowerCase().includes(searchLower) ||
-        lead.customer_name.toLowerCase().includes(searchLower) ||
-        lead.email.toLowerCase().includes(searchLower) ||
-        lead.recipient_name.toLowerCase().includes(searchLower) ||
-        lead.genre.toLowerCase().includes(searchLower) ||
-        lead.special_qualities.toLowerCase().includes(searchLower) ||
-        lead.favorite_memory.toLowerCase().includes(searchLower) ||
-        (lead.special_message?.toLowerCase().includes(searchLower) ?? false) ||
-        (lead.singer_preference?.toLowerCase().includes(searchLower) ?? false) ||
-        lead.occasion.toLowerCase().includes(searchLower) ||
-        (lead.preview_song_url?.toLowerCase().includes(searchLower) ?? false) ||
-        (lead.preview_token?.toLowerCase().includes(searchLower) ?? false) ||
-        (lead.cover_image_url?.toLowerCase().includes(searchLower) ?? false)
-      );
-    })
-    .sort((a, b) => {
-      if (sort === "quality") {
-        return (b.quality_score ?? 0) - (a.quality_score ?? 0);
-      }
-      const dateA = new Date(a.captured_at).getTime();
-      const dateB = new Date(b.captured_at).getTime();
-      return sort === "latest" ? dateB - dateA : dateA - dateB;
-    });
+  // Text search is server-side; these filters only narrow the visible rows.
+  const serverSearchActive = isServerSearchActive(searchQuery, minSearchLength);
+  const baseRows: Lead[] = serverSearchActive ? (searchResults ?? []) : leads;
+  const filteredLeads = useMemo(
+    () => applyLeadFilters(baseRows, { statusFilter, qualityFilter, dismissedFilter, sort }),
+    [baseRows, statusFilter, qualityFilter, dismissedFilter, sort],
+  );
+
+  const viewState = resolveLeadsViewState({
+    serverSearchActive,
+    searchLoading,
+    searchError,
+    searchResultCount: searchResults === null ? null : searchResults.length,
+    loading,
+    listError,
+    visibleRowCount: filteredLeads.length,
+  });
+
+  // Reset to the first page whenever the underlying result set changes.
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchQuery, statusFilter, qualityFilter, dismissedFilter, sort]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -708,8 +739,54 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     }
   };
 
-  const exportToCSV = () => {
-    if (filteredLeads.length === 0) return;
+  /**
+   * CSV export.
+   *
+   * While a search is active it exports the matches on screen. Otherwise it
+   * fetches EVERY lead on demand so an export is never silently limited to
+   * the rows that happen to be loaded. Any page failure aborts the download
+   * with a visible error.
+   */
+  const handleExportCsv = async () => {
+    if (exportingCsv) return;
+    let rowsToExport: Lead[] = filteredLeads;
+
+    if (!serverSearchActive) {
+      setExportingCsv(true);
+      setExportProgress({ loaded: 0, total: totalLeadCount });
+      try {
+        const all = await onFetchAllLeads((loaded, total) => setExportProgress({ loaded, total }));
+        if (!all) {
+          toast({
+            title: "Export failed",
+            description: "Some leads could not be downloaded, so no file was created. Please try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+        rowsToExport = applyLeadFilters(all, { statusFilter, qualityFilter, dismissedFilter, sort });
+      } catch (err) {
+        toast({
+          title: "Export failed",
+          description: err instanceof Error ? err.message : "Could not download all leads.",
+          variant: "destructive",
+        });
+        return;
+      } finally {
+        setExportingCsv(false);
+        setExportProgress(null);
+      }
+    }
+
+    if (rowsToExport.length === 0) {
+      toast({ title: "Nothing to export", description: "No leads match the current filters." });
+      return;
+    }
+    exportToCSV(rowsToExport);
+  };
+
+  const exportToCSV = (rows_: Lead[]) => {
+    if (rows_.length === 0) return;
 
     const headers = [
       "Lead Name",
@@ -727,7 +804,7 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
       "Follow-up Sent",
     ];
 
-    const rows = filteredLeads.map((lead) => [
+    const rows = rows_.map((lead) => [
       lead.customer_name,
       lead.email,
       lead.phone || "",
@@ -1029,34 +1106,98 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
               <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            placeholder="Search by name, email, lead ID, or song link..."
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(0); }}
-            className="w-64"
-          />
-          <span className="text-sm text-muted-foreground">
-            {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""}
-            {filteredLeads.length > PAGE_SIZE && ` (page ${currentPage + 1} of ${Math.ceil(filteredLeads.length / PAGE_SIZE)})`}
+          <div className="relative w-full sm:w-72">
+            <Input
+              placeholder="Search all leads by name, email, ID or link..."
+              value={searchQuery}
+              onChange={(e) => onSearchQueryChange(e.target.value)}
+              className="w-full pr-8"
+              aria-label="Search all leads"
+            />
+            {serverSearchActive && searchLoading && (
+              <Loader2 className="h-4 w-4 animate-spin absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            )}
+            {searchQuery && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => onSearchQueryChange("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                style={{ display: serverSearchActive && searchLoading ? "none" : undefined }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            {serverSearchActive ? (
+              <>
+                {filteredLeads.length} of {searchTotal} match{searchTotal === 1 ? "" : "es"}
+                {searchTotal > filteredLeads.length && !searchLoading && " (refine to narrow)"}
+              </>
+            ) : (
+              <>
+                {filteredLeads.length} shown · {totalLeadCount} total
+                {loadingMore && (
+                  <Loader2 className="inline h-3 w-3 ml-1 animate-spin align-middle" />
+                )}
+              </>
+            )}
           </span>
         </div>
-        <Button variant="outline" size="sm" onClick={exportToCSV} disabled={filteredLeads.length === 0}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
+        <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={exportingCsv}>
+          {exportingCsv ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+          {exportingCsv
+            ? exportProgress
+              ? `Exporting ${exportProgress.loaded}/${exportProgress.total}`
+              : "Exporting..."
+            : "Export CSV"}
         </Button>
       </div>
 
-      {loading ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">Loading leads...</p>
+      {backgroundLoadError && !serverSearchActive && (
+        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="py-3 flex items-center justify-between gap-4">
+            <p className="text-sm text-amber-900 dark:text-amber-200">{backgroundLoadError}</p>
+            <Button variant="outline" size="sm" onClick={onRetryLoad}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
           </CardContent>
         </Card>
-      ) : filteredLeads.length === 0 ? (
+      )}
+
+      {viewState.kind === "error" ? (
+        <Card className="border-destructive/40">
+          <CardContent className="py-12 text-center space-y-4">
+            <AlertCircle className="h-10 w-10 mx-auto text-destructive" />
+            <div>
+              <p className="font-medium">
+                {viewState.retry === "search" ? "Search failed" : "Couldn't load leads"}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">{viewState.message}</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={viewState.retry === "search" ? onRetrySearch : onRetryLoad}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      ) : viewState.kind === "loading" ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="h-6 w-6 mx-auto mb-3 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground">{viewState.message}</p>
+          </CardContent>
+        </Card>
+      ) : viewState.kind === "empty" ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No leads found</p>
+            <p className="text-muted-foreground">{viewState.message}</p>
           </CardContent>
         </Card>
       ) : (

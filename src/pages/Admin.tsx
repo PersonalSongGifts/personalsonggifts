@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { collectAllLeads, streamRemainingPages } from "@/lib/leadPaging";
+import { createLeadSearchRunner } from "@/lib/leadSearch";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -453,8 +455,58 @@ export default function Admin() {
   const [totalOrderCount, setTotalOrderCount] = useState(0);
   const [totalLeadCount, setTotalLeadCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  // First-page failure (visible error + Retry instead of an endless spinner).
+  const [listError, setListError] = useState<string | null>(null);
+  // Partial background fill failure — totals/CSV would be incomplete.
+  const [backgroundLoadError, setBackgroundLoadError] = useState<string | null>(null);
+  const backgroundLoadInFlight = useRef(false);
 
-  const listOrders = async (status: string, page = 0, pageSize = 100, skipOrders = false) => {
+  // ---- Server-side lead search -------------------------------------------
+  // Owned here (not inside LeadsTable) so the term survives dialog open/close
+  // and parent refreshes. Results come from the database, so a search never
+  // waits for all ~29k leads to download.
+  const [leadSearch, setLeadSearch] = useState("");
+  const [leadSearchResults, setLeadSearchResults] = useState<Lead[] | null>(null);
+  const [leadSearchLoading, setLeadSearchLoading] = useState(false);
+  const [leadSearchError, setLeadSearchError] = useState<string | null>(null);
+  const [leadSearchTotal, setLeadSearchTotal] = useState(0);
+  const leadSearchSeq = useRef(0);
+  const leadSearchAbort = useRef<AbortController | null>(null);
+  const MIN_LEAD_SEARCH_LENGTH = 2;
+  const LEAD_SEARCH_DEBOUNCE_MS = 300;
+
+  // Hard per-request ceiling. Without this a hanging request left the admin on
+  // an indefinite spinner (see .lovable/plan.md).
+  const LIST_REQUEST_TIMEOUT_MS = 20000;
+
+  type ListParams = {
+    status?: string;
+    page?: number;
+    pageSize?: number;
+    skipOrders?: boolean;
+    /** Optional server-side lead search. Omitted => unchanged list behaviour. */
+    search?: string;
+    /** Caller-owned cancellation (stale search requests). */
+    signal?: AbortSignal;
+  };
+
+  const listOrders = async ({
+    status = "all",
+    page = 0,
+    pageSize = 100,
+    skipOrders = false,
+    search,
+    signal,
+  }: ListParams = {}) => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, LIST_REQUEST_TIMEOUT_MS);
+    const onExternalAbort = () => controller.abort();
+    signal?.addEventListener("abort", onExternalAbort);
+
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-orders`,
@@ -471,7 +523,9 @@ export default function Admin() {
             page,
             pageSize,
             skipOrders,
+            ...(search ? { search } : {}),
           }),
+          signal: controller.signal,
         },
       );
 
@@ -481,21 +535,32 @@ export default function Admin() {
         try {
           data = JSON.parse(responseText) as Record<string, unknown>;
         } catch {
-          return { data: null, error: new Error(`Backend returned an invalid response (HTTP ${response.status})`) };
+          return { data: null, error: new Error(`Backend returned an invalid response (HTTP ${response.status})`), aborted: false };
         }
       }
 
       if (!response.ok) {
         const message = typeof data?.error === "string" ? data.error : `HTTP ${response.status}`;
-        return { data: null, error: new Error(message) };
+        return { data: null, error: new Error(message), aborted: false };
       }
 
-      return { data, error: null };
+      return { data, error: null, aborted: false };
     } catch (error) {
+      if (timedOut) {
+        return { data: null, error: new Error("The request timed out after 20 seconds."), aborted: false };
+      }
+      // Caller cancelled (superseded search) — not an error to surface.
+      if (signal?.aborted) {
+        return { data: null, error: null, aborted: true };
+      }
       return {
         data: null,
         error: error instanceof Error ? error : new Error(String(error)),
+        aborted: false,
       };
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onExternalAbort);
     }
   };
 
@@ -531,12 +596,12 @@ export default function Admin() {
       let data: any = null;
       let error: any = null;
       for (let attempt = 0; attempt < 3; attempt++) {
-        const res = await listOrders("all", 0, 100);
+        const res = await listOrders({ status: "all", page: 0, pageSize: 100 });
         data = res.data;
         error = res.error;
         if (!error) break;
         const msg = error.message || String(error);
-        const transient = msg.includes("Failed to send") || msg.includes("fetch") || msg.includes("network");
+        const transient = msg.includes("Failed to send") || msg.includes("fetch") || msg.includes("network") || msg.includes("timed out");
         if (!transient) break;
         if (attempt < 2) await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
       }
@@ -550,7 +615,7 @@ export default function Admin() {
           return;
         }
         
-        if (errorMessage.includes("Failed to send") || errorMessage.includes("fetch")) {
+        if (errorMessage.includes("Failed to send") || errorMessage.includes("fetch") || errorMessage.includes("timed out")) {
           toast({ title: "Connection problem", description: "Could not reach the backend after 3 tries. Check your network / ad-blocker or VPN, then try again.", variant: "destructive" });
           setLoading(false);
           return;
@@ -567,42 +632,10 @@ export default function Admin() {
       setTotalOrderCount(data.totalOrders || 0);
       setTotalLeadCount(data.totalLeads || 0);
 
-      // Auto-load remaining pages in background
-      const bgPageSize = 100;
-      const totalOrders = data.totalOrders || 0;
-      const totalLeads = data.totalLeads || 0;
-      const orderPages = Math.ceil(totalOrders / bgPageSize);
-      const leadPages = Math.ceil(totalLeads / bgPageSize);
-      const maxPages = Math.max(orderPages, leadPages);
-
-      if (maxPages > 1) {
-        setLoadingMore(true);
-        let accOrders = [...(data.orders || [])];
-        let accLeads = [...(data.leads || [])];
-
-        // Fetch remaining pages with bounded concurrency (max 5 at a time)
-        const results = await runPooled(
-          Array.from({ length: maxPages - 1 }, (_, i) =>
-            () => listOrders("all", i + 1, bgPageSize, i + 1 >= orderPages)
-          ),
-          5,
-        );
-
-        for (const result of results) {
-          if (result.status === "fulfilled" && result.value.data) {
-            const pd = result.value.data;
-            if (pd.orders?.length) accOrders = accOrders.concat(pd.orders);
-            if (pd.leads?.length) accLeads = accLeads.concat(pd.leads);
-          } else if (result.status === "rejected") {
-            console.error("Page fetch failed:", result.reason);
-          }
-        }
-        // Batch update: set state once after all pages loaded
-        setOrders([...accOrders]);
-        setAllOrders([...accOrders]);
-        setLeads([...accLeads]);
-        setLoadingMore(false);
-      }
+      // Remaining pages fill in progressively in the background. Deliberately
+      // NOT awaited: the first page is usable immediately and `loading` must
+      // not cover the whole 292-page fan-out.
+      void loadRemainingPages(data);
     } catch (err: unknown) {
       console.error("Admin login error:", err);
       const message = err instanceof Error ? err.message : typeof err === "string" ? err : "Request failed";
@@ -637,72 +670,204 @@ export default function Admin() {
     }
   };
 
-  const fetchOrders = async () => {
+  const BG_PAGE_SIZE = 100;
+
+  /**
+   * Streams pages 1..n into state as each one lands, so the table fills in
+   * progressively instead of staying empty until the final page.
+   * Never touches `loading` — the first page already made the UI usable.
+   */
+  const loadRemainingPages = async (firstPage: Record<string, any>) => {
+    backgroundLoadInFlight.current = true;
+    setLoadingMore(true);
+    setBackgroundLoadError(null);
+
+    try {
+      const { pages, failures } = await streamRemainingPages<Order, Lead>({
+        totalOrders: firstPage.totalOrders || 0,
+        totalLeads: firstPage.totalLeads || 0,
+        pageSize: BG_PAGE_SIZE,
+        fetchPage: async ({ page, pageSize, skipOrders }) => {
+          const res = await listOrders({ status: "all", page, pageSize, skipOrders });
+          if (res.error || !res.data) {
+            return { error: res.error ?? new Error("Empty response") };
+          }
+          const pd = res.data as Record<string, any>;
+          return { orders: (pd.orders || []) as Order[], leads: (pd.leads || []) as Lead[] };
+        },
+        // Commit as we go. Functional updates avoid stale-closure clobbering
+        // when several pages resolve in the same tick.
+        onPage: ({ orders: pageOrders, leads: pageLeads }) => {
+          if (pageOrders?.length) {
+            setOrders((prev) => prev.concat(pageOrders));
+            setAllOrders((prev) => prev.concat(pageOrders));
+          }
+          if (pageLeads?.length) {
+            setLeads((prev) => prev.concat(pageLeads));
+          }
+        },
+      });
+      if (failures > 0) {
+        setBackgroundLoadError(
+          `${failures} of ${pages} page${failures === 1 ? "" : "s"} failed to load. Totals and CSV export may be incomplete until you retry.`,
+        );
+      }
+    } finally {
+      setLoadingMore(false);
+      backgroundLoadInFlight.current = false;
+    }
+  };
+
+  const retryBackgroundLoad = () => {
+    if (backgroundLoadInFlight.current) return;
+    void fetchOrders();
+  };
+
+  /**
+   * @param background true for the 30s timer and window-focus refresh. Those
+   * must never re-enter the full-list loading state (that was the "falls back
+   * to Loading leads..." symptom).
+   */
+  const fetchOrders = async (opts: { background?: boolean } = {}) => {
     if (!password) {
       setIsAuthenticated(false);
       return;
     }
     // In-flight guard: prevents the 30s interval + focus listener from stacking waves
-    if (fetchInFlight.current) return;
+    if (fetchInFlight.current || backgroundLoadInFlight.current) return;
     fetchInFlight.current = true;
 
-    setLoading(true);
+    const background = opts.background === true;
+    if (!background) setLoading(true);
     try {
       // Fetch page 0 first for fast response
-      const { data, error } = await listOrders("all", 0, 100);
-      if (error) throw error;
+      const { data, error } = await listOrders({ status: "all", page: 0, pageSize: 100 });
+      if (error || !data) throw error ?? new Error("Empty response");
 
-      let accOrders = data.orders || [];
-      let accLeads = data.leads || [];
-      setOrders(accOrders);
-      setAllOrders(accOrders);
-      setLeads(accLeads);
-      setTotalOrderCount(data.totalOrders || 0);
-      setTotalLeadCount(data.totalLeads || 0);
+      const pageOne = data as Record<string, any>;
+      setOrders(pageOne.orders || []);
+      setAllOrders(pageOne.orders || []);
+      setLeads(pageOne.leads || []);
+      setTotalOrderCount(pageOne.totalOrders || 0);
+      setTotalLeadCount(pageOne.totalLeads || 0);
+      setListError(null);
 
-      // Load remaining pages in background
-      const bgPageSize = 100;
-      const orderPages = Math.ceil((data.totalOrders || 0) / bgPageSize);
-      const leadPages = Math.ceil((data.totalLeads || 0) / bgPageSize);
-      const maxPages = Math.max(orderPages, leadPages);
-
-      if (maxPages > 1) {
-        setLoadingMore(true);
-
-        // Fetch remaining pages with bounded concurrency (max 5 at a time)
-        const results = await runPooled(
-          Array.from({ length: maxPages - 1 }, (_, i) =>
-            () => listOrders("all", i + 1, bgPageSize, i + 1 >= orderPages)
-          ),
-          5,
-        );
-
-        for (const result of results) {
-          if (result.status === "fulfilled" && result.value.data) {
-            const pd = result.value.data;
-            if (pd.orders?.length) accOrders = accOrders.concat(pd.orders);
-            if (pd.leads?.length) accLeads = accLeads.concat(pd.leads);
-          } else if (result.status === "rejected") {
-            console.error("Page fetch failed:", result.reason);
-          }
-        }
-        // Batch update: set state once after all pages loaded
-        setOrders([...accOrders]);
-        setAllOrders([...accOrders]);
-        setLeads([...accLeads]);
-        setLoadingMore(false);
+      // Progressive background fill; not awaited so the table stays usable.
+      void loadRemainingPages(pageOne);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load leads and orders.";
+      setListError(message);
+      if (!background) {
+        toast({
+          title: "Couldn't load leads and orders",
+          description: message,
+          variant: "destructive",
+        });
       }
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to fetch orders.",
-        variant: "destructive",
-      });
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
       fetchInFlight.current = false;
     }
   };
+
+  /**
+   * Fetches EVERY lead on demand (CSV export). Returns null when any page
+   * fails, so an export never silently covers only the loaded rows.
+   */
+  const fetchAllLeadsForExport = (
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<Lead[] | null> =>
+    collectAllLeads<Lead>({
+      pageSize: BG_PAGE_SIZE,
+      fetchFirst: async () => {
+        const res = await listOrders({ status: "all", page: 0, pageSize: BG_PAGE_SIZE, skipOrders: true });
+        if (res.error || !res.data) return { error: res.error ?? new Error("Empty response") };
+        const d = res.data as Record<string, any>;
+        return { leads: (d.leads || []) as Lead[], totalLeads: d.totalLeads || 0 };
+      },
+      fetchPage: async (page) => {
+        const res = await listOrders({ status: "all", page, pageSize: BG_PAGE_SIZE, skipOrders: true });
+        if (res.error || !res.data) return { error: res.error ?? new Error("Empty response") };
+        return { leads: ((res.data as Record<string, any>).leads || []) as Lead[] };
+      },
+      onProgress,
+    });
+
+  /**
+   * Server-side lead search. The runner owns the race handling: the previous
+   * request is aborted and stale responses are dropped by sequence, so rapid
+   * typing can never paint an older result set over a newer one.
+   */
+  const leadSearchRunner = useMemo(
+    () =>
+      createLeadSearchRunner<Lead>({
+        minLength: MIN_LEAD_SEARCH_LENGTH,
+        request: async ({ term, signal }) => {
+          const res = await listOrders({
+            status: "all",
+            page: 0,
+            pageSize: 100,
+            skipOrders: true,
+            search: term,
+            signal,
+          });
+          if (res.aborted) return { rows: null, total: 0, error: null, aborted: true };
+          if (res.error || !res.data) {
+            return { rows: null, total: 0, error: res.error ?? new Error("Search failed.") };
+          }
+          const d = res.data as Record<string, any>;
+          const rows = (d.leads || []) as Lead[];
+          return { rows, total: d.totalLeads ?? rows.length, error: null };
+        },
+        handlers: {
+          onIdle: () => {
+            setLeadSearchResults(null);
+            setLeadSearchLoading(false);
+            setLeadSearchError(null);
+            setLeadSearchTotal(0);
+          },
+          onLoading: () => {
+            setLeadSearchLoading(true);
+            setLeadSearchError(null);
+          },
+          onResults: (rows, total) => {
+            setLeadSearchResults(rows);
+            setLeadSearchTotal(total);
+            setLeadSearchError(null);
+            setLeadSearchLoading(false);
+          },
+          onError: (message) => {
+            setLeadSearchResults(null);
+            setLeadSearchTotal(0);
+            setLeadSearchError(message);
+            setLeadSearchLoading(false);
+          },
+        },
+      }),
+    // listOrders only closes over `password`; rebuilding on password change is correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [password],
+  );
+
+  const runLeadSearch = useCallback(
+    (term: string) => leadSearchRunner.run(term),
+    [leadSearchRunner],
+  );
+
+  // Debounced trigger (~300ms) for the leads search box.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const term = leadSearch.trim();
+    if (term.length < MIN_LEAD_SEARCH_LENGTH) {
+      void runLeadSearch("");
+      return;
+    }
+    setLeadSearchLoading(true);
+    const t = setTimeout(() => { void runLeadSearch(term); }, LEAD_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [leadSearch, isAuthenticated, runLeadSearch]);
+
+
 
   const updateOrder = async (orderId: string, updates: Record<string, unknown>) => {
     if (!password) {
@@ -1409,10 +1574,12 @@ export default function Admin() {
   // trigger false "overdue" warnings. Also refetch on window focus.
   useEffect(() => {
     if (!isAuthenticated) return;
+    // background: true => never re-enters the full-list loading state, so the
+    // leads table stays usable and a search is never interrupted.
     const interval = setInterval(() => {
-      fetchOrders();
+      void fetchOrders({ background: true });
     }, 30000);
-    const onFocus = () => fetchOrders();
+    const onFocus = () => { void fetchOrders({ background: true }); };
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(interval);
@@ -1463,7 +1630,7 @@ export default function Admin() {
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchOrders}
+              onClick={() => void fetchOrders()}
               disabled={loading}
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
@@ -2091,10 +2258,25 @@ export default function Admin() {
               sort={leadSort} 
               onSortChange={setLeadSort}
               adminPassword={password}
-              onRefresh={fetchOrders}
+              onRefresh={() => void fetchOrders()}
               onNavigateToOrder={handleNavigateToOrder}
               initialSelectedLeadId={pendingLeadId}
+              searchQuery={leadSearch}
+              onSearchQueryChange={setLeadSearch}
+              searchResults={leadSearchResults}
+              searchLoading={leadSearchLoading}
+              searchError={leadSearchError}
+              searchTotal={leadSearchTotal}
+              minSearchLength={MIN_LEAD_SEARCH_LENGTH}
+              onRetrySearch={() => void runLeadSearch(leadSearch)}
+              totalLeadCount={totalLeadCount}
+              loadingMore={loadingMore}
+              listError={listError}
+              backgroundLoadError={backgroundLoadError}
+              onRetryLoad={retryBackgroundLoad}
+              onFetchAllLeads={fetchAllLeadsForExport}
             />
+
           </TabsContent>
 
           <TabsContent value="automation" className="space-y-6">

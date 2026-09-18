@@ -2,6 +2,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
+import {
+  buildLeadIdMatch,
+  buildLeadSearchOrFilter,
+  mergeLeadMatches,
+  normalizeLeadSearchTerm,
+} from "../_shared/lead-search.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -141,15 +147,68 @@ Deno.serve(async (req) => {
           orders = orderRows as unknown[] | null;
         }
 
-        // Fetch paginated leads (lean — drops song_history, prev_song_url,
-        // inputs_hash jsonb/blobs; detail view re-fetches via get_lead_detail).
-        const { data: leads, error: leadErr } = await supabase
-          .from("leads")
-          .select("id, email, phone, customer_name, recipient_name, recipient_type, recipient_name_pronunciation, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, captured_at, converted_at, order_id, quality_score, preview_song_url, full_song_url, song_title, cover_image_url, preview_token, preview_sent_at, preview_opened_at, preview_played_at, preview_play_count, preview_scheduled_at, follow_up_sent_at, dismissed_at, utm_source, utm_medium, utm_campaign, automation_status, automation_started_at, automation_retry_count, automation_last_error, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, sent_at, lead_email_override, lead_email_cc, preview_sent_to_emails, sms_opt_in, sms_sent_at, sms_scheduled_for, phone_e164, sms_status, lyrics_language_code")
-          .order("captured_at", { ascending: false })
-          .range(rangeStart, rangeEnd);
+        // Lean lead columns — drops song_history, prev_song_url, inputs_hash
+        // jsonb/blobs; detail view re-fetches via get_lead_detail.
+        const leadColumns = "id, email, phone, customer_name, recipient_name, recipient_type, recipient_name_pronunciation, occasion, genre, singer_preference, special_qualities, favorite_memory, special_message, status, captured_at, converted_at, order_id, quality_score, preview_song_url, full_song_url, song_title, cover_image_url, preview_token, preview_sent_at, preview_opened_at, preview_played_at, preview_play_count, preview_scheduled_at, follow_up_sent_at, dismissed_at, utm_source, utm_medium, utm_campaign, automation_status, automation_started_at, automation_retry_count, automation_last_error, automation_task_id, automation_style_id, earliest_generate_at, target_send_at, generated_at, sent_at, lead_email_override, lead_email_cc, preview_sent_to_emails, sms_opt_in, sms_sent_at, sms_scheduled_for, phone_e164, sms_status, lyrics_language_code";
+
+        // OPTIONAL server-side lead search. When absent this action behaves
+        // exactly as before (paginated newest-first dump). When present the
+        // search is pushed to Postgres so the admin no longer has to download
+        // every lead row before a result can appear. Search terms are
+        // normalized + escaped in _shared/lead-search.ts; never logged.
+        const searchTerm = normalizeLeadSearchTerm(body?.search);
+        const searchOrFilter = searchTerm ? buildLeadSearchOrFilter(searchTerm) : null;
+        const searchIdMatch = searchTerm ? buildLeadIdMatch(searchTerm) : null;
+        const searchActive = Boolean(searchOrFilter || searchIdMatch);
+
+        let leads: unknown[] | null = [];
+        let leadErr: unknown = null;
+        let searchTotal: number | null = null;
+
+        if (searchActive) {
+          const textQuery = supabase
+            .from("leads")
+            .select(leadColumns, { count: "exact" })
+            .order("captured_at", { ascending: false })
+            .range(rangeStart, rangeEnd);
+          if (searchOrFilter) textQuery.or(searchOrFilter);
+          const textResult = searchOrFilter
+            ? await textQuery
+            : { data: [] as unknown[], error: null, count: 0 };
+          if (textResult.error) leadErr = textResult.error;
+
+          let idRows: unknown[] = [];
+          if (searchIdMatch) {
+            let idQuery = supabase.from("leads").select(leadColumns).limit(pageSize);
+            idQuery = searchIdMatch.type === "eq"
+              ? idQuery.eq("id", searchIdMatch.value)
+              : idQuery.gte("id", searchIdMatch.gte).lte("id", searchIdMatch.lte);
+            const { data: idData, error: idError } = await idQuery;
+            if (idError) leadErr = leadErr ?? idError;
+            idRows = (idData as unknown[] | null) ?? [];
+          }
+
+          const merged = mergeLeadMatches(
+            idRows as { id: string }[],
+            (textResult.data as { id: string }[] | null) ?? [],
+          );
+          leads = merged.slice(0, pageSize);
+          searchTotal = Math.max((textResult.count ?? 0), merged.length);
+        } else {
+          const { data: leadRows, error: pageErr } = await supabase
+            .from("leads")
+            .select(leadColumns)
+            .order("captured_at", { ascending: false })
+            .range(rangeStart, rangeEnd);
+          leads = leadRows as unknown[] | null;
+          leadErr = pageErr;
+        }
         if (leadErr) {
           console.error("Failed to fetch leads page:", leadErr);
+          return new Response(
+            JSON.stringify({ error: "Failed to load leads", retryable: true }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
         }
 
         // Get total counts (head-only queries, no data loaded).
@@ -157,7 +216,9 @@ Deno.serve(async (req) => {
         // maxPages. Skipping on later pages removes 2 full COUNT scans per page.
         let totalOrders: number | null = null;
         let totalLeads: number | null = null;
-        if (page === 0) {
+        if (searchActive) {
+          totalLeads = searchTotal ?? 0;
+        } else if (page === 0) {
           let orderCountQuery = supabase
             .from("orders")
             .select("id", { count: "exact", head: true });
@@ -173,7 +234,8 @@ Deno.serve(async (req) => {
           totalLeads = lCount ?? 0;
         }
 
-        console.log(`[ADMIN] Returning page ${page}: ${(orders || []).length} orders, ${(leads || []).length} leads (total: ${totalOrders} orders, ${totalLeads} leads)`);
+        // Counts only — search terms and customer data are never logged.
+        console.log(`[ADMIN] Returning page ${page}: ${(orders || []).length} orders, ${(leads || []).length} leads (total: ${totalOrders} orders, ${totalLeads} leads, search=${searchActive})`);
 
         return new Response(
           JSON.stringify({
@@ -181,6 +243,7 @@ Deno.serve(async (req) => {
             leads: leads || [],
             totalOrders,
             totalLeads,
+            searchActive,
             page,
             pageSize,
           }),
