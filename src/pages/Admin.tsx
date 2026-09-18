@@ -772,90 +772,85 @@ export default function Admin() {
    * Fetches EVERY lead on demand (CSV export). Returns null when any page
    * fails, so an export never silently covers only the loaded rows.
    */
-  const fetchAllLeadsForExport = async (
+  const fetchAllLeadsForExport = (
     onProgress?: (loaded: number, total: number) => void,
-  ): Promise<Lead[] | null> => {
-    const first = await listOrders({ status: "all", page: 0, pageSize: BG_PAGE_SIZE, skipOrders: true });
-    if (first.error || !first.data) return null;
-    const firstData = first.data as Record<string, any>;
-    const total = firstData.totalLeads || 0;
-    const pages = Math.ceil(total / BG_PAGE_SIZE);
-    const collected: Lead[] = [...((firstData.leads || []) as Lead[])];
-    onProgress?.(collected.length, total);
-
-    if (pages > 1) {
-      let failed = false;
-      await runPooled(
-        Array.from({ length: pages - 1 }, (_, i) => async () => {
-          const res = await listOrders({ status: "all", page: i + 1, pageSize: BG_PAGE_SIZE, skipOrders: true });
-          if (res.error || !res.data) {
-            failed = true;
-            return;
-          }
-          const rows = ((res.data as Record<string, any>).leads || []) as Lead[];
-          collected.push(...rows);
-          onProgress?.(collected.length, total);
-        }),
-        5,
-      );
-      if (failed) return null;
-    }
-    return collected;
-  };
-
-  /**
-   * Runs one server-side lead search. Stale responses are discarded by
-   * sequence number AND the previous request is aborted, so rapid typing can
-   * never paint an older result set over a newer one.
-   */
-  const runLeadSearch = useCallback(async (rawTerm: string) => {
-    const term = rawTerm.trim();
-    leadSearchAbort.current?.abort();
-
-    if (term.length < MIN_LEAD_SEARCH_LENGTH) {
-      leadSearchSeq.current += 1; // invalidate anything in flight
-      leadSearchAbort.current = null;
-      setLeadSearchResults(null);
-      setLeadSearchLoading(false);
-      setLeadSearchError(null);
-      setLeadSearchTotal(0);
-      return;
-    }
-
-    const seq = ++leadSearchSeq.current;
-    const controller = new AbortController();
-    leadSearchAbort.current = controller;
-    setLeadSearchLoading(true);
-    setLeadSearchError(null);
-
-    const res = await listOrders({
-      status: "all",
-      page: 0,
-      pageSize: 100,
-      skipOrders: true,
-      search: term,
-      signal: controller.signal,
+  ): Promise<Lead[] | null> =>
+    collectAllLeads<Lead>({
+      pageSize: BG_PAGE_SIZE,
+      fetchFirst: async () => {
+        const res = await listOrders({ status: "all", page: 0, pageSize: BG_PAGE_SIZE, skipOrders: true });
+        if (res.error || !res.data) return { error: res.error ?? new Error("Empty response") };
+        const d = res.data as Record<string, any>;
+        return { leads: (d.leads || []) as Lead[], totalLeads: d.totalLeads || 0 };
+      },
+      fetchPage: async (page) => {
+        const res = await listOrders({ status: "all", page, pageSize: BG_PAGE_SIZE, skipOrders: true });
+        if (res.error || !res.data) return { error: res.error ?? new Error("Empty response") };
+        return { leads: ((res.data as Record<string, any>).leads || []) as Lead[] };
+      },
+      onProgress,
     });
 
-    // Superseded by a newer keystroke — drop silently.
-    if (seq !== leadSearchSeq.current || res.aborted) return;
+  /**
+   * Server-side lead search. The runner owns the race handling: the previous
+   * request is aborted and stale responses are dropped by sequence, so rapid
+   * typing can never paint an older result set over a newer one.
+   */
+  const leadSearchRunner = useMemo(
+    () =>
+      createLeadSearchRunner<Lead>({
+        minLength: MIN_LEAD_SEARCH_LENGTH,
+        request: async ({ term, signal }) => {
+          const res = await listOrders({
+            status: "all",
+            page: 0,
+            pageSize: 100,
+            skipOrders: true,
+            search: term,
+            signal,
+          });
+          if (res.aborted) return { rows: null, total: 0, error: null, aborted: true };
+          if (res.error || !res.data) {
+            return { rows: null, total: 0, error: res.error ?? new Error("Search failed.") };
+          }
+          const d = res.data as Record<string, any>;
+          const rows = (d.leads || []) as Lead[];
+          return { rows, total: d.totalLeads ?? rows.length, error: null };
+        },
+        handlers: {
+          onIdle: () => {
+            setLeadSearchResults(null);
+            setLeadSearchLoading(false);
+            setLeadSearchError(null);
+            setLeadSearchTotal(0);
+          },
+          onLoading: () => {
+            setLeadSearchLoading(true);
+            setLeadSearchError(null);
+          },
+          onResults: (rows, total) => {
+            setLeadSearchResults(rows);
+            setLeadSearchTotal(total);
+            setLeadSearchError(null);
+            setLeadSearchLoading(false);
+          },
+          onError: (message) => {
+            setLeadSearchResults(null);
+            setLeadSearchTotal(0);
+            setLeadSearchError(message);
+            setLeadSearchLoading(false);
+          },
+        },
+      }),
+    // listOrders only closes over `password`; rebuilding on password change is correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [password],
+  );
 
-    if (res.error || !res.data) {
-      setLeadSearchResults(null);
-      setLeadSearchTotal(0);
-      setLeadSearchError(res.error?.message || "Search failed.");
-      setLeadSearchLoading(false);
-      return;
-    }
-
-    const data = res.data as Record<string, any>;
-    setLeadSearchResults((data.leads || []) as Lead[]);
-    setLeadSearchTotal(data.totalLeads || (data.leads || []).length);
-    setLeadSearchError(null);
-    setLeadSearchLoading(false);
-  // listOrders closes over `password` only; recreating on password change is correct.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password]);
+  const runLeadSearch = useCallback(
+    (term: string) => leadSearchRunner.run(term),
+    [leadSearchRunner],
+  );
 
   // Debounced trigger (~300ms) for the leads search box.
   useEffect(() => {
