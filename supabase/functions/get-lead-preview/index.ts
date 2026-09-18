@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
           // If multiple active, prefer the one with the latest starts_at.
           const candidates = (targetedPromos || [])
             .filter(p => sentSlugs.has((p as { slug: string }).slug))
-            .map(p => p as { slug: string; is_active: boolean; starts_at: string; ends_at: string; lead_price_cents: number });
+            .map(p => p as { slug: string; is_active: boolean; starts_at: string; ends_at: string; lead_price_cents: number; show_banner?: boolean | null });
 
           // Sort by starts_at desc
           candidates.sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
@@ -127,6 +127,7 @@ Deno.serve(async (req) => {
             targetedPromoEligible = true;
             targetedPromoPriceCents = live.lead_price_cents;
             targetedPromoEndsAt = live.ends_at;
+            targetedPromoShowBanner = live.show_banner === true;
           } else {
             // Most-recent received-but-expired (so frontend can show "sale ended" msg)
             const expired = candidates.find(p => new Date(p.ends_at) < now);
