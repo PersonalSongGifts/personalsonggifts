@@ -453,6 +453,25 @@ export default function Admin() {
   const [totalOrderCount, setTotalOrderCount] = useState(0);
   const [totalLeadCount, setTotalLeadCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  // First-page failure (visible error + Retry instead of an endless spinner).
+  const [listError, setListError] = useState<string | null>(null);
+  // Partial background fill failure — totals/CSV would be incomplete.
+  const [backgroundLoadError, setBackgroundLoadError] = useState<string | null>(null);
+  const backgroundLoadInFlight = useRef(false);
+
+  // ---- Server-side lead search -------------------------------------------
+  // Owned here (not inside LeadsTable) so the term survives dialog open/close
+  // and parent refreshes. Results come from the database, so a search never
+  // waits for all ~29k leads to download.
+  const [leadSearch, setLeadSearch] = useState("");
+  const [leadSearchResults, setLeadSearchResults] = useState<Lead[] | null>(null);
+  const [leadSearchLoading, setLeadSearchLoading] = useState(false);
+  const [leadSearchError, setLeadSearchError] = useState<string | null>(null);
+  const [leadSearchTotal, setLeadSearchTotal] = useState(0);
+  const leadSearchSeq = useRef(0);
+  const leadSearchAbort = useRef<AbortController | null>(null);
+  const MIN_LEAD_SEARCH_LENGTH = 2;
+  const LEAD_SEARCH_DEBOUNCE_MS = 300;
 
   // Hard per-request ceiling. Without this a hanging request left the admin on
   // an indefinite spinner (see .lovable/plan.md).
@@ -1553,7 +1572,7 @@ export default function Admin() {
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchOrders}
+              onClick={() => void fetchOrders()}
               disabled={loading}
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
