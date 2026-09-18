@@ -143,7 +143,30 @@ function getQualityBadge(score: number | null | undefined) {
   return { label: `${score}`, className: "bg-red-100 text-red-700", icon: AlertTriangle };
 }
 
-export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, onRefresh, onNavigateToOrder, initialSelectedLeadId }: LeadsTableProps) {
+export function LeadsTable({
+  leads,
+  loading,
+  sort,
+  onSortChange,
+  adminPassword,
+  onRefresh,
+  onNavigateToOrder,
+  initialSelectedLeadId,
+  searchQuery,
+  onSearchQueryChange,
+  searchResults,
+  searchLoading,
+  searchError,
+  searchTotal,
+  minSearchLength,
+  onRetrySearch,
+  totalLeadCount,
+  loadingMore,
+  listError,
+  backgroundLoadError,
+  onRetryLoad,
+  onFetchAllLeads,
+}: LeadsTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState("all");
   const [dismissedFilter, setDismissedFilter] = useState<"active" | "dismissed" | "all">("active");
@@ -152,7 +175,8 @@ export function LeadsTable({ leads, loading, sort, onSortChange, adminPassword, 
     ? `$${(promo.leadPriceCents / 100).toFixed(2)}`
     : "$39.99";
   const followupButtonLabel = `Send ${followupPriceLabel} Follow-up`;
-  const [searchQuery, setSearchQuery] = useState("");
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
