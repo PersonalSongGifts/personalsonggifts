@@ -6,6 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Play, Pause, Music, Lock, Check, Loader2, AlertCircle, Gift } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActivePromo } from "@/hooks/useActivePromo";
+import {
+  computeOfferPricing,
+  shouldShowUrgencyBanner,
+  shouldShowExpiredNotice,
+  formatUsd,
+  MEMORY_PACKAGE_CENTS,
+} from "@/lib/previewOffer";
 
 interface PreviewData {
   recipientName: string;
@@ -21,6 +28,8 @@ interface PreviewData {
   targetedPromoExpired?: boolean;
   targetedPromoPriceCents?: number | null;
   targetedPromoEndsAt?: string | null;
+  /** Presentation only: true when the targeted promo allows urgency messaging. */
+  targetedPromoShowBanner?: boolean;
   // Sitewide non-targeted promo (default lead price floor)
   sitewidePromoSlug?: string | null;
   sitewidePromoLeadPriceCents?: number | null;
@@ -381,47 +390,40 @@ export default function SongPreview() {
 
   if (!previewData) return null;
 
-  // Prefer generic targeted-promo fields; fall back to legacy flash20 fields for old API responses.
-  const flashEligible =
-    previewData.targetedPromoEligible === true || previewData.flash20Eligible === true;
-  const flashExpired =
-    previewData.targetedPromoExpired === true || previewData.flash20Expired === true;
-  const flashPriceCents =
+  // Pricing display is derived by the same shared ladder the server uses.
+  // The charged amount is still recomputed server-side from the preview token.
+  const pricing = computeOfferPricing({
+    targetedPromoEligible: previewData.targetedPromoEligible,
+    targetedPromoPriceCents:
+      previewData.targetedPromoPriceCents ?? previewData.flash20PriceCents ?? null,
+    sitewidePromoLeadPriceCents: previewData.sitewidePromoLeadPriceCents,
+    isFollowup,
+    packageSelected,
+  });
+  // The price this lead would otherwise pay — shown struck through when a
+  // targeted promo price is cheaper.
+  const ladderBaseCents = computeOfferPricing({
+    sitewidePromoLeadPriceCents: previewData.sitewidePromoLeadPriceCents,
+    isFollowup,
+  }).baseCents;
+  const displayedBaseCents = pricing.baseCents;
+  const displayedTotalCents = pricing.totalCents;
+
+  // Urgency messaging only when the promo itself allows a banner (show_banner=true).
+  const showUrgencyBanner = shouldShowUrgencyBanner(previewData);
+  const showExpiredNotice = shouldShowExpiredNotice(previewData);
+  const urgencyPriceCents =
     previewData.targetedPromoPriceCents ?? previewData.flash20PriceCents ?? null;
-  // If the server says eligible but somehow didn't include a price, treat as not-eligible
-  // rather than rendering a hardcoded fallback.
-  const flashShowPrice = flashEligible && typeof flashPriceCents === "number";
-
-  // Sitewide non-targeted promo (e.g., Early Mother's Day $29.99) — used as the default
-  // lead price when no targeted flash promo is in effect for this lead.
-  const sitewideLeadCents =
-    typeof previewData.sitewidePromoLeadPriceCents === "number"
-      ? previewData.sitewidePromoLeadPriceCents
-      : null;
-
-  // Compute the displayed default price (when no flash promo applies):
-  // pick the cheaper of the configured default ladder and any active sitewide promo.
-  const LEAD_BASE_CENTS = 2900;
-  const FOLLOWUP_DISCOUNT_CENTS = 1000;
-  const baseDefaultCents = isFollowup
-    ? LEAD_BASE_CENTS - FOLLOWUP_DISCOUNT_CENTS
-    : LEAD_BASE_CENTS;
-  const effectiveDefaultCents = sitewideLeadCents !== null
-    ? Math.min(baseDefaultCents, sitewideLeadCents)
-    : baseDefaultCents;
-  const formatUsd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-  const displayedBaseCents = flashShowPrice ? flashPriceCents! : effectiveDefaultCents;
-  const displayedTotalCents = displayedBaseCents + (packageSelected ? 2400 : 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
-      {/* Flash 20 urgency banner — only when this lead is eligible */}
-      {flashShowPrice && (
+      {/* Urgency banner — only for targeted promos configured with show_banner=true */}
+      {showUrgencyBanner && typeof urgencyPriceCents === "number" && (
         <div className="py-3 px-4 text-center font-bold text-sm md:text-base bg-primary text-primary-foreground">
-          🔥 72-hour flash sale — ${(flashPriceCents! / 100).toFixed(2)} ends soon
+          🔥 72-hour flash sale — {formatUsd(urgencyPriceCents)} ends soon
         </div>
       )}
-      {flashExpired && (
+      {showExpiredNotice && (
         <div className="py-3 px-4 text-center text-sm bg-muted text-muted-foreground">
           The flash sale has ended — your song is still available at standard pricing.
         </div>
@@ -551,18 +553,16 @@ export default function SongPreview() {
           >
             <CardContent className="p-6 text-center space-y-4">
               <div>
-                {flashShowPrice && (
+                {pricing.targetedPriceActive && ladderBaseCents > displayedBaseCents && (
                   <p className="text-sm text-muted-foreground line-through">
-                    {formatUsd(effectiveDefaultCents)} USD
+                    {formatUsd(ladderBaseCents)} USD
                   </p>
                 )}
+                <h4 className="text-lg font-semibold">Full Song</h4>
                 <p className={`text-3xl font-bold ${isVday10 ? "text-pink-600" : "text-primary"}`}>
                   {formatUsd(displayedBaseCents)}
                   <span className="text-sm font-normal text-muted-foreground ml-1">USD</span>
                 </p>
-              </div>
-              <div>
-                <h4 className="font-semibold">Full Song</h4>
                 <p className="text-sm text-muted-foreground">Instant access</p>
               </div>
               <ul className="text-sm space-y-2 text-left">
@@ -581,44 +581,70 @@ export default function SongPreview() {
               </ul>
 
               {previewData.memoryPackageAvailable && (
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={packageSelected}
-                  onClick={() => setPackageSelected((selected) => !selected)}
-                  className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                    packageSelected
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
+                <div
+                  className={`rounded-lg border p-4 text-left transition-colors ${
+                    packageSelected ? "border-primary bg-primary/5" : "border-border"
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <span
-                      aria-hidden="true"
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${
-                        packageSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground"
-                      }`}
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Optional add-on
+                  </p>
+                  {/* Only this control and its own label toggle the add-on — taps or
+                      scrolls anywhere else on the card never change the total. */}
+                  <label
+                    htmlFor="memory-package-toggle"
+                    className="mt-2 flex min-h-[44px] cursor-pointer items-center gap-3"
+                  >
+                    <input
+                      id="memory-package-toggle"
+                      type="checkbox"
+                      checked={packageSelected}
+                      onChange={(e) => setPackageSelected(e.target.checked)}
+                      className="h-6 w-6 shrink-0 cursor-pointer accent-primary"
+                    />
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
+                      <Gift className="h-4 w-4 text-primary" aria-hidden="true" />
+                      Forever Memory Package
+                      <span className="text-primary">— $24.00 extra</span>
+                    </span>
+                  </label>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Printable lyric keepsake, a custom cover you create from your photo, full lyrics, and an included second version of the song.
+                  </p>
+                  {packageSelected && (
+                    <button
+                      type="button"
+                      onClick={() => setPackageSelected(false)}
+                      className="mt-2 min-h-[44px] text-sm font-medium text-primary underline"
                     >
-                      {packageSelected && <Check className="h-3 w-3" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-3 font-semibold text-foreground">
-                        <span className="flex items-center gap-1.5"><Gift className="h-4 w-4 text-primary" />Forever Memory Package</span>
-                        <span className="shrink-0 text-primary">+$24.00</span>
-                      </span>
-                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                        Printable lyric keepsake, a custom cover you create from your photo, full lyrics, and an included second version of the song.
-                      </span>
-                    </span>
-                  </div>
-                </button>
+                      Remove add-on
+                    </button>
+                  )}
+                </div>
               )}
 
-              {packageSelected && (
-                <p className="text-sm font-medium text-foreground">
-                  Today&apos;s total: {formatUsd(displayedTotalCents)}
-                </p>
-              )}
+              {/* Always-visible line items so base price, add-on and total are unmistakable. */}
+              <dl className="rounded-lg border border-border p-4 text-left text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">Full song</dt>
+                  <dd className="font-medium text-foreground">{formatUsd(displayedBaseCents)}</dd>
+                </div>
+                {previewData.memoryPackageAvailable && (
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <dt className="text-muted-foreground">Forever Memory Package</dt>
+                    <dd className="font-medium text-foreground">
+                      {packageSelected ? `+${formatUsd(MEMORY_PACKAGE_CENTS)}` : "Not added"}
+                    </dd>
+                  </div>
+                )}
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                  <dt className="font-semibold text-foreground">Total today</dt>
+                  <dd className="text-base font-bold text-foreground">
+                    {formatUsd(displayedTotalCents)} <span className="text-xs font-normal text-muted-foreground">USD</span>
+                  </dd>
+                </div>
+              </dl>
+
 
               <Button
                 className={`w-full ${isVday10 ? "bg-pink-600 hover:bg-pink-700" : ""}`}
@@ -663,10 +689,10 @@ export default function SongPreview() {
           )}
 
           {/* Promo Badge — only render when a real promo (flash or Valentine's/vday10) is active */}
-          {(flashShowPrice || isVday10 || isFollowup) && (
+          {(showUrgencyBanner || isVday10 || isFollowup) && (
             <div className="text-center">
               <Badge variant="outline" className={isVday10 ? "text-pink-600 border-pink-500" : "text-primary border-primary"}>
-                {flashShowPrice
+                {showUrgencyBanner
                   ? "⏳ 72-hour flash sale — act now"
                   : isVday10
                   ? isFollowup

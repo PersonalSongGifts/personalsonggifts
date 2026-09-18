@@ -75,12 +75,15 @@ Deno.serve(async (req) => {
     let targetedPromoExpired = false;
     let targetedPromoPriceCents: number | null = null;
     let targetedPromoEndsAt: string | null = null;
+    // Whether the urgency banner may be shown for the resolved targeted promo.
+    // Pricing and eligibility are unaffected by this flag — presentation only.
+    let targetedPromoShowBanner = false;
 
     {
       // Get all targeted promos (small table, fine to fetch all)
       const { data: targetedPromos } = await supabase
         .from("promotions")
-        .select("slug, is_active, starts_at, ends_at, lead_price_cents, targeted")
+        .select("slug, is_active, starts_at, ends_at, lead_price_cents, targeted, show_banner")
         .eq("targeted", true);
 
       const targetedSlugs = (targetedPromos || []).map(p => (p as { slug: string }).slug);
@@ -107,7 +110,7 @@ Deno.serve(async (req) => {
           // If multiple active, prefer the one with the latest starts_at.
           const candidates = (targetedPromos || [])
             .filter(p => sentSlugs.has((p as { slug: string }).slug))
-            .map(p => p as { slug: string; is_active: boolean; starts_at: string; ends_at: string; lead_price_cents: number });
+            .map(p => p as { slug: string; is_active: boolean; starts_at: string; ends_at: string; lead_price_cents: number; show_banner?: boolean | null });
 
           // Sort by starts_at desc
           candidates.sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
@@ -124,6 +127,7 @@ Deno.serve(async (req) => {
             targetedPromoEligible = true;
             targetedPromoPriceCents = live.lead_price_cents;
             targetedPromoEndsAt = live.ends_at;
+            targetedPromoShowBanner = live.show_banner === true;
           } else {
             // Most-recent received-but-expired (so frontend can show "sale ended" msg)
             const expired = candidates.find(p => new Date(p.ends_at) < now);
@@ -200,6 +204,9 @@ Deno.serve(async (req) => {
       targetedPromoExpired,
       targetedPromoPriceCents,
       targetedPromoEndsAt,
+      // Presentation-only: suppress urgency banner when the promo has show_banner=false.
+      targetedPromoShowBanner,
+
 
       // Sitewide promo (applies as default lead price floor when no targeted promo is in effect)
       sitewidePromoSlug,
