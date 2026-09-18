@@ -1060,34 +1060,98 @@ export function LeadsTable({
               <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            placeholder="Search by name, email, lead ID, or song link..."
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(0); }}
-            className="w-64"
-          />
-          <span className="text-sm text-muted-foreground">
-            {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""}
-            {filteredLeads.length > PAGE_SIZE && ` (page ${currentPage + 1} of ${Math.ceil(filteredLeads.length / PAGE_SIZE)})`}
+          <div className="relative w-full sm:w-72">
+            <Input
+              placeholder="Search all leads by name, email, ID or link..."
+              value={searchQuery}
+              onChange={(e) => onSearchQueryChange(e.target.value)}
+              className="w-full pr-8"
+              aria-label="Search all leads"
+            />
+            {serverSearchActive && searchLoading && (
+              <Loader2 className="h-4 w-4 animate-spin absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            )}
+            {searchQuery && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => onSearchQueryChange("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                style={{ display: serverSearchActive && searchLoading ? "none" : undefined }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            {serverSearchActive ? (
+              <>
+                {filteredLeads.length} of {searchTotal} match{searchTotal === 1 ? "" : "es"}
+                {searchTotal > filteredLeads.length && !searchLoading && " (refine to narrow)"}
+              </>
+            ) : (
+              <>
+                {filteredLeads.length} shown · {totalLeadCount} total
+                {loadingMore && (
+                  <Loader2 className="inline h-3 w-3 ml-1 animate-spin align-middle" />
+                )}
+              </>
+            )}
           </span>
         </div>
-        <Button variant="outline" size="sm" onClick={exportToCSV} disabled={filteredLeads.length === 0}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
+        <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={exportingCsv}>
+          {exportingCsv ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+          {exportingCsv
+            ? exportProgress
+              ? `Exporting ${exportProgress.loaded}/${exportProgress.total}`
+              : "Exporting..."
+            : "Export CSV"}
         </Button>
       </div>
 
-      {loading ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">Loading leads...</p>
+      {backgroundLoadError && !serverSearchActive && (
+        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="py-3 flex items-center justify-between gap-4">
+            <p className="text-sm text-amber-900 dark:text-amber-200">{backgroundLoadError}</p>
+            <Button variant="outline" size="sm" onClick={onRetryLoad}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
           </CardContent>
         </Card>
-      ) : filteredLeads.length === 0 ? (
+      )}
+
+      {viewState.kind === "error" ? (
+        <Card className="border-destructive/40">
+          <CardContent className="py-12 text-center space-y-4">
+            <AlertCircle className="h-10 w-10 mx-auto text-destructive" />
+            <div>
+              <p className="font-medium">
+                {viewState.retry === "search" ? "Search failed" : "Couldn't load leads"}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">{viewState.message}</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={viewState.retry === "search" ? onRetrySearch : onRetryLoad}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      ) : viewState.kind === "loading" ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="h-6 w-6 mx-auto mb-3 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground">{viewState.message}</p>
+          </CardContent>
+        </Card>
+      ) : viewState.kind === "empty" ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No leads found</p>
+            <p className="text-muted-foreground">{viewState.message}</p>
           </CardContent>
         </Card>
       ) : (
