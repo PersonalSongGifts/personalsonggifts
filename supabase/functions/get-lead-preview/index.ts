@@ -75,12 +75,15 @@ Deno.serve(async (req) => {
     let targetedPromoExpired = false;
     let targetedPromoPriceCents: number | null = null;
     let targetedPromoEndsAt: string | null = null;
+    // Whether the urgency banner may be shown for the resolved targeted promo.
+    // Pricing and eligibility are unaffected by this flag — presentation only.
+    let targetedPromoShowBanner = false;
 
     {
       // Get all targeted promos (small table, fine to fetch all)
       const { data: targetedPromos } = await supabase
         .from("promotions")
-        .select("slug, is_active, starts_at, ends_at, lead_price_cents, targeted")
+        .select("slug, is_active, starts_at, ends_at, lead_price_cents, targeted, show_banner")
         .eq("targeted", true);
 
       const targetedSlugs = (targetedPromos || []).map(p => (p as { slug: string }).slug);
