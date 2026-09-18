@@ -97,6 +97,22 @@ interface LeadsTableProps {
   onRefresh?: () => void;
   onNavigateToOrder?: (orderId: string) => void;
   initialSelectedLeadId?: string | null;
+  // Server-side search (owned by Admin so it survives dialogs and refreshes)
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  searchResults: Lead[] | null;
+  searchLoading: boolean;
+  searchError: string | null;
+  searchTotal: number;
+  minSearchLength: number;
+  onRetrySearch: () => void;
+  // Totals come from the server, never from the loaded array length
+  totalLeadCount: number;
+  loadingMore: boolean;
+  listError: string | null;
+  backgroundLoadError: string | null;
+  onRetryLoad: () => void;
+  onFetchAllLeads: (onProgress?: (loaded: number, total: number) => void) => Promise<Lead[] | null>;
 }
 
 const statusColors: Record<string, string> = {
