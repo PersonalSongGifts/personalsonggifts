@@ -400,6 +400,12 @@ export default function SongPreview() {
     isFollowup,
     packageSelected,
   });
+  // The price this lead would otherwise pay — shown struck through when a
+  // targeted promo price is cheaper.
+  const ladderBaseCents = computeOfferPricing({
+    sitewidePromoLeadPriceCents: previewData.sitewidePromoLeadPriceCents,
+    isFollowup,
+  }).baseCents;
   const displayedBaseCents = pricing.baseCents;
   const displayedTotalCents = pricing.totalCents;
 
