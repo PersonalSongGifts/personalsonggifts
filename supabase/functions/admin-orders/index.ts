@@ -234,7 +234,8 @@ Deno.serve(async (req) => {
           totalLeads = lCount ?? 0;
         }
 
-        console.log(`[ADMIN] Returning page ${page}: ${(orders || []).length} orders, ${(leads || []).length} leads (total: ${totalOrders} orders, ${totalLeads} leads)`);
+        // Counts only — search terms and customer data are never logged.
+        console.log(`[ADMIN] Returning page ${page}: ${(orders || []).length} orders, ${(leads || []).length} leads (total: ${totalOrders} orders, ${totalLeads} leads, search=${searchActive})`);
 
         return new Response(
           JSON.stringify({
@@ -242,6 +243,7 @@ Deno.serve(async (req) => {
             leads: leads || [],
             totalOrders,
             totalLeads,
+            searchActive,
             page,
             pageSize,
           }),
