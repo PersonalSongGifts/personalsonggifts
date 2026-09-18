@@ -6,6 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Play, Pause, Music, Lock, Check, Loader2, AlertCircle, Gift } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActivePromo } from "@/hooks/useActivePromo";
+import {
+  computeOfferPricing,
+  shouldShowUrgencyBanner,
+  shouldShowExpiredNotice,
+  formatUsd,
+  MEMORY_PACKAGE_CENTS,
+} from "@/lib/previewOffer";
 
 interface PreviewData {
   recipientName: string;
@@ -21,6 +28,8 @@ interface PreviewData {
   targetedPromoExpired?: boolean;
   targetedPromoPriceCents?: number | null;
   targetedPromoEndsAt?: string | null;
+  /** Presentation only: true when the targeted promo allows urgency messaging. */
+  targetedPromoShowBanner?: boolean;
   // Sitewide non-targeted promo (default lead price floor)
   sitewidePromoSlug?: string | null;
   sitewidePromoLeadPriceCents?: number | null;
