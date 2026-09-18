@@ -739,8 +739,54 @@ export function LeadsTable({
     }
   };
 
-  const exportToCSV = () => {
-    if (filteredLeads.length === 0) return;
+  /**
+   * CSV export.
+   *
+   * While a search is active it exports the matches on screen. Otherwise it
+   * fetches EVERY lead on demand so an export is never silently limited to
+   * the rows that happen to be loaded. Any page failure aborts the download
+   * with a visible error.
+   */
+  const handleExportCsv = async () => {
+    if (exportingCsv) return;
+    let rowsToExport: Lead[] = filteredLeads;
+
+    if (!serverSearchActive) {
+      setExportingCsv(true);
+      setExportProgress({ loaded: 0, total: totalLeadCount });
+      try {
+        const all = await onFetchAllLeads((loaded, total) => setExportProgress({ loaded, total }));
+        if (!all) {
+          toast({
+            title: "Export failed",
+            description: "Some leads could not be downloaded, so no file was created. Please try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+        rowsToExport = applyLeadFilters(all, { statusFilter, qualityFilter, dismissedFilter, sort });
+      } catch (err) {
+        toast({
+          title: "Export failed",
+          description: err instanceof Error ? err.message : "Could not download all leads.",
+          variant: "destructive",
+        });
+        return;
+      } finally {
+        setExportingCsv(false);
+        setExportProgress(null);
+      }
+    }
+
+    if (rowsToExport.length === 0) {
+      toast({ title: "Nothing to export", description: "No leads match the current filters." });
+      return;
+    }
+    exportToCSV(rowsToExport);
+  };
+
+  const exportToCSV = (rows_: Lead[]) => {
+    if (rows_.length === 0) return;
 
     const headers = [
       "Lead Name",
