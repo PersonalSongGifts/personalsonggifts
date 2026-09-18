@@ -813,6 +813,75 @@ export default function Admin() {
     return collected;
   };
 
+  /**
+   * Runs one server-side lead search. Stale responses are discarded by
+   * sequence number AND the previous request is aborted, so rapid typing can
+   * never paint an older result set over a newer one.
+   */
+  const runLeadSearch = useCallback(async (rawTerm: string) => {
+    const term = rawTerm.trim();
+    leadSearchAbort.current?.abort();
+
+    if (term.length < MIN_LEAD_SEARCH_LENGTH) {
+      leadSearchSeq.current += 1; // invalidate anything in flight
+      leadSearchAbort.current = null;
+      setLeadSearchResults(null);
+      setLeadSearchLoading(false);
+      setLeadSearchError(null);
+      setLeadSearchTotal(0);
+      return;
+    }
+
+    const seq = ++leadSearchSeq.current;
+    const controller = new AbortController();
+    leadSearchAbort.current = controller;
+    setLeadSearchLoading(true);
+    setLeadSearchError(null);
+
+    const res = await listOrders({
+      status: "all",
+      page: 0,
+      pageSize: 100,
+      skipOrders: true,
+      search: term,
+      signal: controller.signal,
+    });
+
+    // Superseded by a newer keystroke — drop silently.
+    if (seq !== leadSearchSeq.current || res.aborted) return;
+
+    if (res.error || !res.data) {
+      setLeadSearchResults(null);
+      setLeadSearchTotal(0);
+      setLeadSearchError(res.error?.message || "Search failed.");
+      setLeadSearchLoading(false);
+      return;
+    }
+
+    const data = res.data as Record<string, any>;
+    setLeadSearchResults((data.leads || []) as Lead[]);
+    setLeadSearchTotal(data.totalLeads || (data.leads || []).length);
+    setLeadSearchError(null);
+    setLeadSearchLoading(false);
+  // listOrders closes over `password` only; recreating on password change is correct.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [password]);
+
+  // Debounced trigger (~300ms) for the leads search box.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const term = leadSearch.trim();
+    if (term.length < MIN_LEAD_SEARCH_LENGTH) {
+      void runLeadSearch("");
+      return;
+    }
+    setLeadSearchLoading(true);
+    const t = setTimeout(() => { void runLeadSearch(term); }, LEAD_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [leadSearch, isAuthenticated, runLeadSearch]);
+
+
+
   const updateOrder = async (orderId: string, updates: Record<string, unknown>) => {
     if (!password) {
       setIsAuthenticated(false);
