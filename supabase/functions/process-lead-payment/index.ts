@@ -4,6 +4,7 @@ import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadAssetPatch } from "../_shared/lead-conversion.ts";
 import { hasReadyLeadBonus, resolveLeadCheckoutAmounts } from "../_shared/lead-checkout.ts";
 import { shouldHoldLeadFulfillment } from "../_shared/revision-gates.ts";
+import { STRIPE_PAYMENT_PROOF_EXPAND, stripePaymentProof } from "../_shared/payment-proof.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -82,8 +83,13 @@ Deno.serve(async (req) => {
 
     // Retrieve checkout session
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["payment_intent"],
+      // The charge is expanded purely so the response can carry the
+      // provider-confirmed payment time (reporting only).
+      expand: ["payment_intent", ...STRIPE_PAYMENT_PROOF_EXPAND],
     });
+
+    // Provider-confirmed payment proof (reporting only — never gates payment).
+    const proof = stripePaymentProof(session);
 
     // Verify payment
     if (session.payment_status !== "paid") {
@@ -117,6 +123,7 @@ Deno.serve(async (req) => {
     if (existingOrder) {
       return new Response(
         JSON.stringify({
+          ...proof,
           orderId: existingOrder.id,
           recipientName: existingOrder.recipient_name,
           occasion: existingOrder.occasion,
@@ -254,6 +261,7 @@ Deno.serve(async (req) => {
         if (raceOrder) {
           return new Response(
             JSON.stringify({
+              ...proof,
               orderId: raceOrder.id,
               recipientName: raceOrder.recipient_name,
               occasion: raceOrder.occasion,
@@ -414,6 +422,7 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
+        ...proof,
         orderId: newOrder.id,
         recipientName: newOrder.recipient_name,
         occasion: newOrder.occasion,

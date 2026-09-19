@@ -83,3 +83,9 @@ Blockers before launch (details in `docs/checkout-staging/README.md`):
 - [x] Auto-open lead effect no longer refires on leads array identity change
 - [x] Tests: 27 new Vitest (search races, view state, paging, export), 11 Deno (search helpers)
 - [ ] Unverified: authenticated in-browser run of the leads table (needs the admin password)
+
+## Stale-receipt conversion reporting (2026-09-19)
+- Provider-confirmed payment proof (`_shared/payment-proof.ts`) returned by process-payment, process-lead-payment, capture-paypal-payment: `paidAt` (Stripe charge.created / PayPal capture.create_time), `paidAtSource`, `paidTotalCents`, `paidCurrency`. Reporting only.
+- Browser suppresses a Purchase report when the provider-confirmed payment is older than 6h (cross-device old-receipt replay) or when no trustworthy amount exists. Missing/malformed time fails open — documented limit.
+- CAPI: zero/unknown amounts skipped server-side; `eventTime` from Stripe `event.created` (immutable across webhook retries) / PayPal capture time.
+- Backend live via auto-deploy (backward compatible). Frontend NOT published pending Ryan's review.

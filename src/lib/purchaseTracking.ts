@@ -49,6 +49,35 @@ export function resolvePurchaseValue(input: {
   return Number.isFinite(total) && total > 0 ? total : null;
 }
 
+export interface ReportedPurchase {
+  value: number;
+  currency: string;
+}
+
+/**
+ * Preferred reported amount: the total the provider actually captured, when the
+ * verification response supplies it. Falls back to the server-verified
+ * base + add-on figures for responses from older builds. Returns null when
+ * nothing trustworthy is available (report is then suppressed, UI untouched).
+ */
+export function resolveReportedPurchase(input: {
+  paidTotalCents?: number | null;
+  paidCurrency?: string | null;
+  price?: number | null;
+  package_addon_cents?: number | null;
+  rush_addon_cents?: number | null;
+}): ReportedPurchase | null {
+  const currency =
+    typeof input.paidCurrency === "string" && /^[a-zA-Z]{3}$/.test(input.paidCurrency)
+      ? input.paidCurrency.toUpperCase()
+      : "USD";
+  if (isReportableAmountCents(input.paidTotalCents)) {
+    return { value: input.paidTotalCents / 100, currency };
+  }
+  const fallback = resolvePurchaseValue(input);
+  return fallback === null ? null : { value: fallback, currency };
+}
+
 /**
  * Bounded payment-age eligibility.
  *
@@ -71,6 +100,24 @@ export function isPaymentRecentEnough(
   const age = nowMs - ms;
   if (age < 0) return true; // clock skew: never suppress a fresh payment
   return age <= maxAgeMs;
+}
+
+/**
+ * Full reporting eligibility for a verification response.
+ *
+ * - A provider-confirmed time older than the window => suppress (this is what
+ *   stops an old receipt link opened on a *different* device from re-reporting;
+ *   the per-device storage guard cannot see other devices).
+ * - Missing / malformed time => FAIL OPEN (report). Suppressing here would drop
+ *   genuine conversions from older server builds and from $0 or provider edge
+ *   cases. Documented limit, not a guarantee.
+ */
+export function isPaymentEligibleForReport(
+  input: { paidAt?: string | number | null; paidAtSource?: string | null },
+  nowMs: number = Date.now(),
+  maxAgeMs: number = PURCHASE_REPORT_MAX_AGE_MS,
+): boolean {
+  return isPaymentRecentEnough(input.paidAt ?? null, nowMs, maxAgeMs);
 }
 
 export interface TrackingStores {
