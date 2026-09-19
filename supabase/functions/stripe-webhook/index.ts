@@ -6,6 +6,7 @@ import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/
 import { buildLeadAssetPatch, shouldDispatchDelivery } from "../_shared/lead-conversion.ts";
 import { hasReadyLeadBonus, resolveLeadCheckoutAmounts } from "../_shared/lead-checkout.ts";
 import { sendMetaPurchase } from "../_shared/meta-capi.ts";
+import { capiEventTimeSeconds } from "../_shared/payment-proof.ts";
 
 function normalizeMatch(v?: string | null): string {
   return (v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -314,6 +315,9 @@ Deno.serve(async (req) => {
               value: amountCents / 100,
               orderId: tipOrderId,
               contentName: "Tip",
+              // Stripe event.created is immutable across webhook retries, so a retry
+              // reports the SAME event_time and Meta can deduplicate it.
+              eventTime: capiEventTimeSeconds(null, event.created),
             });
           } else {
             console.log("[META-CAPI] Skipped tip event (no amount)");
@@ -372,6 +376,9 @@ Deno.serve(async (req) => {
               value: session.amount_total / 100,
               orderId: lyricsOrderId,
               contentName: "Lyrics Unlock",
+              // Stripe event.created is immutable across webhook retries, so a retry
+              // reports the SAME event_time and Meta can deduplicate it.
+              eventTime: capiEventTimeSeconds(null, event.created),
             });
           } else {
             console.log("[META-CAPI] Skipped lyrics event (no amount)");
@@ -433,6 +440,9 @@ Deno.serve(async (req) => {
               value: session.amount_total / 100,
               orderId: downloadOrderId,
               contentName: "Download Unlock",
+              // Stripe event.created is immutable across webhook retries, so a retry
+              // reports the SAME event_time and Meta can deduplicate it.
+              eventTime: capiEventTimeSeconds(null, event.created),
             });
           } else {
             console.log("[META-CAPI] Skipped download event (no amount)");
@@ -494,6 +504,9 @@ Deno.serve(async (req) => {
               value: session.amount_total / 100,
               orderId: bonusOrderId,
               contentName: "Bonus Track",
+              // Stripe event.created is immutable across webhook retries, so a retry
+              // reports the SAME event_time and Meta can deduplicate it.
+              eventTime: capiEventTimeSeconds(null, event.created),
             });
           } else {
             console.log("[META-CAPI] Skipped bonus event (no amount)");
@@ -582,6 +595,9 @@ Deno.serve(async (req) => {
               value: amountTotal / 100,
               orderId: packageOrderId,
               contentName: "Forever Memory Package",
+              // Stripe event.created is immutable across webhook retries, so a retry
+              // reports the SAME event_time and Meta can deduplicate it.
+              eventTime: capiEventTimeSeconds(null, event.created),
             });
           } else {
             console.log("[META-CAPI] Skipped package event (no amount)");
@@ -733,6 +749,9 @@ Deno.serve(async (req) => {
               value: amountTotal / 100,
               orderId: rushOrderId,
               contentName: "Rush Upgrade",
+              // Stripe event.created is immutable across webhook retries, so a retry
+              // reports the SAME event_time and Meta can deduplicate it.
+              eventTime: capiEventTimeSeconds(null, event.created),
             });
           } else {
             console.log("[META-CAPI] Skipped rush event (no amount)");
@@ -965,6 +984,9 @@ Deno.serve(async (req) => {
             value: leadCheckoutAmounts.totalCents / 100,
             orderId: leadOrder.id,
             contentName: "Custom Song",
+            // Stripe event.created is immutable across webhook retries, so a retry
+            // reports the SAME event_time and Meta can deduplicate it.
+            eventTime: capiEventTimeSeconds(null, event.created),
           });
         } catch (metaErr) {
           console.error("[META-CAPI] lead order call failed:", metaErr);
@@ -1472,6 +1494,9 @@ Deno.serve(async (req) => {
           value: (songPriceCents + packageAddonCents + rushAddonCents) / 100,
           orderId: newOrder.id,
           contentName: "Custom Song",
+          // Stripe event.created is immutable across webhook retries, so a retry
+          // reports the SAME event_time and Meta can deduplicate it.
+          eventTime: capiEventTimeSeconds(null, event.created),
         });
       } catch (metaErr) {
         console.error("[META-CAPI] main order call failed:", metaErr);
