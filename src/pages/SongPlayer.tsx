@@ -114,29 +114,37 @@ const SongPlayer = () => {
   const [lyricsCopied, setLyricsCopied] = useState(false);
   const [tipDialogOpen, setTipDialogOpen] = useState(false);
 
-  const { trackEvent: trackMetaEvent } = useMetaPixel();
+  const { trackCustomEvent: trackMetaCustomEvent } = useMetaPixel();
   const { trackEvent: trackGAEvent } = useGoogleAnalytics();
   const { trackEvent: trackTikTokEvent } = useTikTokPixel();
 
+  // Post-purchase upsell: CUSTOM event only (never standard Purchase), with the
+  // same event id the server sends so Meta counts it once.
   const trackPackagePurchase = (pkgSession: string, amountCents: number | null) => {
-    if (!amountCents || amountCents <= 0) return;
-    const key = `psg_pkg_purchase_tracked_${pkgSession}`;
-    try { if (sessionStorage.getItem(key)) return; } catch { /* ignore */ }
+    if (!isReportableAmountCents(amountCents)) return;
+    const stores = browserStores();
+    const legacyKey = `psg_pkg_purchase_tracked_${pkgSession}`;
+    if (addonAlreadyReported(stores, "pkg", pkgSession, legacyKey)) return;
     const value = amountCents / 100;
-    trackMetaEvent('Purchase', { value, currency: 'USD', transaction_id: `pkg_${pkgSession}` });
-    trackGAEvent('purchase', {
-      transaction_id: `pkg_${pkgSession}`,
+    const txnId = addonTransactionId("pkg", pkgSession);
+    trackMetaCustomEvent(
+      'AddOnPurchase',
+      { value, currency: 'USD', content_name: 'Forever Memory Package', transaction_id: txnId },
+      { eventID: addonEventId("pkg", pkgSession) },
+    );
+    trackGAEvent('add_on_purchase', {
+      transaction_id: txnId,
       value,
       currency: 'USD',
       items: [{ item_name: 'Forever Memory Package', price: value, quantity: 1 }],
     });
-    trackTikTokEvent('CompletePayment', {
+    trackTikTokEvent('AddOnPurchase', {
       content_type: 'product',
       content_id: 'forever-memory-package',
       value,
       currency: 'USD',
     });
-    try { sessionStorage.setItem(key, "1"); } catch { /* ignore */ }
+    markAddonReported(stores, "pkg", pkgSession, legacyKey);
   };
 
   // Bonus audio player state
