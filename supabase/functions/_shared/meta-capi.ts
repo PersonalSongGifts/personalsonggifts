@@ -34,11 +34,24 @@ export async function sendMetaPurchase(opts: {
   currency?: string;
   orderId?: string;
   contentName?: string;
+  /**
+   * Provider-confirmed payment time in unix SECONDS. Passing it keeps the
+   * event_time stable across webhook retries / replayed verifications so Meta
+   * can deduplicate. Omitted => "now".
+   */
+  eventTime?: number;
 }): Promise<void> {
   try {
     const token = Deno.env.get("META_CAPI_ACCESS_TOKEN");
     if (!token) {
       console.log("[META-CAPI] Skipped (no META_CAPI_ACCESS_TOKEN)");
+      return;
+    }
+
+    // Reporting-only guard: a zero / unknown amount must never be reported as a
+    // conversion. This mirrors the browser-side suppression.
+    if (typeof opts.value !== "number" || !Number.isFinite(opts.value) || opts.value <= 0) {
+      console.log(`[META-CAPI] Skipped ${opts.eventId} (no reportable amount)`);
       return;
     }
 
@@ -60,7 +73,9 @@ export async function sendMetaPurchase(opts: {
       data: [{
         event_name: eventName,
         event_id: opts.eventId,
-        event_time: Math.floor(Date.now() / 1000),
+        event_time: typeof opts.eventTime === "number" && Number.isFinite(opts.eventTime) && opts.eventTime > 0
+          ? Math.floor(opts.eventTime)
+          : Math.floor(Date.now() / 1000),
         action_source: "website",
         event_source_url: EVENT_SOURCE_URL,
         user_data,
