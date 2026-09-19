@@ -5,11 +5,19 @@ const html = readFileSync("index.html", "utf8");
 const PIXEL = "1231290262288040";
 
 describe("Meta pixel bootstrap", () => {
-  it("disables automatic configuration BEFORE init", () => {
-    const setIdx = html.indexOf(`fbq('set', 'autoConfig', false, '${PIXEL}')`);
-    const initIdx = html.indexOf(`fbq('init', '${PIXEL}')`);
-    expect(setIdx).toBeGreaterThan(-1);
+  const optOutIdx = html.indexOf(`fbq('optOut', '${PIXEL}', 'ESTRuleEngine')`);
+  const setIdx = html.indexOf(`fbq('set', 'autoConfig', false, '${PIXEL}')`);
+  const initIdx = html.indexOf(`fbq('init', '${PIXEL}')`);
+
+  it("opts out of the EST rule engine (the click->Purchase rule) BEFORE init", () => {
+    // Must precede init: the signals config opts in with respectExistingOptOut=true.
+    expect(optOutIdx).toBeGreaterThan(-1);
     expect(initIdx).toBeGreaterThan(-1);
+    expect(optOutIdx).toBeLessThan(initIdx);
+  });
+
+  it("disables automatic configuration BEFORE init", () => {
+    expect(setIdx).toBeGreaterThan(-1);
     expect(setIdx).toBeLessThan(initIdx);
   });
 
