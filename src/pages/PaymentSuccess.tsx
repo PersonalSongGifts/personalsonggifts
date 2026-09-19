@@ -12,13 +12,13 @@ import {
   addonEventId,
   addonTransactionId,
   browserStores,
-  isPaymentRecentEnough,
+  isPaymentEligibleForReport,
   isReportableAmountCents,
   markAddonReported,
   markPurchaseReported,
   purchaseAlreadyReported,
   purchaseEventId,
-  resolvePurchaseValue,
+  resolveReportedPurchase,
 } from "@/lib/purchaseTracking";
 
 interface OrderDetails {
@@ -37,6 +37,11 @@ interface OrderDetails {
    * conversion (cross-device replay). Absent => reporting behaviour unchanged.
    */
   paidAt?: string | null;
+  /** "provider" when this build looked the time up, "unavailable" when it could not. */
+  paidAtSource?: string | null;
+  /** Amount actually captured by the provider, minor units. */
+  paidTotalCents?: number | null;
+  paidCurrency?: string | null;
   revisionToken?: string;
   package_unlocked?: boolean;
   package_addon_cents?: number;
