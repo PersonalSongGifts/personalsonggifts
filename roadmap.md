@@ -1,9 +1,16 @@
 # Roadmap
 
 ## In progress
-- [x] 2026-09-18 Meta tracking integrity: `fbq('set','autoConfig',false,'1231290262288040')`
-  before init (blocks Meta's server-side click rule `1381950960732868`, button text
-  "get my song now", which derived a standard Purchase from a click); six add-on/tip
+- [x] 2026-09-18 Meta tracking integrity: `fbq('optOut','1231290262288040','ESTRuleEngine')`
+  AND `fbq('set','autoConfig',false,...)` before init. CORRECTION: autoConfig=false maps to
+  optOut(AutomaticSetup) and ESTRuleEngine is NOT in that feature list, so autoConfig alone
+  did NOT stop Meta's ACTIVE click rule `1381950960732868` (button text "get my song now",
+  derived_event_name Purchase). Runtime A/B against the real signals config with a
+  non-headless UA (fbevents bot-blocks "HeadlessChrome/", which is why earlier runs saw no
+  traffic): baseline click => `ev=Purchase` (eid `ob3_plugin-set_...`); optOut ESTRuleEngine
+  => no derived Purchase; optOut + autoConfig => zero requests on click; explicit paid
+  Purchase still fires exactly once (`purchase_<orderId>`, value 29) in all variants.
+  Durable fix remains deleting the rule in Events Manager. Six add-on/tip
   server CAPI calls now send `AddOnPurchase` with `addon_<kind>_<session>` ids matching
   the browser; SongPlayer package confirmation switched from standard Purchase (no
   eventID) to custom AddOnPurchase with `addon_pkg_<session>`; durable localStorage
