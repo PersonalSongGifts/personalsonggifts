@@ -481,8 +481,11 @@ Deno.serve(async (req) => {
         email: newOrder.customer_email || metadata.customerEmail,
         phone: metadata.phoneE164 || metadata.customerPhone,
         value: priceCents / 100,
+        currency: proof.paidCurrency || "USD",
         orderId: newOrder.id,
         contentName: "Custom Song",
+        // Provider capture time keeps event_time stable if this ever re-runs.
+        eventTime: capiEventTimeSeconds(proof.paidAt),
       });
     } catch (metaErr) {
       console.error("[META-CAPI] paypal order call failed:", metaErr);
