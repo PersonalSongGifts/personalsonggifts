@@ -82,21 +82,22 @@ const PaymentSuccess = () => {
     pkgSession: string,
     amountCents: number | null,
   ) => {
-    if (!amountCents || amountCents <= 0) return;
+    if (!isReportableAmountCents(amountCents)) return;
     const dedupePrefix = kind === "pkg" ? "psg_pkg_purchase_tracked_" : "psg_rush_purchase_tracked_";
-    const txnPrefix = kind === "pkg" ? "pkg_" : "rush_";
     const itemName = kind === "pkg" ? "Forever Memory Package" : "Rush Delivery";
     const contentId = kind === "pkg" ? "forever-memory-package" : "rush-delivery";
     const key = `${dedupePrefix}${pkgSession}`;
-    try { if (sessionStorage.getItem(key)) return; } catch { /* ignore */ }
+    const stores = browserStores();
+    if (addonAlreadyReported(stores, kind, pkgSession, key)) return;
     const value = amountCents / 100;
-    const txnId = `${txnPrefix}${pkgSession}`;
+    const txnId = addonTransactionId(kind, pkgSession);
     // Post-purchase upsells fire a CUSTOM event (not Purchase) so they don't
-    // inflate standard Purchase counts in Meta/GA/TikTok.
+    // inflate standard Purchase counts in Meta/GA/TikTok. The eventID matches
+    // the server CAPI AddOnPurchase id exactly so Meta dedupes the pair.
     trackMetaCustomEvent(
       'AddOnPurchase',
       { value, currency: 'USD', content_name: itemName, transaction_id: txnId },
-      { eventID: `addon_${txnId}` },
+      { eventID: addonEventId(kind, pkgSession) },
     );
     trackGAEvent('add_on_purchase', {
       transaction_id: txnId,
@@ -110,7 +111,7 @@ const PaymentSuccess = () => {
       value,
       currency: 'USD',
     });
-    try { sessionStorage.setItem(key, "1"); } catch { /* ignore */ }
+    markAddonReported(stores, kind, pkgSession, key);
   }, [trackMetaCustomEvent, trackGAEvent, trackTikTokEvent]);
   const trackPackagePurchase = useCallback(
     (pkgSession: string, amountCents: number | null) => trackAddonPurchase("pkg", pkgSession, amountCents),
