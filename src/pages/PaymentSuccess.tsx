@@ -7,6 +7,19 @@ import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil, Zap } from "lu
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
+import {
+  addonAlreadyReported,
+  addonEventId,
+  addonTransactionId,
+  browserStores,
+  isPaymentRecentEnough,
+  isReportableAmountCents,
+  markAddonReported,
+  markPurchaseReported,
+  purchaseAlreadyReported,
+  purchaseEventId,
+  resolvePurchaseValue,
+} from "@/lib/purchaseTracking";
 
 interface OrderDetails {
   orderId: string;

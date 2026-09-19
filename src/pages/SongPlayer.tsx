@@ -19,6 +19,14 @@ import TipDialog from "@/components/song/TipDialog";
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
+import {
+  addonAlreadyReported,
+  addonEventId,
+  addonTransactionId,
+  browserStores,
+  isReportableAmountCents,
+  markAddonReported,
+} from "@/lib/purchaseTracking";
 
 // Occasion fallback images – ES module imports so Vite bundles them correctly
 import birthdayImg from "@/assets/occasions/birthday.webp";
