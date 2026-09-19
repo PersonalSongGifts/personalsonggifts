@@ -139,24 +139,28 @@ const PaymentSuccess = () => {
 
     if (hasTrackedPurchase.current) return;
 
-    // Reporting-only suppression: never fall back to a guessed price.
-    const purchaseValue = resolvePurchaseValue(data);
-    if (purchaseValue === null || !isPaymentRecentEnough(data.paidAt)) {
+    // Reporting-only suppression: never fall back to a guessed price, and never
+    // report a receipt whose provider-confirmed payment is older than the window
+    // (that is how an old receipt opened on another device is stopped).
+    const reported = resolveReportedPurchase(data);
+    if (reported === null || !isPaymentEligibleForReport(data)) {
       hasTrackedPurchase.current = true;
       markPurchaseReported(stores, data.orderId, dedupeKey);
       return; // $0 / unverified / stale receipt revisit must not pollute ad pixels
     }
+    const purchaseValue = reported.value;
+    const purchaseCurrency = reported.currency;
 
     trackMetaEvent(
       'Purchase',
-      { value: purchaseValue, currency: 'USD', transaction_id: data.orderId },
+      { value: purchaseValue, currency: purchaseCurrency, transaction_id: data.orderId },
       { eventID: purchaseEventId(data.orderId) },
     );
 
     trackGAEvent('purchase', {
       transaction_id: data.orderId,
       value: purchaseValue,
-      currency: 'USD',
+      currency: purchaseCurrency,
       items: [{
         item_name: `${data.pricingTier === "priority" ? "Priority" : "Standard"} Song for ${data.recipientName}`,
         item_category: data.occasion,
@@ -169,7 +173,7 @@ const PaymentSuccess = () => {
       content_type: 'product',
       content_id: data.orderId,
       value: purchaseValue,
-      currency: 'USD',
+      currency: purchaseCurrency,
     });
 
     // Amplitude purchase tracking
