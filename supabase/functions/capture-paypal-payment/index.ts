@@ -3,6 +3,12 @@ import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/lead-order-matching.ts";
 import { sendMetaPurchase } from "../_shared/meta-capi.ts";
+import {
+  capiEventTimeSeconds,
+  type PaymentProof,
+  paypalPaymentProof,
+  UNAVAILABLE_PROOF,
+} from "../_shared/payment-proof.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,6 +120,23 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Provider-confirmed payment proof (reporting only). Never captures or
+    // charges anything: on replayed receipts it is a read-only GET of the order.
+    let proof: PaymentProof = UNAVAILABLE_PROOF;
+    const readOnlyProof = async (): Promise<PaymentProof> => {
+      try {
+        const token = await getPayPalAccessToken();
+        const resp = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderID}`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (!resp.ok) return UNAVAILABLE_PROOF;
+        return paypalPaymentProof(await resp.json());
+      } catch (e) {
+        console.error("[PROOF] PayPal read-only lookup failed:", e);
+        return UNAVAILABLE_PROOF;
+      }
+    };
+
     // Idempotency: check if order already exists for this PayPal order
     const { data: existingOrder } = await supabase
       .from("orders")
@@ -122,8 +145,10 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existingOrder) {
+      proof = await readOnlyProof();
       return new Response(
         JSON.stringify({
+          ...proof,
           orderId: existingOrder.id,
           recipientName: existingOrder.recipient_name,
           occasion: existingOrder.occasion,
@@ -181,8 +206,10 @@ Deno.serve(async (req) => {
           .eq("notes", `paypal_order:${orderID}`)
           .maybeSingle();
         if (alreadyCapturedOrder) {
+          proof = await readOnlyProof();
           return new Response(
             JSON.stringify({
+              ...proof,
               orderId: alreadyCapturedOrder.id,
               recipientName: alreadyCapturedOrder.recipient_name,
               occasion: alreadyCapturedOrder.occasion,
@@ -207,6 +234,7 @@ Deno.serve(async (req) => {
           });
           if (detailsResp.ok) {
             const detailsData = await detailsResp.json();
+            proof = paypalPaymentProof(detailsData);
             console.warn("ORDER_ALREADY_CAPTURED with no local order; recovering", orderID);
             const capturedAmountRec = detailsData.purchase_units?.[0]?.payments?.captures?.[0]?.amount;
             recoveredPriceCents = capturedAmountRec
@@ -254,6 +282,7 @@ Deno.serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      proof = paypalPaymentProof(captureData);
       const capturedAmount = captureData.purchase_units?.[0]?.payments?.captures?.[0]?.amount;
       priceCents = capturedAmount
         ? Math.round(parseFloat(capturedAmount.value) * 100)
@@ -336,6 +365,7 @@ Deno.serve(async (req) => {
       if (preInsertExisting) {
         return new Response(
           JSON.stringify({
+            ...proof,
             orderId: preInsertExisting.id,
             recipientName: preInsertExisting.recipient_name,
             occasion: preInsertExisting.occasion,
@@ -415,6 +445,7 @@ Deno.serve(async (req) => {
         if (raceOrder) {
           return new Response(
             JSON.stringify({
+              ...proof,
               orderId: raceOrder.id,
               recipientName: raceOrder.recipient_name,
               occasion: raceOrder.occasion,
@@ -563,6 +594,7 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
+        ...proof,
         orderId: newOrder.id,
         recipientName: newOrder.recipient_name,
         occasion: newOrder.occasion,
