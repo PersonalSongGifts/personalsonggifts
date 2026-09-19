@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.93.1";
 import { computeInputsHash } from "../_shared/hash-utils.ts";
 import { logActivity } from "../_shared/activity-log.ts";
 import { buildLeadFingerprint, buildLeadFingerprintFromInput } from "../_shared/lead-order-matching.ts";
+import { STRIPE_PAYMENT_PROOF_EXPAND, stripePaymentProof } from "../_shared/payment-proof.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,7 +94,9 @@ Deno.serve(async (req) => {
     let session;
     try {
       session = await stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ["payment_intent"],
+        // The charge is expanded purely so the response can carry the
+        // provider-confirmed payment time (reporting only).
+        expand: ["payment_intent", ...STRIPE_PAYMENT_PROOF_EXPAND],
       });
     } catch (retrieveErr: unknown) {
       const errObj = retrieveErr as { code?: string; message?: string };
@@ -120,6 +123,9 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Provider-confirmed payment proof (reporting only — never gates payment).
+    const proof = stripePaymentProof(session);
+
     // Get metadata from the session
     const metadata = session.metadata || {};
     
@@ -143,6 +149,7 @@ Deno.serve(async (req) => {
       // Order already exists (webhook or prior call created it), return the details
       return new Response(
         JSON.stringify({
+          ...proof,
           orderId: existingOrder.id,
           recipientName: existingOrder.recipient_name,
           occasion: existingOrder.occasion,
@@ -286,6 +293,7 @@ Deno.serve(async (req) => {
         if (raceOrder) {
           return new Response(
             JSON.stringify({
+              ...proof,
               orderId: raceOrder.id,
               recipientName: raceOrder.recipient_name,
               occasion: raceOrder.occasion,
@@ -419,6 +427,7 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
+        ...proof,
         orderId: newOrder.id,
         recipientName: newOrder.recipient_name,
         occasion: newOrder.occasion,
