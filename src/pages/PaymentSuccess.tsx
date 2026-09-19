@@ -191,7 +191,7 @@ const PaymentSuccess = () => {
     }
 
     hasTrackedPurchase.current = true;
-    try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
+    markPurchaseReported(stores, data.orderId, dedupeKey);
   }, [sessionId, paypalToken, trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   useEffect(() => {
