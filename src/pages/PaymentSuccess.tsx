@@ -7,6 +7,19 @@ import { Check, Clock, Mail, Music, Loader2, AlertCircle, Pencil, Zap } from "lu
 import { useMetaPixel } from "@/hooks/useMetaPixel";
 import { useGoogleAnalytics } from "@/hooks/useGoogleAnalytics";
 import { useTikTokPixel } from "@/hooks/useTikTokPixel";
+import {
+  addonAlreadyReported,
+  addonEventId,
+  addonTransactionId,
+  browserStores,
+  isPaymentRecentEnough,
+  isReportableAmountCents,
+  markAddonReported,
+  markPurchaseReported,
+  purchaseAlreadyReported,
+  purchaseEventId,
+  resolvePurchaseValue,
+} from "@/lib/purchaseTracking";
 
 interface OrderDetails {
   orderId: string;
@@ -18,6 +31,12 @@ interface OrderDetails {
   expectedDelivery?: string;
   songUrl?: string;
   price?: number;
+  /**
+   * Provider payment-confirmation time, when the verification response supplies
+   * it. Used only to bound how old a receipt may be before we stop reporting a
+   * conversion (cross-device replay). Absent => reporting behaviour unchanged.
+   */
+  paidAt?: string | null;
   revisionToken?: string;
   package_unlocked?: boolean;
   package_addon_cents?: number;
@@ -69,21 +88,22 @@ const PaymentSuccess = () => {
     pkgSession: string,
     amountCents: number | null,
   ) => {
-    if (!amountCents || amountCents <= 0) return;
+    if (!isReportableAmountCents(amountCents)) return;
     const dedupePrefix = kind === "pkg" ? "psg_pkg_purchase_tracked_" : "psg_rush_purchase_tracked_";
-    const txnPrefix = kind === "pkg" ? "pkg_" : "rush_";
     const itemName = kind === "pkg" ? "Forever Memory Package" : "Rush Delivery";
     const contentId = kind === "pkg" ? "forever-memory-package" : "rush-delivery";
     const key = `${dedupePrefix}${pkgSession}`;
-    try { if (sessionStorage.getItem(key)) return; } catch { /* ignore */ }
+    const stores = browserStores();
+    if (addonAlreadyReported(stores, kind, pkgSession, key)) return;
     const value = amountCents / 100;
-    const txnId = `${txnPrefix}${pkgSession}`;
+    const txnId = addonTransactionId(kind, pkgSession);
     // Post-purchase upsells fire a CUSTOM event (not Purchase) so they don't
-    // inflate standard Purchase counts in Meta/GA/TikTok.
+    // inflate standard Purchase counts in Meta/GA/TikTok. The eventID matches
+    // the server CAPI AddOnPurchase id exactly so Meta dedupes the pair.
     trackMetaCustomEvent(
       'AddOnPurchase',
       { value, currency: 'USD', content_name: itemName, transaction_id: txnId },
-      { eventID: `addon_${txnId}` },
+      { eventID: addonEventId(kind, pkgSession) },
     );
     trackGAEvent('add_on_purchase', {
       transaction_id: txnId,
@@ -97,7 +117,7 @@ const PaymentSuccess = () => {
       value,
       currency: 'USD',
     });
-    try { sessionStorage.setItem(key, "1"); } catch { /* ignore */ }
+    markAddonReported(stores, kind, pkgSession, key);
   }, [trackMetaCustomEvent, trackGAEvent, trackTikTokEvent]);
   const trackPackagePurchase = useCallback(
     (pkgSession: string, amountCents: number | null) => trackAddonPurchase("pkg", pkgSession, amountCents),
@@ -106,27 +126,26 @@ const PaymentSuccess = () => {
 
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
     const dedupeKey = `psg_purchase_tracked_${sessionId || paypalToken || data.orderId}`;
-    try {
-      if (sessionStorage.getItem(dedupeKey)) return;
-    } catch { /* sessionStorage unavailable — fall through to ref guard */ }
+    const stores = browserStores();
+    // Durable (localStorage, keyed by order id) + legacy per-tab guard: a refresh
+    // or a second tab on this device cannot re-fire. A different device opening
+    // the same old receipt link is bounded by payment age below instead.
+    if (purchaseAlreadyReported(stores, data.orderId, dedupeKey)) return;
 
     if (hasTrackedPurchase.current) return;
 
-    const baseVal = data.price ?? (data.pricingTier === "priority" ? 79 : 29);
-    const purchaseValue =
-      baseVal +
-      (data.package_addon_cents || 0) / 100 +
-      (data.rush_addon_cents || 0) / 100;
-    if (purchaseValue <= 0) {
+    // Reporting-only suppression: never fall back to a guessed price.
+    const purchaseValue = resolvePurchaseValue(data);
+    if (purchaseValue === null || !isPaymentRecentEnough(data.paidAt)) {
       hasTrackedPurchase.current = true;
-      try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
-      return; // $0 test orders must not pollute ad pixels
+      markPurchaseReported(stores, data.orderId, dedupeKey);
+      return; // $0 / unverified / stale receipt revisit must not pollute ad pixels
     }
 
     trackMetaEvent(
       'Purchase',
       { value: purchaseValue, currency: 'USD', transaction_id: data.orderId },
-      { eventID: `purchase_${data.orderId}` },
+      { eventID: purchaseEventId(data.orderId) },
     );
 
     trackGAEvent('purchase', {
@@ -172,7 +191,7 @@ const PaymentSuccess = () => {
     }
 
     hasTrackedPurchase.current = true;
-    try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
+    markPurchaseReported(stores, data.orderId, dedupeKey);
   }, [sessionId, paypalToken, trackMetaEvent, trackGAEvent, trackTikTokEvent]);
 
   useEffect(() => {

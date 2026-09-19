@@ -96,6 +96,12 @@
           t.src=v;s=b.getElementsByTagName(e)[0];
           s.parentNode.insertBefore(t,s)}(window, document,'script',
           'https://connect.facebook.net/en_US/fbevents.js');
+          // Disable Meta automatic configuration for this pixel BEFORE init.
+          // Meta's signals config ships server-side "estRules" that derive a
+          // standard Purchase from a button-text click (e.g. "get my song now").
+          // autoConfig=false stops automatic/derived event collection; every
+          // conversion we report is an explicit, payment-verified call in code.
+          fbq('set', 'autoConfig', false, '1231290262288040');
           fbq('init', '1231290262288040');
           fbq('track', 'PageView');
 

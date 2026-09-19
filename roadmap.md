@@ -1,6 +1,19 @@
 # Roadmap
 
 ## In progress
+- [x] 2026-09-18 Meta tracking integrity: `fbq('set','autoConfig',false,'1231290262288040')`
+  before init (blocks Meta's server-side click rule `1381950960732868`, button text
+  "get my song now", which derived a standard Purchase from a click); six add-on/tip
+  server CAPI calls now send `AddOnPurchase` with `addon_<kind>_<session>` ids matching
+  the browser; SongPlayer package confirmation switched from standard Purchase (no
+  eventID) to custom AddOnPurchase with `addon_pkg_<session>`; durable localStorage
+  dedupe keyed by order id + legacy per-tab key; no silent price fallback — an absent
+  or non-positive verified amount suppresses reporting only. Base purchases keep
+  `purchase_<orderId>`. Reporting-only; no charging/order/price/DB/email change.
+  NOT PUBLISHED (frontend). Open: cross-device old-receipt replay needs a provider
+  payment-confirmation timestamp in the verify responses (`paidAt` is read if present,
+  helper + tests exist, server does not yet return it); runtime confirmation that the
+  click rule is blocked must be done on the live domain (sandbox sends no pixel traffic).
 - [x] 2026-09-18 preview offer clarity (pricing incident, lead d9bb7942): always-visible
   Full song / Forever Memory Package / Total today line items, add-on labelled
   "Optional add-on … $24.00 extra", real 48px checkbox + label are the only toggles

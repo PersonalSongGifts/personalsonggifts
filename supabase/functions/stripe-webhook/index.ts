@@ -308,7 +308,8 @@ Deno.serve(async (req) => {
         try {
           if (amountCents > 0) {
             await sendMetaPurchase({
-              eventId: `tip_${session.id}`,
+              eventName: "AddOnPurchase",
+              eventId: `addon_tip_${session.id}`,
               email: session.customer_details?.email ?? session.customer_email,
               value: amountCents / 100,
               orderId: tipOrderId,
@@ -365,7 +366,8 @@ Deno.serve(async (req) => {
         try {
           if (session.amount_total && session.amount_total > 0) {
             await sendMetaPurchase({
-              eventId: `lyrics_${session.id}`,
+              eventName: "AddOnPurchase",
+              eventId: `addon_lyrics_${session.id}`,
               email: session.customer_details?.email ?? session.customer_email,
               value: session.amount_total / 100,
               orderId: lyricsOrderId,
@@ -425,7 +427,8 @@ Deno.serve(async (req) => {
         try {
           if (session.amount_total && session.amount_total > 0) {
             await sendMetaPurchase({
-              eventId: `download_${session.id}`,
+              eventName: "AddOnPurchase",
+              eventId: `addon_download_${session.id}`,
               email: session.customer_details?.email ?? session.customer_email,
               value: session.amount_total / 100,
               orderId: downloadOrderId,
@@ -485,7 +488,8 @@ Deno.serve(async (req) => {
         try {
           if (session.amount_total && session.amount_total > 0) {
             await sendMetaPurchase({
-              eventId: `bonus_${session.id}`,
+              eventName: "AddOnPurchase",
+              eventId: `addon_bonus_${session.id}`,
               email: session.customer_details?.email ?? session.customer_email,
               value: session.amount_total / 100,
               orderId: bonusOrderId,
@@ -572,7 +576,8 @@ Deno.serve(async (req) => {
         try {
           if (amountTotal > 0) {
             await sendMetaPurchase({
-              eventId: `pkg_${session.id}`,
+              eventName: "AddOnPurchase",
+              eventId: `addon_pkg_${session.id}`,
               email: session.customer_details?.email ?? session.customer_email,
               value: amountTotal / 100,
               orderId: packageOrderId,
@@ -722,7 +727,8 @@ Deno.serve(async (req) => {
         try {
           if (amountTotal > 0) {
             await sendMetaPurchase({
-              eventId: `rush_${session.id}`,
+              eventName: "AddOnPurchase",
+              eventId: `addon_rush_${session.id}`,
               email: session.customer_details?.email ?? session.customer_email,
               value: amountTotal / 100,
               orderId: rushOrderId,

@@ -4,9 +4,13 @@
  * Fire-and-forget by design: this function NEVER throws and NEVER rejects.
  * Safe to deploy before META_CAPI_ACCESS_TOKEN exists (it just logs and returns).
  *
- * Dedupe contract: Meta dedupes on (event_name, event_id). The frontend fires
- * Meta Purchase with eventID `purchase_${orderId}` — server calls MUST use the
- * exact same event_id so the conversion is counted once.
+ * Dedupe contract: Meta dedupes on (event_name, event_id). BOTH must match the
+ * browser call exactly:
+ *   - base song purchase: eventName "Purchase",      eventId `purchase_${orderId}`
+ *   - add-ons / tips:     eventName "AddOnPurchase",  eventId `addon_${kind}_${sessionId}`
+ *     (kind = pkg | rush | tip | lyrics | download | bonus)
+ * Add-ons MUST NOT be sent as "Purchase" — that inflates standard Purchase counts
+ * and breaks ad optimisation.
  */
 
 const META_PIXEL_ID = "1231290262288040";
