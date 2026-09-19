@@ -120,27 +120,26 @@ const PaymentSuccess = () => {
 
   const trackPurchaseEvent = useCallback((data: OrderDetails) => {
     const dedupeKey = `psg_purchase_tracked_${sessionId || paypalToken || data.orderId}`;
-    try {
-      if (sessionStorage.getItem(dedupeKey)) return;
-    } catch { /* sessionStorage unavailable — fall through to ref guard */ }
+    const stores = browserStores();
+    // Durable (localStorage, keyed by order id) + legacy per-tab guard: a refresh
+    // or a second tab on this device cannot re-fire. A different device opening
+    // the same old receipt link is bounded by payment age below instead.
+    if (purchaseAlreadyReported(stores, data.orderId, dedupeKey)) return;
 
     if (hasTrackedPurchase.current) return;
 
-    const baseVal = data.price ?? (data.pricingTier === "priority" ? 79 : 29);
-    const purchaseValue =
-      baseVal +
-      (data.package_addon_cents || 0) / 100 +
-      (data.rush_addon_cents || 0) / 100;
-    if (purchaseValue <= 0) {
+    // Reporting-only suppression: never fall back to a guessed price.
+    const purchaseValue = resolvePurchaseValue(data);
+    if (purchaseValue === null || !isPaymentRecentEnough(data.paidAt)) {
       hasTrackedPurchase.current = true;
-      try { sessionStorage.setItem(dedupeKey, "1"); } catch { /* ignore */ }
-      return; // $0 test orders must not pollute ad pixels
+      markPurchaseReported(stores, data.orderId, dedupeKey);
+      return; // $0 / unverified / stale receipt revisit must not pollute ad pixels
     }
 
     trackMetaEvent(
       'Purchase',
       { value: purchaseValue, currency: 'USD', transaction_id: data.orderId },
-      { eventID: `purchase_${data.orderId}` },
+      { eventID: purchaseEventId(data.orderId) },
     );
 
     trackGAEvent('purchase', {
