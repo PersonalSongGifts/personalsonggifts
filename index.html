@@ -96,11 +96,30 @@
           t.src=v;s=b.getElementsByTagName(e)[0];
           s.parentNode.insertBefore(t,s)}(window, document,'script',
           'https://connect.facebook.net/en_US/fbevents.js');
-          // Disable Meta automatic configuration for this pixel BEFORE init.
-          // Meta's signals config ships server-side "estRules" that derive a
-          // standard Purchase from a button-text click (e.g. "get my song now").
-          // autoConfig=false stops automatic/derived event collection; every
-          // conversion we report is an explicit, payment-verified call in code.
+          // --- Meta: block server-side DERIVED conversions. Order matters: both
+          // lines must run BEFORE init, because the signals config fetched after
+          // init calls instance.optIn(pixel, feature, /* respectExistingOptOut */ true),
+          // which does NOT override an opt-out recorded earlier.
+          //
+          // Meta's config for this pixel ships an ACTIVE EST rule (rule_id
+          // 1381950960732868) that derives a standard *Purchase* from any click on
+          // text matching "get my song now" — i.e. a phantom sale on every checkout
+          // button tap. Verified against the shipped fbevents.js: the click handler
+          // is gated on optIns.isOptedIn(pixel, 'ESTRuleEngine'), and ESTRuleEngine
+          // is NOT in the AutomaticSetup opt-out list, so autoConfig alone does not
+          // stop it. Runtime A/B (real origin, real Meta config, requests captured
+          // and never delivered) confirmed: baseline click => ev=Purchase;
+          // optOut ESTRuleEngine => no Purchase; explicit paid Purchase still fires
+          // exactly once with eventID purchase_<orderId>.
+          //
+          // The durable fix is deleting/changing the rule in Events Manager; this is
+          // the client-side belt-and-braces. autoConfig=false additionally suppresses
+          // inferred/automatic collection (InferredEvents, Microdata, SmartSetup,
+          // AutomaticMatchingRegex/AI, PageMetadata, ScrollDepth) — it removes the
+          // remaining automatic button-click beacon, at the cost of Meta's automatic
+          // advanced matching heuristics. Explicit events, PageView and consent
+          // behaviour are untouched.
+          fbq('optOut', '1231290262288040', 'ESTRuleEngine');
           fbq('set', 'autoConfig', false, '1231290262288040');
           fbq('init', '1231290262288040');
           fbq('track', 'PageView');
