@@ -31,6 +31,12 @@ interface OrderDetails {
   expectedDelivery?: string;
   songUrl?: string;
   price?: number;
+  /**
+   * Provider payment-confirmation time, when the verification response supplies
+   * it. Used only to bound how old a receipt may be before we stop reporting a
+   * conversion (cross-device replay). Absent => reporting behaviour unchanged.
+   */
+  paidAt?: string | null;
   revisionToken?: string;
   package_unlocked?: boolean;
   package_addon_cents?: number;
